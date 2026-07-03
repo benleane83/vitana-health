@@ -26,6 +26,13 @@ const sampleLabCsv = `date,panelName,marker,value,unit,referenceLow,referenceHig
 
 type AppRoute = "dashboard" | "summary";
 type SummarySort = "name" | "count" | "recency";
+const timestampFormatter = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  month: "short",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit"
+});
 
 export function App() {
   const [store, setStore] = useState<HealthStoreData>();
@@ -126,9 +133,6 @@ export function App() {
         await api.importBloodTest(fileName, csv);
       }
       await refresh();
-      if (route === "summary") {
-        setSummary(undefined);
-      }
     });
   }
 
@@ -438,9 +442,16 @@ function compareSummaryRows(a: HealthDataSummaryTypeRow, b: HealthDataSummaryTyp
   if (sort === "count") {
     return b.counts.total - a.counts.total || a.displayName.localeCompare(b.displayName);
   }
-  const aStamp = a.lastMeasuredAt ?? "";
-  const bStamp = b.lastMeasuredAt ?? "";
-  return bStamp.localeCompare(aStamp) || a.displayName.localeCompare(b.displayName);
+  if (!a.lastMeasuredAt && !b.lastMeasuredAt) {
+    return a.displayName.localeCompare(b.displayName);
+  }
+  if (!a.lastMeasuredAt) {
+    return 1;
+  }
+  if (!b.lastMeasuredAt) {
+    return -1;
+  }
+  return b.lastMeasuredAt.localeCompare(a.lastMeasuredAt) || a.displayName.localeCompare(b.displayName);
 }
 
 function routeFromPathname(pathname: string): AppRoute {
@@ -452,13 +463,7 @@ function formatTimestamp(value: string): string {
   if (Number.isNaN(date.getTime())) {
     return value;
   }
-  return new Intl.DateTimeFormat(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit"
-  }).format(date);
+  return timestampFormatter.format(date);
 }
 
 function MiniChart({ points }: { points: Array<{ date: string; value: number }> }) {

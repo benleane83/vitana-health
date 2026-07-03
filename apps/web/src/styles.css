@@ -14,6 +14,7 @@
   --amber: #ffc857;
   --coral: #ff6b4a;
   --cyan: #85ffe1;
+  --ink-strong: #071008;
 }
 
 * {
@@ -40,7 +41,7 @@ textarea {
 button {
   border: 1px solid rgba(181, 244, 93, 0.4);
   background: linear-gradient(135deg, #c8ff64, #7adf52);
-  color: #071008;
+  color: var(--ink-strong);
   font-weight: 900;
   border-radius: 999px;
   padding: 0.78rem 1.1rem;
@@ -95,7 +96,7 @@ textarea {
 
 .route-nav button.active {
   background: linear-gradient(135deg, var(--leaf), var(--cyan));
-  color: #071008;
+  color: var(--ink-strong);
 }
 
 .hero {
@@ -246,7 +247,7 @@ h2 {
 
 .summary-controls button.active {
   background: linear-gradient(135deg, var(--leaf), var(--cyan));
-  color: #071008;
+  color: var(--ink-strong);
 }
 
 .summary-totals {
