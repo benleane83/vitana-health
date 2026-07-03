@@ -17,6 +17,7 @@ import { planWarehouseQuery } from "./nlQuery.js";
 import { callConfiguredModel, currentModelConfig } from "./modelClient.js";
 import { planDataAnswer } from "./askData.js";
 import { planStoreAnswer } from "./askStore.js";
+import { summarizeStoreData } from "./summary.js";
 
 loadEnvironmentFiles();
 
@@ -152,6 +153,10 @@ app.post("/api/import/samsung-json-upload", (request, response) => {
 
 app.get("/api/analytics", (_request, response) => {
   response.json(computeAnalytics(store.snapshot()));
+});
+
+app.get("/api/summary", (_request, response) => {
+  response.json(summarizeStoreData(store.snapshot()));
 });
 
 app.post("/api/warehouse/rebuild", async (_request, response, next) => {
@@ -373,4 +378,3 @@ function stripOuterQuotes(value: string): string {
   }
   return value;
 }
-

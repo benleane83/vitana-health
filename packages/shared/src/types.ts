@@ -201,3 +201,37 @@ export interface AnalyticsSummary {
   evidenceDigest: string[];
 }
 
+export interface HealthDataSummarySourceCounts {
+  observations: number;
+  samples: number;
+  labMarkers: number;
+}
+
+export interface HealthDataSummaryTypeRow {
+  code: string;
+  displayName: string;
+  category: MeasurementType["category"] | "uncategorized";
+  counts: HealthDataSummarySourceCounts & {
+    total: number;
+  };
+  lastMeasuredAt?: string;
+}
+
+export interface HealthDataSummaryCategoryGroup {
+  key: HealthDataSummaryTypeRow["category"];
+  label: string;
+  counts: HealthDataSummarySourceCounts & {
+    total: number;
+    types: number;
+  };
+  rows: HealthDataSummaryTypeRow[];
+}
+
+export interface HealthDataSummary {
+  generatedAt: string;
+  totals: HealthDataSummarySourceCounts & {
+    total: number;
+    types: number;
+  };
+  categories: HealthDataSummaryCategoryGroup[];
+}

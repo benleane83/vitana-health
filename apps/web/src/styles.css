@@ -81,6 +81,23 @@ textarea {
   padding: 40px 0 64px;
 }
 
+.route-nav {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.route-nav button {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+.route-nav button.active {
+  background: linear-gradient(135deg, var(--leaf), var(--cyan));
+  color: #071008;
+}
+
 .hero {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
@@ -201,6 +218,95 @@ h2 {
   border-radius: 34px;
   padding: 24px;
   min-height: 260px;
+}
+
+.summary-panel {
+  min-height: auto;
+}
+
+.summary-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.summary-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.summary-controls button {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+.summary-controls button.active {
+  background: linear-gradient(135deg, var(--leaf), var(--cyan));
+  color: #071008;
+}
+
+.summary-totals {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.summary-generated {
+  color: var(--muted);
+  margin: 14px 0;
+}
+
+.summary-categories {
+  display: grid;
+  gap: 12px;
+}
+
+.summary-category {
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.035);
+  overflow: hidden;
+}
+
+.summary-category-toggle {
+  border: 0;
+  border-radius: 0;
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--ink);
+  box-shadow: none;
+}
+
+.summary-category-toggle span {
+  color: var(--muted);
+}
+
+.summary-table {
+  padding: 0 12px 12px;
+}
+
+.summary-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px 220px;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.summary-row:last-child {
+  border-bottom: 0;
+}
+
+.summary-row-head {
+  color: var(--muted);
+  font-weight: 700;
 }
 
 .profile-panel,
@@ -383,6 +489,10 @@ label {
   .insight-panel {
     grid-row: auto;
   }
+
+  .summary-totals {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 620px) {
@@ -394,8 +504,20 @@ label {
     grid-template-columns: 1fr;
   }
 
+  .route-nav {
+    flex-direction: column;
+  }
+
+  .summary-header {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .summary-row {
+    grid-template-columns: 1fr;
+  }
+
   h1 {
     font-size: 4rem;
   }
 }
-
