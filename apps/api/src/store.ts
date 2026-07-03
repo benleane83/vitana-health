@@ -1,0 +1,309 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
+import { defaultMeasurementTypes, type HealthStoreData, type SourceImport } from "@local-fitness-advisor/shared";
+
+interface EncryptedEnvelope {
+  version: 1;
+  salt: string;
+  iv: string;
+  tag: string;
+  payload: string;
+}
+
+const dataDir = process.env.LFA_DATA_DIR ? resolve(process.env.LFA_DATA_DIR) : resolveDataDir();
+const dataPath = resolve(dataDir, "health-store.enc");
+const localKeyPath = resolve(dataDir, "local.key");
+const maxRawImportChars = 1_000_000;
+const maxObservations = 10_000;
+const maxTimeSeriesSamples = 10_000;
+const minPerMeasurementCode = 500;
+const maxActivitySessions = 75_000;
+const maxLabPanels = 20_000;
+const maxLabMarkers = 200_000;
+
+export class HealthStore {
+  private data: HealthStoreData;
+  private readonly passphrase: string;
+  readonly securityMode: "env-secret" | "generated-local-key";
+
+  constructor() {
+    mkdirSync(dirname(dataPath), { recursive: true });
+    const configuredSecret = process.env.LFA_SECRET;
+    if (configuredSecret && configuredSecret.length >= 16) {
+      this.passphrase = configuredSecret;
+      this.securityMode = "env-secret";
+    } else {
+      this.passphrase = getOrCreateLocalKey();
+      this.securityMode = "generated-local-key";
+    }
+    this.data = existsSync(dataPath) ? this.readEncryptedStore() : createEmptyStore();
+    if (!existsSync(dataPath)) {
+      this.audit("store-created", "Encrypted local health store created.");
+      this.persist();
+    }
+  }
+
+  snapshot(options: { includeRaw?: boolean } = {}): HealthStoreData {
+    return {
+      ...this.data,
+      sourceImports: this.data.sourceImports.map((item) => redactRawImport(item, options.includeRaw === true))
+    };
+  }
+
+  replaceProfile(profile: HealthStoreData["profile"]): HealthStoreData["profile"] {
+    this.data.profile = { ...profile, id: "self", updatedAt: new Date().toISOString() };
+    this.audit("profile-updated", "Profile details updated locally.");
+    this.persist();
+    return this.data.profile;
+  }
+
+  mergeImport(parsed: {
+    sourceImport: SourceImport;
+    dataSource: HealthStoreData["dataSources"][number];
+    observations: HealthStoreData["observations"];
+    timeSeriesSamples: HealthStoreData["timeSeriesSamples"];
+    activitySessions: HealthStoreData["activitySessions"];
+    labPanels: HealthStoreData["labPanels"];
+    labMarkers: HealthStoreData["labMarkers"];
+  }): HealthStoreData {
+    const safeSourceImport = sanitizeSourceImport(parsed.sourceImport);
+    if (
+      !this.data.sourceImports.some(
+        (entry) =>
+          entry.sourceKind === safeSourceImport.sourceKind &&
+          entry.checksum === safeSourceImport.checksum &&
+          entry.fileName === safeSourceImport.fileName
+      )
+    ) {
+      this.data.sourceImports.push(safeSourceImport);
+    }
+    if (!this.data.dataSources.some((entry) => entry.id === parsed.dataSource.id)) {
+      this.data.dataSources.push(parsed.dataSource);
+    }
+    this.data.observations = limitByNewest(
+      appendUniqueById(this.data.observations, parsed.observations),
+      maxObservations,
+      (item) => item.observedAt,
+      (item) => item.measurementCode,
+      minPerMeasurementCode
+    );
+    this.data.timeSeriesSamples = limitByNewest(
+      appendUniqueById(this.data.timeSeriesSamples, parsed.timeSeriesSamples),
+      maxTimeSeriesSamples,
+      (item) => item.endAt,
+      (item) => item.measurementCode,
+      minPerMeasurementCode
+    );
+    this.data.activitySessions = limitByNewest(
+      appendUniqueById(this.data.activitySessions, parsed.activitySessions),
+      maxActivitySessions,
+      (item) => item.startAt
+    );
+    this.data.labPanels = limitByNewest(
+      appendUniqueById(this.data.labPanels, parsed.labPanels),
+      maxLabPanels,
+      (item) => item.collectedAt
+    );
+    this.data.labMarkers = limitByNewest(
+      appendUniqueById(this.data.labMarkers, parsed.labMarkers),
+      maxLabMarkers,
+      (item) => item.id
+    );
+    this.audit(
+      "import-processed",
+      `${safeSourceImport.sourceKind} import processed with ${safeSourceImport.rowCount} source row(s).`
+    );
+    this.persist();
+    return this.snapshot();
+  }
+
+  addInsight(insight: HealthStoreData["insights"][number]): HealthStoreData["insights"][number] {
+    this.data.insights.unshift(insight);
+    this.audit("insight-generated", `${insight.model} insight generated.`);
+    this.persist();
+    return insight;
+  }
+
+  exportData(): HealthStoreData {
+    this.audit("export-created", "Full local data export created.");
+    this.persist();
+    return this.snapshot({ includeRaw: true });
+  }
+
+  private audit(eventType: HealthStoreData["auditEvents"][number]["eventType"], detail: string): void {
+    this.data.auditEvents.unshift({
+      id: `audit_${globalThis.crypto.randomUUID().replaceAll("-", "").slice(0, 18)}`,
+      createdAt: new Date().toISOString(),
+      eventType,
+      detail
+    });
+  }
+
+  private readEncryptedStore(): HealthStoreData {
+    const envelope = JSON.parse(readFileSync(dataPath, "utf8")) as EncryptedEnvelope;
+    const key = scryptSync(this.passphrase, Buffer.from(envelope.salt, "base64"), 32);
+    const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(envelope.iv, "base64"));
+    decipher.setAuthTag(Buffer.from(envelope.tag, "base64"));
+    const decrypted = Buffer.concat([
+      decipher.update(Buffer.from(envelope.payload, "base64")),
+      decipher.final()
+    ]);
+    return JSON.parse(decrypted.toString("utf8")) as HealthStoreData;
+  }
+
+  private persist(): void {
+    const salt = randomBytes(16);
+    const iv = randomBytes(12);
+    const key = scryptSync(this.passphrase, salt, 32);
+    const cipher = createCipheriv("aes-256-gcm", key, iv);
+    const encrypted = Buffer.concat([cipher.update(JSON.stringify(this.data)), cipher.final()]);
+    const envelope: EncryptedEnvelope = {
+      version: 1,
+      salt: salt.toString("base64"),
+      iv: iv.toString("base64"),
+      tag: cipher.getAuthTag().toString("base64"),
+      payload: encrypted.toString("base64")
+    };
+    writeFileSync(dataPath, JSON.stringify(envelope, null, 2), { encoding: "utf8" });
+  }
+}
+
+function getOrCreateLocalKey(): string {
+  mkdirSync(dirname(localKeyPath), { recursive: true });
+  if (existsSync(localKeyPath)) {
+    return readFileSync(localKeyPath, "utf8").trim();
+  }
+  const key = randomBytes(32).toString("base64url");
+  writeFileSync(localKeyPath, key, { encoding: "utf8", mode: 0o600 });
+  return key;
+}
+
+function createEmptyStore(): HealthStoreData {
+  return {
+    profile: {
+      id: "self",
+      displayName: "Local user",
+      units: "metric",
+      updatedAt: new Date().toISOString()
+    },
+    sourceImports: [],
+    dataSources: [],
+    devices: [],
+    measurementTypes: defaultMeasurementTypes,
+    observations: [],
+    timeSeriesSamples: [],
+    activitySessions: [],
+    sleepSessions: [],
+    sleepStageIntervals: [],
+    labPanels: [],
+    labMarkers: [],
+    insights: [],
+    auditEvents: []
+  };
+}
+
+function redactRawImport(sourceImport: SourceImport, includeRaw: boolean): SourceImport {
+  if (includeRaw) {
+    return sourceImport;
+  }
+  const { rawContent: _rawContent, ...safe } = sourceImport;
+  return safe;
+}
+
+function appendUniqueById<T extends { id: string }>(existing: T[], additions: T[]): T[] {
+  if (additions.length === 0) {
+    return existing;
+  }
+  const seen = new Set(existing.map((item) => item.id));
+  const uniqueAdditions = additions.filter((item) => {
+    if (seen.has(item.id)) {
+      return false;
+    }
+    seen.add(item.id);
+    return true;
+  });
+  if (uniqueAdditions.length === 0) {
+    return existing;
+  }
+  return [...existing, ...uniqueAdditions];
+}
+
+function resolveDataDir(): string {
+  const candidates = [
+    resolve(process.cwd(), "data"),
+    resolve(process.cwd(), "..", "..", "data")
+  ];
+  const existing = candidates.find((candidate) => existsSync(candidate));
+  return existing ?? candidates[0];
+}
+
+function sanitizeSourceImport(sourceImport: SourceImport): SourceImport {
+  if (!sourceImport.rawContent) {
+    return sourceImport;
+  }
+  if (sourceImport.rawContent.length <= maxRawImportChars) {
+    return sourceImport;
+  }
+  return {
+    ...sourceImport,
+    rawContent: sourceImport.rawContent.slice(0, maxRawImportChars)
+  };
+}
+
+function limitByNewest<T>(
+  items: T[],
+  maxItems: number,
+  key: (item: T) => string,
+  groupKey?: (item: T) => string,
+  minPerGroup = 0
+): T[] {
+  if (items.length <= maxItems) {
+    return items;
+  }
+  if (!groupKey || minPerGroup <= 0) {
+    return [...items].sort((a, b) => key(b).localeCompare(key(a))).slice(0, maxItems);
+  }
+
+  const groups = new Map<string, T[]>();
+  for (const item of items) {
+    const group = groupKey(item) || "unknown";
+    const bucket = groups.get(group);
+    if (bucket) {
+      bucket.push(item);
+    } else {
+      groups.set(group, [item]);
+    }
+  }
+
+  for (const bucket of groups.values()) {
+    bucket.sort((a, b) => key(b).localeCompare(key(a)));
+  }
+
+  const selected: T[] = [];
+  for (const bucket of groups.values()) {
+    for (let index = 0; index < Math.min(minPerGroup, bucket.length); index += 1) {
+      const item = bucket[index];
+      selected.push(item);
+      if (selected.length >= maxItems) {
+        return selected.sort((a, b) => key(b).localeCompare(key(a))).slice(0, maxItems);
+      }
+    }
+  }
+
+  const remainder: T[] = [];
+  for (const bucket of groups.values()) {
+    for (let index = Math.min(minPerGroup, bucket.length); index < bucket.length; index += 1) {
+      remainder.push(bucket[index]);
+    }
+  }
+  remainder.sort((a, b) => key(b).localeCompare(key(a)));
+  for (const item of remainder) {
+    if (selected.length >= maxItems) {
+      break;
+    }
+    selected.push(item);
+  }
+
+  return selected;
+}
