@@ -340,7 +340,7 @@ export function App() {
 
             <article className="panel import-panel">
               <h2>Import console</h2>
-              <p className="empty">Samsung Health CSV import stays on the dashboard. Use Labs for blood test entry and upload.</p>
+              <p className="empty">Samsung Health CSV import stays on the dashboard. Use Labs for Blood test entry and upload.</p>
               <input value={samsungFileName} onChange={(event) => setSamsungFileName(event.target.value)} />
               <textarea className="csv-box" value={samsungCsv} onChange={(event) => setSamsungCsv(event.target.value)} />
               <button disabled={busy} onClick={importSamsungCsv}>Process into vault</button>
