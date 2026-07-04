@@ -292,8 +292,13 @@ h2 {
 }
 
 .labs-row {
-  grid-template-columns: minmax(0, 1.35fr) repeat(4, minmax(0, 0.7fr)) auto;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 0.75fr) minmax(0, 0.75fr) auto;
   align-items: center;
+}
+
+.labs-marker-cell {
+  display: grid;
+  gap: 6px;
 }
 
 .labs-row-actions {

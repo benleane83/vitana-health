@@ -9,8 +9,9 @@ import type {
   MeasurementType,
   Profile
 } from "@local-fitness-advisor/shared";
-import { findMeasurementType, safetyNotice } from "@local-fitness-advisor/shared";
+import { safetyNotice } from "@local-fitness-advisor/shared";
 import { api } from "./api.js";
+import { LAB_MARKER_CATALOG } from "./labMarkerCatalog.js";
 
 const sampleSamsungCsv = `date,type,value,unit
 2026-06-25,steps,8421,count
@@ -29,8 +30,6 @@ interface ManualMarkerRow {
   marker: string;
   value: string;
   unit: string;
-  referenceLow: string;
-  referenceHigh: string;
 }
 
 const timestampFormatter = new Intl.DateTimeFormat(undefined, {
@@ -252,10 +251,10 @@ export function App() {
           return row;
         }
         const next = { ...row, ...patch };
-        if (patch.marker !== undefined && !next.unit.trim()) {
-          const matched = findMeasurementType(patch.marker);
-          if (matched?.canonicalUnit) {
-            next.unit = matched.canonicalUnit;
+        if (patch.marker !== undefined && patch.unit === undefined && !next.unit.trim()) {
+          const matchedUnit = findKnownCatalogMarker(patch.marker)?.unit ?? findKnownMeasurement(patch.marker, labMeasurementTypes)?.canonicalUnit;
+          if (matchedUnit) {
+            next.unit = matchedUnit;
           }
         }
         return next;
@@ -426,7 +425,6 @@ export function App() {
           onSubmitUpload={submitCsvUpload}
           onUploadFileChange={setUploadFile}
           uploadInputRef={uploadInputRef}
-          measurementTypes={labMeasurementTypes}
         />
       )}
     </main>
@@ -450,8 +448,7 @@ function LabsPage({
   onSubmitManual,
   onSubmitUpload,
   onUploadFileChange,
-  uploadInputRef,
-  measurementTypes
+  uploadInputRef
 }: {
   busy: boolean;
   mode: LabsMode;
@@ -470,7 +467,6 @@ function LabsPage({
   onSubmitUpload: (event: React.FormEvent<HTMLFormElement>) => void;
   onUploadFileChange: (file?: File) => void;
   uploadInputRef: React.RefObject<HTMLInputElement | null>;
-  measurementTypes: MeasurementType[];
 }) {
   return (
     <section className="panel labs-panel">
@@ -511,15 +507,30 @@ function LabsPage({
               <span role="columnheader">Marker</span>
               <span role="columnheader">Value</span>
               <span role="columnheader">Unit</span>
-              <span role="columnheader">Ref low</span>
-              <span role="columnheader">Ref high</span>
               <span role="columnheader">Actions</span>
             </div>
             {rows.map((row) => (
               <div className="summary-row labs-row" role="row" key={row.id}>
-                <span role="cell">
+                <span role="cell" className="labs-marker-cell">
+                  <select
+                    value={selectedMarkerOption(row.marker)}
+                    onChange={(event) => {
+                      const selectedMarker = event.target.value;
+                      const knownMarker = findKnownCatalogMarker(selectedMarker);
+                      onRowChange(row.id, {
+                        marker: selectedMarker,
+                        unit: knownMarker?.unit ?? row.unit
+                      });
+                    }}
+                  >
+                    <option value="">Custom marker</option>
+                    {LAB_MARKER_CATALOG.map((entry) => (
+                      <option value={entry.marker} key={entry.marker}>
+                        {entry.marker}
+                      </option>
+                    ))}
+                  </select>
                   <input
-                    list="lab-marker-options"
                     value={row.marker}
                     onChange={(event) => onRowChange(row.id, { marker: event.target.value })}
                     placeholder="HDL cholesterol"
@@ -536,32 +547,12 @@ function LabsPage({
                 <span role="cell">
                   <input value={row.unit} onChange={(event) => onRowChange(row.id, { unit: event.target.value })} placeholder="mg/dL" />
                 </span>
-                <span role="cell">
-                  <input
-                    inputMode="decimal"
-                    value={row.referenceLow}
-                    onChange={(event) => onRowChange(row.id, { referenceLow: event.target.value })}
-                    placeholder="40"
-                  />
-                </span>
-                <span role="cell">
-                  <input
-                    inputMode="decimal"
-                    value={row.referenceHigh}
-                    onChange={(event) => onRowChange(row.id, { referenceHigh: event.target.value })}
-                    placeholder="100"
-                  />
-                </span>
                 <span role="cell" className="labs-row-actions">
                   <button type="button" onClick={() => onRemoveRow(row.id)}>Remove</button>
                 </span>
               </div>
             ))}
           </div>
-
-          <datalist id="lab-marker-options">
-            {measurementTypes.map((type) => <option value={type.display} key={type.code} />)}
-          </datalist>
 
           <div className="labs-actions">
             <button type="button" onClick={onAddRow}>Add row</button>
@@ -753,14 +744,6 @@ function numberOrUndefined(value: FormDataEntryValue | null): number | undefined
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function parseOptionalNumber(value: string): number | undefined {
-  if (!value.trim()) {
-    return undefined;
-  }
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
 function toManualPayload({
   collectedAt,
   panelName,
@@ -784,7 +767,7 @@ function toManualPayload({
   const markers = rows
     .map((row) => {
       const markerName = row.marker.trim();
-      const hasRowData = markerName || row.value.trim() || row.unit.trim() || row.referenceLow.trim() || row.referenceHigh.trim();
+      const hasRowData = markerName || row.value.trim() || row.unit.trim();
       if (!hasRowData) {
         return undefined;
       }
@@ -797,9 +780,7 @@ function toManualPayload({
         markerName: markerName || known?.display,
         markerCode: known?.code,
         value,
-        unit: row.unit.trim() || known?.canonicalUnit,
-        referenceLow: parseOptionalNumber(row.referenceLow),
-        referenceHigh: parseOptionalNumber(row.referenceHigh)
+        unit: row.unit.trim() || known?.canonicalUnit
       };
     })
     .filter((row): row is NonNullable<typeof row> => Boolean(row));
@@ -835,20 +816,30 @@ function todayIsoDate(): string {
 
 function createStarterRows(): ManualMarkerRow[] {
   return [
-    createEmptyRow("HDL cholesterol", "", "mg/dL", "40", ""),
-    createEmptyRow("LDL cholesterol", "", "mg/dL", "", "100"),
-    createEmptyRow("Triglycerides", "", "mg/dL", "", "150"),
-    createEmptyRow("Glucose", "", "mg/dL", "70", "99")
+    createEmptyRow("HDL cholesterol", "", "mg/dL"),
+    createEmptyRow("LDL cholesterol", "", "mg/dL"),
+    createEmptyRow("Triglycerides", "", "mg/dL"),
+    createEmptyRow("Glucose", "", "mg/dL")
   ];
 }
 
-function createEmptyRow(marker = "", value = "", unit = "", referenceLow = "", referenceHigh = ""): ManualMarkerRow {
+function selectedMarkerOption(marker: string): string {
+  return findKnownCatalogMarker(marker)?.marker ?? "";
+}
+
+function findKnownCatalogMarker(input: string) {
+  const normalized = input.trim().toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+  return LAB_MARKER_CATALOG.find((entry) => entry.marker.toLowerCase() === normalized);
+}
+
+function createEmptyRow(marker = "", value = "", unit = ""): ManualMarkerRow {
   return {
     id: globalThis.crypto.randomUUID(),
     marker,
     value,
-    unit,
-    referenceLow,
-    referenceHigh
+    unit
   };
 }
