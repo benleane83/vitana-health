@@ -225,6 +225,11 @@ h2 {
   min-height: auto;
 }
 
+.labs-panel {
+  min-height: auto;
+  width: 100%;
+}
+
 .summary-header {
   display: flex;
   justify-content: space-between;
@@ -259,6 +264,56 @@ h2 {
 .summary-generated {
   color: var(--muted);
   margin: 14px 0;
+}
+
+.labs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.labs-manual-form,
+.labs-upload-form {
+  display: grid;
+  gap: 14px;
+}
+
+.labs-manual-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.labs-rows {
+  display: grid;
+  gap: 8px;
+}
+
+.labs-row {
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 0.75fr) minmax(0, 0.75fr) auto;
+  align-items: center;
+}
+
+.labs-marker-cell {
+  display: grid;
+  gap: 6px;
+}
+
+.labs-row-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.labs-row-actions button {
+  padding: 0.52rem 0.85rem;
+}
+
+.labs-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .summary-categories {
@@ -494,6 +549,10 @@ label {
   .summary-totals {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .labs-manual-meta {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 620px) {
@@ -516,6 +575,12 @@ label {
 
   .summary-row {
     grid-template-columns: 1fr;
+  }
+
+  .labs-header,
+  .labs-actions {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   h1 {

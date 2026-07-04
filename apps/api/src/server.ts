@@ -4,6 +4,7 @@ import { z } from "zod";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import {
+  buildManualLabEntryImport,
   computeAnalytics,
   parseBloodTestCsv,
   parseSamsungHealthCsv,
@@ -51,6 +52,28 @@ const profileSchema = z.object({
 const importSchema = z.object({
   fileName: z.string().min(1).max(240),
   content: z.string().min(1)
+});
+
+const manualLabImportSchema = z.object({
+  collectedAt: z.string().min(1).max(80),
+  panelName: z.string().min(1).max(160),
+  labName: z.string().max(160).optional(),
+  markers: z
+    .array(
+      z
+        .object({
+          markerName: z.string().max(160).optional(),
+          markerCode: z.string().max(120).optional(),
+          value: z.number().finite(),
+          unit: z.string().max(32).optional(),
+          referenceLow: z.number().finite().optional(),
+          referenceHigh: z.number().finite().optional()
+        })
+        .refine((row) => (row.markerName?.trim()?.length ?? 0) > 0 || (row.markerCode?.trim()?.length ?? 0) > 0, {
+          message: "markerName or markerCode is required"
+        })
+    )
+    .min(1)
 });
 
 const samsungJsonUploadSchema = z.object({
@@ -122,6 +145,18 @@ app.post("/api/import/samsung", (request, response) => {
 app.post("/api/import/blood-test", (request, response) => {
   const parsed = importSchema.parse(request.body);
   const imported = parseBloodTestCsv(parsed.fileName, parsed.content);
+  response.status(201).json({
+    store: store.mergeImport(imported),
+    import: {
+      ...imported.sourceImport,
+      rawContent: undefined
+    }
+  });
+});
+
+app.post("/api/import/labs/manual", (request, response) => {
+  const parsed = manualLabImportSchema.parse(request.body ?? {});
+  const imported = buildManualLabEntryImport(parsed);
   response.status(201).json({
     store: store.mergeImport(imported),
     import: {

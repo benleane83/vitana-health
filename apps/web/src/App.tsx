@@ -1,14 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   AnalyticsSummary,
   HealthDataSummary,
   HealthDataSummaryTypeRow,
   HealthStoreData,
   Insight,
+  ManualLabEntryPayload,
+  MeasurementType,
   Profile
 } from "@local-fitness-advisor/shared";
 import { safetyNotice } from "@local-fitness-advisor/shared";
 import { api } from "./api.js";
+import { LAB_MARKER_CATALOG } from "./labMarkerCatalog.js";
+import type { LabMarkerCatalogEntry } from "./labMarkerCatalog.js";
 
 const sampleSamsungCsv = `date,type,value,unit
 2026-06-25,steps,8421,count
@@ -18,14 +22,17 @@ const sampleSamsungCsv = `date,type,value,unit
 2026-06-29,heart_rate,61,bpm
 2026-06-30,weight,82.4,kg`;
 
-const sampleLabCsv = `date,panelName,marker,value,unit,referenceLow,referenceHigh
-2026-06-30,Metabolic panel,HbA1c,5.8,%,4.0,5.7
-2026-06-30,Metabolic panel,Glucose,103,mg/dL,70,99
-2026-06-30,Lipid panel,HDL cholesterol,48,mg/dL,40,
-2026-06-30,Lipid panel,LDL cholesterol,116,mg/dL,,100`;
-
-type AppRoute = "dashboard" | "summary";
+type AppRoute = "dashboard" | "summary" | "labs";
 type SummarySort = "name" | "count" | "recency";
+type LabsMode = "manual" | "upload";
+
+interface ManualMarkerRow {
+  id: string;
+  marker: string;
+  value: string;
+  unit: string;
+}
+
 const timestampFormatter = new Intl.DateTimeFormat(undefined, {
   year: "numeric",
   month: "short",
@@ -37,9 +44,8 @@ const timestampFormatter = new Intl.DateTimeFormat(undefined, {
 export function App() {
   const [store, setStore] = useState<HealthStoreData>();
   const [analytics, setAnalytics] = useState<AnalyticsSummary>();
-  const [selectedImport, setSelectedImport] = useState<"samsung" | "lab">("samsung");
-  const [fileName, setFileName] = useState("sample.csv");
-  const [csv, setCsv] = useState(sampleSamsungCsv);
+  const [samsungFileName, setSamsungFileName] = useState("samsung-health-sample.csv");
+  const [samsungCsv, setSamsungCsv] = useState(sampleSamsungCsv);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();
   const [route, setRoute] = useState<AppRoute>(() => routeFromPathname(window.location.pathname));
@@ -48,6 +54,15 @@ export function App() {
   const [summaryError, setSummaryError] = useState<string>();
   const [summarySort, setSummarySort] = useState<SummarySort>("recency");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+
+  const [labsMode, setLabsMode] = useState<LabsMode>("manual");
+  const [manualCollectedAt, setManualCollectedAt] = useState(todayIsoDate());
+  const [manualPanelName, setManualPanelName] = useState("Lipid panel");
+  const [manualLabName, setManualLabName] = useState("");
+  const [manualRows, setManualRows] = useState<ManualMarkerRow[]>(() => createStarterRows());
+  const [uploadFile, setUploadFile] = useState<File>();
+
+  const uploadInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     void refresh();
@@ -103,6 +118,14 @@ export function App() {
     return Math.min(100, counts.observations + counts.samples / 10 + counts.labMarkers * 8);
   }, [analytics]);
 
+  const labMeasurementTypes = useMemo(
+    () =>
+      (store?.measurementTypes ?? []).filter(
+        (type) => type.kind === "panel-component" || type.category === "lab" || type.category === "metabolic"
+      ),
+    [store?.measurementTypes]
+  );
+
   async function refresh() {
     const [nextStore, nextAnalytics] = await Promise.all([api.store(), api.analytics()]);
     setStore(nextStore);
@@ -125,14 +148,45 @@ export function App() {
     });
   }
 
-  async function importCsv() {
-    await run("Import processed into the encrypted local store.", async () => {
-      if (selectedImport === "samsung") {
-        await api.importSamsung(fileName, csv);
-      } else {
-        await api.importBloodTest(fileName, csv);
-      }
+  async function importSamsungCsv() {
+    await run("Samsung Health import processed into the encrypted local store.", async () => {
+      await api.importSamsung(samsungFileName, samsungCsv);
       await refresh();
+    });
+  }
+
+  async function submitManualLabs(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const payload = toManualPayload({
+      collectedAt: manualCollectedAt,
+      panelName: manualPanelName,
+      labName: manualLabName,
+      rows: manualRows,
+      knownMeasurements: labMeasurementTypes
+    });
+
+    await run("Manual lab panel imported.", async () => {
+      await api.importManualLabEntry(payload);
+      await refresh();
+      resetManualForm();
+    });
+  }
+
+  async function submitCsvUpload(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!uploadFile) {
+      setMessage("Select a CSV file before upload.");
+      return;
+    }
+
+    await run("Blood test CSV imported.", async () => {
+      const content = await uploadFile.text();
+      await api.importBloodTest(uploadFile.name, content);
+      await refresh();
+      setUploadFile(undefined);
+      if (uploadInputRef.current) {
+        uploadInputRef.current.value = "";
+      }
     });
   }
 
@@ -156,8 +210,15 @@ export function App() {
     }
   }
 
+  function resetManualForm() {
+    setManualCollectedAt(todayIsoDate());
+    setManualPanelName("Lipid panel");
+    setManualLabName("");
+    setManualRows(createStarterRows());
+  }
+
   function navigate(nextRoute: AppRoute) {
-    const nextPath = nextRoute === "summary" ? "/summary" : "/";
+    const nextPath = nextRoute === "summary" ? "/summary" : nextRoute === "labs" ? "/labs" : "/";
     if (window.location.pathname !== nextPath) {
       window.history.pushState({}, "", nextPath);
     }
@@ -176,16 +237,47 @@ export function App() {
     });
   }
 
+  function addManualRow() {
+    setManualRows((current) => [...current, createEmptyRow()]);
+  }
+
+  function removeManualRow(id: string) {
+    setManualRows((current) => (current.length <= 1 ? current : current.filter((row) => row.id !== id)));
+  }
+
+  function updateManualRow(id: string, patch: Partial<ManualMarkerRow>) {
+    setManualRows((current) =>
+      current.map((row) => {
+        if (row.id !== id) {
+          return row;
+        }
+        const next = { ...row, ...patch };
+        if (patch.marker !== undefined && patch.unit === undefined && !next.unit.trim()) {
+          const resolvedUnit = findKnownCatalogMarker(patch.marker)?.unit ?? findKnownMeasurement(patch.marker, labMeasurementTypes)?.canonicalUnit;
+          if (resolvedUnit) {
+            next.unit = resolvedUnit;
+          }
+        }
+        return next;
+      })
+    );
+  }
+
   return (
     <main className="shell">
       <nav className="route-nav" aria-label="Page navigation">
         <button className={route === "dashboard" ? "active" : ""} onClick={() => navigate("dashboard")}>
           Dashboard
         </button>
+        <button className={route === "labs" ? "active" : ""} onClick={() => navigate("labs")}>
+          Labs
+        </button>
         <button className={route === "summary" ? "active" : ""} onClick={() => navigate("summary")}>
           Health Data Summary
         </button>
       </nav>
+
+      {message ? <div className="notice">{message}</div> : null}
 
       {route === "dashboard" ? (
         <>
@@ -204,8 +296,6 @@ export function App() {
               <div className="density"><span style={{ width: `${density}%` }} /></div>
             </div>
           </section>
-
-          {message ? <div className="notice">{message}</div> : null}
 
           <section className="grid">
             <article className="panel profile-panel">
@@ -250,31 +340,10 @@ export function App() {
 
             <article className="panel import-panel">
               <h2>Import console</h2>
-              <div className="segmented">
-                <button
-                  className={selectedImport === "samsung" ? "active" : ""}
-                  onClick={() => {
-                    setSelectedImport("samsung");
-                    setFileName("samsung-health-sample.csv");
-                    setCsv(sampleSamsungCsv);
-                  }}
-                >
-                  Samsung Health
-                </button>
-                <button
-                  className={selectedImport === "lab" ? "active" : ""}
-                  onClick={() => {
-                    setSelectedImport("lab");
-                    setFileName("blood-test-sample.csv");
-                    setCsv(sampleLabCsv);
-                  }}
-                >
-                  Blood test CSV
-                </button>
-              </div>
-              <input value={fileName} onChange={(event) => setFileName(event.target.value)} />
-              <textarea className="csv-box" value={csv} onChange={(event) => setCsv(event.target.value)} />
-              <button disabled={busy} onClick={importCsv}>Process into vault</button>
+              <p className="empty">Samsung Health CSV import stays on the dashboard. Use Labs for Blood test entry and upload.</p>
+              <input value={samsungFileName} onChange={(event) => setSamsungFileName(event.target.value)} />
+              <textarea className="csv-box" value={samsungCsv} onChange={(event) => setSamsungCsv(event.target.value)} />
+              <button disabled={busy} onClick={importSamsungCsv}>Process into vault</button>
             </article>
 
             <article className="panel metrics-panel">
@@ -328,7 +397,7 @@ export function App() {
             </article>
           </section>
         </>
-      ) : (
+      ) : route === "summary" ? (
         <SummaryPage
           summary={summary}
           loading={summaryBusy}
@@ -338,8 +407,174 @@ export function App() {
           expandedCategories={expandedCategories}
           onToggleCategory={toggleCategory}
         />
+      ) : (
+        <LabsPage
+          busy={busy}
+          mode={labsMode}
+          onModeChange={setLabsMode}
+          panelName={manualPanelName}
+          labName={manualLabName}
+          collectedAt={manualCollectedAt}
+          rows={manualRows}
+          onPanelNameChange={setManualPanelName}
+          onLabNameChange={setManualLabName}
+          onCollectedAtChange={setManualCollectedAt}
+          onRowChange={updateManualRow}
+          onAddRow={addManualRow}
+          onRemoveRow={removeManualRow}
+          onSubmitManual={submitManualLabs}
+          onSubmitUpload={submitCsvUpload}
+          onUploadFileChange={setUploadFile}
+          uploadInputRef={uploadInputRef}
+        />
       )}
     </main>
+  );
+}
+
+function LabsPage({
+  busy,
+  mode,
+  onModeChange,
+  panelName,
+  labName,
+  collectedAt,
+  rows,
+  onPanelNameChange,
+  onLabNameChange,
+  onCollectedAtChange,
+  onRowChange,
+  onAddRow,
+  onRemoveRow,
+  onSubmitManual,
+  onSubmitUpload,
+  onUploadFileChange,
+  uploadInputRef
+}: {
+  busy: boolean;
+  mode: LabsMode;
+  onModeChange: (mode: LabsMode) => void;
+  panelName: string;
+  labName: string;
+  collectedAt: string;
+  rows: ManualMarkerRow[];
+  onPanelNameChange: (value: string) => void;
+  onLabNameChange: (value: string) => void;
+  onCollectedAtChange: (value: string) => void;
+  onRowChange: (id: string, patch: Partial<ManualMarkerRow>) => void;
+  onAddRow: () => void;
+  onRemoveRow: (id: string) => void;
+  onSubmitManual: (event: React.FormEvent<HTMLFormElement>) => void;
+  onSubmitUpload: (event: React.FormEvent<HTMLFormElement>) => void;
+  onUploadFileChange: (file?: File) => void;
+  uploadInputRef: React.RefObject<HTMLInputElement | null>;
+}) {
+  return (
+    <section className="panel labs-panel">
+      <div className="labs-header">
+        <div>
+          <p className="eyebrow">Lab intake workflow</p>
+          <h2>Labs</h2>
+        </div>
+        <div className="segmented" role="tablist" aria-label="Labs mode">
+          <button className={mode === "manual" ? "active" : ""} onClick={() => onModeChange("manual")}>
+            Manual entry
+          </button>
+          <button className={mode === "upload" ? "active" : ""} onClick={() => onModeChange("upload")}>
+            Upload CSV
+          </button>
+        </div>
+      </div>
+
+      {mode === "manual" ? (
+        <form className="labs-manual-form" onSubmit={onSubmitManual}>
+          <div className="labs-manual-meta">
+            <label>
+              Collection date
+              <input type="date" value={collectedAt} onChange={(event) => onCollectedAtChange(event.target.value)} />
+            </label>
+            <label>
+              Panel name
+              <input value={panelName} onChange={(event) => onPanelNameChange(event.target.value)} placeholder="Lipid panel" />
+            </label>
+            <label>
+              Lab name (optional)
+              <input value={labName} onChange={(event) => onLabNameChange(event.target.value)} placeholder="Quest Diagnostics" />
+            </label>
+          </div>
+
+          <div className="labs-rows" role="table" aria-label="Manual lab markers">
+            <div className="summary-row summary-row-head" role="row">
+              <span role="columnheader">Marker</span>
+              <span role="columnheader">Value</span>
+              <span role="columnheader">Unit</span>
+              <span role="columnheader">Actions</span>
+            </div>
+            {rows.map((row) => (
+              <div className="summary-row labs-row" role="row" key={row.id}>
+                <span role="cell" className="labs-marker-cell">
+                  <select
+                    value={getCatalogMarkerOrEmpty(row.marker)}
+                    onChange={(event) => {
+                      const selectedMarker = event.target.value;
+                      const knownMarker = findKnownCatalogMarker(selectedMarker);
+                      onRowChange(row.id, {
+                        marker: selectedMarker,
+                        unit: knownMarker?.unit ?? row.unit
+                      });
+                    }}
+                  >
+                    <option value="">Custom marker</option>
+                    {LAB_MARKER_CATALOG.map((entry) => (
+                      <option value={entry.marker} key={entry.marker}>
+                        {entry.marker}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    value={row.marker}
+                    onChange={(event) => onRowChange(row.id, { marker: event.target.value })}
+                    placeholder="HDL cholesterol"
+                  />
+                </span>
+                <span role="cell">
+                  <input
+                    inputMode="decimal"
+                    value={row.value}
+                    onChange={(event) => onRowChange(row.id, { value: event.target.value })}
+                    placeholder="48"
+                  />
+                </span>
+                <span role="cell">
+                  <input value={row.unit} onChange={(event) => onRowChange(row.id, { unit: event.target.value })} placeholder="mg/dL" />
+                </span>
+                <span role="cell" className="labs-row-actions">
+                  <button type="button" onClick={() => onRemoveRow(row.id)}>Remove</button>
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div className="labs-actions">
+            <button type="button" onClick={onAddRow}>Add row</button>
+            <button disabled={busy} type="submit">Import manual panel</button>
+          </div>
+        </form>
+      ) : (
+        <form className="labs-upload-form" onSubmit={onSubmitUpload}>
+          <label>
+            Select blood-test CSV
+            <input
+              ref={uploadInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              onChange={(event) => onUploadFileChange(event.target.files?.[0])}
+            />
+          </label>
+          <button disabled={busy} type="submit">Upload CSV</button>
+        </form>
+      )}
+    </section>
   );
 }
 
@@ -455,7 +690,13 @@ function compareSummaryRows(a: HealthDataSummaryTypeRow, b: HealthDataSummaryTyp
 }
 
 function routeFromPathname(pathname: string): AppRoute {
-  return pathname === "/summary" ? "summary" : "dashboard";
+  if (pathname === "/summary") {
+    return "summary";
+  }
+  if (pathname === "/labs") {
+    return "labs";
+  }
+  return "dashboard";
 }
 
 function formatTimestamp(value: string): string {
@@ -502,4 +743,104 @@ function numberOrUndefined(value: FormDataEntryValue | null): number | undefined
   if (!value) return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function toManualPayload({
+  collectedAt,
+  panelName,
+  labName,
+  rows,
+  knownMeasurements
+}: {
+  collectedAt: string;
+  panelName: string;
+  labName: string;
+  rows: ManualMarkerRow[];
+  knownMeasurements: MeasurementType[];
+}): ManualLabEntryPayload {
+  if (!collectedAt) {
+    throw new Error("Collection date is required.");
+  }
+  if (!panelName.trim()) {
+    throw new Error("Panel name is required.");
+  }
+
+  const markers = rows
+    .map((row) => {
+      const markerName = row.marker.trim();
+      const hasRowData = markerName || row.value.trim() || row.unit.trim();
+      if (!hasRowData) {
+        return undefined;
+      }
+      const value = Number.parseFloat(row.value);
+      if (!Number.isFinite(value)) {
+        throw new Error(`Enter a numeric value for ${markerName || "all rows"}.`);
+      }
+      const known = findKnownMeasurement(markerName, knownMeasurements);
+      return {
+        markerName: markerName || known?.display,
+        markerCode: known?.code,
+        value,
+        unit: row.unit.trim() || known?.canonicalUnit
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => Boolean(row));
+
+  if (markers.length === 0) {
+    throw new Error("Enter at least one marker row before import.");
+  }
+
+  return {
+    collectedAt,
+    panelName: panelName.trim(),
+    labName: labName.trim() || undefined,
+    markers
+  };
+}
+
+function findKnownMeasurement(input: string, knownMeasurements: MeasurementType[]): MeasurementType | undefined {
+  const normalized = input.trim().toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+  return knownMeasurements.find((measurement) => {
+    if (measurement.code.toLowerCase() === normalized || measurement.display.toLowerCase() === normalized) {
+      return true;
+    }
+    return measurement.aliases.some((alias) => alias.trim().toLowerCase() === normalized);
+  });
+}
+
+function todayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function createStarterRows(): ManualMarkerRow[] {
+  return [
+    createEmptyRow("HDL cholesterol", "", "mg/dL"),
+    createEmptyRow("LDL cholesterol", "", "mg/dL"),
+    createEmptyRow("Triglycerides", "", "mg/dL"),
+    createEmptyRow("Glucose", "", "mg/dL")
+  ];
+}
+
+function getCatalogMarkerOrEmpty(marker: string): string {
+  return findKnownCatalogMarker(marker)?.marker ?? "";
+}
+
+function findKnownCatalogMarker(input: string): LabMarkerCatalogEntry | undefined {
+  const normalized = input.trim().toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+  return LAB_MARKER_CATALOG.find((entry) => entry.marker.toLowerCase() === normalized);
+}
+
+function createEmptyRow(marker = "", value = "", unit = ""): ManualMarkerRow {
+  return {
+    id: globalThis.crypto.randomUUID(),
+    marker,
+    value,
+    unit
+  };
 }
