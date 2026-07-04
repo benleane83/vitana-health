@@ -19,6 +19,22 @@ export interface ParsedImport {
   labMarkers: LabResultMarker[];
 }
 
+export interface ManualLabEntryMarkerInput {
+  markerName?: string;
+  markerCode?: string;
+  value: number;
+  unit?: string;
+  referenceLow?: number;
+  referenceHigh?: number;
+}
+
+export interface ManualLabEntryPayload {
+  collectedAt: string;
+  panelName: string;
+  labName?: string;
+  markers: ManualLabEntryMarkerInput[];
+}
+
 export function checksum(content: string): string {
   let hash = 2166136261;
   for (let index = 0; index < content.length; index += 1) {
@@ -230,6 +246,103 @@ export function parseBloodTestCsv(fileName: string, content: string, importedAt 
   };
 }
 
+export function buildManualLabEntryImport(payload: ManualLabEntryPayload, importedAt = new Date().toISOString()): ParsedImport {
+  const importId = cryptoId("import");
+  const sourceId = cryptoId("source");
+  const panelId = cryptoId("panel");
+  const diagnostics: string[] = [];
+  const panelName = payload.panelName.trim() || "Manual lab panel";
+  const panel: LabResultPanel = {
+    id: panelId,
+    collectedAt: readDate(payload.collectedAt) ?? importedAt,
+    labName: payload.labName?.trim() || undefined,
+    panelName,
+    sourceId
+  };
+  const markers: LabResultMarker[] = [];
+  const observations: Observation[] = [];
+
+  for (const row of payload.markers) {
+    const markerName = row.markerName?.trim();
+    const markerCode = row.markerCode?.trim();
+    const measurementType = markerCode
+      ? findMeasurementType(markerCode) ?? (markerName ? findMeasurementType(markerName) : undefined)
+      : markerName
+        ? findMeasurementType(markerName)
+        : undefined;
+    const value = row.value;
+    if (!Number.isFinite(value)) {
+      diagnostics.push(`Skipped manual marker with invalid value: ${JSON.stringify(row).slice(0, 180)}`);
+      continue;
+    }
+    if (!measurementType && !markerName && !markerCode) {
+      diagnostics.push(`Skipped manual marker with no name or code: ${JSON.stringify(row).slice(0, 180)}`);
+      continue;
+    }
+    const referenceLow = row.referenceLow;
+    const referenceHigh = row.referenceHigh;
+    const displayName = markerName || measurementType?.display || markerCode || "Manual marker";
+    const measurementCode = measurementType?.code || markerCode || fallbackMeasurementCode(displayName);
+    const marker: LabResultMarker = {
+      id: cryptoId("marker"),
+      panelId,
+      measurementCode,
+      displayName,
+      value,
+      unit: row.unit?.trim() || measurementType?.canonicalUnit || "unknown",
+      referenceLow,
+      referenceHigh,
+      flag: readFlag(value, referenceLow, referenceHigh)
+    };
+    markers.push(marker);
+    observations.push({
+      id: cryptoId("obs"),
+      measurementCode,
+      observedAt: panel.collectedAt,
+      value,
+      unit: marker.unit,
+      sourceId,
+      note: `Lab marker from ${panel.panelName}`,
+      sourceJson: row
+    });
+  }
+
+  const serializedPayload = JSON.stringify({
+    collectedAt: panel.collectedAt,
+    panelName: panel.panelName,
+    labName: panel.labName,
+    markers: payload.markers
+  });
+  const fileName = `${panel.panelName.replace(/\s+/g, "-").toLowerCase()}-${panel.collectedAt.slice(0, 10)}.manual-entry`;
+
+  return {
+    sourceImport: {
+      id: importId,
+      sourceKind: "manual-entry",
+      fileName,
+      importedAt,
+      parserVersion: "manual-lab-entry-v1",
+      checksum: checksum(serializedPayload),
+      rowCount: payload.markers.length,
+      status: diagnostics.length > payload.markers.length / 2 ? "needs-review" : "processed",
+      diagnostics: diagnostics.slice(0, 25),
+      rawContent: serializedPayload
+    },
+    dataSource: {
+      id: sourceId,
+      sourceKind: "manual-entry",
+      label: `Manual lab entry: ${panel.panelName}`,
+      importId,
+      createdAt: importedAt
+    },
+    observations,
+    timeSeriesSamples: [],
+    activitySessions: [],
+    labPanels: [panel],
+    labMarkers: markers
+  };
+}
+
 function inferSamsungMetric(fileName: string, row: Record<string, string>): string | undefined {
   const name = fileName.toLowerCase();
   if (name.includes("step")) return "steps";
@@ -271,6 +384,15 @@ function readFlag(value: number, low?: number, high?: number): LabResultMarker["
   if (high !== undefined && value > high) return "high";
   if (low !== undefined || high !== undefined) return "normal";
   return "unknown";
+}
+
+function fallbackMeasurementCode(value: string): string {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
+  return normalized ? `manual_${normalized}` : `manual_${cryptoId("marker_code")}`;
 }
 
 function cryptoId(prefix: string): string {

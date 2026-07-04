@@ -1,4 +1,11 @@
-import type { AnalyticsSummary, HealthDataSummary, HealthStoreData, Insight, Profile } from "@local-fitness-advisor/shared";
+import type {
+  AnalyticsSummary,
+  HealthDataSummary,
+  HealthStoreData,
+  Insight,
+  ManualLabEntryPayload,
+  Profile
+} from "@local-fitness-advisor/shared";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -25,5 +32,7 @@ export const api = {
     request<{ store: HealthStoreData }>("/api/import/samsung", { method: "POST", body: JSON.stringify({ fileName, content }) }),
   importBloodTest: (fileName: string, content: string) =>
     request<{ store: HealthStoreData }>("/api/import/blood-test", { method: "POST", body: JSON.stringify({ fileName, content }) }),
+  importManualLabEntry: (payload: ManualLabEntryPayload) =>
+    request<{ store: HealthStoreData }>("/api/import/labs/manual", { method: "POST", body: JSON.stringify(payload) }),
   generateInsight: () => request<Insight>("/api/insights/generate", { method: "POST" })
 };
