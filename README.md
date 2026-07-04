@@ -92,7 +92,7 @@ Current parser coverage includes Samsung JSON datasets for heart rate, oxygen sa
 
 ## Android Companion App (Expo / Health Connect)
 
-An Android MVP companion app lives at `/home/runner/work/local-fitness-advisor/local-fitness-advisor/apps/android-companion`.
+An Android MVP companion app lives at `apps/android-companion`.
 
 It supports:
 

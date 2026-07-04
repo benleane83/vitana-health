@@ -5,7 +5,7 @@ import { StatusBar } from "expo-status-bar";
 import { syncHealthConnectLast30Days } from "./src/syncHealthConnect";
 
 const endpointStorageKey = "local-fitness-advisor.apiEndpoint";
-const defaultEndpoint = "http://192.168.1.100:4317";
+const defaultEndpoint = "";
 
 export default function App() {
   const [endpointUrl, setEndpointUrl] = useState(defaultEndpoint);

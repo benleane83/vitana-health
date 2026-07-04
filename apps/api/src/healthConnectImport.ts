@@ -198,6 +198,6 @@ function toActivitySessions(rows: HealthConnectImportRequest["exerciseSessions"]
 }
 
 function stableId(prefix: string, parts: string[]): string {
-  const digest = createHash("sha1").update(parts.join("|"), "utf8").digest("hex").slice(0, 18);
+  const digest = createHash("sha256").update(parts.join("|"), "utf8").digest("hex").slice(0, 18);
   return `${prefix}_${digest}`;
 }
