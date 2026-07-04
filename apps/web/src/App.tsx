@@ -12,6 +12,7 @@ import type {
 import { safetyNotice } from "@local-fitness-advisor/shared";
 import { api } from "./api.js";
 import { LAB_MARKER_CATALOG } from "./labMarkerCatalog.js";
+import type { LabMarkerCatalogEntry } from "./labMarkerCatalog.js";
 
 const sampleSamsungCsv = `date,type,value,unit
 2026-06-25,steps,8421,count
@@ -252,9 +253,9 @@ export function App() {
         }
         const next = { ...row, ...patch };
         if (patch.marker !== undefined && patch.unit === undefined && !next.unit.trim()) {
-          const matchedUnit = findKnownCatalogMarker(patch.marker)?.unit ?? findKnownMeasurement(patch.marker, labMeasurementTypes)?.canonicalUnit;
-          if (matchedUnit) {
-            next.unit = matchedUnit;
+          const resolvedUnit = findKnownCatalogMarker(patch.marker)?.unit ?? findKnownMeasurement(patch.marker, labMeasurementTypes)?.canonicalUnit;
+          if (resolvedUnit) {
+            next.unit = resolvedUnit;
           }
         }
         return next;
@@ -513,7 +514,7 @@ function LabsPage({
               <div className="summary-row labs-row" role="row" key={row.id}>
                 <span role="cell" className="labs-marker-cell">
                   <select
-                    value={selectedMarkerOption(row.marker)}
+                    value={getCatalogMarkerOrEmpty(row.marker)}
                     onChange={(event) => {
                       const selectedMarker = event.target.value;
                       const knownMarker = findKnownCatalogMarker(selectedMarker);
@@ -823,11 +824,11 @@ function createStarterRows(): ManualMarkerRow[] {
   ];
 }
 
-function selectedMarkerOption(marker: string): string {
+function getCatalogMarkerOrEmpty(marker: string): string {
   return findKnownCatalogMarker(marker)?.marker ?? "";
 }
 
-function findKnownCatalogMarker(input: string) {
+function findKnownCatalogMarker(input: string): LabMarkerCatalogEntry | undefined {
   const normalized = input.trim().toLowerCase();
   if (!normalized) {
     return undefined;
