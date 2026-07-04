@@ -1,4 +1,4 @@
-import type { AnalyticsSummary, HealthStoreData, Insight, Profile } from "@local-fitness-advisor/shared";
+import type { AnalyticsSummary, HealthDataSummary, HealthStoreData, Insight, Profile } from "@local-fitness-advisor/shared";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -18,6 +18,7 @@ export const api = {
   health: () => request<{ ok: boolean; storage: string; counts: AnalyticsSummary["counts"] }>("/api/health"),
   store: () => request<HealthStoreData>("/api/store"),
   analytics: () => request<AnalyticsSummary>("/api/analytics"),
+  summary: () => request<HealthDataSummary>("/api/summary"),
   saveProfile: (profile: Omit<Profile, "id" | "updatedAt">) =>
     request<Profile>("/api/profile", { method: "PUT", body: JSON.stringify(profile) }),
   importSamsung: (fileName: string, content: string) =>
@@ -26,4 +27,3 @@ export const api = {
     request<{ store: HealthStoreData }>("/api/import/blood-test", { method: "POST", body: JSON.stringify({ fileName, content }) }),
   generateInsight: () => request<Insight>("/api/insights/generate", { method: "POST" })
 };
-
