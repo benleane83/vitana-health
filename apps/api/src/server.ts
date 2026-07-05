@@ -764,42 +764,42 @@ function loadEnvironmentFiles(): void {
       process.env[key] = stripOuterQuotes(rawValue);
     }
   }
+}
 
-  function deleteObservationResponse(
-    deleted: DeleteObservationResponse,
-    warehouse: Awaited<ReturnType<typeof rebuildWarehouseFromStore>>
-  ) {
-    return {
-      deletedCount: deleted.deletedCount,
-      deletedObservation: deleted.deletedObservation,
-      counts: storeCounts(deleted.store),
-      store: deleted.store,
-      warehouse
-    };
-  }
+function deleteObservationResponse(
+  deleted: DeleteObservationResponse,
+  warehouse: Awaited<ReturnType<typeof rebuildWarehouseFromStore>>
+) {
+  return {
+    deletedCount: deleted.deletedCount,
+    deletedObservation: deleted.deletedObservation,
+    counts: storeCounts(deleted.store),
+    store: deleted.store,
+    warehouse
+  };
+}
 
-  function deleteObservationsByTypeResponse(
-    deleted: DeleteObservationsByTypeResponse,
-    warehouse: Awaited<ReturnType<typeof rebuildWarehouseFromStore>>
-  ) {
-    return {
-      deletedCount: deleted.deletedCount,
-      measurementCode: deleted.measurementCode,
-      counts: storeCounts(deleted.store),
-      store: deleted.store,
-      warehouse
-    };
-  }
+function deleteObservationsByTypeResponse(
+  deleted: DeleteObservationsByTypeResponse,
+  warehouse: Awaited<ReturnType<typeof rebuildWarehouseFromStore>>
+) {
+  return {
+    deletedCount: deleted.deletedCount,
+    measurementCode: deleted.measurementCode,
+    counts: storeCounts(deleted.store),
+    store: deleted.store,
+    warehouse
+  };
+}
 
-  function storeCounts(snapshot: ReturnType<HealthStore["snapshot"]>) {
-    return {
-      sourceImports: snapshot.sourceImports.length,
-      observations: snapshot.observations.length,
-      timeSeriesSamples: snapshot.timeSeriesSamples.length,
-      activitySessions: snapshot.activitySessions.length,
-      labMarkers: snapshot.labMarkers.length
-    };
-  }
+function storeCounts(snapshot: ReturnType<HealthStore["snapshot"]>) {
+  return {
+    sourceImports: snapshot.sourceImports.length,
+    observations: snapshot.observations.length,
+    timeSeriesSamples: snapshot.timeSeriesSamples.length,
+    activitySessions: snapshot.activitySessions.length,
+    labMarkers: snapshot.labMarkers.length
+  };
 }
 
 function stripOuterQuotes(value: string): string {
