@@ -23,9 +23,10 @@ const sampleSamsungCsv = `date,type,value,unit
 2026-06-29,heart_rate,61,bpm
 2026-06-30,weight,82.4,kg`;
 
-type AppRoute = "dashboard" | "summary" | "labs" | "query";
+type AppRoute = "dashboard" | "summary" | "import" | "query";
 type SummarySort = "name" | "count" | "recency";
 type LabsMode = "manual" | "upload";
+type ImportMode = "labs" | "fitness" | "samsung";
 
 interface ManualMarkerRow {
   id: string;
@@ -50,6 +51,8 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();
   const [route, setRoute] = useState<AppRoute>(() => routeFromPathname(window.location.pathname));
+  const [importMode, setImportMode] = useState<ImportMode>(() => importModeFromPathname(window.location.pathname));
+  const [profileEditorOpen, setProfileEditorOpen] = useState(false);
   const [summary, setSummary] = useState<HealthDataSummary>();
   const [summaryBusy, setSummaryBusy] = useState(false);
   const [summaryError, setSummaryError] = useState<string>();
@@ -77,6 +80,7 @@ export function App() {
   useEffect(() => {
     const onPopState = () => {
       setRoute(routeFromPathname(window.location.pathname));
+      setImportMode(importModeFromPathname(window.location.pathname));
     };
     window.addEventListener("popstate", onPopState);
     return () => {
@@ -151,6 +155,7 @@ export function App() {
         units: String(form.get("units") || "metric") as Profile["units"]
       });
       await refresh();
+      setProfileEditorOpen(false);
     });
   }
 
@@ -240,10 +245,10 @@ export function App() {
     setManualRows(createStarterRows());
   }
 
-  function navigate(nextRoute: AppRoute) {
+  function navigate(nextRoute: AppRoute, nextImportMode: ImportMode = importMode) {
     const routePaths: Record<AppRoute, string> = {
       dashboard: "/",
-      labs: "/labs",
+      import: importModePath(nextImportMode),
       summary: "/summary",
       query: "/query"
     };
@@ -251,7 +256,14 @@ export function App() {
     if (window.location.pathname !== nextPath) {
       window.history.pushState({}, "", nextPath);
     }
+    if (nextRoute === "import") {
+      setImportMode(nextImportMode);
+    }
     setRoute(nextRoute);
+  }
+
+  function navigateImportMode(nextMode: ImportMode) {
+    navigate("import", nextMode);
   }
 
   function toggleCategory(key: string) {
@@ -298,8 +310,8 @@ export function App() {
         <button className={route === "dashboard" ? "active" : ""} onClick={() => navigate("dashboard")}>
           Dashboard
         </button>
-        <button className={route === "labs" ? "active" : ""} onClick={() => navigate("labs")}>
-          Labs
+        <button className={route === "import" ? "active" : ""} onClick={() => navigate("import", importMode)}>
+          Import
         </button>
         <button className={route === "summary" ? "active" : ""} onClick={() => navigate("summary")}>
           Health Data Summary
@@ -315,10 +327,10 @@ export function App() {
         <>
           <section className="hero">
             <div>
-              <p className="eyebrow">Private health intelligence / localhost only</p>
+              <p className="eyebrow">Private health intelligence / local only</p>
               <h1>Your body data, held close.</h1>
               <p className="hero-copy">
-                A local analytics cockpit for Samsung Health exports, lab markers, profile context, and guarded AI summaries.
+                A local insights portal for your Android Health exports, lab markers, profile, and personal AI summaries.
               </p>
             </div>
             <div className="privacy-card">
@@ -331,55 +343,43 @@ export function App() {
 
           <section className="grid">
             <article className="panel profile-panel">
-              <h2>Profile context</h2>
-              <form onSubmit={saveProfile} className="profile-form">
-                <label>
-                  Name
-                  <input name="displayName" defaultValue={profile?.displayName ?? "Local user"} />
-                </label>
-                <label>
-                  Birth year
-                  <input name="birthYear" type="number" defaultValue={profile?.birthYear ?? ""} />
-                </label>
-                <label>
-                  Sex
-                  <select name="sex" defaultValue={profile?.sex ?? "not-specified"}>
-                    <option value="not-specified">Prefer not to say</option>
-                    <option value="female">Female</option>
-                    <option value="male">Male</option>
-                    <option value="intersex">Intersex</option>
-                    <option value="unknown">Unknown</option>
-                  </select>
-                </label>
-                <label>
-                  Height cm
-                  <input name="heightCm" type="number" step="0.1" defaultValue={profile?.heightCm ?? ""} />
-                </label>
-                <label>
-                  Units
-                  <select name="units" defaultValue={profile?.units ?? "metric"}>
-                    <option value="metric">Metric</option>
-                    <option value="imperial">Imperial</option>
-                  </select>
-                </label>
-                <label className="wide">
-                  Goals
-                  <textarea name="goalSummary" defaultValue={profile?.goalSummary ?? "Improve energy, sleep, and metabolic health."} />
-                </label>
-                <button disabled={busy}>Save profile</button>
-              </form>
-            </article>
-
-            <article className="panel import-panel">
-              <h2>Import console</h2>
-              <p className="empty">Samsung Health CSV import stays on the dashboard. Use Labs for Blood test entry and upload.</p>
-              <input value={samsungFileName} onChange={(event) => setSamsungFileName(event.target.value)} />
-              <textarea className="csv-box" value={samsungCsv} onChange={(event) => setSamsungCsv(event.target.value)} />
-              <button disabled={busy} onClick={importSamsungCsv}>Process into vault</button>
+              <div className="panel-heading-row">
+                <h2>Profile context</h2>
+                <button type="button" onClick={() => setProfileEditorOpen(true)}>Edit</button>
+              </div>
+              <dl className="profile-summary">
+                <div>
+                  <dt>Name</dt>
+                  <dd>{profile?.displayName ?? "Local user"}</dd>
+                </div>
+                <div>
+                  <dt>Birth year</dt>
+                  <dd>{profile?.birthYear ?? "Not set"}</dd>
+                </div>
+                <div>
+                  <dt>Sex</dt>
+                  <dd>{formatProfileSex(profile?.sex)}</dd>
+                </div>
+                <div>
+                  <dt>Height</dt>
+                  <dd>{profile?.heightCm ? `${profile.heightCm} cm` : "Not set"}</dd>
+                </div>
+                <div>
+                  <dt>Units</dt>
+                  <dd>{profile?.units === "imperial" ? "Imperial" : "Metric"}</dd>
+                </div>
+              </dl>
+              <div className="profile-goals">
+                <span>Current focus</span>
+                <p>{profile?.goalSummary || "Improve energy, sleep, and metabolic health."}</p>
+              </div>
             </article>
 
             <article className="panel metrics-panel">
-              <h2>Local analytics</h2>
+              <div className="panel-heading-row">
+                <h2>Local analytics</h2>
+                <button type="button" onClick={() => navigate("summary")}>View summary</button>
+              </div>
               <div className="stat-row">
                 <Stat label="Imports" value={analytics?.counts.imports ?? 0} />
                 <Stat label="Observations" value={analytics?.counts.observations ?? 0} />
@@ -428,6 +428,15 @@ export function App() {
               )) : <p className="empty">No out-of-range lab markers yet.</p>}
             </article>
           </section>
+
+          {profileEditorOpen ? (
+            <ProfileEditDialog
+              busy={busy}
+              profile={profile}
+              onClose={() => setProfileEditorOpen(false)}
+              onSubmit={saveProfile}
+            />
+          ) : null}
         </>
       ) : route === "summary" ? (
         <SummaryPage
@@ -448,11 +457,13 @@ export function App() {
           result={aiResult}
           error={aiError}
         />
-      ) : (
-        <LabsPage
+      ) : route === "import" ? (
+        <ImportPage
           busy={busy}
-          mode={labsMode}
-          onModeChange={setLabsMode}
+          mode={importMode}
+          onModeChange={navigateImportMode}
+          labsMode={labsMode}
+          onLabsModeChange={setLabsMode}
           panelName={manualPanelName}
           labName={manualLabName}
           collectedAt={manualCollectedAt}
@@ -467,9 +478,252 @@ export function App() {
           onSubmitUpload={submitCsvUpload}
           onUploadFileChange={setUploadFile}
           uploadInputRef={uploadInputRef}
+          samsungFileName={samsungFileName}
+          samsungCsv={samsungCsv}
+          onSamsungFileNameChange={setSamsungFileName}
+          onSamsungCsvChange={setSamsungCsv}
+          onImportSamsungCsv={importSamsungCsv}
         />
+      ) : (
+        null
       )}
     </main>
+  );
+}
+
+function ProfileEditDialog({
+  busy,
+  profile,
+  onClose,
+  onSubmit
+}: {
+  busy: boolean;
+  profile?: Profile;
+  onClose: () => void;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) {
+        onClose();
+      }
+    }}>
+      <section className="profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-dialog-title">
+        <div className="panel-heading-row">
+          <div>
+            <p className="eyebrow">Editable local context</p>
+            <h2 id="profile-dialog-title">Edit profile</h2>
+          </div>
+          <button type="button" onClick={onClose}>Close</button>
+        </div>
+        <form onSubmit={onSubmit} className="profile-form">
+          <label>
+            Name
+            <input name="displayName" defaultValue={profile?.displayName ?? "Local user"} />
+          </label>
+          <label>
+            Birth year
+            <input name="birthYear" type="number" defaultValue={profile?.birthYear ?? ""} />
+          </label>
+          <label>
+            Sex
+            <select name="sex" defaultValue={profile?.sex ?? "not-specified"}>
+              <option value="not-specified">Prefer not to say</option>
+              <option value="female">Female</option>
+              <option value="male">Male</option>
+              <option value="intersex">Intersex</option>
+              <option value="unknown">Unknown</option>
+            </select>
+          </label>
+          <label>
+            Height cm
+            <input name="heightCm" type="number" step="0.1" defaultValue={profile?.heightCm ?? ""} />
+          </label>
+          <label>
+            Units
+            <select name="units" defaultValue={profile?.units ?? "metric"}>
+              <option value="metric">Metric</option>
+              <option value="imperial">Imperial</option>
+            </select>
+          </label>
+          <label className="wide">
+            Goals
+            <textarea name="goalSummary" defaultValue={profile?.goalSummary ?? "Improve energy, sleep, and metabolic health."} />
+          </label>
+          <button disabled={busy}>Save profile</button>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function ImportPage({
+  busy,
+  mode,
+  onModeChange,
+  labsMode,
+  onLabsModeChange,
+  panelName,
+  labName,
+  collectedAt,
+  rows,
+  onPanelNameChange,
+  onLabNameChange,
+  onCollectedAtChange,
+  onRowChange,
+  onAddRow,
+  onRemoveRow,
+  onSubmitManual,
+  onSubmitUpload,
+  onUploadFileChange,
+  uploadInputRef,
+  samsungFileName,
+  samsungCsv,
+  onSamsungFileNameChange,
+  onSamsungCsvChange,
+  onImportSamsungCsv
+}: {
+  busy: boolean;
+  mode: ImportMode;
+  onModeChange: (mode: ImportMode) => void;
+  labsMode: LabsMode;
+  onLabsModeChange: (mode: LabsMode) => void;
+  panelName: string;
+  labName: string;
+  collectedAt: string;
+  rows: ManualMarkerRow[];
+  onPanelNameChange: (value: string) => void;
+  onLabNameChange: (value: string) => void;
+  onCollectedAtChange: (value: string) => void;
+  onRowChange: (id: string, patch: Partial<ManualMarkerRow>) => void;
+  onAddRow: () => void;
+  onRemoveRow: (id: string) => void;
+  onSubmitManual: (event: React.FormEvent<HTMLFormElement>) => void;
+  onSubmitUpload: (event: React.FormEvent<HTMLFormElement>) => void;
+  onUploadFileChange: (file?: File) => void;
+  uploadInputRef: React.RefObject<HTMLInputElement | null>;
+  samsungFileName: string;
+  samsungCsv: string;
+  onSamsungFileNameChange: (value: string) => void;
+  onSamsungCsvChange: (value: string) => void;
+  onImportSamsungCsv: () => void;
+}) {
+  return (
+    <section className="import-page">
+      <div className="import-header">
+        <div>
+          <p className="eyebrow">Bring local data into the vault</p>
+          <h1>Import</h1>
+        </div>
+        <p className="import-copy">
+          Labs, Health Connect, and Samsung exports live here so the dashboard can stay focused on review.
+        </p>
+      </div>
+      <div className="import-tabs" role="tablist" aria-label="Import source">
+        <button className={mode === "labs" ? "active" : ""} onClick={() => onModeChange("labs")}>Labs</button>
+        <button className={mode === "fitness" ? "active" : ""} onClick={() => onModeChange("fitness")}>Fitness Tracker</button>
+        <button className={mode === "samsung" ? "active" : ""} onClick={() => onModeChange("samsung")}>Samsung CSV</button>
+      </div>
+
+      {mode === "labs" ? (
+        <LabsPage
+          busy={busy}
+          mode={labsMode}
+          onModeChange={onLabsModeChange}
+          panelName={panelName}
+          labName={labName}
+          collectedAt={collectedAt}
+          rows={rows}
+          onPanelNameChange={onPanelNameChange}
+          onLabNameChange={onLabNameChange}
+          onCollectedAtChange={onCollectedAtChange}
+          onRowChange={onRowChange}
+          onAddRow={onAddRow}
+          onRemoveRow={onRemoveRow}
+          onSubmitManual={onSubmitManual}
+          onSubmitUpload={onSubmitUpload}
+          onUploadFileChange={onUploadFileChange}
+          uploadInputRef={uploadInputRef}
+        />
+      ) : null}
+
+      {mode === "fitness" ? <FitnessTrackerImportPanel /> : null}
+
+      {mode === "samsung" ? (
+        <SamsungCsvImportPanel
+          busy={busy}
+          fileName={samsungFileName}
+          csv={samsungCsv}
+          onFileNameChange={onSamsungFileNameChange}
+          onCsvChange={onSamsungCsvChange}
+          onImport={onImportSamsungCsv}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+function FitnessTrackerImportPanel() {
+  return (
+    <section className="panel import-source-panel">
+      <div>
+        <p className="eyebrow">Android companion</p>
+        <h2>Fitness Tracker</h2>
+      </div>
+      <p className="empty">
+        Sync Health Connect from the Android companion app to import recent steps, heart rate, sleep, oxygen saturation,
+        and other supported fitness samples into the local vault.
+      </p>
+      <div className="import-guidance-grid">
+        <div>
+          <strong>1. Open companion app</strong>
+          <span>Use the Android Companion to read Health Connect on-device.</span>
+        </div>
+        <div>
+          <strong>2. Confirm local API</strong>
+          <span>Point it at the local API server running on your development machine.</span>
+        </div>
+        <div>
+          <strong>3. Sync recent data</strong>
+          <span>The API receives the batch and stores it alongside your other local measurements.</span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SamsungCsvImportPanel({
+  busy,
+  fileName,
+  csv,
+  onFileNameChange,
+  onCsvChange,
+  onImport
+}: {
+  busy: boolean;
+  fileName: string;
+  csv: string;
+  onFileNameChange: (value: string) => void;
+  onCsvChange: (value: string) => void;
+  onImport: () => void;
+}) {
+  return (
+    <section className="panel import-source-panel">
+      <div>
+        <p className="eyebrow">Samsung Health export</p>
+        <h2>Samsung CSV</h2>
+      </div>
+      <p className="empty">Paste a Samsung Health CSV export or keep the sample data to test the local import pipeline.</p>
+      <label>
+        File name
+        <input value={fileName} onChange={(event) => onFileNameChange(event.target.value)} />
+      </label>
+      <label>
+        CSV content
+        <textarea className="csv-box" value={csv} onChange={(event) => onCsvChange(event.target.value)} />
+      </label>
+      <button disabled={busy} onClick={onImport}>Process into vault</button>
+    </section>
   );
 }
 
@@ -927,13 +1181,40 @@ function routeFromPathname(pathname: string): AppRoute {
   if (pathname === "/summary") {
     return "summary";
   }
-  if (pathname === "/labs") {
-    return "labs";
+  if (pathname === "/import" || pathname.startsWith("/import/") || pathname === "/labs") {
+    return "import";
   }
   if (pathname === "/query") {
     return "query";
   }
   return "dashboard";
+}
+
+function importModeFromPathname(pathname: string): ImportMode {
+  if (pathname === "/import/fitness-tracker") {
+    return "fitness";
+  }
+  if (pathname === "/import/samsung-csv") {
+    return "samsung";
+  }
+  return "labs";
+}
+
+function importModePath(mode: ImportMode): string {
+  if (mode === "fitness") {
+    return "/import/fitness-tracker";
+  }
+  if (mode === "samsung") {
+    return "/import/samsung-csv";
+  }
+  return "/import/labs";
+}
+
+function formatProfileSex(value?: Profile["sex"]): string {
+  if (!value || value === "not-specified") {
+    return "Prefer not to say";
+  }
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function formatTimestamp(value: string): string {

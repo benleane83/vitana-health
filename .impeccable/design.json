@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-05T00:00:00.000Z",
+  "title": "Design System: Local Fitness Advisor",
+  "extensions": {
+    "colorMeta": {
+      "vault-bg": {
+        "role": "neutral",
+        "displayName": "Vault Background",
+        "canonical": "#09110d",
+        "tonalRamp": ["#050806", "#09110d", "#0b1812", "#1d1b11"]
+      },
+      "leaf": {
+        "role": "primary",
+        "displayName": "Leaf Signal",
+        "canonical": "#b5f45d",
+        "tonalRamp": ["#071008", "#7adf52", "#b5f45d", "#c8ff64"]
+      },
+      "cyan": {
+        "role": "secondary",
+        "displayName": "Fresh Cyan",
+        "canonical": "#85ffe1",
+        "tonalRamp": ["#0d1e17", "#1e4131", "#85ffe1"]
+      },
+      "amber": {
+        "role": "secondary",
+        "displayName": "Warm Amber",
+        "canonical": "#ffc857",
+        "tonalRamp": ["#3c2114", "#ffc857"]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Fraunces Display",
+        "purpose": "Dashboard identity only; reduce scale during redesign."
+      },
+      "body": {
+        "displayName": "Alegreya Sans Body",
+        "purpose": "Readable product UI labels, prose, controls, and data rows."
+      }
+    },
+    "elevation": {
+      "ambientPanel": "0 24px 80px rgba(0, 0, 0, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.06)",
+      "accentHover": "0 14px 40px rgba(181, 244, 93, 0.18)",
+      "philosophy": "Layered but restrained; prefer tone and borders before glow."
+    },
+    "motion": {
+      "durationFast": "180ms",
+      "easing": "ease",
+      "reducedMotionRequired": true
+    },
+    "rules": {
+      "northStar": "Local health data management and insights. Calm, trustworthy, flexible.",
+      "dos": [
+        "Keep source, recency, units, and safety boundaries visible.",
+        "Distinguish deterministic analytics from AI-generated interpretation.",
+        "Use restrained layers and meaningful state color."
+      ],
+      "donts": [
+        "Do not imply diagnosis, treatment, medication changes, urgent triage, or clinical certainty.",
+        "Do not expand glassy panels or wide glow shadows as default decoration.",
+        "Do not hide browser focus outlines or rely on color-only status."
+      ]
+    }
+  }
+}
