@@ -145,7 +145,7 @@ const measurementCodeParamSchema = z
   .trim()
   .min(1)
   .max(120)
-  .regex(/^[A-Za-z0-9._-]+$/, "Measurement code contains unsupported characters.");
+  .regex(/^[A-Za-z0-9_-]+$/, "Measurement code contains unsupported characters.");
 
 const observationIdParamSchema = z
   .string()

@@ -60,6 +60,8 @@ const timestampFormatter = new Intl.DateTimeFormat(undefined, {
   hour: "2-digit",
   minute: "2-digit"
 });
+const flatChartPaddingRatio = 0.05;
+const minimumFlatChartPadding = 1;
 
 export function App() {
   const [store, setStore] = useState<HealthStoreData>();
@@ -1270,7 +1272,7 @@ function BodyCompositionImportPanel({
   );
 }
 
-function Stat({ label, value }: { label: string; value: number | string }) {
+function Stat({ label, value }: { label: string; value: number }) {
   return (
     <div className="stat">
       <strong>{value}</strong>
@@ -1524,7 +1526,10 @@ function ObservationTypeDetailPage({
             <Stat label="Observations" value={detail.counts.observations} />
             <Stat label="Samples" value={detail.counts.samples} />
             <Stat label="Labs" value={detail.counts.labMarkers} />
-            <Stat label="Latest" value={detail.measurement.lastMeasuredAt ? formatShortTimestamp(detail.measurement.lastMeasuredAt) : "—"} />
+            <div className="stat-card">
+              <span>Latest</span>
+              <strong>{detail.measurement.lastMeasuredAt ? formatShortTimestamp(detail.measurement.lastMeasuredAt) : "—"}</strong>
+            </div>
           </div>
 
           {detail.counts.total === 0 ? (
@@ -1594,7 +1599,7 @@ function DetailTrendChart({ detail }: { detail: HealthDataDetail }) {
   const xMax = Math.max(...timestamps);
   const rawMin = Math.min(...values);
   const rawMax = Math.max(...values);
-  const flatPadding = rawMin === rawMax ? Math.max(Math.abs(rawMin) * 0.05, 1) : 0;
+  const flatPadding = rawMin === rawMax ? Math.max(Math.abs(rawMin) * flatChartPaddingRatio, minimumFlatChartPadding) : 0;
   const yMin = rawMin - flatPadding;
   const yMax = rawMax + flatPadding;
   const xRange = xMax - xMin || 1;
