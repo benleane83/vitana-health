@@ -383,6 +383,39 @@ h3 {
   font-size: 0.85rem;
 }
 
+.summary-row-delete {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  min-height: 2rem;
+  padding: 0;
+  border-radius: var(--radius-md);
+  border-color: oklch(70% 0.18 35 / 0.28);
+  background: transparent;
+  color: var(--danger);
+  transform: none;
+}
+
+.summary-row-delete svg {
+  width: 1rem;
+  height: 1rem;
+  fill: currentColor;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .summary-row-delete:hover:not(:disabled) {
+    background: oklch(70% 0.18 35 / 0.14);
+    border-color: oklch(70% 0.18 35 / 0.5);
+    color: oklch(78% 0.19 35);
+    transform: none;
+  }
+}
+
+.summary-row-delete:active:not(:disabled) {
+  transform: none;
+}
+
 .summary-detail-chart-panel,
 .summary-detail-table {
   margin-top: var(--space-5);

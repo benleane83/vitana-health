@@ -1567,8 +1567,18 @@ function ObservationTypeDetailPage({
                           <td>{renderEntryContext(entry)}</td>
                           <td>
                             {entry.canDelete ? (
-                              <button type="button" onClick={() => void onDeleteObservation(entry)} disabled={actionBusy}>
-                                Delete
+                              <button
+                                type="button"
+                                className="summary-row-delete"
+                                onClick={() => void onDeleteObservation(entry)}
+                                disabled={actionBusy}
+                                aria-label={`Delete ${entry.displayName} observation from ${formatTimestamp(entry.timestamp)}`}
+                                title="Delete observation"
+                              >
+                                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                  <path d="M9 3h6l1 2h4v2H4V5h4l1-2Z" />
+                                  <path d="M6 9h12l-1 12H7L6 9Zm4 2v8h2v-8h-2Zm4 0v8h2v-8h-2Z" />
+                                </svg>
                               </button>
                             ) : (
                               <span className="summary-readonly">Read-only</span>
