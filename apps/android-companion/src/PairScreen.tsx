@@ -1,5 +1,5 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import Zeroconf from "react-native-zeroconf";
 import { getDeviceId, saveConnection } from "./endpointStore";
@@ -34,6 +34,13 @@ export function PairScreen({
   const [discovering, setDiscovering] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const scannedRef = useRef(false);
+  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
+    };
+  }, []);
 
   function handleQrScanned(data: string) {
     if (scannedRef.current || status !== "idle") return;
@@ -103,6 +110,11 @@ export function PairScreen({
     let attempts = 0;
     const maxAttempts = 60;
 
+    function scheduleNext() {
+      if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
+      pollTimeoutRef.current = setTimeout(() => { void poll(); }, 5000);
+    }
+
     async function poll() {
       if (cancelled || attempts >= maxAttempts) {
         if (!cancelled) {
@@ -119,19 +131,21 @@ export function PairScreen({
         const body = (await response.json()) as Record<string, unknown>;
         if (body.status === "approved" && typeof body.token === "string") {
           cancelled = true;
+          if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
           await saveConnection({ url, token: body.token, pairedAt: new Date().toISOString() });
           setStatus("approved");
           setMessage("Paired successfully! Returning to sync screen…");
-          setTimeout(() => onComplete({ url, token: body.token as string }), 1500);
+          pollTimeoutRef.current = setTimeout(() => onComplete({ url, token: body.token as string }), 1500);
         } else if (body.status === "denied") {
           cancelled = true;
+          if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
           setStatus("denied");
           setMessage("Pairing was denied on the PC. Ask the user to approve and try again.");
         } else {
-          setTimeout(() => { void poll(); }, 5000);
+          scheduleNext();
         }
       } catch {
-        setTimeout(() => { void poll(); }, 5000);
+        scheduleNext();
       }
     }
 
