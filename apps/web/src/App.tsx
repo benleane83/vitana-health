@@ -13,7 +13,7 @@ import type {
 } from "@local-fitness-advisor/shared";
 import { safetyNotice } from "@local-fitness-advisor/shared";
 import { api } from "./api.js";
-import type { AiQueryResult, AiQueryChartSeries } from "./api.js";
+import type { AiQueryResult, AiQueryChartSeries, PendingPairing } from "./api.js";
 import { LAB_MARKER_CATALOG } from "./labMarkerCatalog.js";
 import type { LabMarkerCatalogEntry } from "./labMarkerCatalog.js";
 
@@ -90,6 +90,8 @@ export function App() {
   const [aiResult, setAiResult] = useState<AiQueryResult | undefined>();
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState<string | undefined>();
+
+  const [pendingPairings, setPendingPairings] = useState<PendingPairing[]>([]);
 
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const bodyCompInputRef = useRef<HTMLInputElement>(null);
@@ -312,6 +314,51 @@ export function App() {
       setMessage(error instanceof Error ? error.message : "Unexpected local error.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    if (route !== "import" || importMode !== "fitness") return;
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    async function poll() {
+      if (cancelled) return;
+      try {
+        const result = await api.pairing.pending();
+        if (!cancelled) setPendingPairings(result);
+      } catch {
+        // silently ignore — pairing is optional
+      }
+      if (!cancelled) {
+        timeoutId = setTimeout(poll, 5000);
+      }
+    }
+
+    void poll();
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
+  }, [route, importMode]);
+
+  async function approvePairing(id: string) {
+    try {
+      await api.pairing.approve(id);
+      const result = await api.pairing.pending();
+      setPendingPairings(result);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not approve pairing request.");
+    }
+  }
+
+  async function denyPairing(id: string) {
+    try {
+      await api.pairing.deny(id);
+      const result = await api.pairing.pending();
+      setPendingPairings(result);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not deny pairing request.");
     }
   }
 
@@ -574,6 +621,9 @@ export function App() {
           onSamsungFileNameChange={setSamsungFileName}
           onSamsungCsvChange={setSamsungCsv}
           onImportSamsungCsv={importSamsungCsv}
+          pendingPairings={pendingPairings}
+          onApprovePairing={approvePairing}
+          onDenyPairing={denyPairing}
         />
       ) : (
         null
@@ -682,7 +732,10 @@ function ImportPage({
   samsungCsv,
   onSamsungFileNameChange,
   onSamsungCsvChange,
-  onImportSamsungCsv
+  onImportSamsungCsv,
+  pendingPairings,
+  onApprovePairing,
+  onDenyPairing
 }: {
   busy: boolean;
   mode: ImportMode;
@@ -718,6 +771,9 @@ function ImportPage({
   onSamsungFileNameChange: (value: string) => void;
   onSamsungCsvChange: (value: string) => void;
   onImportSamsungCsv: () => void;
+  pendingPairings: PendingPairing[];
+  onApprovePairing: (id: string) => void;
+  onDenyPairing: (id: string) => void;
 }) {
   return (
     <section className="import-page">
@@ -768,7 +824,13 @@ function ImportPage({
         />
       ) : null}
 
-      {mode === "fitness" ? <FitnessTrackerImportPanel /> : null}
+      {mode === "fitness" ? (
+        <FitnessTrackerImportPanel
+          pendingPairings={pendingPairings}
+          onApprove={onApprovePairing}
+          onDeny={onDenyPairing}
+        />
+      ) : null}
 
       {mode === "samsung" ? (
         <SamsungCsvImportPanel
@@ -784,7 +846,15 @@ function ImportPage({
   );
 }
 
-function FitnessTrackerImportPanel() {
+function FitnessTrackerImportPanel({
+  pendingPairings,
+  onApprove,
+  onDeny
+}: {
+  pendingPairings: PendingPairing[];
+  onApprove: (id: string) => void;
+  onDeny: (id: string) => void;
+}) {
   return (
     <section className="panel import-source-panel">
       <div>
@@ -795,18 +865,62 @@ function FitnessTrackerImportPanel() {
         Sync Health Connect from the Android companion app to import recent steps, heart rate, sleep, oxygen saturation,
         and other supported fitness samples into the local vault.
       </p>
+
+      <div className="pairing-section">
+        <div>
+          <p className="eyebrow">Companion pairing</p>
+          <strong>Scan to connect</strong>
+        </div>
+        <p className="empty">
+          Open the companion app, tap <strong>Set Up Connection</strong>, and scan this QR code. The app will find this
+          server automatically — no IP address required.
+        </p>
+        <div className="pairing-qr-wrap">
+          <img
+            src="/api/pair/qr"
+            alt="QR code encoding this server's local network address for companion app pairing"
+            width={200}
+            height={200}
+            className="pairing-qr"
+          />
+        </div>
+        <p className="empty pairing-hint">
+          The QR code encodes this server's LAN address. Make sure the API is accessible on your local network
+          (set <code>HOST=0.0.0.0</code> or your LAN IP when starting the server).
+        </p>
+      </div>
+
+      {pendingPairings.length > 0 ? (
+        <div className="pairing-requests">
+          <p className="eyebrow">Pairing requests</p>
+          {pendingPairings.map((req) => (
+            <div key={req.id} className="pairing-request-row">
+              <div className="pairing-request-info">
+                <strong>{req.deviceName}</strong>
+                <span className="muted">Device ID: {req.deviceId.slice(0, 12)}…</span>
+                <span className="muted">Requested: {new Date(req.requestedAt).toLocaleTimeString()}</span>
+              </div>
+              <div className="pairing-request-actions">
+                <button type="button" onClick={() => onApprove(req.id)}>Approve</button>
+                <button type="button" onClick={() => onDeny(req.id)}>Deny</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       <div className="import-guidance-grid">
         <div>
           <strong>1. Open companion app</strong>
-          <span>Use the Android Companion to read Health Connect on-device.</span>
+          <span>Tap <em>Set Up Connection</em> and choose Scan QR or Find on Network.</span>
         </div>
         <div>
-          <strong>2. Confirm local API</strong>
-          <span>Point it at the local API server running on your development machine.</span>
+          <strong>2. Approve pairing</strong>
+          <span>A pairing request will appear above. Approve it to issue the companion a secure token.</span>
         </div>
         <div>
           <strong>3. Sync recent data</strong>
-          <span>The API receives the batch and stores it alongside your other local measurements.</span>
+          <span>The app syncs automatically once paired. Token is stored on-device for future syncs.</span>
         </div>
       </div>
     </section>

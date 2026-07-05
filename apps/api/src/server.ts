@@ -2,7 +2,11 @@ import cors from "cors";
 import express from "express";
 import { z } from "zod";
 import { existsSync, readFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
+import QRCode from "qrcode";
+import { Bonjour } from "bonjour-service";
+import { PairingStore } from "./pairing.js";
 import {
   buildBodyCompositionImportFromDraft,
   buildManualLabEntryImport,
@@ -35,6 +39,7 @@ const app = express();
 const port = Number.parseInt(process.env.PORT ?? "4317", 10);
 const host = process.env.HOST ?? "127.0.0.1";
 const store = new HealthStore();
+const pairingStore = new PairingStore();
 
 app.use(express.json({ limit: "25mb" }));
 app.use(
@@ -48,6 +53,36 @@ app.use(
     }
   })
 );
+
+function getLanIp(): string | null {
+  const interfaces = os.networkInterfaces();
+  for (const ifaceList of Object.values(interfaces)) {
+    for (const iface of ifaceList ?? []) {
+      if (!iface.internal && iface.family === "IPv4") {
+        return iface.address;
+      }
+    }
+  }
+  return null;
+}
+
+function requireCompanionToken(request: express.Request, response: express.Response, next: express.NextFunction): void {
+  if (!pairingStore.hasAnyApproved()) {
+    next();
+    return;
+  }
+  const token = request.headers["x-companion-token"];
+  if (typeof token !== "string" || !pairingStore.validateToken(token)) {
+    response.status(401).json({ error: "Valid companion token required. Pair the mobile app first via the companion pairing screen." });
+    return;
+  }
+  next();
+}
+
+const pairingRequestSchema = z.object({
+  deviceId: z.string().min(1).max(120),
+  deviceName: z.string().min(1).max(80)
+});
 
 const profileSchema = z.object({
   displayName: z.string().min(1).max(80),
@@ -153,6 +188,70 @@ app.get("/api/health", (_request, response) => {
       timeoutMs: model.timeoutMs
     }
   });
+});
+
+app.get("/api/pair/qr", async (_request, response, next) => {
+  try {
+    const lanIp = getLanIp() ?? "127.0.0.1";
+    const url = `http://${lanIp}:${port}`;
+    const payload = JSON.stringify({ url, app: "local-fitness-advisor" });
+    const buffer = await QRCode.toBuffer(payload, { type: "png", width: 300, margin: 2 });
+    response.setHeader("content-type", "image/png");
+    response.send(buffer);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/pairing/request", (request, response) => {
+  const parsed = pairingRequestSchema.parse(request.body ?? {});
+  const record = pairingStore.request(parsed.deviceId, parsed.deviceName);
+  if (record.status === "approved") {
+    response.json({ pairingId: record.id, status: "approved", token: record.token });
+  } else {
+    response.status(201).json({ pairingId: record.id, status: "pending" });
+  }
+});
+
+app.get("/api/pairing/pending", (_request, response) => {
+  const pending = pairingStore.getPending().map((r) => ({
+    id: r.id,
+    deviceId: r.deviceId,
+    deviceName: r.deviceName,
+    requestedAt: r.requestedAt
+  }));
+  response.json(pending);
+});
+
+app.get("/api/pairing/status/:pairingId", (request, response) => {
+  const record = pairingStore.getById(request.params.pairingId);
+  if (!record) {
+    response.status(404).json({ error: "Pairing request not found." });
+    return;
+  }
+  const payload: Record<string, unknown> = { id: record.id, status: record.status };
+  if (record.status === "approved") {
+    payload.token = record.token;
+  }
+  response.json(payload);
+});
+
+app.post("/api/pairing/approve/:pairingId", (request, response) => {
+  const record = pairingStore.approve(request.params.pairingId);
+  if (!record) {
+    response.status(404).json({ error: "Pairing request not found or already resolved." });
+    return;
+  }
+  response.json({ id: record.id, status: record.status });
+});
+
+app.post("/api/pairing/deny/:pairingId", (request, response) => {
+  const record = pairingStore.deny(request.params.pairingId);
+  if (!record) {
+    response.status(404).json({ error: "Pairing request not found or already resolved." });
+    return;
+  }
+  response.json({ id: record.id, status: record.status });
 });
 
 app.get("/api/store", (_request, response) => {
@@ -294,7 +393,7 @@ app.post("/api/import/samsung-json-upload", async (request, response, next) => {
   }
 });
 
-app.post("/api/import/health-connect", async (request, response, next) => {
+app.post("/api/import/health-connect", requireCompanionToken, async (request, response, next) => {
   try {
   const parsed = healthConnectImportRequestSchema.parse(request.body ?? {});
   const imported = parseHealthConnectImport(parsed);
@@ -685,6 +784,13 @@ app.use((error: unknown, _request: express.Request, response: express.Response, 
 
 app.listen(port, host, () => {
   console.log(`Local Fitness Advisor API listening at http://${host}:${port}`);
+  const lanIp = getLanIp();
+  if (lanIp) {
+    console.log(`LAN address for companion pairing: http://${lanIp}:${port}`);
+  }
+  const bonjour = new Bonjour();
+  bonjour.publish({ name: "Local Fitness Advisor", type: "local-fitness-advisor", port });
+  process.on("exit", () => bonjour.destroy());
 });
 
 function loadEnvironmentFiles(): void {

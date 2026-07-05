@@ -1,52 +1,35 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
+import { clearConnection, loadConnection } from "./src/endpointStore";
+import type { ConnectionDetails } from "./src/endpointStore";
+import { PairScreen } from "./src/PairScreen";
+import type { PairResult } from "./src/PairScreen";
 import { syncHealthConnectLast30Days } from "./src/syncHealthConnect";
 
-const endpointStorageKey = "local-fitness-advisor.apiEndpoint";
-const defaultEndpoint = "";
-
 export default function App() {
-  const [endpointUrl, setEndpointUrl] = useState(defaultEndpoint);
+  const [connection, setConnection] = useState<ConnectionDetails | null>(null);
+  const [pairScreenVisible, setPairScreenVisible] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [status, setStatus] = useState("Ready");
   const [result, setResult] = useState("");
 
   useEffect(() => {
-    AsyncStorage.getItem(endpointStorageKey)
-      .then((saved) => {
-        if (saved?.trim()) {
-          setEndpointUrl(saved.trim());
-        }
-      })
-      .catch(() => {
-        setStatus("Could not load saved endpoint URL.");
-      });
+    loadConnection()
+      .then(setConnection)
+      .catch(() => setStatus("Could not load saved connection."));
   }, []);
 
-  const endpointPreview = useMemo(() => endpointUrl.trim().replace(/\/+$/, ""), [endpointUrl]);
-
-  async function saveEndpoint(): Promise<boolean> {
-    if (!endpointPreview) {
-      setStatus("Enter an endpoint URL.");
-      return false;
-    }
-    await AsyncStorage.setItem(endpointStorageKey, endpointPreview);
-    return true;
-  }
-
   async function handleSyncPress(): Promise<void> {
+    if (!connection?.url) {
+      setStatus("No server connected. Tap Set Up Connection first.");
+      return;
+    }
     try {
       setSyncing(true);
-      setStatus("Saving endpoint...");
+      setStatus("Syncing last 30 days from Health Connect…");
       setResult("");
-      const isSaved = await saveEndpoint();
-      if (!isSaved) {
-        return;
-      }
-      setStatus("Syncing last 30 days from Health Connect...");
-      const syncResult = await syncHealthConnectLast30Days(endpointPreview);
+      const syncResult = await syncHealthConnectLast30Days(connection.url, connection.token);
       setStatus(syncResult.status);
       setResult(syncResult.details);
     } catch (error) {
@@ -57,27 +40,80 @@ export default function App() {
     }
   }
 
+  async function handlePairComplete(pairResult: PairResult): Promise<void> {
+    const fresh = await loadConnection();
+    setConnection(fresh);
+    setPairScreenVisible(false);
+    setStatus(`Paired with ${pairResult.url}`);
+  }
+
+  async function handleDisconnect(): Promise<void> {
+    await clearConnection();
+    setConnection(null);
+    setStatus("Disconnected. Tap Set Up Connection to pair again.");
+    setResult("");
+  }
+
+  if (pairScreenVisible) {
+    return (
+      <PairScreen
+        onComplete={(res) => { void handlePairComplete(res); }}
+        onCancel={() => setPairScreenVisible(false)}
+      />
+    );
+  }
+
+  const isPaired = Boolean(connection?.token);
+
   return (
     <SafeAreaView style={styles.root}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>Local Fitness Advisor Companion</Text>
         <Text style={styles.subtitle}>Health Connect → Local API sync (last 30 days)</Text>
 
-        <View style={styles.field}>
-          <Text style={styles.label}>Endpoint URL</Text>
-          <TextInput
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-            onChangeText={setEndpointUrl}
-            placeholder="http://192.168.1.100:4317"
-            style={styles.input}
-            value={endpointUrl}
-          />
-          <Text style={styles.hint}>The app posts to {endpointPreview || "<endpoint>"}/api/import/health-connect</Text>
+        <View style={styles.connectionCard}>
+          <Text style={styles.connectionLabel}>Server connection</Text>
+          {connection?.url ? (
+            <View style={styles.connectionInfo}>
+              <View style={styles.connectionStatus}>
+                <View style={[styles.dot, isPaired ? styles.dotPaired : styles.dotUnpaired]} />
+                <Text style={styles.connectionUrl} numberOfLines={1}>{connection.url}</Text>
+              </View>
+              {isPaired ? (
+                <Text style={styles.connectionMeta}>Paired · token stored</Text>
+              ) : (
+                <Text style={styles.connectionMeta}>Connected (no token — pairing may be required)</Text>
+              )}
+              {connection.lastSyncAt ? (
+                <Text style={styles.connectionMeta}>
+                  Last sync: {new Date(connection.lastSyncAt).toLocaleString()}
+                </Text>
+              ) : null}
+            </View>
+          ) : (
+            <Text style={styles.connectionEmpty}>Not configured</Text>
+          )}
+          <View style={styles.connectionButtons}>
+            <Pressable style={styles.button} onPress={() => setPairScreenVisible(true)}>
+              <Text style={styles.buttonText}>{connection?.url ? "Change Connection" : "Set Up Connection"}</Text>
+            </Pressable>
+            {connection?.url ? (
+              <Pressable style={styles.buttonSecondary} onPress={() => { void handleDisconnect(); }}>
+                <Text style={styles.buttonSecondaryText}>Disconnect</Text>
+              </Pressable>
+            ) : null}
+          </View>
         </View>
 
-        <Pressable disabled={syncing} onPress={handleSyncPress} style={({ pressed }) => [styles.button, pressed && !syncing ? styles.buttonPressed : undefined, syncing ? styles.buttonDisabled : undefined]}>
+        <Pressable
+          disabled={syncing || !connection?.url}
+          onPress={() => { void handleSyncPress(); }}
+          style={({ pressed }) => [
+            styles.syncButton,
+            pressed && !syncing ? styles.buttonPressed : undefined,
+            syncing || !connection?.url ? styles.buttonDisabled : undefined
+          ]}
+        >
           {syncing ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.buttonText}>Sync now</Text>}
         </Pressable>
 
@@ -93,46 +129,49 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: "#f5f7fa"
-  },
-  container: {
-    gap: 16,
-    padding: 20
-  },
-  title: {
-    color: "#111827",
-    fontSize: 24,
-    fontWeight: "700"
-  },
-  subtitle: {
-    color: "#4b5563",
-    fontSize: 14
-  },
-  field: {
-    gap: 8
-  },
-  label: {
-    color: "#111827",
-    fontSize: 14,
-    fontWeight: "600"
-  },
-  input: {
+  root: { flex: 1, backgroundColor: "#f5f7fa" },
+  container: { gap: 16, padding: 20 },
+  title: { color: "#111827", fontSize: 24, fontWeight: "700" },
+  subtitle: { color: "#4b5563", fontSize: 14 },
+  connectionCard: {
     backgroundColor: "#ffffff",
-    borderColor: "#d1d5db",
+    borderColor: "#e5e7eb",
     borderRadius: 10,
     borderWidth: 1,
-    color: "#111827",
-    fontSize: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 10
+    gap: 10,
+    padding: 14
   },
-  hint: {
-    color: "#6b7280",
-    fontSize: 12
-  },
+  connectionLabel: { color: "#6b7280", fontSize: 12, fontWeight: "600", textTransform: "uppercase" },
+  connectionInfo: { gap: 4 },
+  connectionStatus: { flexDirection: "row", alignItems: "center", gap: 8 },
+  dot: { width: 8, height: 8, borderRadius: 4 },
+  dotPaired: { backgroundColor: "#22c55e" },
+  dotUnpaired: { backgroundColor: "#f59e0b" },
+  connectionUrl: { color: "#111827", fontSize: 14, fontWeight: "600", flex: 1 },
+  connectionMeta: { color: "#6b7280", fontSize: 12 },
+  connectionEmpty: { color: "#9ca3af", fontSize: 14 },
+  connectionButtons: { flexDirection: "row", gap: 8 },
   button: {
+    flex: 1,
+    alignItems: "center",
+    backgroundColor: "#2563eb",
+    borderRadius: 10,
+    justifyContent: "center",
+    minHeight: 44,
+    paddingHorizontal: 12
+  },
+  buttonSecondary: {
+    alignItems: "center",
+    backgroundColor: "#f3f4f6",
+    borderColor: "#e5e7eb",
+    borderRadius: 10,
+    borderWidth: 1,
+    justifyContent: "center",
+    minHeight: 44,
+    paddingHorizontal: 14
+  },
+  buttonSecondaryText: { color: "#374151", fontSize: 14, fontWeight: "600" },
+  syncButton: {
     alignItems: "center",
     backgroundColor: "#2563eb",
     borderRadius: 10,
@@ -140,17 +179,9 @@ const styles = StyleSheet.create({
     minHeight: 48,
     paddingHorizontal: 14
   },
-  buttonPressed: {
-    opacity: 0.9
-  },
-  buttonDisabled: {
-    backgroundColor: "#93c5fd"
-  },
-  buttonText: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "600"
-  },
+  buttonPressed: { opacity: 0.9 },
+  buttonDisabled: { backgroundColor: "#93c5fd" },
+  buttonText: { color: "#ffffff", fontSize: 15, fontWeight: "600" },
   resultCard: {
     backgroundColor: "#ffffff",
     borderColor: "#e5e7eb",
@@ -159,19 +190,7 @@ const styles = StyleSheet.create({
     gap: 8,
     padding: 14
   },
-  statusLabel: {
-    color: "#6b7280",
-    fontSize: 12,
-    textTransform: "uppercase"
-  },
-  statusText: {
-    color: "#111827",
-    fontSize: 16,
-    fontWeight: "600"
-  },
-  resultText: {
-    color: "#1f2937",
-    fontSize: 14,
-    lineHeight: 20
-  },
+  statusLabel: { color: "#6b7280", fontSize: 12, textTransform: "uppercase" },
+  statusText: { color: "#111827", fontSize: 16, fontWeight: "600" },
+  resultText: { color: "#1f2937", fontSize: 14, lineHeight: 20 }
 });
