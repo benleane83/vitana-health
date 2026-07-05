@@ -13,6 +13,7 @@ import {
 import { HealthStore } from "./store.js";
 import { generateInsight } from "./insights.js";
 import { importSamsungJsonUpload } from "./samsungJsonImport.js";
+import { healthConnectImportRequestSchema, parseHealthConnectImport } from "./healthConnectImport.js";
 import { rebuildWarehouseFromStore, runWarehouseQuery } from "./warehouse.js";
 import { planWarehouseQuery } from "./nlQuery.js";
 import { callConfiguredModel, currentModelConfig } from "./modelClient.js";
@@ -24,7 +25,7 @@ loadEnvironmentFiles();
 
 const app = express();
 const port = Number.parseInt(process.env.PORT ?? "4317", 10);
-const host = "127.0.0.1";
+const host = process.env.HOST ?? "127.0.0.1";
 const store = new HealthStore();
 
 app.use(express.json({ limit: "25mb" }));
@@ -183,6 +184,24 @@ app.post("/api/import/samsung-json-upload", (request, response) => {
       rawContent: undefined
     },
     stats: imported.stats
+  });
+});
+
+app.post("/api/import/health-connect", (request, response) => {
+  const parsed = healthConnectImportRequestSchema.parse(request.body ?? {});
+  const imported = parseHealthConnectImport(parsed);
+  const merged = store.mergeImport(imported);
+  response.status(201).json({
+    counts: {
+      sourceImports: merged.sourceImports.length,
+      observations: merged.observations.length,
+      timeSeriesSamples: merged.timeSeriesSamples.length,
+      activitySessions: merged.activitySessions.length
+    },
+    import: {
+      ...imported.sourceImport,
+      rawContent: undefined
+    }
   });
 });
 
@@ -355,7 +374,11 @@ app.get("/api/export", (_request, response) => {
 
 app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
   if (error instanceof z.ZodError) {
-    response.status(400).json({ error: "Invalid request", issues: error.issues });
+    const issueSummary = error.issues
+      .slice(0, 5)
+      .map((issue) => `${issue.path.join(".") || "body"}: ${issue.message}`)
+      .join("; ");
+    response.status(400).json({ error: `Invalid request: ${issueSummary}`, issues: error.issues });
     return;
   }
   if (error instanceof Error) {

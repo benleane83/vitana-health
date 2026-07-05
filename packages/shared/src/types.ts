@@ -1,6 +1,6 @@
 export type MeasurementKind = "point" | "interval" | "event" | "panel-component";
 
-export type SourceKind = "samsung-health" | "manual-entry" | "blood-test-csv" | "derived";
+export type SourceKind = "samsung-health" | "health-connect" | "manual-entry" | "blood-test-csv" | "derived";
 
 export interface Profile {
   id: "self";
@@ -131,6 +131,8 @@ export interface LabResultMarker {
   flag?: "low" | "normal" | "high" | "critical" | "unknown";
 }
 
+export type InsightModel = "deterministic" | "local-llm" | `${"ollama" | "openai"}:${string}`;
+
 export interface Insight {
   id: string;
   createdAt: string;
@@ -138,7 +140,7 @@ export interface Insight {
   body: string;
   evidence: string[];
   confidence: "low" | "medium" | "high";
-  model: "deterministic" | "local-llm";
+  model: InsightModel;
   safetyNotice: string;
 }
 

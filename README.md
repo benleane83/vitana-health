@@ -16,7 +16,14 @@ npm install
 npm run dev
 ```
 
-The API binds to `127.0.0.1:4317`, and the Vite UI runs on `127.0.0.1:5173`.
+The API binds to `127.0.0.1:4317` by default, and the Vite UI runs on `127.0.0.1:5173`.
+
+To receive sync requests from an Android phone on your local network, start the API with:
+
+```powershell
+$env:HOST = "0.0.0.0"
+npm run dev -w apps/api
+```
 
 ## Privacy model
 
@@ -83,6 +90,56 @@ Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:4317/api/import/samsung-js
 
 Current parser coverage includes Samsung JSON datasets for heart rate, oxygen saturation, HRV, movement activity level, pedometer day summary step bins, and exercise live-data heart-rate/speed samples.
 
+## Android Companion App (Expo / Health Connect)
+
+An Android MVP companion app lives at `apps/android-companion`.
+
+It supports:
+
+- Manual endpoint URL input
+- Manual "Sync now" action
+- Last-30-days Health Connect read for steps, heart rate, oxygen saturation, HRV RMSSD, weight, and exercise sessions
+- POST to `POST /api/import/health-connect` on your local API
+
+The API import pipeline uses deterministic IDs so re-running sync keeps existing records deduplicated.
+
+### Build an APK for sideloading
+
+```powershell
+cd apps/android-companion
+npm install
+npx eas login
+npx eas build --platform android --profile preview
+```
+
+Install the generated APK on your phone, open the app, set your local endpoint URL (for example `http://192.168.1.20:4317`), then tap **Sync now**.
+
+### Health Connect import endpoint
+
+The companion app posts structured JSON to:
+
+```text
+POST /api/import/health-connect
+```
+
+You can also call it directly if needed:
+
+```powershell
+$body = @{
+  syncedAt = "2026-07-04T09:00:00.000Z"
+  rangeStart = "2026-06-04T09:00:00.000Z"
+  rangeEnd = "2026-07-04T09:00:00.000Z"
+  deviceLabel = "android-companion"
+  steps = @()
+  heartRate = @()
+  oxygenSaturation = @()
+  hrvRmssd = @()
+  weightKg = @()
+  exerciseSessions = @()
+} | ConvertTo-Json -Depth 6
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:4317/api/import/health-connect" -ContentType "application/json" -Body $body
+```
+
 ## Local Warehouse (DuckDB)
 
 After importing data, build a query-friendly local warehouse:
@@ -130,4 +187,3 @@ Current supported examples:
 
 - "What was the last heart rate recorded?"
 - "What was my latest oxygen saturation?"
-
