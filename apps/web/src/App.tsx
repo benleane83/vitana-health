@@ -241,11 +241,13 @@ export function App() {
   }
 
   function navigate(nextRoute: AppRoute) {
-    const nextPath =
-      nextRoute === "summary" ? "/summary" :
-      nextRoute === "labs" ? "/labs" :
-      nextRoute === "query" ? "/query" :
-      "/";
+    const routePaths: Record<AppRoute, string> = {
+      dashboard: "/",
+      labs: "/labs",
+      summary: "/summary",
+      query: "/query"
+    };
+    const nextPath = routePaths[nextRoute] ?? "/";
     if (window.location.pathname !== nextPath) {
       window.history.pushState({}, "", nextPath);
     }

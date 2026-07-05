@@ -137,9 +137,10 @@ function capLimit(requested: number): number {
   return Math.min(requested, MAX_ROW_LIMIT);
 }
 
-function escapeSingleQuoteString(value: string): string {
-  // Only allow alphanumeric, underscores, hyphens and dots in string literals.
-  // Anything else is stripped to prevent injection through metric codes etc.
+function sanitizeIdentifier(value: string): string {
+  // Strip all characters that are not alphanumeric, underscores, hyphens, or dots.
+  // Metric codes in the registry only use these characters (e.g. "heart_rate", "hrv_rmssd").
+  // Any other character would indicate an unexpected/injected value and is dropped defensively.
   return value.replace(/[^a-zA-Z0-9_\-.]/g, "");
 }
 
@@ -201,7 +202,7 @@ function buildTimeseriesSql(
   limit: number,
   sortDir: string
 ): string {
-  const metric = escapeSingleQuoteString(dsl.metric ?? "");
+  const metric = sanitizeIdentifier(dsl.metric ?? "");
   const groupBy = dsl.groupBy ?? "day";
   const agg = aggregationSql(dsl.aggregation, "avg_value");
 
@@ -249,7 +250,7 @@ function buildAggregationSql(
   time: { start: string; end: string },
   _limit: number
 ): string {
-  const metric = escapeSingleQuoteString(dsl.metric ?? "");
+  const metric = sanitizeIdentifier(dsl.metric ?? "");
   const agg = aggregationSql(dsl.aggregation, "avg_value");
   return [
     `SELECT ${agg} AS value, MIN(unit) AS unit`,
@@ -267,7 +268,7 @@ function buildTopNSql(
   limit: number,
   sortDir: string
 ): string {
-  const metric = escapeSingleQuoteString(dsl.metric ?? "");
+  const metric = sanitizeIdentifier(dsl.metric ?? "");
   const agg = aggregationSql(dsl.aggregation, "avg_value");
   return [
     `SELECT day, ${agg} AS value, MIN(unit) AS unit`,
@@ -285,7 +286,7 @@ function buildLatestSql(
   dsl: QueryDSL,
   time: { start: string; end: string }
 ): string {
-  const metric = escapeSingleQuoteString(dsl.metric ?? "");
+  const metric = sanitizeIdentifier(dsl.metric ?? "");
   return [
     `SELECT day, avg_value AS value, unit`,
     `FROM v_daily_metrics`,

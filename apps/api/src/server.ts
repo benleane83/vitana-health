@@ -445,6 +445,10 @@ app.post("/api/query/ai", async (request, response, next) => {
         ? modelResult.text
         : buildFallbackAnswer(plannerOutcome.dsl, rows, compileOutcome.resolvedTimeRange.label);
 
+    const debugInfo = parsed.debug
+      ? { plannerElapsedMs: plannerOutcome.modelElapsedMs, summaryElapsedMs: modelResult.elapsedMs }
+      : undefined;
+
     response.json({
       question: parsed.question,
       answer,
@@ -459,9 +463,7 @@ app.post("/api/query/ai", async (request, response, next) => {
       chart: buildChartSeries(plannerOutcome.dsl, rows),
       model: modelResult.ok ? `${modelResult.provider}:${modelResult.model}` : "deterministic-fallback",
       modelError: modelResult.ok ? undefined : modelResult.error,
-      ...(parsed.debug
-        ? { debug: { plannerElapsedMs: plannerOutcome.modelElapsedMs, summaryElapsedMs: modelResult.elapsedMs } }
-        : {})
+      debug: debugInfo
     });
   } catch (error) {
     next(error);
