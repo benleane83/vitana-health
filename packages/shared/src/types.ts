@@ -153,7 +153,14 @@ export interface Insight {
 export interface AuditEvent {
   id: string;
   createdAt: string;
-  eventType: "store-created" | "profile-updated" | "import-processed" | "insight-generated" | "export-created";
+  eventType:
+    | "store-created"
+    | "profile-updated"
+    | "import-processed"
+    | "insight-generated"
+    | "export-created"
+    | "observation-deleted"
+    | "observation-type-deleted";
   detail: string;
 }
 
@@ -242,4 +249,56 @@ export interface HealthDataSummary {
     types: number;
   };
   categories: HealthDataSummaryCategoryGroup[];
+}
+
+export type HealthDataDetailEntryKind = "observation" | "sample" | "lab-marker";
+
+export interface HealthDataDetailEntry {
+  kind: HealthDataDetailEntryKind;
+  id: string;
+  measurementCode: string;
+  displayName: string;
+  timestamp: string;
+  value: number;
+  unit: string;
+  sourceLabel?: string;
+  sourceKind?: SourceKind;
+  importFileName?: string;
+  importedAt?: string;
+  note?: string;
+  canDelete?: boolean;
+  deleteLabel?: string;
+}
+
+export interface HealthDataDetailChartPoint {
+  kind: HealthDataDetailEntryKind;
+  timestamp: string;
+  value: number;
+  unit: string;
+}
+
+export interface HealthDataDetail {
+  generatedAt: string;
+  measurement: HealthDataSummaryTypeRow;
+  entries: HealthDataDetailEntry[];
+  chartPoints: HealthDataDetailChartPoint[];
+  counts: HealthDataSummarySourceCounts & {
+    total: number;
+  };
+  deletion: {
+    observationEntries: number;
+    deletableEntries: number;
+  };
+}
+
+export interface DeleteObservationResponse {
+  deletedCount: number;
+  deletedObservation?: Observation;
+  store: HealthStoreData;
+}
+
+export interface DeleteObservationsByTypeResponse {
+  deletedCount: number;
+  measurementCode: string;
+  store: HealthStoreData;
 }

@@ -2,6 +2,9 @@ import type {
   AnalyticsSummary,
   BodyCompositionDraft,
   BodyCompositionDraftCommitPayload,
+  DeleteObservationResponse,
+  DeleteObservationsByTypeResponse,
+  HealthDataDetail,
   HealthDataSummary,
   HealthStoreData,
   Insight,
@@ -59,6 +62,10 @@ export const api = {
   store: () => request<HealthStoreData>("/api/store"),
   analytics: () => request<AnalyticsSummary>("/api/analytics"),
   summary: () => request<HealthDataSummary>("/api/summary"),
+  healthDataDetail: (measurementCode: string) => request<HealthDataDetail>(`/api/summary/${encodeURIComponent(measurementCode)}`),
+  deleteObservation: (id: string) => request<DeleteObservationResponse>(`/api/observations/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  deleteObservationsByType: (measurementCode: string) =>
+    request<DeleteObservationsByTypeResponse>(`/api/observations/by-type/${encodeURIComponent(measurementCode)}`, { method: "DELETE" }),
   saveProfile: (profile: Omit<Profile, "id" | "updatedAt">) =>
     request<Profile>("/api/profile", { method: "PUT", body: JSON.stringify(profile) }),
   importSamsung: (fileName: string, content: string) =>

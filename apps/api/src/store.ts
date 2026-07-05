@@ -1,7 +1,16 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
-import { defaultMeasurementTypes, type HealthStoreData, type SourceImport } from "@local-fitness-advisor/shared";
+import {
+  defaultMeasurementTypes,
+  type DeleteObservationResponse,
+  type DeleteObservationsByTypeResponse,
+  type HealthDataDetailEntry,
+  type HealthStoreData,
+  type Observation,
+  type SourceImport
+} from "@local-fitness-advisor/shared";
+import { listHealthDataDetailEntries } from "./summary.js";
 
 interface EncryptedEnvelope {
   version: 1;
@@ -126,6 +135,39 @@ export class HealthStore {
     this.audit("insight-generated", `${insight.model} insight generated.`);
     this.persist();
     return insight;
+  }
+
+  listDetailEntries(measurementCode: string): HealthDataDetailEntry[] {
+    return listHealthDataDetailEntries(this.snapshot(), measurementCode);
+  }
+
+  deleteObservation(id: string): DeleteObservationResponse | undefined {
+    const match = this.data.observations.find((entry) => entry.id === id);
+    if (!match) {
+      return undefined;
+    }
+    this.data.observations = this.data.observations.filter((entry) => entry.id !== id);
+    this.audit("observation-deleted", observationDeleteDetail(match));
+    this.persist();
+    return {
+      deletedCount: 1,
+      deletedObservation: match,
+      store: this.snapshot()
+    };
+  }
+
+  deleteObservationsByMeasurementCode(measurementCode: string): DeleteObservationsByTypeResponse {
+    const deleted = this.data.observations.filter((entry) => entry.measurementCode === measurementCode);
+    if (deleted.length > 0) {
+      this.data.observations = this.data.observations.filter((entry) => entry.measurementCode !== measurementCode);
+      this.audit("observation-type-deleted", `${deleted.length} observation(s) deleted for ${measurementCode}.`);
+      this.persist();
+    }
+    return {
+      deletedCount: deleted.length,
+      measurementCode,
+      store: this.snapshot()
+    };
   }
 
   exportData(): HealthStoreData {
@@ -319,4 +361,8 @@ function limitByNewest<T>(
   }
 
   return selected;
+}
+
+function observationDeleteDetail(observation: Observation): string {
+  return `Observation ${observation.measurementCode} deleted at ${observation.observedAt} (${observation.value} ${observation.unit}).`;
 }
