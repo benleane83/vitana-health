@@ -11,6 +11,8 @@ import {
   parseBloodTestCsv,
   parseSamsungHealthCsv,
   type BodyCompositionDraftRow,
+  type DeleteObservationResponse,
+  type DeleteObservationsByTypeResponse,
   type Profile
 } from "@local-fitness-advisor/shared";
 import { HealthStore } from "./store.js";
@@ -22,7 +24,7 @@ import { planWarehouseQuery } from "./nlQuery.js";
 import { callConfiguredModel, currentModelConfig } from "./modelClient.js";
 import { planDataAnswer } from "./askData.js";
 import { planStoreAnswer } from "./askStore.js";
-import { summarizeStoreData } from "./summary.js";
+import { summarizeMeasurementDetail, summarizeStoreData } from "./summary.js";
 import { planAiQuery } from "./aiQueryPlanner.js";
 import type { QueryDSL } from "./aiQueryPlanner.js";
 import { compileQueryDSL, validateCompiledSql } from "./queryCompiler.js";
@@ -137,6 +139,20 @@ const aiQuerySchema = z.object({
   timezone: z.string().max(80).optional(),
   debug: z.boolean().optional().default(false)
 });
+
+const measurementCodeParamSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(120)
+  .regex(/^[A-Za-z0-9._-]+$/, "Measurement code contains unsupported characters.");
+
+const observationIdParamSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(160)
+  .regex(/^[A-Za-z0-9._:-]+$/, "Observation id contains unsupported characters.");
 
 app.get("/api/health", (_request, response) => {
   const snapshot = store.snapshot();
@@ -324,6 +340,37 @@ app.get("/api/analytics", (_request, response) => {
 
 app.get("/api/summary", (_request, response) => {
   response.json(summarizeStoreData(store.snapshot()));
+});
+
+app.get("/api/summary/:measurementCode", (request, response) => {
+  const measurementCode = measurementCodeParamSchema.parse(request.params.measurementCode);
+  response.json(summarizeMeasurementDetail(store.snapshot(), measurementCode));
+});
+
+app.delete("/api/observations/:id", async (request, response, next) => {
+  try {
+    const id = observationIdParamSchema.parse(request.params.id);
+    const deleted = store.deleteObservation(id);
+    if (!deleted) {
+      response.status(404).json({ error: "Observation not found." });
+      return;
+    }
+    const warehouse = await rebuildWarehouseFromStore(deleted.store);
+    response.json(deleteObservationResponse(deleted, warehouse));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete("/api/observations/by-type/:measurementCode", async (request, response, next) => {
+  try {
+    const measurementCode = measurementCodeParamSchema.parse(request.params.measurementCode);
+    const deleted = store.deleteObservationsByMeasurementCode(measurementCode);
+    const warehouse = await rebuildWarehouseFromStore(deleted.store);
+    response.json(deleteObservationsByTypeResponse(deleted, warehouse));
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.post("/api/warehouse/rebuild", async (_request, response, next) => {
@@ -716,6 +763,42 @@ function loadEnvironmentFiles(): void {
       const rawValue = line.slice(equalsIndex + 1).trim();
       process.env[key] = stripOuterQuotes(rawValue);
     }
+  }
+
+  function deleteObservationResponse(
+    deleted: DeleteObservationResponse,
+    warehouse: Awaited<ReturnType<typeof rebuildWarehouseFromStore>>
+  ) {
+    return {
+      deletedCount: deleted.deletedCount,
+      deletedObservation: deleted.deletedObservation,
+      counts: storeCounts(deleted.store),
+      store: deleted.store,
+      warehouse
+    };
+  }
+
+  function deleteObservationsByTypeResponse(
+    deleted: DeleteObservationsByTypeResponse,
+    warehouse: Awaited<ReturnType<typeof rebuildWarehouseFromStore>>
+  ) {
+    return {
+      deletedCount: deleted.deletedCount,
+      measurementCode: deleted.measurementCode,
+      counts: storeCounts(deleted.store),
+      store: deleted.store,
+      warehouse
+    };
+  }
+
+  function storeCounts(snapshot: ReturnType<HealthStore["snapshot"]>) {
+    return {
+      sourceImports: snapshot.sourceImports.length,
+      observations: snapshot.observations.length,
+      timeSeriesSamples: snapshot.timeSeriesSamples.length,
+      activitySessions: snapshot.activitySessions.length,
+      labMarkers: snapshot.labMarkers.length
+    };
   }
 }
 

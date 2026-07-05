@@ -348,6 +348,101 @@ h3 {
   margin: var(--space-4) 0;
 }
 
+.summary-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.summary-back-link {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--info);
+  box-shadow: none;
+  min-height: auto;
+  margin-bottom: var(--space-2);
+}
+
+.summary-detail-code {
+  color: var(--muted);
+  margin-top: var(--space-2);
+}
+
+.summary-detail-actions {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: end;
+}
+
+.summary-detail-hint,
+.summary-readonly {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.summary-detail-chart-panel,
+.summary-detail-table {
+  margin-top: var(--space-5);
+}
+
+.summary-detail-chart-panel h3,
+.summary-detail-table h3 {
+  font-family: Aptos, "Segoe UI", system-ui, sans-serif;
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: var(--space-2);
+}
+
+.summary-detail-chart {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: oklch(18% 0.028 160 / 0.72);
+  padding: var(--space-3);
+}
+
+.summary-detail-chart-svg {
+  width: 100%;
+  height: 170px;
+  color: var(--info);
+}
+
+.summary-detail-axis {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.summary-detail-chart-line {
+  color: var(--info);
+}
+
+.summary-detail-chart-dot {
+  fill: var(--primary);
+}
+
+.summary-detail-y-label {
+  fill: var(--muted);
+  font-size: 10px;
+}
+
+.summary-detail-chart-meta {
+  display: grid;
+  gap: var(--space-2);
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.summary-detail-chart-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
 .labs-header {
   display: flex;
   justify-content: space-between;
@@ -573,6 +668,22 @@ h3 {
   gap: var(--space-3);
   padding: var(--space-3);
   border-bottom: 1px solid var(--line);
+}
+
+.summary-row-button {
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  box-shadow: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.summary-row-button:hover,
+.summary-row-button:focus-visible {
+  background: oklch(30% 0.08 160 / 0.18);
 }
 
 .summary-row:last-child {
@@ -1232,6 +1343,13 @@ label {
   .summary-header {
     align-items: start;
     flex-direction: column;
+  }
+
+  .summary-detail-header,
+  .summary-detail-actions {
+    flex-direction: column;
+    align-items: stretch;
+    justify-items: stretch;
   }
 
   .summary-row {

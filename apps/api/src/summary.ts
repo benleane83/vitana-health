@@ -1,4 +1,12 @@
-import type { HealthDataSummary, HealthDataSummaryTypeRow, HealthStoreData, MeasurementType } from "@local-fitness-advisor/shared";
+import type {
+  HealthDataDetail,
+  HealthDataDetailEntry,
+  HealthDataSummary,
+  HealthDataSummarySourceCounts,
+  HealthDataSummaryTypeRow,
+  HealthStoreData,
+  MeasurementType
+} from "@local-fitness-advisor/shared";
 
 const categoryLabels: Record<HealthDataSummaryTypeRow["category"], string> = {
   activity: "Activity",
@@ -82,6 +90,136 @@ export function summarizeStoreData(store: HealthStoreData): HealthDataSummary {
     generatedAt: new Date().toISOString(),
     totals,
     categories
+  };
+}
+
+export function listHealthDataDetailEntries(store: HealthStoreData, measurementCode: string): HealthDataDetailEntry[] {
+  const measurementTypes = new Map(store.measurementTypes.map((item) => [item.code, item]));
+  const dataSources = new Map(store.dataSources.map((item) => [item.id, item]));
+  const sourceImports = new Map(store.sourceImports.map((item) => [item.id, item]));
+  const panels = new Map(store.labPanels.map((item) => [item.id, item]));
+  const displayName = measurementTypes.get(measurementCode)?.display ?? humanizeCode(measurementCode);
+
+  const observationEntries = store.observations
+    .filter((entry) => entry.measurementCode === measurementCode)
+    .map<HealthDataDetailEntry>((entry) => {
+      const source = dataSources.get(entry.sourceId);
+      const imported = source?.importId ? sourceImports.get(source.importId) : undefined;
+      return {
+        kind: "observation",
+        id: entry.id,
+        measurementCode: entry.measurementCode,
+        displayName,
+        timestamp: entry.observedAt,
+        value: entry.value,
+        unit: entry.unit,
+        sourceLabel: source?.label,
+        sourceKind: source?.sourceKind,
+        importFileName: imported?.fileName,
+        importedAt: imported?.importedAt,
+        note: entry.note,
+        canDelete: true,
+        deleteLabel: "Delete"
+      };
+    });
+
+  const sampleEntries = store.timeSeriesSamples
+    .filter((entry) => entry.measurementCode === measurementCode)
+    .map<HealthDataDetailEntry>((entry) => {
+      const source = dataSources.get(entry.sourceId);
+      const imported = source?.importId ? sourceImports.get(source.importId) : undefined;
+      return {
+        kind: "sample",
+        id: entry.id,
+        measurementCode: entry.measurementCode,
+        displayName,
+        timestamp: entry.endAt || entry.startAt,
+        value: entry.value,
+        unit: entry.unit,
+        sourceLabel: source?.label,
+        sourceKind: source?.sourceKind,
+        importFileName: imported?.fileName,
+        importedAt: imported?.importedAt,
+        note: entry.startAt && entry.endAt && entry.startAt !== entry.endAt ? `${entry.startAt} → ${entry.endAt}` : undefined
+      };
+    });
+
+  const labEntries = store.labMarkers
+    .filter((entry) => entry.measurementCode === measurementCode)
+    .map<HealthDataDetailEntry>((entry) => {
+      const panel = panels.get(entry.panelId);
+      const source = panel ? dataSources.get(panel.sourceId) : undefined;
+      const imported = source?.importId ? sourceImports.get(source.importId) : undefined;
+      const panelNote = [panel?.panelName, panel?.labName].filter(Boolean).join(" • ");
+      return {
+        kind: "lab-marker",
+        id: entry.id,
+        measurementCode: entry.measurementCode,
+        displayName: entry.displayName || displayName,
+        timestamp: panel?.collectedAt ?? "",
+        value: entry.value,
+        unit: entry.unit,
+        sourceLabel: source?.label,
+        sourceKind: source?.sourceKind,
+        importFileName: imported?.fileName,
+        importedAt: imported?.importedAt,
+        note: panelNote || undefined
+      };
+    });
+
+  return [...observationEntries, ...sampleEntries, ...labEntries].sort((a, b) =>
+    b.timestamp.localeCompare(a.timestamp) || a.displayName.localeCompare(b.displayName) || a.id.localeCompare(b.id)
+  );
+}
+
+export function summarizeMeasurementDetail(store: HealthStoreData, measurementCode: string): HealthDataDetail {
+  const measurementTypes = new Map(store.measurementTypes.map((item) => [item.code, item]));
+  const entries = listHealthDataDetailEntries(store, measurementCode);
+  const counts = entries.reduce<HealthDataSummarySourceCounts & { total: number }>(
+    (acc, entry) => {
+      if (entry.kind === "observation") {
+        acc.observations += 1;
+      } else if (entry.kind === "sample") {
+        acc.samples += 1;
+      } else {
+        acc.labMarkers += 1;
+      }
+      acc.total += 1;
+      return acc;
+    },
+    { observations: 0, samples: 0, labMarkers: 0, total: 0 }
+  );
+
+  const latestTimestamp = entries[0]?.timestamp;
+  const type = measurementTypes.get(measurementCode);
+  const measurement: HealthDataSummaryTypeRow = {
+    code: measurementCode,
+    displayName: type?.display ?? entries[0]?.displayName ?? humanizeCode(measurementCode),
+    category: type?.category ?? "uncategorized",
+    counts,
+    lastMeasuredAt: latestTimestamp
+  };
+
+  const chartPoints = [...entries]
+    .filter((entry) => entry.timestamp)
+    .sort((a, b) => a.timestamp.localeCompare(b.timestamp) || a.id.localeCompare(b.id))
+    .map((entry) => ({
+      kind: entry.kind,
+      timestamp: entry.timestamp,
+      value: entry.value,
+      unit: entry.unit
+    }));
+
+  return {
+    generatedAt: new Date().toISOString(),
+    measurement,
+    entries,
+    chartPoints,
+    counts,
+    deletion: {
+      observationEntries: counts.observations,
+      deletableEntries: entries.filter((entry) => entry.canDelete).length
+    }
   };
 }
 

@@ -3,6 +3,8 @@ import type {
   AnalyticsSummary,
   BodyCompositionDraft,
   BodyCompositionDraftRow,
+  HealthDataDetail,
+  HealthDataDetailEntry,
   HealthDataSummary,
   HealthDataSummaryTypeRow,
   HealthStoreData,
@@ -68,10 +70,15 @@ export function App() {
   const [message, setMessage] = useState<string>();
   const [route, setRoute] = useState<AppRoute>(() => routeFromPathname(window.location.pathname));
   const [importMode, setImportMode] = useState<ImportMode>(() => importModeFromPathname(window.location.pathname));
+  const [summaryDetailCode, setSummaryDetailCode] = useState<string | undefined>(() => summaryDetailCodeFromPathname(window.location.pathname));
   const [profileEditorOpen, setProfileEditorOpen] = useState(false);
   const [summary, setSummary] = useState<HealthDataSummary>();
   const [summaryBusy, setSummaryBusy] = useState(false);
   const [summaryError, setSummaryError] = useState<string>();
+  const [summaryDetail, setSummaryDetail] = useState<HealthDataDetail>();
+  const [summaryDetailBusy, setSummaryDetailBusy] = useState(false);
+  const [summaryDetailError, setSummaryDetailError] = useState<string>();
+  const [summaryDetailActionBusy, setSummaryDetailActionBusy] = useState(false);
   const [summarySort, setSummarySort] = useState<SummarySort>("recency");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
@@ -102,6 +109,7 @@ export function App() {
     const onPopState = () => {
       setRoute(routeFromPathname(window.location.pathname));
       setImportMode(importModeFromPathname(window.location.pathname));
+      setSummaryDetailCode(summaryDetailCodeFromPathname(window.location.pathname));
     };
     window.addEventListener("popstate", onPopState);
     return () => {
@@ -116,14 +124,12 @@ export function App() {
     let cancelled = false;
     setSummaryBusy(true);
     setSummaryError(undefined);
-    void api
-      .summary()
+    void loadSummary()
       .then((nextSummary) => {
         if (cancelled) {
           return;
         }
-        setSummary(nextSummary);
-        setExpandedCategories(new Set(nextSummary.categories.map((category) => category.key)));
+        applySummary(nextSummary);
       })
       .catch((error: unknown) => {
         if (cancelled) {
@@ -140,6 +146,38 @@ export function App() {
       cancelled = true;
     };
   }, [route]);
+
+  useEffect(() => {
+    if (route !== "summary" || !summaryDetailCode) {
+      setSummaryDetail(undefined);
+      setSummaryDetailError(undefined);
+      setSummaryDetailBusy(false);
+      return;
+    }
+    let cancelled = false;
+    setSummaryDetailBusy(true);
+    setSummaryDetailError(undefined);
+    void api
+      .healthDataDetail(summaryDetailCode)
+      .then((nextDetail) => {
+        if (!cancelled) {
+          setSummaryDetail(nextDetail);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setSummaryDetailError(error instanceof Error ? error.message : "Unable to load detail.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setSummaryDetailBusy(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [route, summaryDetailCode]);
 
   const profile = store?.profile;
   const latestInsight = store?.insights[0];
@@ -161,6 +199,15 @@ export function App() {
     const [nextStore, nextAnalytics] = await Promise.all([api.store(), api.analytics()]);
     setStore(nextStore);
     setAnalytics(nextAnalytics);
+  }
+
+  async function loadSummary() {
+    return api.summary();
+  }
+
+  function applySummary(nextSummary: HealthDataSummary) {
+    setSummary(nextSummary);
+    setExpandedCategories(new Set(nextSummary.categories.map((category) => category.key)));
   }
 
   async function saveProfile(event: React.FormEvent<HTMLFormElement>) {
@@ -326,7 +373,7 @@ export function App() {
     const routePaths: Record<AppRoute, string> = {
       dashboard: "/",
       import: importModePath(nextImportMode),
-      summary: "/summary",
+      summary: summaryPath(),
       query: "/query"
     };
     const nextPath = routePaths[nextRoute] ?? "/";
@@ -336,11 +383,79 @@ export function App() {
     if (nextRoute === "import") {
       setImportMode(nextImportMode);
     }
+    if (nextRoute === "summary") {
+      setSummaryDetailCode(undefined);
+    }
     setRoute(nextRoute);
   }
 
   function navigateImportMode(nextMode: ImportMode) {
     navigate("import", nextMode);
+  }
+
+  function navigateSummaryDetail(measurementCode: string) {
+    const nextPath = summaryPath(measurementCode);
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState({}, "", nextPath);
+    }
+    setRoute("summary");
+    setSummaryDetailCode(measurementCode);
+  }
+
+  async function deleteObservationEntry(entry: HealthDataDetailEntry) {
+    if (!entry.canDelete) {
+      return;
+    }
+    const confirmation = window.confirm(
+      `Delete ${entry.displayName} observation?\n\n${formatTimestamp(entry.timestamp)}\n${formatDetailValue(entry.value)} ${entry.unit}`
+    );
+    if (!confirmation) {
+      return;
+    }
+    setSummaryDetailActionBusy(true);
+    setMessage(undefined);
+    try {
+      await api.deleteObservation(entry.id);
+      await refresh();
+      const [nextSummary, nextDetail] = await Promise.all([
+        loadSummary(),
+        summaryDetailCode ? api.healthDataDetail(summaryDetailCode) : Promise.resolve(undefined)
+      ]);
+      applySummary(nextSummary);
+      setSummaryDetail(nextDetail);
+      setMessage("Observation deleted.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unexpected local error.");
+    } finally {
+      setSummaryDetailActionBusy(false);
+    }
+  }
+
+  async function deleteObservationsByType() {
+    if (!summaryDetailCode || !summaryDetail) {
+      return;
+    }
+    const observationCount = summaryDetail.deletion.observationEntries;
+    const confirmation = window.confirm(
+      `Delete ${observationCount} ${summaryDetail.measurement.displayName} observation record(s)?`
+    );
+    if (!confirmation) {
+      return;
+    }
+    setSummaryDetailActionBusy(true);
+    setMessage(undefined);
+    try {
+      await api.deleteObservationsByType(summaryDetailCode);
+      await refresh();
+      const [nextSummary, nextDetail] = await Promise.all([loadSummary(), api.healthDataDetail(summaryDetailCode)]);
+      applySummary(nextSummary);
+      setSummaryDetail(nextDetail);
+      setMessage(observationCount === 1 ? "1 observation deleted." : `${observationCount} observations deleted.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unexpected local error.");
+    } finally {
+      setSummaryDetailActionBusy(false);
+    }
   }
 
   function toggleCategory(key: string) {
@@ -520,15 +635,28 @@ export function App() {
           ) : null}
         </>
       ) : route === "summary" ? (
-        <SummaryPage
-          summary={summary}
-          loading={summaryBusy}
-          error={summaryError}
-          sort={summarySort}
-          onSortChange={setSummarySort}
-          expandedCategories={expandedCategories}
-          onToggleCategory={toggleCategory}
-        />
+        summaryDetailCode ? (
+          <ObservationTypeDetailPage
+            detail={summaryDetail}
+            loading={summaryDetailBusy}
+            error={summaryDetailError}
+            actionBusy={summaryDetailActionBusy}
+            onBack={() => navigate("summary")}
+            onDeleteObservation={deleteObservationEntry}
+            onDeleteAll={deleteObservationsByType}
+          />
+        ) : (
+          <SummaryPage
+            summary={summary}
+            loading={summaryBusy}
+            error={summaryError}
+            sort={summarySort}
+            onSortChange={setSummarySort}
+            expandedCategories={expandedCategories}
+            onToggleCategory={toggleCategory}
+            onSelectRow={navigateSummaryDetail}
+          />
+        )
       ) : route === "query" ? (
         <QueryPage
           question={aiQuestion}
@@ -1142,7 +1270,7 @@ function BodyCompositionImportPanel({
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="stat">
       <strong>{value}</strong>
@@ -1344,6 +1472,175 @@ function QueryChart({ chart }: { chart: { type: string; series: AiQueryChartSeri
   );
 }
 
+function ObservationTypeDetailPage({
+  detail,
+  loading,
+  error,
+  actionBusy,
+  onBack,
+  onDeleteObservation,
+  onDeleteAll
+}: {
+  detail?: HealthDataDetail;
+  loading: boolean;
+  error?: string;
+  actionBusy: boolean;
+  onBack: () => void;
+  onDeleteObservation: (entry: HealthDataDetailEntry) => void | Promise<void>;
+  onDeleteAll: () => void | Promise<void>;
+}) {
+  return (
+    <section className="panel summary-panel">
+      <div className="summary-detail-header">
+        <div>
+          <button type="button" className="summary-back-link" onClick={onBack}>
+            ← Back to summary
+          </button>
+          <p className="eyebrow">Loaded health data by type</p>
+          <h2>{detail?.measurement.displayName ?? "Measurement detail"}</h2>
+          <p className="summary-detail-code">{detail?.measurement.code ?? "Loading code..."}</p>
+        </div>
+        <div className="summary-detail-actions">
+          <button
+            type="button"
+            onClick={() => void onDeleteAll()}
+            disabled={loading || actionBusy || (detail?.deletion.observationEntries ?? 0) === 0}
+          >
+            {actionBusy ? "Deleting..." : "Delete observations"}
+          </button>
+          {detail && detail.deletion.observationEntries === 0 && detail.counts.total > 0 ? (
+            <span className="summary-detail-hint">Only observation rows can be deleted from this screen.</span>
+          ) : null}
+        </div>
+      </div>
+
+      {loading ? <p className="empty">Loading detail...</p> : null}
+      {error ? <p className="empty">{error}</p> : null}
+
+      {detail ? (
+        <>
+          <div className="summary-totals summary-detail-stats">
+            <Stat label="Entries" value={detail.counts.total} />
+            <Stat label="Observations" value={detail.counts.observations} />
+            <Stat label="Samples" value={detail.counts.samples} />
+            <Stat label="Labs" value={detail.counts.labMarkers} />
+            <Stat label="Latest" value={detail.measurement.lastMeasuredAt ? formatShortTimestamp(detail.measurement.lastMeasuredAt) : "—"} />
+          </div>
+
+          {detail.counts.total === 0 ? (
+            <p className="empty">No entries are currently stored for this measurement type.</p>
+          ) : (
+            <>
+              {detail.chartPoints.length > 0 ? (
+                <div className="summary-detail-chart-panel">
+                  <h3>Trend</h3>
+                  <DetailTrendChart detail={detail} />
+                </div>
+              ) : null}
+
+              <div className="summary-detail-table">
+                <h3>Entries</h3>
+                <div className="query-table-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Timestamp</th>
+                        <th>Kind</th>
+                        <th>Value</th>
+                        <th>Unit</th>
+                        <th>Source / note</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {detail.entries.map((entry) => (
+                        <tr key={`${entry.kind}-${entry.id}`}>
+                          <td>{formatTimestamp(entry.timestamp)}</td>
+                          <td>{detailKindLabel(entry.kind)}</td>
+                          <td>{formatDetailValue(entry.value)}</td>
+                          <td>{entry.unit}</td>
+                          <td>{renderEntryContext(entry)}</td>
+                          <td>
+                            {entry.canDelete ? (
+                              <button type="button" onClick={() => void onDeleteObservation(entry)} disabled={actionBusy}>
+                                Delete
+                              </button>
+                            ) : (
+                              <span className="summary-readonly">Read-only</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function DetailTrendChart({ detail }: { detail: HealthDataDetail }) {
+  const points = detail.chartPoints;
+  if (points.length === 0) {
+    return <p className="empty">No numeric points are available for charting.</p>;
+  }
+  const timestamps = points.map((point) => new Date(point.timestamp).getTime());
+  const values = points.map((point) => point.value);
+  const xMin = Math.min(...timestamps);
+  const xMax = Math.max(...timestamps);
+  const rawMin = Math.min(...values);
+  const rawMax = Math.max(...values);
+  const flatPadding = rawMin === rawMax ? Math.max(Math.abs(rawMin) * 0.05, 1) : 0;
+  const yMin = rawMin - flatPadding;
+  const yMax = rawMax + flatPadding;
+  const xRange = xMax - xMin || 1;
+  const yRange = yMax - yMin || 1;
+  const unitLabel = [...new Set(points.map((point) => point.unit).filter(Boolean))].join(", ");
+  const path = points
+    .map((point, index) => {
+      const time = new Date(point.timestamp).getTime();
+      const x = 24 + ((time - xMin) / xRange) * 272;
+      const y = 108 - ((point.value - yMin) / yRange) * 84;
+      return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+    })
+    .join(" ");
+  const axisTimes = [xMin, xMin + xRange / 2, xMax];
+
+  return (
+    <div className="summary-detail-chart">
+      <svg viewBox="0 0 320 150" role="img" aria-label={`${detail.measurement.displayName} trend`} className="summary-detail-chart-svg">
+        <line x1="24" y1="24" x2="24" y2="108" className="summary-detail-axis" />
+        <line x1="24" y1="108" x2="296" y2="108" className="summary-detail-axis" />
+        <path d={path} fill="none" stroke="currentColor" strokeWidth="2.5" className="summary-detail-chart-line" />
+        {points.map((point) => {
+          const time = new Date(point.timestamp).getTime();
+          const x = 24 + ((time - xMin) / xRange) * 272;
+          const y = 108 - ((point.value - yMin) / yRange) * 84;
+          return (
+            <circle key={`${point.kind}-${point.timestamp}-${point.value}`} cx={x} cy={y} r="3.5" className="summary-detail-chart-dot">
+              <title>{`${detailKindLabel(point.kind)} • ${formatTimestamp(point.timestamp)} • ${formatDetailValue(point.value)} ${point.unit}`}</title>
+            </circle>
+          );
+        })}
+        <text x="12" y="28" className="summary-detail-y-label">{formatDetailValue(yMax)}</text>
+        <text x="12" y="112" className="summary-detail-y-label">{formatDetailValue(yMin)}</text>
+      </svg>
+      <div className="summary-detail-chart-meta">
+        <span>{unitLabel || "Value"}</span>
+        <div className="summary-detail-chart-labels">
+          {axisTimes.map((time, index) => (
+            <span key={`${time}-${index}`}>{formatChartTimestamp(time, xRange)}</span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SummaryPage({
   summary,
   loading,
@@ -1351,7 +1648,8 @@ function SummaryPage({
   sort,
   onSortChange,
   expandedCategories,
-  onToggleCategory
+  onToggleCategory,
+  onSelectRow
 }: {
   summary?: HealthDataSummary;
   loading: boolean;
@@ -1360,6 +1658,7 @@ function SummaryPage({
   onSortChange: (sort: SummarySort) => void;
   expandedCategories: Set<string>;
   onToggleCategory: (key: string) => void;
+  onSelectRow: (measurementCode: string) => void;
 }) {
   return (
     <section className="panel summary-panel">
@@ -1409,11 +1708,11 @@ function SummaryPage({
                         <span role="columnheader">Last measurement</span>
                       </div>
                       {sortedRows.map((row) => (
-                        <div className="summary-row" role="row" key={row.code}>
+                        <button className="summary-row summary-row-button" role="row" key={row.code} type="button" onClick={() => onSelectRow(row.code)}>
                           <span role="cell">{row.displayName}</span>
                           <span role="cell">{row.counts.total}</span>
                           <span role="cell">{row.lastMeasuredAt ? formatTimestamp(row.lastMeasuredAt) : "—"}</span>
-                        </div>
+                        </button>
                       ))}
                     </div>
                   ) : null}
@@ -1447,7 +1746,7 @@ function compareSummaryRows(a: HealthDataSummaryTypeRow, b: HealthDataSummaryTyp
 }
 
 function routeFromPathname(pathname: string): AppRoute {
-  if (pathname === "/summary") {
+  if (pathname === "/summary" || pathname.startsWith("/summary/")) {
     return "summary";
   }
   if (pathname === "/import" || pathname.startsWith("/import/") || pathname === "/labs") {
@@ -1457,6 +1756,21 @@ function routeFromPathname(pathname: string): AppRoute {
     return "query";
   }
   return "dashboard";
+}
+
+function summaryDetailCodeFromPathname(pathname: string): string | undefined {
+  if (!pathname.startsWith("/summary/")) {
+    return undefined;
+  }
+  const raw = pathname.slice("/summary/".length);
+  if (!raw) {
+    return undefined;
+  }
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
 }
 
 function importModeFromPathname(pathname: string): ImportMode {
@@ -1479,6 +1793,10 @@ function importModePath(mode: ImportMode): string {
   return "/import/labs";
 }
 
+function summaryPath(measurementCode?: string): string {
+  return measurementCode ? `/summary/${encodeURIComponent(measurementCode)}` : "/summary";
+}
+
 function formatProfileSex(value?: Profile["sex"]): string {
   if (!value || value === "not-specified") {
     return "Prefer not to say";
@@ -1492,6 +1810,45 @@ function formatTimestamp(value: string): string {
     return value;
   }
   return timestampFormatter.format(date);
+}
+
+function formatShortTimestamp(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "2-digit",
+    year: "numeric"
+  }).format(date);
+}
+
+function formatChartTimestamp(timestamp: number, rangeMs: number): string {
+  const options: Intl.DateTimeFormatOptions =
+    rangeMs <= 24 * 60 * 60 * 1000
+      ? { hour: "2-digit", minute: "2-digit" }
+      : rangeMs <= 90 * 24 * 60 * 60 * 1000
+        ? { month: "short", day: "numeric" }
+        : rangeMs <= 365 * 24 * 60 * 60 * 1000
+          ? { month: "short", year: "numeric" }
+          : { year: "numeric" };
+  return new Intl.DateTimeFormat(undefined, options).format(new Date(timestamp));
+}
+
+function detailKindLabel(kind: HealthDataDetailEntry["kind"]): string {
+  if (kind === "lab-marker") {
+    return "Lab marker";
+  }
+  return kind.charAt(0).toUpperCase() + kind.slice(1);
+}
+
+function renderEntryContext(entry: HealthDataDetailEntry): string {
+  return [entry.sourceLabel, entry.importFileName, entry.note].filter(Boolean).join(" • ") || "—";
+}
+
+function formatDetailValue(value: number): string {
+  return Number.isInteger(value) ? value.toString() : value.toFixed(2).replace(/\.?0+$/, "");
 }
 
 function MiniChart({ points }: { points: Array<{ date: string; value: number }> }) {
