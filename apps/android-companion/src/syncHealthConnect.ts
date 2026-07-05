@@ -61,9 +61,15 @@ export async function syncHealthConnectLast30Days(endpointUrl: string): Promise<
     throw new Error("Health Connect is unavailable on this device.");
   }
 
-  const initialized = await initialize();
+  let initialized = false;
+  try {
+    initialized = await initialize();
+  } catch (error) {
+    throw new Error(`Health Connect initialization error: ${error instanceof Error ? error.message : "Unknown error"}`);
+  }
+
   if (!initialized) {
-    throw new Error("Failed to initialize Health Connect.");
+    throw new Error("Failed to initialize Health Connect (returned false).");
   }
 
   const grantedPermissions = await requestPermission(readPermissions);
@@ -157,9 +163,17 @@ export async function syncHealthConnectLast30Days(endpointUrl: string): Promise<
 
   const responseBody = await response.json().catch(() => ({}));
   if (!response.ok) {
+    const issueDetails = Array.isArray(responseBody.issues)
+      ? responseBody.issues
+          .slice(0, 5)
+          .map((issue: { path?: string[]; message?: string }) => `${issue.path?.join(".") || "body"}: ${issue.message || "Invalid value"}`)
+          .join("; ")
+      : "";
     throw new Error(
       typeof responseBody.error === "string"
-        ? responseBody.error
+        ? issueDetails && !responseBody.error.includes(issueDetails)
+          ? `${responseBody.error}: ${issueDetails}`
+          : responseBody.error
         : `Sync endpoint returned ${response.status}.`
     );
   }

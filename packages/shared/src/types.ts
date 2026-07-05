@@ -131,6 +131,8 @@ export interface LabResultMarker {
   flag?: "low" | "normal" | "high" | "critical" | "unknown";
 }
 
+export type InsightModel = "deterministic" | "local-llm" | `${"ollama" | "openai"}:${string}`;
+
 export interface Insight {
   id: string;
   createdAt: string;
@@ -138,7 +140,7 @@ export interface Insight {
   body: string;
   evidence: string[];
   confidence: "low" | "medium" | "high";
-  model: "deterministic" | "local-llm";
+  model: InsightModel;
   safetyNotice: string;
 }
 

@@ -8,6 +8,7 @@
     "userInterfaceStyle": "light",
     "android": {
       "package": "com.localfitnessadvisor.companion",
+      "usesCleartextTraffic": true,
       "permissions": [
         "android.permission.health.READ_STEPS",
         "android.permission.health.READ_HEART_RATE",
@@ -25,17 +26,23 @@
       "predictiveBackGestureEnabled": false
     },
     "plugins": [
-      "react-native-health-connect",
+      "./plugins/withDevNetworkSecurity",
+      "expo-health-connect",
       [
         "expo-build-properties",
         {
           "android": {
             "minSdkVersion": 26,
-            "compileSdkVersion": 35,
+            "compileSdkVersion": 36,
             "targetSdkVersion": 35
           }
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "2cc5cf1b-57e8-4e6f-8709-662259497a57"
+      }
+    }
   }
 }

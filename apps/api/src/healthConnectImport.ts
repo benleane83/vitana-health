@@ -15,6 +15,8 @@ const pointSampleSchema = z.object({
   value: z.number().finite()
 });
 
+const densePointSampleLimit = 250_000;
+
 const exerciseSchema = z.object({
   startTime: isoDateString,
   endTime: isoDateString,
@@ -29,10 +31,10 @@ export const healthConnectImportRequestSchema = z.object({
   rangeEnd: isoDateString,
   deviceLabel: z.string().min(1).max(120).optional(),
   steps: z.array(stepSchema).max(20_000).default([]),
-  heartRate: z.array(pointSampleSchema).max(20_000).default([]),
-  oxygenSaturation: z.array(pointSampleSchema).max(20_000).default([]),
-  hrvRmssd: z.array(pointSampleSchema).max(20_000).default([]),
-  weightKg: z.array(pointSampleSchema).max(20_000).default([]),
+  heartRate: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
+  oxygenSaturation: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
+  hrvRmssd: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
+  weightKg: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
   exerciseSessions: z.array(exerciseSchema).max(5_000).default([])
 });
 

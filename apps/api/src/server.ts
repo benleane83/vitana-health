@@ -150,23 +150,23 @@ app.post("/api/import/samsung-json-upload", (request, response) => {
     },
     stats: imported.stats
   });
+});
 
-  app.post("/api/import/health-connect", (request, response) => {
-    const parsed = healthConnectImportRequestSchema.parse(request.body ?? {});
-    const imported = parseHealthConnectImport(parsed);
-    const merged = store.mergeImport(imported);
-    response.status(201).json({
-      counts: {
-        sourceImports: merged.sourceImports.length,
-        observations: merged.observations.length,
-        timeSeriesSamples: merged.timeSeriesSamples.length,
-        activitySessions: merged.activitySessions.length
-      },
-      import: {
-        ...imported.sourceImport,
-        rawContent: undefined
-      }
-    });
+app.post("/api/import/health-connect", (request, response) => {
+  const parsed = healthConnectImportRequestSchema.parse(request.body ?? {});
+  const imported = parseHealthConnectImport(parsed);
+  const merged = store.mergeImport(imported);
+  response.status(201).json({
+    counts: {
+      sourceImports: merged.sourceImports.length,
+      observations: merged.observations.length,
+      timeSeriesSamples: merged.timeSeriesSamples.length,
+      activitySessions: merged.activitySessions.length
+    },
+    import: {
+      ...imported.sourceImport,
+      rawContent: undefined
+    }
   });
 });
 
@@ -339,7 +339,11 @@ app.get("/api/export", (_request, response) => {
 
 app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
   if (error instanceof z.ZodError) {
-    response.status(400).json({ error: "Invalid request", issues: error.issues });
+    const issueSummary = error.issues
+      .slice(0, 5)
+      .map((issue) => `${issue.path.join(".") || "body"}: ${issue.message}`)
+      .join("; ");
+    response.status(400).json({ error: `Invalid request: ${issueSummary}`, issues: error.issues });
     return;
   }
   if (error instanceof Error) {
