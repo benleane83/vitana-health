@@ -1,0 +1,18 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "install-impeccable-user-skill",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"$ErrorActionPreference='Stop'; $tmp=Join-Path $env:TEMP ('impeccable-src-'+[guid]::NewGuid().ToString()); git clone --depth 1 https://github.com/pbakaus/impeccable $tmp | Out-Null; $src=Join-Path $tmp '.agents/skills/impeccable'; if (!(Test-Path $src)) { throw \"Missing source folder: $src\" }; $dstRoot=Join-Path $HOME '.agents/skills'; New-Item -ItemType Directory -Path $dstRoot -Force | Out-Null; $dst=Join-Path $dstRoot 'impeccable'; if (Test-Path $dst) { Remove-Item -Recurse -Force $dst }; Copy-Item -Recurse -Force $src $dst; Write-Output \"Installed to $dst\""
+			],
+			"isBackground": false
+		}
+	]
+}

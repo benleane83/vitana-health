@@ -98,7 +98,12 @@ function groupBy<T>(items: T[], getKey: (item: T) => string): Map<string, T[]> {
   const grouped = new Map<string, T[]>();
   for (const item of items) {
     const key = getKey(item);
-    grouped.set(key, [...(grouped.get(key) ?? []), item]);
+    const group = grouped.get(key);
+    if (group) {
+      group.push(item);
+    } else {
+      grouped.set(key, [item]);
+    }
   }
   return grouped;
 }
