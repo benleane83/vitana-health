@@ -38,6 +38,105 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     aggregation: "latest"
   },
   {
+    code: "body_fat_pct",
+    display: "Body fat percentage",
+    category: "body",
+    kind: "point",
+    canonicalUnit: "%",
+    aliases: ["body fat", "body fat percentage", "body fat %", "fat %", "fat pct", "fat percent", "fat percentage", "pbf", "percent body fat"],
+    aggregation: "latest"
+  },
+  {
+    code: "skeletal_muscle_mass",
+    display: "Skeletal muscle mass",
+    category: "body",
+    kind: "point",
+    canonicalUnit: "kg",
+    aliases: ["skeletal muscle mass", "smm", "muscle mass", "skeletal muscle"],
+    aggregation: "latest"
+  },
+  {
+    code: "fat_mass",
+    display: "Fat mass",
+    category: "body",
+    kind: "point",
+    canonicalUnit: "kg",
+    aliases: ["fat mass", "body fat mass", "bfm"],
+    aggregation: "latest"
+  },
+  {
+    code: "lean_body_mass",
+    display: "Lean body mass",
+    category: "body",
+    kind: "point",
+    canonicalUnit: "kg",
+    aliases: ["lean body mass", "lean mass", "fat free mass", "ffm"],
+    aggregation: "latest"
+  },
+  {
+    code: "bmi",
+    display: "BMI",
+    category: "body",
+    kind: "point",
+    canonicalUnit: "kg/m2",
+    aliases: ["bmi", "body mass index"],
+    aggregation: "latest"
+  },
+  {
+    code: "visceral_fat_level",
+    display: "Visceral fat level",
+    category: "body",
+    kind: "point",
+    canonicalUnit: "level",
+    aliases: ["visceral fat", "visceral fat level", "vfl", "visceral fat rating"],
+    aggregation: "latest"
+  },
+  {
+    code: "total_body_water",
+    display: "Total body water",
+    category: "body",
+    kind: "point",
+    canonicalUnit: "L",
+    aliases: ["total body water", "body water", "tbw", "bw", "water"],
+    aggregation: "latest"
+  },
+  {
+    code: "body_water_pct",
+    display: "Body water percentage",
+    category: "body",
+    kind: "point",
+    canonicalUnit: "%",
+    aliases: ["body water percentage", "body water %", "tbw %", "water percentage", "water %"],
+    aggregation: "latest"
+  },
+  {
+    code: "basal_metabolic_rate",
+    display: "Basal metabolic rate",
+    category: "body",
+    kind: "point",
+    canonicalUnit: "kcal",
+    aliases: ["basal metabolic rate", "bmr", "basal metabolism", "resting metabolic rate"],
+    aggregation: "latest"
+  },
+  {
+    code: "bone_mineral_content",
+    display: "Bone mineral content",
+    category: "body",
+    kind: "point",
+    canonicalUnit: "kg",
+    aliases: ["bone mineral content", "bone mass", "mineral", "minerals", "bone mineral"],
+    aggregation: "latest"
+  },
+  {
+    code: "protein_mass",
+    display: "Protein mass",
+    category: "body",
+    kind: "point",
+    canonicalUnit: "kg",
+    aliases: ["protein", "protein mass"],
+    aggregation: "latest"
+  },
+  {
     code: "sleep_duration",
     display: "Sleep duration",
     category: "sleep",

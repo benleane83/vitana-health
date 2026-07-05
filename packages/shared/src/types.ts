@@ -1,6 +1,12 @@
 export type MeasurementKind = "point" | "interval" | "event" | "panel-component";
 
-export type SourceKind = "samsung-health" | "health-connect" | "manual-entry" | "blood-test-csv" | "derived";
+export type SourceKind =
+  | "samsung-health"
+  | "health-connect"
+  | "manual-entry"
+  | "blood-test-csv"
+  | "body-composition-report"
+  | "derived";
 
 export interface Profile {
   id: "self";

@@ -38,8 +38,11 @@ export class HealthStore {
       this.securityMode = "generated-local-key";
     }
     this.data = existsSync(dataPath) ? this.readEncryptedStore() : createEmptyStore();
+    const registryChanged = reconcileDefaultMeasurementTypes(this.data);
     if (!existsSync(dataPath)) {
       this.audit("store-created", "Encrypted local health store created.");
+      this.persist();
+    } else if (registryChanged) {
       this.persist();
     }
   }
@@ -201,6 +204,16 @@ function createEmptyStore(): HealthStoreData {
     insights: [],
     auditEvents: []
   };
+}
+
+function reconcileDefaultMeasurementTypes(data: HealthStoreData): boolean {
+  const existingCodes = new Set(data.measurementTypes.map((type) => type.code));
+  const missingTypes = defaultMeasurementTypes.filter((type) => !existingCodes.has(type.code));
+  if (missingTypes.length === 0) {
+    return false;
+  }
+  data.measurementTypes.push(...missingTypes);
+  return true;
 }
 
 function redactRawImport(sourceImport: SourceImport, includeRaw: boolean): SourceImport {

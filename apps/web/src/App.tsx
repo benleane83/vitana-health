@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   AnalyticsSummary,
+  BodyCompositionDraft,
+  BodyCompositionDraftRow,
   HealthDataSummary,
   HealthDataSummaryTypeRow,
   HealthStoreData,
@@ -25,7 +27,7 @@ const sampleSamsungCsv = `date,type,value,unit
 
 type AppRoute = "dashboard" | "summary" | "import" | "query";
 type SummarySort = "name" | "count" | "recency";
-type LabsMode = "manual" | "upload";
+type LabsMode = "manual" | "upload" | "bodycomp";
 type ImportMode = "labs" | "fitness" | "samsung";
 
 interface ManualMarkerRow {
@@ -33,6 +35,20 @@ interface ManualMarkerRow {
   marker: string;
   value: string;
   unit: string;
+}
+
+interface BodyCompositionEditableRow {
+  id: string;
+  label: string;
+  measurementCode: string;
+  displayName: string;
+  value: string;
+  unit: string;
+  observedAt?: string;
+  confidence: BodyCompositionDraftRow["confidence"];
+  sourceText?: string;
+  included: boolean;
+  generatedCode?: boolean;
 }
 
 const timestampFormatter = new Intl.DateTimeFormat(undefined, {
@@ -65,6 +81,10 @@ export function App() {
   const [manualLabName, setManualLabName] = useState("");
   const [manualRows, setManualRows] = useState<ManualMarkerRow[]>(() => createStarterRows());
   const [uploadFile, setUploadFile] = useState<File>();
+  const [bodyCompFile, setBodyCompFile] = useState<File>();
+  const [bodyCompDraft, setBodyCompDraft] = useState<BodyCompositionDraft>();
+  const [bodyCompRows, setBodyCompRows] = useState<BodyCompositionEditableRow[]>([]);
+  const [bodyCompReportDate, setBodyCompReportDate] = useState(todayIsoDate());
 
   const [aiQuestion, setAiQuestion] = useState("");
   const [aiResult, setAiResult] = useState<AiQueryResult | undefined>();
@@ -72,6 +92,7 @@ export function App() {
   const [aiError, setAiError] = useState<string | undefined>();
 
   const uploadInputRef = useRef<HTMLInputElement>(null);
+  const bodyCompInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     void refresh();
@@ -201,6 +222,62 @@ export function App() {
     });
   }
 
+  async function previewBodyCompositionReport(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!bodyCompFile) {
+      setMessage("Select a PDF or image before preview.");
+      return;
+    }
+    if (!isSupportedBodyCompMimeType(bodyCompFile.type)) {
+      setMessage("Use a PDF, JPEG, or PNG body composition report.");
+      return;
+    }
+
+    await run("Body composition scan parsed for review.", async () => {
+      const contentBase64 = await readFileAsBase64(bodyCompFile);
+      const draft = await api.previewBodyCompositionReport({
+        fileName: bodyCompFile.name,
+        mimeType: bodyCompFile.type,
+        contentBase64
+      });
+      setBodyCompDraft(draft);
+      setBodyCompReportDate(draft.reportDate?.slice(0, 10) ?? todayIsoDate());
+      setBodyCompRows(draft.rows.map(toEditableBodyCompRow));
+    });
+  }
+
+  async function commitBodyCompositionReport(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!bodyCompDraft) {
+      setMessage("Preview a body composition report before saving.");
+      return;
+    }
+    const rows = bodyCompRows.map(toBodyCompositionDraftRow);
+    const includedRows = rows.filter((row) => row.included);
+    if (includedRows.length === 0) {
+      setMessage("Include at least one parsed row before saving.");
+      return;
+    }
+
+    await run("Approved body composition observations saved.", async () => {
+      await api.commitBodyCompositionReport({
+        fileName: bodyCompDraft.fileName,
+        reportDate: bodyCompReportDate,
+        sourceText: bodyCompDraft.sourceText,
+        sourceChecksum: bodyCompDraft.checksum,
+        rows
+      });
+      await refresh();
+      setBodyCompDraft(undefined);
+      setBodyCompRows([]);
+      setBodyCompFile(undefined);
+      setBodyCompReportDate(todayIsoDate());
+      if (bodyCompInputRef.current) {
+        bodyCompInputRef.current.value = "";
+      }
+    });
+  }
+
   async function generateInsight() {
     await run("Insight generated from local data.", async () => {
       await api.generateInsight();
@@ -302,6 +379,10 @@ export function App() {
         return next;
       })
     );
+  }
+
+  function updateBodyCompRow(id: string, patch: Partial<BodyCompositionEditableRow>) {
+    setBodyCompRows((current) => current.map((row) => (row.id === id ? { ...row, ...patch } : row)));
   }
 
   return (
@@ -478,6 +559,16 @@ export function App() {
           onSubmitUpload={submitCsvUpload}
           onUploadFileChange={setUploadFile}
           uploadInputRef={uploadInputRef}
+          bodyCompFile={bodyCompFile}
+          bodyCompDraft={bodyCompDraft}
+          bodyCompRows={bodyCompRows}
+          bodyCompReportDate={bodyCompReportDate}
+          onBodyCompFileChange={setBodyCompFile}
+          onBodyCompReportDateChange={setBodyCompReportDate}
+          onBodyCompRowChange={updateBodyCompRow}
+          onPreviewBodyComp={previewBodyCompositionReport}
+          onCommitBodyComp={commitBodyCompositionReport}
+          bodyCompInputRef={bodyCompInputRef}
           samsungFileName={samsungFileName}
           samsungCsv={samsungCsv}
           onSamsungFileNameChange={setSamsungFileName}
@@ -577,6 +668,16 @@ function ImportPage({
   onSubmitUpload,
   onUploadFileChange,
   uploadInputRef,
+  bodyCompFile,
+  bodyCompDraft,
+  bodyCompRows,
+  bodyCompReportDate,
+  onBodyCompFileChange,
+  onBodyCompReportDateChange,
+  onBodyCompRowChange,
+  onPreviewBodyComp,
+  onCommitBodyComp,
+  bodyCompInputRef,
   samsungFileName,
   samsungCsv,
   onSamsungFileNameChange,
@@ -602,6 +703,16 @@ function ImportPage({
   onSubmitUpload: (event: React.FormEvent<HTMLFormElement>) => void;
   onUploadFileChange: (file?: File) => void;
   uploadInputRef: React.RefObject<HTMLInputElement | null>;
+  bodyCompFile?: File;
+  bodyCompDraft?: BodyCompositionDraft;
+  bodyCompRows: BodyCompositionEditableRow[];
+  bodyCompReportDate: string;
+  onBodyCompFileChange: (file?: File) => void;
+  onBodyCompReportDateChange: (value: string) => void;
+  onBodyCompRowChange: (id: string, patch: Partial<BodyCompositionEditableRow>) => void;
+  onPreviewBodyComp: (event: React.FormEvent<HTMLFormElement>) => void;
+  onCommitBodyComp: (event: React.FormEvent<HTMLFormElement>) => void;
+  bodyCompInputRef: React.RefObject<HTMLInputElement | null>;
   samsungFileName: string;
   samsungCsv: string;
   onSamsungFileNameChange: (value: string) => void;
@@ -644,6 +755,16 @@ function ImportPage({
           onSubmitUpload={onSubmitUpload}
           onUploadFileChange={onUploadFileChange}
           uploadInputRef={uploadInputRef}
+          bodyCompFile={bodyCompFile}
+          bodyCompDraft={bodyCompDraft}
+          bodyCompRows={bodyCompRows}
+          bodyCompReportDate={bodyCompReportDate}
+          onBodyCompFileChange={onBodyCompFileChange}
+          onBodyCompReportDateChange={onBodyCompReportDateChange}
+          onBodyCompRowChange={onBodyCompRowChange}
+          onPreviewBodyComp={onPreviewBodyComp}
+          onCommitBodyComp={onCommitBodyComp}
+          bodyCompInputRef={bodyCompInputRef}
         />
       ) : null}
 
@@ -744,7 +865,17 @@ function LabsPage({
   onSubmitManual,
   onSubmitUpload,
   onUploadFileChange,
-  uploadInputRef
+  uploadInputRef,
+  bodyCompFile,
+  bodyCompDraft,
+  bodyCompRows,
+  bodyCompReportDate,
+  onBodyCompFileChange,
+  onBodyCompReportDateChange,
+  onBodyCompRowChange,
+  onPreviewBodyComp,
+  onCommitBodyComp,
+  bodyCompInputRef
 }: {
   busy: boolean;
   mode: LabsMode;
@@ -763,6 +894,16 @@ function LabsPage({
   onSubmitUpload: (event: React.FormEvent<HTMLFormElement>) => void;
   onUploadFileChange: (file?: File) => void;
   uploadInputRef: React.RefObject<HTMLInputElement | null>;
+  bodyCompFile?: File;
+  bodyCompDraft?: BodyCompositionDraft;
+  bodyCompRows: BodyCompositionEditableRow[];
+  bodyCompReportDate: string;
+  onBodyCompFileChange: (file?: File) => void;
+  onBodyCompReportDateChange: (value: string) => void;
+  onBodyCompRowChange: (id: string, patch: Partial<BodyCompositionEditableRow>) => void;
+  onPreviewBodyComp: (event: React.FormEvent<HTMLFormElement>) => void;
+  onCommitBodyComp: (event: React.FormEvent<HTMLFormElement>) => void;
+  bodyCompInputRef: React.RefObject<HTMLInputElement | null>;
 }) {
   return (
     <section className="panel labs-panel">
@@ -777,6 +918,9 @@ function LabsPage({
           </button>
           <button className={mode === "upload" ? "active" : ""} onClick={() => onModeChange("upload")}>
             Upload CSV
+          </button>
+          <button className={mode === "bodycomp" ? "active" : ""} onClick={() => onModeChange("bodycomp")}>
+            Body comp scan
           </button>
         </div>
       </div>
@@ -855,7 +999,7 @@ function LabsPage({
             <button disabled={busy} type="submit">Import manual panel</button>
           </div>
         </form>
-      ) : (
+      ) : mode === "upload" ? (
         <form className="labs-upload-form" onSubmit={onSubmitUpload}>
           <label>
             Select blood-test CSV
@@ -868,8 +1012,133 @@ function LabsPage({
           </label>
           <button disabled={busy} type="submit">Upload CSV</button>
         </form>
+      ) : (
+        <BodyCompositionImportPanel
+          busy={busy}
+          file={bodyCompFile}
+          draft={bodyCompDraft}
+          rows={bodyCompRows}
+          reportDate={bodyCompReportDate}
+          inputRef={bodyCompInputRef}
+          onFileChange={onBodyCompFileChange}
+          onReportDateChange={onBodyCompReportDateChange}
+          onRowChange={onBodyCompRowChange}
+          onPreview={onPreviewBodyComp}
+          onCommit={onCommitBodyComp}
+        />
       )}
     </section>
+  );
+}
+
+function BodyCompositionImportPanel({
+  busy,
+  file,
+  draft,
+  rows,
+  reportDate,
+  inputRef,
+  onFileChange,
+  onReportDateChange,
+  onRowChange,
+  onPreview,
+  onCommit
+}: {
+  busy: boolean;
+  file?: File;
+  draft?: BodyCompositionDraft;
+  rows: BodyCompositionEditableRow[];
+  reportDate: string;
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  onFileChange: (file?: File) => void;
+  onReportDateChange: (value: string) => void;
+  onRowChange: (id: string, patch: Partial<BodyCompositionEditableRow>) => void;
+  onPreview: (event: React.FormEvent<HTMLFormElement>) => void;
+  onCommit: (event: React.FormEvent<HTMLFormElement>) => void;
+}) {
+  const includedCount = rows.filter((row) => row.included).length;
+  return (
+    <div className="bodycomp-import">
+      <form className="labs-upload-form" onSubmit={onPreview}>
+        <label>
+          Select body composition report
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+            onChange={(event) => onFileChange(event.target.files?.[0])}
+          />
+        </label>
+        <div className="bodycomp-upload-actions">
+          <span>{file ? `${file.name} / ${formatBytes(file.size)}` : "PDF, JPEG, or PNG. Parsed locally before save."}</span>
+          <button disabled={busy || !file} type="submit">Preview scan</button>
+        </div>
+      </form>
+
+      {draft ? (
+        <form className="bodycomp-review" onSubmit={onCommit}>
+          <div className="bodycomp-review-header">
+            <div>
+              <p className="eyebrow">Review before saving</p>
+              <h3>{draft.fileName}</h3>
+              <p className="empty">{rows.length} parsed row(s), {includedCount} selected for save.</p>
+            </div>
+            <label>
+              Report date
+              <input type="date" value={reportDate} onChange={(event) => onReportDateChange(event.target.value)} />
+            </label>
+          </div>
+
+          {draft.diagnostics.length > 0 ? (
+            <div className="bodycomp-diagnostics" role="status">
+              {draft.diagnostics.slice(0, 6).map((diagnostic) => <span key={diagnostic}>{diagnostic}</span>)}
+            </div>
+          ) : null}
+
+          <div className="bodycomp-rows" role="table" aria-label="Parsed body composition observations">
+            <div className="bodycomp-row bodycomp-row-head" role="row">
+              <span role="columnheader">Save</span>
+              <span role="columnheader">Measurement</span>
+              <span role="columnheader">Value</span>
+              <span role="columnheader">Unit</span>
+              <span role="columnheader">Confidence</span>
+            </div>
+            {rows.map((row) => (
+              <div className="bodycomp-row" role="row" key={row.id} data-included={row.included}>
+                <span role="cell" className="bodycomp-include-cell">
+                  <input
+                    type="checkbox"
+                    checked={row.included}
+                    aria-label={`Save ${row.displayName}`}
+                    onChange={(event) => onRowChange(row.id, { included: event.target.checked })}
+                  />
+                </span>
+                <span role="cell" className="bodycomp-measurement-cell">
+                  <input value={row.displayName} onChange={(event) => onRowChange(row.id, { displayName: event.target.value })} />
+                  <input value={row.measurementCode} onChange={(event) => onRowChange(row.id, { measurementCode: event.target.value })} />
+                  {row.sourceText ? <em>{row.sourceText}</em> : null}
+                </span>
+                <span role="cell">
+                  <input inputMode="decimal" value={row.value} onChange={(event) => onRowChange(row.id, { value: event.target.value })} />
+                </span>
+                <span role="cell">
+                  <input value={row.unit} onChange={(event) => onRowChange(row.id, { unit: event.target.value })} />
+                </span>
+                <span role="cell" className="bodycomp-confidence-cell">
+                  <strong data-confidence={row.confidence}>{row.confidence}</strong>
+                  {row.generatedCode ? <small>Generated code</small> : null}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div className="labs-actions">
+            <span className="empty">Only selected rows will be saved as observations.</span>
+            <button disabled={busy || includedCount === 0} type="submit">Save approved observations</button>
+          </div>
+        </form>
+      ) : null}
+    </div>
   );
 }
 
@@ -1261,6 +1530,55 @@ function numberOrUndefined(value: FormDataEntryValue | null): number | undefined
   if (!value) return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function toEditableBodyCompRow(row: BodyCompositionDraftRow): BodyCompositionEditableRow {
+  return {
+    ...row,
+    value: String(row.value)
+  };
+}
+
+function toBodyCompositionDraftRow(row: BodyCompositionEditableRow): BodyCompositionDraftRow {
+  const value = Number.parseFloat(row.value);
+  if (!Number.isFinite(value)) {
+    throw new Error(`Enter a numeric value for ${row.displayName || row.label}.`);
+  }
+  if (!row.measurementCode.trim()) {
+    throw new Error(`Measurement code is required for ${row.displayName || row.label}.`);
+  }
+  if (!row.unit.trim()) {
+    throw new Error(`Unit is required for ${row.displayName || row.label}.`);
+  }
+  return {
+    ...row,
+    measurementCode: row.measurementCode.trim(),
+    displayName: row.displayName.trim() || row.label.trim(),
+    value,
+    unit: row.unit.trim()
+  };
+}
+
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Could not read selected file."));
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      resolve(result.includes(",") ? result.slice(result.indexOf(",") + 1) : result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function isSupportedBodyCompMimeType(mimeType: string): boolean {
+  return mimeType === "application/pdf" || mimeType === "image/jpeg" || mimeType === "image/png";
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function toManualPayload({

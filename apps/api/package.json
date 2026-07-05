@@ -11,9 +11,12 @@
   },
   "dependencies": {
     "@local-fitness-advisor/shared": "file:../../packages/shared",
+    "@tesseract.js-data/eng": "^1.0.0",
     "cors": "^2.8.5",
     "duckdb": "^1.4.4",
     "express": "^4.21.2",
+    "pdf-parse": "^2.4.5",
+    "tesseract.js": "^7.0.0",
     "zod": "^3.24.2"
   },
   "devDependencies": {

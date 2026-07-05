@@ -399,6 +399,140 @@ h3 {
   gap: var(--space-3);
 }
 
+.bodycomp-import,
+.bodycomp-review {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.bodycomp-upload-actions,
+.bodycomp-review-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.bodycomp-upload-actions span {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.bodycomp-review {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: oklch(18% 0.028 160 / 0.72);
+  padding: var(--space-4);
+}
+
+.bodycomp-review h3 {
+  margin-bottom: var(--space-2);
+}
+
+.bodycomp-review-header label {
+  min-width: min(220px, 100%);
+}
+
+.bodycomp-diagnostics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.bodycomp-diagnostics span {
+  border: 1px solid oklch(72% 0.14 82 / 0.42);
+  border-radius: var(--radius-pill);
+  background: oklch(27% 0.052 82 / 0.46);
+  color: var(--warning);
+  font-size: 0.86rem;
+  font-weight: 800;
+  padding: 0.35rem 0.6rem;
+}
+
+.bodycomp-rows {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.bodycomp-row {
+  display: grid;
+  grid-template-columns: 64px minmax(220px, 1.25fr) minmax(100px, 0.5fr) minmax(90px, 0.45fr) minmax(120px, 0.5fr);
+  gap: var(--space-3);
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: oklch(15% 0.024 158 / 0.76);
+  padding: var(--space-3);
+}
+
+.bodycomp-row[data-included="false"] {
+  opacity: 0.62;
+}
+
+.bodycomp-row-head {
+  background: transparent;
+  color: var(--muted);
+  font-weight: 800;
+  padding-block: var(--space-2);
+}
+
+.bodycomp-include-cell {
+  display: flex;
+  justify-content: center;
+}
+
+.bodycomp-include-cell input {
+  width: auto;
+  min-width: 22px;
+  min-height: 22px;
+}
+
+.bodycomp-measurement-cell {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.bodycomp-measurement-cell em {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.bodycomp-confidence-cell {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.bodycomp-confidence-cell strong {
+  border-radius: var(--radius-pill);
+  display: inline-flex;
+  justify-content: center;
+  width: fit-content;
+  padding: 0.28rem 0.58rem;
+  text-transform: capitalize;
+}
+
+.bodycomp-confidence-cell strong[data-confidence="high"] {
+  background: oklch(29% 0.06 148 / 0.72);
+  color: var(--success);
+}
+
+.bodycomp-confidence-cell strong[data-confidence="medium"] {
+  background: oklch(30% 0.055 82 / 0.72);
+  color: var(--warning);
+}
+
+.bodycomp-confidence-cell strong[data-confidence="low"] {
+  background: oklch(30% 0.065 35 / 0.72);
+  color: var(--danger);
+}
+
+.bodycomp-confidence-cell small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
 .summary-categories {
   display: grid;
   gap: var(--space-3);
@@ -1106,9 +1240,23 @@ label {
 
   .labs-header,
   .labs-actions,
+  .bodycomp-upload-actions,
+  .bodycomp-review-header,
   .query-form {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .bodycomp-row {
+    grid-template-columns: 1fr;
+  }
+
+  .bodycomp-row-head {
+    display: none;
+  }
+
+  .bodycomp-include-cell {
+    justify-content: flex-start;
   }
 
   h1 {
