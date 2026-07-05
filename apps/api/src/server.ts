@@ -20,6 +20,10 @@ import { callConfiguredModel, currentModelConfig } from "./modelClient.js";
 import { planDataAnswer } from "./askData.js";
 import { planStoreAnswer } from "./askStore.js";
 import { summarizeStoreData } from "./summary.js";
+import { planAiQuery } from "./aiQueryPlanner.js";
+import type { QueryDSL } from "./aiQueryPlanner.js";
+import { compileQueryDSL, validateCompiledSql } from "./queryCompiler.js";
+import { safetyNotice } from "@local-fitness-advisor/shared";
 
 loadEnvironmentFiles();
 
@@ -96,6 +100,12 @@ const askSchema = z.object({
   question: z.string().min(3).max(500)
 });
 
+const aiQuerySchema = z.object({
+  question: z.string().min(3).max(500),
+  timezone: z.string().max(80).optional(),
+  debug: z.boolean().optional().default(false)
+});
+
 app.get("/api/health", (_request, response) => {
   const snapshot = store.snapshot();
   const model = currentModelConfig();
@@ -131,16 +141,23 @@ app.put("/api/profile", (request, response) => {
   response.json(store.replaceProfile(profile));
 });
 
-app.post("/api/import/samsung", (request, response) => {
+app.post("/api/import/samsung", async (request, response, next) => {
+  try {
   const parsed = importSchema.parse(request.body);
   const imported = parseSamsungHealthCsv(parsed.fileName, parsed.content);
+  const merged = store.mergeImport(imported);
+  const warehouse = await rebuildWarehouseFromStore(merged);
   response.status(201).json({
-    store: store.mergeImport(imported),
+    store: merged,
+    warehouse,
     import: {
       ...imported.sourceImport,
       rawContent: undefined
     }
   });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.post("/api/import/blood-test", (request, response) => {
@@ -167,10 +184,12 @@ app.post("/api/import/labs/manual", (request, response) => {
   });
 });
 
-app.post("/api/import/samsung-json-upload", (request, response) => {
+app.post("/api/import/samsung-json-upload", async (request, response, next) => {
+  try {
   const parsed = samsungJsonUploadSchema.parse(request.body ?? {});
   const imported = importSamsungJsonUpload({ uploadPath: parsed.uploadPath });
   const merged = store.mergeImport(imported.parsed);
+  const warehouse = await rebuildWarehouseFromStore(merged);
   response.status(201).json({
     counts: {
       sourceImports: merged.sourceImports.length,
@@ -183,14 +202,20 @@ app.post("/api/import/samsung-json-upload", (request, response) => {
       ...imported.parsed.sourceImport,
       rawContent: undefined
     },
-    stats: imported.stats
+    stats: imported.stats,
+    warehouse
   });
+  } catch (error) {
+    next(error);
+  }
 });
 
-app.post("/api/import/health-connect", (request, response) => {
+app.post("/api/import/health-connect", async (request, response, next) => {
+  try {
   const parsed = healthConnectImportRequestSchema.parse(request.body ?? {});
   const imported = parseHealthConnectImport(parsed);
   const merged = store.mergeImport(imported);
+  const warehouse = await rebuildWarehouseFromStore(merged);
   response.status(201).json({
     counts: {
       sourceImports: merged.sourceImports.length,
@@ -201,8 +226,12 @@ app.post("/api/import/health-connect", (request, response) => {
     import: {
       ...imported.sourceImport,
       rawContent: undefined
-    }
+    },
+    warehouse
   });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.get("/api/analytics", (_request, response) => {
@@ -339,6 +368,185 @@ app.post("/api/query/ask-store", async (request, response, next) => {
     next(error);
   }
 });
+
+app.post("/api/query/ai", async (request, response, next) => {
+  try {
+    const parsed = aiQuerySchema.parse(request.body ?? {});
+
+    // Step 1: AI DSL planner
+    const plannerOutcome = await planAiQuery(parsed.question, {
+      timezone: parsed.timezone
+    });
+
+    if (!plannerOutcome.ok) {
+      response.status(400).json({
+        question: parsed.question,
+        answer: plannerOutcome.error,
+        limitations: plannerOutcome.limitations,
+        suggestedRephrase: plannerOutcome.suggestedRephrase,
+        confidence: 0,
+        plan: null,
+        sql: null,
+        rows: [],
+        chart: null
+      });
+      return;
+    }
+
+    // Step 2: Compile DSL to SQL
+    const compileOutcome = compileQueryDSL(plannerOutcome.dsl);
+    if (!compileOutcome.ok) {
+      response.status(400).json({
+        question: parsed.question,
+        answer: `Query could not be compiled: ${compileOutcome.error}`,
+        limitations: [compileOutcome.error, ...plannerOutcome.limitations],
+        confidence: plannerOutcome.confidence * 0.5,
+        plan: plannerOutcome.dsl,
+        sql: null,
+        rows: [],
+        chart: null
+      });
+      return;
+    }
+
+    // Step 3: Validate compiled SQL (safety pass)
+    const validation = validateCompiledSql(compileOutcome.sql);
+    if (!validation.valid) {
+      response.status(500).json({
+        question: parsed.question,
+        answer: "Generated SQL failed safety validation.",
+        limitations: validation.violations,
+        confidence: 0,
+        plan: plannerOutcome.dsl,
+        sql: parsed.debug ? compileOutcome.sql : null,
+        rows: [],
+        chart: null
+      });
+      return;
+    }
+
+    // Step 4: Execute query
+    const rows = await runWarehouseQuery(compileOutcome.sql);
+
+    if (rows.length === 0) {
+      response.json({
+        question: parsed.question,
+        answer: "No data found for this query in your local warehouse. Import more data or adjust the time range.",
+        limitations: [
+          "No rows returned. The warehouse may not contain data for the requested metric and time range.",
+          ...plannerOutcome.limitations
+        ],
+        assumptions: plannerOutcome.assumptions,
+        confidence: plannerOutcome.confidence,
+        plan: plannerOutcome.dsl,
+        sql: compileOutcome.sql,
+        resolvedTimeRange: compileOutcome.resolvedTimeRange,
+        rows: [],
+        chart: buildChartSeries(plannerOutcome.dsl, [])
+      });
+      return;
+    }
+
+    // Step 5: Summarize with model
+    const summaryPrompt = [
+      "You are a wellness analytics assistant. Answer the question using only the SQL result rows below.",
+      "Provide one concise sentence. Do not diagnose or recommend treatments.",
+      `Safety notice: ${safetyNotice}`,
+      `Question: ${parsed.question}`,
+      `Time range: ${compileOutcome.resolvedTimeRange.label}`,
+      `SQL result (first 20 rows): ${JSON.stringify(rows.slice(0, 20))}`
+    ].join("\n");
+
+    const modelResult = await callConfiguredModel(summaryPrompt);
+
+    const answer =
+      modelResult.ok && modelResult.text
+        ? modelResult.text
+        : buildFallbackAnswer(plannerOutcome.dsl, rows, compileOutcome.resolvedTimeRange.label);
+
+    const debugInfo = parsed.debug
+      ? { plannerElapsedMs: plannerOutcome.modelElapsedMs, summaryElapsedMs: modelResult.elapsedMs }
+      : undefined;
+
+    response.json({
+      question: parsed.question,
+      answer,
+      limitations: plannerOutcome.limitations,
+      assumptions: plannerOutcome.assumptions,
+      confidence: plannerOutcome.confidence,
+      plan: plannerOutcome.dsl,
+      sql: compileOutcome.sql,
+      resolvedTimeRange: compileOutcome.resolvedTimeRange,
+      rowCount: rows.length,
+      rows: rows.slice(0, 100),
+      chart: buildChartSeries(plannerOutcome.dsl, rows),
+      model: modelResult.ok ? `${modelResult.provider}:${modelResult.model}` : "deterministic-fallback",
+      modelError: modelResult.ok ? undefined : modelResult.error,
+      debug: debugInfo
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+function buildChartSeries(
+  dsl: QueryDSL,
+  rows: Array<Record<string, unknown>>
+): { type: string; series: Array<{ label: string; value: number }> } | null {
+  if (!dsl.chartType || dsl.chartType === "none") {
+    return null;
+  }
+  if (dsl.intent === "timeseries") {
+    const dateKey = dsl.groupBy === "week" ? "week_start" : dsl.groupBy === "month" ? "month_start" : "day";
+    const series = rows
+      .map((row) => ({
+        label: String(row[dateKey] ?? ""),
+        value: typeof row.value === "number" ? row.value : Number(row.value ?? 0)
+      }))
+      .filter((point) => point.label);
+    return { type: dsl.chartType, series };
+  }
+  if (dsl.intent === "top_n") {
+    const series = rows.map((row) => ({
+      label: String(row.day ?? row.activity_type ?? row.week_start ?? ""),
+      value: typeof row.value === "number" ? row.value : Number(row.value ?? 0)
+    }));
+    return { type: dsl.chartType ?? "bar", series };
+  }
+  if (dsl.intent === "list_activities") {
+    const series = rows.map((row) => ({
+      label: String(row.activity_type ?? ""),
+      value: typeof row.count === "number" ? row.count : Number(row.count ?? 0)
+    }));
+    return { type: "bar", series };
+  }
+  return null;
+}
+
+function buildFallbackAnswer(
+  dsl: QueryDSL,
+  rows: Array<Record<string, unknown>>,
+  timeLabel: string
+): string {
+  if (rows.length === 0) {
+    return "No data available for this query.";
+  }
+  const first = rows[0];
+  if (dsl.intent === "aggregation" && first.value !== undefined) {
+    return `The ${dsl.aggregation} of ${dsl.metric ?? "metric"} for ${timeLabel} was ${first.value} ${first.unit ?? ""}.`.trim();
+  }
+  if (dsl.intent === "latest" && first.value !== undefined) {
+    return `The latest ${dsl.metric ?? "metric"} reading was ${first.value} ${first.unit ?? ""} on ${first.day ?? ""}.`.trim();
+  }
+  if (dsl.intent === "top_n" && first.value !== undefined) {
+    return `The highest ${dsl.metric ?? "metric"} was ${first.value} ${first.unit ?? ""} on ${first.day ?? ""} (${timeLabel}).`.trim();
+  }
+  if (dsl.intent === "list_activities") {
+    const topActivity = rows[0];
+    return `Most frequent activity for ${timeLabel}: ${topActivity.activity_type ?? "unknown"} (${topActivity.count ?? 0} sessions).`;
+  }
+  return `Found ${rows.length} records for ${timeLabel}.`;
+}
 
 app.post("/api/llm/simple", async (request, response, next) => {
   try {

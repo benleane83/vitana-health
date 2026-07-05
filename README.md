@@ -150,7 +150,79 @@ Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:4317/api/warehouse/rebuild
 
 This creates `data\health-warehouse.duckdb` with normalized tables and daily/weekly metric views.
 
-## Natural-language Query Endpoint
+## AI-Powered Natural Language Query (`/api/query/ai`)
+
+The AI query endpoint provides broad natural-language coverage over your local warehouse using a **DSL → SQL compiler pipeline** with safety guardrails.
+
+### Architecture
+
+```
+question → AI DSL Planner → validate DSL (Zod) → compile to SQL → validate SQL → execute DuckDB → summarize answer
+```
+
+1. **AI DSL Planner** (`aiQueryPlanner.ts`) — prompts the configured model to return a strict JSON query DSL (not raw SQL), validated by Zod schema.
+2. **DSL Compiler** (`queryCompiler.ts`) — maps the validated DSL to parameterized SQL templates only; no free-form SQL from the model.
+3. **SQL Validator** — a separate safety pass denies disallowed tokens and non-whitelisted identifiers even though SQL is compiler-produced.
+4. **DuckDB execution** — runs the validated query against your local warehouse.
+5. **Answer summarization** — the model produces a one-sentence answer from the evidence rows.
+
+### Request
+
+```powershell
+$body = @{ question = "average heart rate last month" } | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:4317/api/query/ai" -ContentType "application/json" -Body $body
+```
+
+Optional fields: `timezone` (IANA string), `debug` (boolean, adds planner timing to response).
+
+### Response fields
+
+| Field | Description |
+|---|---|
+| `answer` | Natural-language answer from the model |
+| `plan` | The structured DSL returned by the planner |
+| `sql` | The compiler-produced SQL that was executed |
+| `rows` | Up to 100 result rows |
+| `chart` | Optional chart-ready series `{ type, series: [{label, value}] }` |
+| `confidence` | Planner confidence score 0–1 |
+| `limitations` | Any caveats or planner assumptions |
+| `resolvedTimeRange` | The exact date range applied to the query |
+
+### Supported query classes
+
+- Time-series trends: `steps trend this week`, `daily heart rate last month`
+- Aggregations: `average heart rate last month`, `total steps this month`
+- Top-N: `max daily steps this month`, `top 10 step days`
+- Latest reading: `latest heart rate`
+- Activity summaries: `top exercises this month`
+
+### Safety guardrails
+
+- **SELECT-only**: Non-SELECT tokens (`DROP`, `DELETE`, `INSERT`, `UPDATE`, `CREATE`, etc.) are blocked at both compile and validate stages.
+- **Table/column whitelist**: Only `v_daily_metrics`, `v_weekly_metrics`, and `activities` with their known columns are allowed.
+- **Time window cap**: Maximum 366-day time window per query.
+- **Row limit cap**: Maximum 200 rows per query.
+- **Graceful fallback**: Unsupported questions return a clarifying limitations message and suggested rephrase rather than raw model output.
+
+### Time semantics
+
+Calendar month/week boundaries are resolved server-side before SQL compilation:
+
+| Phrase | Resolved range |
+|---|---|
+| `this month` | First day to last day of current calendar month |
+| `last month` | First day to last day of previous calendar month |
+| `this week` | Monday to Sunday of current week |
+| `last week` | Monday to Sunday of previous week |
+| `last 30d` (default) | Rolling 30 days from today |
+
+### Known limitations
+
+- The AI planner requires a running model runtime (Ollama or OpenAI-compatible). If the model is unavailable, a graceful error with suggested rephrases is returned.
+- Compound queries (e.g. "steps AND heart rate together") may be simplified to the first metric.
+- Lab marker queries are not supported via the AI query endpoint; use the warehouse NL endpoint for those.
+
+
 
 You can ask trend questions using a rule-based NL planner backed by DuckDB:
 

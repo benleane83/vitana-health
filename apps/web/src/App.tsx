@@ -11,6 +11,7 @@ import type {
 } from "@local-fitness-advisor/shared";
 import { safetyNotice } from "@local-fitness-advisor/shared";
 import { api } from "./api.js";
+import type { AiQueryResult, AiQueryChartSeries } from "./api.js";
 import { LAB_MARKER_CATALOG } from "./labMarkerCatalog.js";
 import type { LabMarkerCatalogEntry } from "./labMarkerCatalog.js";
 
@@ -22,7 +23,7 @@ const sampleSamsungCsv = `date,type,value,unit
 2026-06-29,heart_rate,61,bpm
 2026-06-30,weight,82.4,kg`;
 
-type AppRoute = "dashboard" | "summary" | "labs";
+type AppRoute = "dashboard" | "summary" | "labs" | "query";
 type SummarySort = "name" | "count" | "recency";
 type LabsMode = "manual" | "upload";
 
@@ -61,6 +62,11 @@ export function App() {
   const [manualLabName, setManualLabName] = useState("");
   const [manualRows, setManualRows] = useState<ManualMarkerRow[]>(() => createStarterRows());
   const [uploadFile, setUploadFile] = useState<File>();
+
+  const [aiQuestion, setAiQuestion] = useState("");
+  const [aiResult, setAiResult] = useState<AiQueryResult | undefined>();
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState<string | undefined>();
 
   const uploadInputRef = useRef<HTMLInputElement>(null);
 
@@ -197,6 +203,23 @@ export function App() {
     });
   }
 
+  async function submitAiQuery(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const q = aiQuestion.trim();
+    if (!q) return;
+    setAiBusy(true);
+    setAiError(undefined);
+    setAiResult(undefined);
+    try {
+      const result = await api.query.ai(q, { timezone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+      setAiResult(result);
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : "Query failed.");
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
   async function run(success: string, task: () => Promise<void>) {
     setBusy(true);
     setMessage(undefined);
@@ -218,7 +241,13 @@ export function App() {
   }
 
   function navigate(nextRoute: AppRoute) {
-    const nextPath = nextRoute === "summary" ? "/summary" : nextRoute === "labs" ? "/labs" : "/";
+    const routePaths: Record<AppRoute, string> = {
+      dashboard: "/",
+      labs: "/labs",
+      summary: "/summary",
+      query: "/query"
+    };
+    const nextPath = routePaths[nextRoute] ?? "/";
     if (window.location.pathname !== nextPath) {
       window.history.pushState({}, "", nextPath);
     }
@@ -274,6 +303,9 @@ export function App() {
         </button>
         <button className={route === "summary" ? "active" : ""} onClick={() => navigate("summary")}>
           Health Data Summary
+        </button>
+        <button className={route === "query" ? "active" : ""} onClick={() => navigate("query")}>
+          AI Query
         </button>
       </nav>
 
@@ -406,6 +438,15 @@ export function App() {
           onSortChange={setSummarySort}
           expandedCategories={expandedCategories}
           onToggleCategory={toggleCategory}
+        />
+      ) : route === "query" ? (
+        <QueryPage
+          question={aiQuestion}
+          onQuestionChange={setAiQuestion}
+          onSubmit={submitAiQuery}
+          busy={aiBusy}
+          result={aiResult}
+          error={aiError}
         />
       ) : (
         <LabsPage
@@ -587,6 +628,199 @@ function Stat({ label, value }: { label: string; value: number }) {
   );
 }
 
+function QueryPage({
+  question,
+  onQuestionChange,
+  onSubmit,
+  busy,
+  result,
+  error
+}: {
+  question: string;
+  onQuestionChange: (value: string) => void;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  busy: boolean;
+  result?: AiQueryResult;
+  error?: string;
+}) {
+  return (
+    <section className="panel query-panel">
+      <div>
+        <p className="eyebrow">AI-powered natural language query</p>
+        <h2>Ask your health data</h2>
+      </div>
+      <p className="safety">{safetyNotice}</p>
+
+      <form className="query-form" onSubmit={onSubmit}>
+        <label>
+          Question
+          <input
+            value={question}
+            onChange={(event) => onQuestionChange(event.target.value)}
+            placeholder="e.g. average heart rate last month"
+            disabled={busy}
+          />
+        </label>
+        <button disabled={busy || !question.trim()} type="submit">
+          {busy ? "Querying…" : "Ask"}
+        </button>
+      </form>
+
+      <div className="query-examples">
+        <span>Try: </span>
+        {[
+          "max daily steps this month",
+          "average heart rate last month",
+          "top exercises this month"
+        ].map((example) => (
+          <button
+            key={example}
+            className="query-example-chip"
+            type="button"
+            onClick={() => onQuestionChange(example)}
+          >
+            {example}
+          </button>
+        ))}
+      </div>
+
+      {error ? <p className="empty">{error}</p> : null}
+
+      {result ? <QueryResult result={result} /> : null}
+    </section>
+  );
+}
+
+function QueryResult({ result }: { result: AiQueryResult }) {
+  const confidencePct = Math.round(result.confidence * 100);
+  const confidenceLabel =
+    result.confidence >= 0.8 ? "high" :
+    result.confidence >= 0.5 ? "medium" :
+    "low";
+
+  return (
+    <div className="query-result">
+      <div className="query-answer">
+        <h3>Answer</h3>
+        <p>{result.answer}</p>
+        {result.suggestedRephrase ? (
+          <p className="query-rephrase"><em>Suggestion: {result.suggestedRephrase}</em></p>
+        ) : null}
+      </div>
+
+      <div className="query-meta">
+        <span>Confidence: <strong data-level={confidenceLabel}>{confidencePct}%</strong></span>
+        {result.resolvedTimeRange ? (
+          <span>Time range: <strong>{result.resolvedTimeRange.label}</strong></span>
+        ) : null}
+        {result.rowCount !== undefined ? (
+          <span>Rows: <strong>{result.rowCount}</strong></span>
+        ) : null}
+      </div>
+
+      {result.chart && result.chart.series.length > 0 ? (
+        <div className="query-chart">
+          <h3>Chart</h3>
+          <QueryChart chart={result.chart} />
+        </div>
+      ) : null}
+
+      {result.rows.length > 0 ? (
+        <div className="query-table">
+          <h3>Data preview</h3>
+          <div className="query-table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  {Object.keys(result.rows[0]).map((key) => (
+                    <th key={key}>{key}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {result.rows.slice(0, 20).map((row, idx) => (
+                  <tr key={idx}>
+                    {Object.values(row).map((cell, cidx) => (
+                      <td key={cidx}>{cell === null || cell === undefined ? "—" : String(cell)}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
+
+      {result.sql ? (
+        <details className="query-sql">
+          <summary>Generated SQL</summary>
+          <pre>{result.sql}</pre>
+        </details>
+      ) : null}
+
+      {result.limitations.length > 0 ? (
+        <details className="query-limitations" open>
+          <summary>Limitations &amp; notes</summary>
+          <ul>
+            {result.limitations.map((lim, idx) => <li key={idx}>{lim}</li>)}
+          </ul>
+          {result.assumptions.length > 0 ? (
+            <ul>
+              {result.assumptions.map((a, idx) => <li key={idx}>Assumed: {a}</li>)}
+            </ul>
+          ) : null}
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
+function QueryChart({ chart }: { chart: { type: string; series: AiQueryChartSeries[] } }) {
+  const values = chart.series.map((p) => p.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+
+  if (chart.type === "line" && chart.series.length > 1) {
+    const path = chart.series
+      .map((point, index) => {
+        const x = (index / Math.max(1, chart.series.length - 1)) * 280;
+        const y = 80 - ((point.value - min) / range) * 70;
+        return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+      })
+      .join(" ");
+    return (
+      <div className="query-chart-container">
+        <svg viewBox="0 0 280 90" role="img" aria-label="Query result chart" className="query-chart-svg">
+          <path d={path} fill="none" stroke="currentColor" strokeWidth="2" />
+        </svg>
+        <div className="query-chart-labels">
+          <span>{chart.series[0].label}</span>
+          <span>{chart.series[chart.series.length - 1].label}</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Bar chart
+  return (
+    <div className="query-chart-bars">
+      {chart.series.slice(0, 15).map((point) => {
+        const pct = range > 0 ? ((point.value - min) / range) * 100 : 50;
+        return (
+          <div key={point.label} className="query-bar-item">
+            <span className="query-bar-label">{point.label}</span>
+            <div className="query-bar-track">
+              <div className="query-bar-fill" style={{ width: `${Math.max(2, pct)}%` }} />
+            </div>
+            <span className="query-bar-value">{typeof point.value === "number" ? point.value.toFixed(1) : point.value}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function SummaryPage({
   summary,
   loading,
@@ -695,6 +929,9 @@ function routeFromPathname(pathname: string): AppRoute {
   }
   if (pathname === "/labs") {
     return "labs";
+  }
+  if (pathname === "/query") {
+    return "query";
   }
   return "dashboard";
 }

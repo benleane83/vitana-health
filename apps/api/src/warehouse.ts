@@ -22,6 +22,7 @@ export interface WarehouseBuildResult {
 export async function rebuildWarehouseFromStore(store: HealthStoreData): Promise<WarehouseBuildResult> {
   let db: duckdb.Database | undefined;
   let conn: duckdb.Connection | undefined;
+  let transactionStarted = false;
   const targetPath = warehousePath;
   try {
     mkdirSync(dirname(targetPath), { recursive: true });
@@ -89,10 +90,14 @@ export async function rebuildWarehouseFromStore(store: HealthStoreData): Promise
       `
     );
 
-    for (const entry of store.sourceImports) {
-      await run(
-        conn,
-        "INSERT INTO imports VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    await exec(conn, "BEGIN TRANSACTION;");
+    transactionStarted = true;
+
+    await bulkInsert(
+      conn,
+      "imports",
+      8,
+      store.sourceImports.map((entry) => [
         entry.id,
         entry.sourceKind,
         entry.fileName,
@@ -101,13 +106,14 @@ export async function rebuildWarehouseFromStore(store: HealthStoreData): Promise
         entry.checksum,
         entry.rowCount,
         entry.status
-      );
-    }
+      ])
+    );
 
-    for (const entry of store.observations) {
-      await run(
-        conn,
-        "INSERT INTO observations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    await bulkInsert(
+      conn,
+      "observations",
+      10,
+      store.observations.map((entry) => [
         entry.id,
         entry.measurementCode,
         entry.observedAt,
@@ -118,13 +124,14 @@ export async function rebuildWarehouseFromStore(store: HealthStoreData): Promise
         entry.sourceId,
         entry.note ?? null,
         entry.sourceJson ? JSON.stringify(entry.sourceJson) : null
-      );
-    }
+      ])
+    );
 
-    for (const entry of store.timeSeriesSamples) {
-      await run(
-        conn,
-        "INSERT INTO samples VALUES (?, ?, ?, ?, ?, ?, ?)",
+    await bulkInsert(
+      conn,
+      "samples",
+      7,
+      store.timeSeriesSamples.map((entry) => [
         entry.id,
         entry.measurementCode,
         entry.startAt,
@@ -132,13 +139,14 @@ export async function rebuildWarehouseFromStore(store: HealthStoreData): Promise
         entry.value,
         entry.unit,
         entry.sourceId
-      );
-    }
+      ])
+    );
 
-    for (const entry of store.activitySessions) {
-      await run(
-        conn,
-        "INSERT INTO activities VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    await bulkInsert(
+      conn,
+      "activities",
+      8,
+      store.activitySessions.map((entry) => [
         entry.id,
         entry.activityType,
         entry.startAt,
@@ -147,33 +155,48 @@ export async function rebuildWarehouseFromStore(store: HealthStoreData): Promise
         entry.energyKcal ?? null,
         entry.distanceMeters ?? null,
         entry.sourceId
-      );
-    }
+      ])
+    );
+
+    await exec(conn, "COMMIT;");
+    transactionStarted = false;
 
     await exec(
       conn,
       `
       CREATE VIEW v_daily_metrics AS
+      WITH daily_source_metrics AS (
+        SELECT
+          DATE(observed_at) AS day,
+          measurement_code,
+          AVG(value) AS avg_value,
+          MIN(value) AS min_value,
+          MAX(value) AS max_value,
+          COUNT(*) AS n,
+          MIN(unit) AS unit
+        FROM observations
+        GROUP BY 1, 2
+        UNION ALL
+        SELECT
+          DATE(start_at) AS day,
+          measurement_code,
+          CASE WHEN measurement_code = 'steps' THEN SUM(value) ELSE AVG(value) END AS avg_value,
+          MIN(value) AS min_value,
+          MAX(value) AS max_value,
+          COUNT(*) AS n,
+          MIN(unit) AS unit
+        FROM samples
+        GROUP BY 1, 2
+      )
       SELECT
-        DATE(observed_at) AS day,
+        day,
         measurement_code,
-        AVG(value) AS avg_value,
-        MIN(value) AS min_value,
-        MAX(value) AS max_value,
-        COUNT(*) AS n,
+        SUM(avg_value * n) / NULLIF(SUM(n), 0) AS avg_value,
+        MIN(min_value) AS min_value,
+        MAX(max_value) AS max_value,
+        SUM(n) AS n,
         MIN(unit) AS unit
-      FROM observations
-      GROUP BY 1, 2
-      UNION ALL
-      SELECT
-        DATE(start_at) AS day,
-        measurement_code,
-        CASE WHEN measurement_code = 'steps' THEN SUM(value) ELSE AVG(value) END AS avg_value,
-        MIN(value) AS min_value,
-        MAX(value) AS max_value,
-        COUNT(*) AS n,
-        MIN(unit) AS unit
-      FROM samples
+      FROM daily_source_metrics
       GROUP BY 1, 2;
       `
     );
@@ -218,6 +241,9 @@ export async function rebuildWarehouseFromStore(store: HealthStoreData): Promise
 
     return result;
   } catch (error) {
+    if (conn && transactionStarted) {
+      await exec(conn, "ROLLBACK;").catch(() => undefined);
+    }
     return {
       databasePath: targetPath,
       engine: "fallback",
@@ -240,15 +266,22 @@ export async function rebuildWarehouseFromStore(store: HealthStoreData): Promise
 }
 
 export async function runWarehouseQuery(sql: string): Promise<Array<Record<string, unknown>>> {
+  let db: duckdb.Database | undefined;
+  let conn: duckdb.Connection | undefined;
   try {
-    const db = new duckdb.Database(activeWarehousePath);
-    const conn = db.connect();
-    const rows = await all(conn, sql);
-    await closeConnection(conn);
-    await closeDatabase(db);
-    return rows;
-  } catch {
-    return [];
+    db = new duckdb.Database(activeWarehousePath, { access_mode: "READ_ONLY" });
+    conn = db.connect();
+    return await all(conn, sql);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown warehouse query error";
+    throw new Error(`Warehouse query failed: ${message}`);
+  } finally {
+    if (conn) {
+      await closeConnection(conn);
+    }
+    if (db) {
+      await closeDatabase(db);
+    }
   }
 }
 
@@ -274,6 +307,24 @@ function run(connection: duckdb.Connection, sql: string, ...params: unknown[]): 
       resolvePromise();
     });
   });
+}
+
+async function bulkInsert(
+  connection: duckdb.Connection,
+  tableName: string,
+  columnCount: number,
+  rows: unknown[][]
+): Promise<void> {
+  const chunkSize = Math.max(1, Math.floor(3000 / columnCount));
+  const rowPlaceholder = `(${Array.from({ length: columnCount }, () => "?").join(", ")})`;
+  for (let index = 0; index < rows.length; index += chunkSize) {
+    const chunk = rows.slice(index, index + chunkSize);
+    if (chunk.length === 0) {
+      continue;
+    }
+    const placeholders = Array.from({ length: chunk.length }, () => rowPlaceholder).join(", ");
+    await run(connection, `INSERT INTO ${tableName} VALUES ${placeholders}`, ...chunk.flat());
+  }
 }
 
 function all(connection: duckdb.Connection, sql: string): Promise<Array<Record<string, unknown>>> {
