@@ -141,16 +141,23 @@ app.put("/api/profile", (request, response) => {
   response.json(store.replaceProfile(profile));
 });
 
-app.post("/api/import/samsung", (request, response) => {
+app.post("/api/import/samsung", async (request, response, next) => {
+  try {
   const parsed = importSchema.parse(request.body);
   const imported = parseSamsungHealthCsv(parsed.fileName, parsed.content);
+  const merged = store.mergeImport(imported);
+  const warehouse = await rebuildWarehouseFromStore(merged);
   response.status(201).json({
-    store: store.mergeImport(imported),
+    store: merged,
+    warehouse,
     import: {
       ...imported.sourceImport,
       rawContent: undefined
     }
   });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.post("/api/import/blood-test", (request, response) => {
@@ -177,10 +184,12 @@ app.post("/api/import/labs/manual", (request, response) => {
   });
 });
 
-app.post("/api/import/samsung-json-upload", (request, response) => {
+app.post("/api/import/samsung-json-upload", async (request, response, next) => {
+  try {
   const parsed = samsungJsonUploadSchema.parse(request.body ?? {});
   const imported = importSamsungJsonUpload({ uploadPath: parsed.uploadPath });
   const merged = store.mergeImport(imported.parsed);
+  const warehouse = await rebuildWarehouseFromStore(merged);
   response.status(201).json({
     counts: {
       sourceImports: merged.sourceImports.length,
@@ -193,14 +202,20 @@ app.post("/api/import/samsung-json-upload", (request, response) => {
       ...imported.parsed.sourceImport,
       rawContent: undefined
     },
-    stats: imported.stats
+    stats: imported.stats,
+    warehouse
   });
+  } catch (error) {
+    next(error);
+  }
 });
 
-app.post("/api/import/health-connect", (request, response) => {
+app.post("/api/import/health-connect", async (request, response, next) => {
+  try {
   const parsed = healthConnectImportRequestSchema.parse(request.body ?? {});
   const imported = parseHealthConnectImport(parsed);
   const merged = store.mergeImport(imported);
+  const warehouse = await rebuildWarehouseFromStore(merged);
   response.status(201).json({
     counts: {
       sourceImports: merged.sourceImports.length,
@@ -211,8 +226,12 @@ app.post("/api/import/health-connect", (request, response) => {
     import: {
       ...imported.sourceImport,
       rawContent: undefined
-    }
+    },
+    warehouse
   });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.get("/api/analytics", (_request, response) => {

@@ -27,6 +27,8 @@ const ALLOWED_COLUMNS = new Set([
   "source_id"
 ]);
 
+const ALLOWED_OUTPUT_ALIASES = new Set(["value", "count", "month_start"]);
+
 // DuckDB SQL keywords and functions that we allow to appear in compiler output.
 // This set is used only by the validator to avoid blocking our own generated SQL.
 const ALLOWED_SQL_TOKENS = new Set([
@@ -54,6 +56,7 @@ const ALLOWED_SQL_TOKENS = new Set([
   "max",
   "date_trunc",
   "date",
+  "timestamp",
   "interval",
   "current_date",
   "cast",
@@ -156,6 +159,14 @@ function aggregationSql(agg: QueryDSL["aggregation"], column: string): string {
   }
 }
 
+function dailyMetricAggregationSql(agg: QueryDSL["aggregation"]): string {
+  switch (agg) {
+    case "min": return "MIN(min_value)";
+    case "max": return "MAX(max_value)";
+    default: return aggregationSql(agg, "avg_value");
+  }
+}
+
 // ─── Compiler ─────────────────────────────────────────────────────────────────
 
 export function compileQueryDSL(dsl: QueryDSL): CompileOutcome {
@@ -204,7 +215,7 @@ function buildTimeseriesSql(
 ): string {
   const metric = sanitizeIdentifier(dsl.metric ?? "");
   const groupBy = dsl.groupBy ?? "day";
-  const agg = aggregationSql(dsl.aggregation, "avg_value");
+  const agg = dailyMetricAggregationSql(dsl.aggregation);
 
   if (groupBy === "week") {
     return [
@@ -215,7 +226,7 @@ function buildTimeseriesSql(
       `  AND day <= DATE '${time.end}'`,
       `GROUP BY DATE_TRUNC('week', day)`,
       `ORDER BY week_start ${sortDir}`,
-      `LIMIT ${limit};`
+      `LIMIT ${limit}`
     ].join("\n");
   }
 
@@ -228,7 +239,7 @@ function buildTimeseriesSql(
       `  AND day <= DATE '${time.end}'`,
       `GROUP BY DATE_TRUNC('month', day)`,
       `ORDER BY month_start ${sortDir}`,
-      `LIMIT ${limit};`
+      `LIMIT ${limit}`
     ].join("\n");
   }
 
@@ -241,7 +252,7 @@ function buildTimeseriesSql(
     `  AND day <= DATE '${time.end}'`,
     `GROUP BY day`,
     `ORDER BY day ${sortDir}`,
-    `LIMIT ${limit};`
+    `LIMIT ${limit}`
   ].join("\n");
 }
 
@@ -251,14 +262,14 @@ function buildAggregationSql(
   _limit: number
 ): string {
   const metric = sanitizeIdentifier(dsl.metric ?? "");
-  const agg = aggregationSql(dsl.aggregation, "avg_value");
+  const agg = dailyMetricAggregationSql(dsl.aggregation);
   return [
     `SELECT ${agg} AS value, MIN(unit) AS unit`,
     `FROM v_daily_metrics`,
     `WHERE measurement_code = '${metric}'`,
     `  AND day >= DATE '${time.start}'`,
     `  AND day <= DATE '${time.end}'`,
-    `LIMIT 1;`
+    `LIMIT 1`
   ].join("\n");
 }
 
@@ -269,7 +280,7 @@ function buildTopNSql(
   sortDir: string
 ): string {
   const metric = sanitizeIdentifier(dsl.metric ?? "");
-  const agg = aggregationSql(dsl.aggregation, "avg_value");
+  const agg = dailyMetricAggregationSql(dsl.aggregation);
   return [
     `SELECT day, ${agg} AS value, MIN(unit) AS unit`,
     `FROM v_daily_metrics`,
@@ -278,7 +289,7 @@ function buildTopNSql(
     `  AND day <= DATE '${time.end}'`,
     `GROUP BY day`,
     `ORDER BY value ${sortDir}`,
-    `LIMIT ${limit};`
+    `LIMIT ${limit}`
   ].join("\n");
 }
 
@@ -294,7 +305,7 @@ function buildLatestSql(
     `  AND day >= DATE '${time.start}'`,
     `  AND day <= DATE '${time.end}'`,
     `ORDER BY day DESC`,
-    `LIMIT 1;`
+    `LIMIT 1`
   ].join("\n");
 }
 
@@ -312,7 +323,7 @@ function buildActivitiesSql(
       `  AND start_at <= TIMESTAMP '${time.end} 23:59:59'`,
       `GROUP BY activity_type`,
       `ORDER BY count ${sortDir}`,
-      `LIMIT ${limit};`
+      `LIMIT ${limit}`
     ].join("\n");
   }
   return [
@@ -321,7 +332,7 @@ function buildActivitiesSql(
     `WHERE start_at >= TIMESTAMP '${time.start} 00:00:00'`,
     `  AND start_at <= TIMESTAMP '${time.end} 23:59:59'`,
     `ORDER BY start_at ${sortDir}`,
-    `LIMIT ${limit};`
+    `LIMIT ${limit}`
   ].join("\n");
 }
 
@@ -355,7 +366,7 @@ export function validateCompiledSql(sql: string): SqlValidationResult {
   const wordTokens = withoutStrings.match(/\b[a-zA-Z_][a-zA-Z0-9_]*\b/g) ?? [];
   for (const token of wordTokens) {
     const t = token.toLowerCase();
-    if (!ALLOWED_SQL_TOKENS.has(t) && !ALLOWED_TABLES.has(t) && !ALLOWED_COLUMNS.has(t)) {
+    if (!ALLOWED_SQL_TOKENS.has(t) && !ALLOWED_TABLES.has(t) && !ALLOWED_COLUMNS.has(t) && !ALLOWED_OUTPUT_ALIASES.has(t)) {
       violations.push(`Non-whitelisted identifier: ${token}`);
     }
   }
