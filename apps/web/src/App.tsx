@@ -1842,10 +1842,11 @@ function formatChartTimestamp(timestamp: number, rangeMs: number): string {
 }
 
 function detailKindLabel(kind: HealthDataDetailEntry["kind"]): string {
-  if (kind === "lab-marker") {
-    return "Lab marker";
-  }
-  return kind.charAt(0).toUpperCase() + kind.slice(1);
+  return {
+    observation: "Observation",
+    sample: "Sample",
+    "lab-marker": "Lab marker"
+  }[kind];
 }
 
 function renderEntryContext(entry: HealthDataDetailEntry): string {

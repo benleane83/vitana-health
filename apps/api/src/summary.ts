@@ -167,9 +167,14 @@ export function listHealthDataDetailEntries(store: HealthStoreData, measurementC
       };
     });
 
-  return [...observationEntries, ...sampleEntries, ...labEntries].sort((a, b) =>
-    b.timestamp.localeCompare(a.timestamp) || a.displayName.localeCompare(b.displayName) || a.id.localeCompare(b.id)
-  );
+  return [...observationEntries, ...sampleEntries, ...labEntries].sort((a, b) => {
+    const timestampCompare = b.timestamp.localeCompare(a.timestamp);
+    if (timestampCompare !== 0) {
+      return timestampCompare;
+    }
+    const nameCompare = a.displayName.localeCompare(b.displayName);
+    return nameCompare !== 0 ? nameCompare : a.id.localeCompare(b.id);
+  });
 }
 
 export function summarizeMeasurementDetail(store: HealthStoreData, measurementCode: string): HealthDataDetail {
