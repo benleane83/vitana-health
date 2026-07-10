@@ -105,6 +105,7 @@ export function App() {
   const [profiles, setProfiles] = useState<ProfileListEntry[]>([]);
   const [activeProfileId, setActiveProfileId] = useState<string>("self");
   const [newProfileName, setNewProfileName] = useState("");
+  const [profilesDialogOpen, setProfilesDialogOpen] = useState(false);
 
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const bodyCompInputRef = useRef<HTMLInputElement>(null);
@@ -622,42 +623,31 @@ export function App() {
         <div className="active-profile-pill" title={activeProfile?.id}>
           Active profile: <strong>{activeProfile?.displayName ?? "Local user"}</strong>
         </div>
+        <button type="button" className="manage-profiles-button" onClick={() => setProfilesDialogOpen(true)}>
+          Manage profiles
+        </button>
       </nav>
 
-      <section className="profile-switcher panel">
-        <div className="panel-heading-row">
-          <h2>Profiles</h2>
-          <button type="button" disabled={busy || profiles.length <= 1} onClick={() => { void deleteActiveProfile(); }}>
-            Delete active
-          </button>
-        </div>
-        <div className="profile-switcher-row">
-          <label>
-            Select profile
-            <select value={activeProfileId} disabled={busy} onChange={(event) => { void switchProfile(event.target.value); }}>
-              {profiles.map((entry) => (
-                <option key={entry.id} value={entry.id}>
-                  {entry.displayName}
-                </option>
-              ))}
-            </select>
-          </label>
-          <form className="profile-create-form" onSubmit={createProfile}>
-            <label>
-              Create profile
-              <input
-                value={newProfileName}
-                onChange={(event) => setNewProfileName(event.target.value)}
-                placeholder="New profile name"
-                maxLength={80}
-              />
-            </label>
-            <button type="submit" disabled={busy}>Create</button>
-          </form>
-        </div>
-      </section>
-
       {message ? <div className="notice">{message}</div> : null}
+
+      {profilesDialogOpen ? (
+        <ManageProfilesDialog
+          busy={busy}
+          profiles={profiles}
+          activeProfile={activeProfile}
+          activeProfileId={activeProfileId}
+          newProfileName={newProfileName}
+          onNewProfileNameChange={setNewProfileName}
+          onClose={() => setProfilesDialogOpen(false)}
+          onSwitchProfile={(profileId) => {
+            void switchProfile(profileId);
+          }}
+          onCreateProfile={createProfile}
+          onDeleteActive={() => {
+            void deleteActiveProfile();
+          }}
+        />
+      ) : null}
 
       {route === "dashboard" ? (
         <>
@@ -850,6 +840,84 @@ export function App() {
         null
       )}
     </main>
+  );
+}
+
+function ManageProfilesDialog({
+  busy,
+  profiles,
+  activeProfile,
+  activeProfileId,
+  newProfileName,
+  onNewProfileNameChange,
+  onClose,
+  onSwitchProfile,
+  onCreateProfile,
+  onDeleteActive
+}: {
+  busy: boolean;
+  profiles: ProfileListEntry[];
+  activeProfile?: ProfileListEntry | Profile;
+  activeProfileId: string;
+  newProfileName: string;
+  onNewProfileNameChange: (value: string) => void;
+  onClose: () => void;
+  onSwitchProfile: (profileId: string) => void;
+  onCreateProfile: (event: React.FormEvent<HTMLFormElement>) => void;
+  onDeleteActive: () => void;
+}) {
+  return (
+    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) {
+        onClose();
+      }
+    }}>
+      <section className="profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-management-dialog-title">
+        <div className="panel-heading-row">
+          <div>
+            <p className="eyebrow">Local profile controls</p>
+            <h2 id="profile-management-dialog-title">Manage profiles</h2>
+          </div>
+          <button type="button" onClick={onClose}>Close</button>
+        </div>
+
+        <p className="profile-dialog-active" title={activeProfile?.id}>
+          Active profile: <strong>{activeProfile?.displayName ?? "Local user"}</strong>
+        </p>
+
+        <div className="profile-switcher-row">
+          <label>
+            Switch profile
+            <select value={activeProfileId} disabled={busy} onChange={(event) => onSwitchProfile(event.target.value)}>
+              {profiles.map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.displayName}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <form className="profile-create-form" onSubmit={onCreateProfile}>
+            <label>
+              Create profile
+              <input
+                value={newProfileName}
+                onChange={(event) => onNewProfileNameChange(event.target.value)}
+                placeholder="New profile name"
+                maxLength={80}
+              />
+            </label>
+            <button type="submit" disabled={busy}>Create</button>
+          </form>
+        </div>
+
+        <div className="profile-dialog-actions">
+          <button type="button" disabled={busy || profiles.length <= 1} onClick={onDeleteActive}>
+            Delete active profile
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }
 

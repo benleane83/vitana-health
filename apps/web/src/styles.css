@@ -179,6 +179,19 @@ textarea {
   color: var(--text-strong);
 }
 
+.manage-profiles-button {
+  min-height: 38px;
+  background: transparent;
+  border-color: var(--line);
+  color: var(--muted);
+  padding: 0.45rem 0.82rem;
+}
+
+.manage-profiles-button:hover,
+.manage-profiles-button:focus-visible {
+  color: var(--text-strong);
+}
+
 .profile-switcher {
   min-height: auto;
   margin-bottom: var(--space-6);
@@ -888,6 +901,31 @@ label {
   background: var(--surface);
   padding: var(--space-5);
   box-shadow: 0 24px 90px oklch(5% 0.015 160 / 0.65);
+}
+
+.profile-dialog-active {
+  margin: 0 0 var(--space-4);
+  color: var(--muted);
+}
+
+.profile-dialog-active strong {
+  color: var(--text-strong);
+}
+
+.profile-dialog-actions {
+  margin-top: var(--space-4);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.profile-dialog-actions button {
+  background: transparent;
+  border-color: oklch(72% 0.13 32 / 0.45);
+  color: oklch(86% 0.08 34);
+}
+
+.profile-dialog-actions button:hover:not(:disabled) {
+  background: oklch(48% 0.16 35 / 0.22);
 }
 
 .import-page {
