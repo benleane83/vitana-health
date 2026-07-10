@@ -1,7 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
 
 const CONNECTION_KEY = "local-fitness-advisor.connection";
 const DEVICE_ID_KEY = "local-fitness-advisor.deviceId";
+const TOKEN_KEY = "local-fitness-advisor.companionToken";
 
 export interface ConnectionDetails {
   url: string;
@@ -12,15 +14,17 @@ export interface ConnectionDetails {
   lastSyncAt: string | null;
 }
 
+interface StoredConnection extends Omit<ConnectionDetails, "token" | "deviceId"> {}
+
 function generateDeviceId(): string {
   return Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
 }
 
 export async function getDeviceId(): Promise<string> {
-  const existing = await AsyncStorage.getItem(DEVICE_ID_KEY);
+  const existing = await SecureStore.getItemAsync(DEVICE_ID_KEY);
   if (existing) return existing;
   const id = generateDeviceId();
-  await AsyncStorage.setItem(DEVICE_ID_KEY, id);
+  await SecureStore.setItemAsync(DEVICE_ID_KEY, id);
   return id;
 }
 
@@ -28,7 +32,9 @@ export async function loadConnection(): Promise<ConnectionDetails | null> {
   const raw = await AsyncStorage.getItem(CONNECTION_KEY);
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as ConnectionDetails;
+    const stored = JSON.parse(raw) as StoredConnection;
+    const [deviceId, token] = await Promise.all([getDeviceId(), SecureStore.getItemAsync(TOKEN_KEY)]);
+    return { ...stored, deviceId, token };
   } catch {
     return null;
   }
@@ -37,24 +43,28 @@ export async function loadConnection(): Promise<ConnectionDetails | null> {
 export async function saveConnection(patch: Partial<ConnectionDetails> & { url: string }): Promise<ConnectionDetails> {
   const existing = await loadConnection();
   const deviceId = await getDeviceId();
+  const token = patch.token !== undefined ? patch.token : (existing?.token ?? null);
   const updated: ConnectionDetails = {
     url: patch.url,
     deviceId,
-    token: patch.token !== undefined ? patch.token : (existing?.token ?? null),
+    token,
     name: patch.name !== undefined ? patch.name : (existing?.name ?? null),
     pairedAt: patch.pairedAt !== undefined ? patch.pairedAt : (existing?.pairedAt ?? null),
     lastSyncAt: patch.lastSyncAt !== undefined ? patch.lastSyncAt : (existing?.lastSyncAt ?? null)
   };
-  await AsyncStorage.setItem(CONNECTION_KEY, JSON.stringify(updated));
+  const { token: _token, deviceId: _deviceId, ...stored } = updated;
+  await AsyncStorage.setItem(CONNECTION_KEY, JSON.stringify(stored));
+  if (token) await SecureStore.setItemAsync(TOKEN_KEY, token);
+  else await SecureStore.deleteItemAsync(TOKEN_KEY);
   return updated;
 }
 
 export async function updateLastSyncAt(url: string): Promise<void> {
   const existing = await loadConnection();
   if (!existing || existing.url !== url) return;
-  await AsyncStorage.setItem(CONNECTION_KEY, JSON.stringify({ ...existing, lastSyncAt: new Date().toISOString() }));
+  await saveConnection({ ...existing, lastSyncAt: new Date().toISOString() });
 }
 
 export async function clearConnection(): Promise<void> {
-  await AsyncStorage.removeItem(CONNECTION_KEY);
+  await Promise.all([AsyncStorage.removeItem(CONNECTION_KEY), SecureStore.deleteItemAsync(TOKEN_KEY)]);
 }

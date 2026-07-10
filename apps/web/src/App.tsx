@@ -1005,15 +1005,7 @@ function FitnessTrackerImportPanel({
           Open the companion app, tap <strong>Set Up Connection</strong>, and scan this QR code. The app will find this
           server automatically — no IP address required.
         </p>
-        <div className="pairing-qr-wrap">
-          <img
-            src="/api/pair/qr"
-            alt="QR code encoding this server's local network address for companion app pairing"
-            width={200}
-            height={200}
-            className="pairing-qr"
-          />
-        </div>
+        <PairingQr />
         <p className="empty pairing-hint">
           The QR code encodes this server's LAN address. Make sure the API is accessible on your local network
           (set <code>HOST=0.0.0.0</code> or your LAN IP when starting the server).
@@ -1054,6 +1046,44 @@ function FitnessTrackerImportPanel({
         </div>
       </div>
     </section>
+  );
+}
+
+function PairingQr() {
+  const [url, setUrl] = useState<string>();
+  const [error, setError] = useState<string>();
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl: string | undefined;
+    void api.pairing.qr()
+      .then((blob) => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(blob);
+        setUrl(objectUrl);
+      })
+      .catch((cause: unknown) => {
+        if (active) setError(cause instanceof Error ? cause.message : "Unable to create pairing QR code.");
+      });
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, []);
+
+  if (error) return <p className="empty">{error}</p>;
+  return (
+    <div className="pairing-qr-wrap">
+      {url ? (
+        <img
+          src={url}
+          alt="Short-lived QR code for secure companion pairing"
+          width={200}
+          height={200}
+          className="pairing-qr"
+        />
+      ) : <span className="empty">Creating short-lived pairing code…</span>}
+    </div>
   );
 }
 

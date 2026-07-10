@@ -52,6 +52,12 @@ export async function syncHealthConnectLast30Days(endpointUrl: string, companion
   if (Platform.OS !== "android") {
     throw new Error("This app only supports Android Health Connect.");
   }
+  if (!__DEV__ && !endpointUrl.startsWith("https://")) {
+    throw new Error("Production sync requires an HTTPS endpoint.");
+  }
+  if (!companionToken) {
+    throw new Error("A paired device token is required. Pair this device before syncing.");
+  }
 
   const sdkStatus = await getSdkStatus();
   if (sdkStatus !== SdkAvailabilityStatus.SDK_AVAILABLE) {

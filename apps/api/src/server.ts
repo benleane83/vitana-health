@@ -1,4 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { createServer as createHttpsServer } from "node:https";
 import os from "node:os";
 import path from "node:path";
 import { Bonjour } from "bonjour-service";
@@ -10,6 +12,32 @@ loadEnvironmentFiles();
 
 const port = Number.parseInt(process.env.PORT ?? "4317", 10);
 const host = process.env.HOST ?? "127.0.0.1";
+const isLoopback = host === "127.0.0.1" || host === "::1" || host === "localhost";
+if (!process.env.LFA_OWNER_TOKEN) {
+  if (!isLoopback) {
+    throw new Error("LFA_OWNER_TOKEN (at least 24 characters) is required when the API is exposed beyond loopback.");
+  }
+  process.env.LFA_OWNER_TOKEN = randomBytes(24).toString("base64url");
+  console.log(`Development owner token: ${process.env.LFA_OWNER_TOKEN}`);
+}
+if (process.env.LFA_OWNER_TOKEN.length < 24) {
+  throw new Error("LFA_OWNER_TOKEN must be at least 24 characters.");
+}
+
+const tlsCertPath = process.env.LFA_TLS_CERT;
+const tlsKeyPath = process.env.LFA_TLS_KEY;
+if (Boolean(tlsCertPath) !== Boolean(tlsKeyPath)) {
+  throw new Error("LFA_TLS_CERT and LFA_TLS_KEY must be configured together.");
+}
+const tlsEnabled = Boolean(tlsCertPath && tlsKeyPath);
+const insecureLanDevelopment =
+  process.env.LFA_ALLOW_INSECURE_HTTP === "1" && process.env.NODE_ENV !== "production";
+if (!isLoopback && !tlsEnabled && !insecureLanDevelopment) {
+  throw new Error(
+    "Non-loopback API access requires HTTPS. Configure LFA_TLS_CERT and LFA_TLS_KEY, or set LFA_ALLOW_INSECURE_HTTP=1 for development only."
+  );
+}
+
 const store = new HealthStore();
 const pairingStore = new PairingStore();
 const app = createApp(store, pairingStore);
@@ -26,11 +54,22 @@ function getLanIp(): string | null {
   return null;
 }
 
-app.listen(port, host, () => {
-  console.log(`Local Fitness Advisor API listening at http://${host}:${port}`);
+const scheme = tlsEnabled ? "https" : "http";
+const server = tlsEnabled
+  ? createHttpsServer(
+      {
+        cert: readFileSync(tlsCertPath!),
+        key: readFileSync(tlsKeyPath!)
+      },
+      app
+    )
+  : app;
+
+server.listen(port, host, () => {
+  console.log(`Local Fitness Advisor API listening at ${scheme}://${host}:${port}`);
   const lanIp = getLanIp();
   if (lanIp) {
-    console.log(`LAN address for companion pairing: http://${lanIp}:${port}`);
+    console.log(`LAN address for companion pairing: ${scheme}://${lanIp}:${port}`);
   }
   const bonjour = new Bonjour();
   bonjour.publish({ name: "Local Fitness Advisor", type: "local-fitness-advisor", port });
