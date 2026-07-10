@@ -27,7 +27,8 @@ npm run dev -w apps/api
 
 ## Privacy model
 
-- Personal health data is stored locally under `data\health-store.enc`.
+- Personal health data is stored locally in per-profile encrypted files: `data\health-store-<profileId>.enc`.
+- Profile registry and active selection are stored locally in `data\profiles.json` and `data\active-profile.json`.
 - Raw imports are stored inside the encrypted local store and are omitted from normal API responses.
 - No telemetry, cloud sync, remote AI APIs, or vendor data upload paths are implemented.
 - Set `LFA_SECRET` to control the encryption passphrase. If omitted, a generated local key is stored under `data\local.key`.
@@ -97,6 +98,7 @@ An Android MVP companion app lives at `apps/android-companion`.
 It supports:
 
 - Manual endpoint URL input
+- Profile target selection (persisted locally on device)
 - Manual "Sync now" action
 - Last-30-days Health Connect read for steps, heart rate, oxygen saturation, HRV RMSSD, weight, and exercise sessions
 - POST to `POST /api/import/health-connect` on your local API
@@ -126,6 +128,7 @@ You can also call it directly if needed:
 
 ```powershell
 $body = @{
+  profileId = "self"
   syncedAt = "2026-07-04T09:00:00.000Z"
   rangeStart = "2026-06-04T09:00:00.000Z"
   rangeEnd = "2026-07-04T09:00:00.000Z"
@@ -138,6 +141,16 @@ $body = @{
   exerciseSessions = @()
 } | ConvertTo-Json -Depth 6
 Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:4317/api/import/health-connect" -ContentType "application/json" -Body $body
+```
+
+### Profile management endpoints
+
+```text
+GET    /api/profiles
+POST   /api/profiles
+GET    /api/profiles/active
+PUT    /api/profiles/active
+DELETE /api/profiles/:id
 ```
 
 ## Local Warehouse (DuckDB)

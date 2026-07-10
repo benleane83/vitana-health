@@ -1,11 +1,16 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
-import { clearConnection, loadConnection } from "./src/endpointStore";
+import { clearConnection, clearSelectedProfileId, loadConnection, loadSelectedProfileId, saveSelectedProfileId } from "./src/endpointStore";
 import type { ConnectionDetails } from "./src/endpointStore";
 import { PairScreen } from "./src/PairScreen";
 import type { PairResult } from "./src/PairScreen";
 import { syncHealthConnectLast30Days } from "./src/syncHealthConnect";
+
+interface ProfileListEntry {
+  id: string;
+  displayName: string;
+}
 
 export default function App() {
   const [connection, setConnection] = useState<ConnectionDetails | null>(null);
@@ -13,12 +18,23 @@ export default function App() {
   const [syncing, setSyncing] = useState(false);
   const [status, setStatus] = useState("Ready");
   const [result, setResult] = useState("");
+  const [profiles, setProfiles] = useState<ProfileListEntry[]>([]);
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
 
   useEffect(() => {
     loadConnection()
       .then(setConnection)
       .catch(() => setStatus("Could not load saved connection."));
   }, []);
+
+  useEffect(() => {
+    if (!connection?.url) {
+      setProfiles([]);
+      setSelectedProfileId(null);
+      return;
+    }
+    void refreshProfiles(connection.url);
+  }, [connection?.url]);
 
   async function handleSyncPress(): Promise<void> {
     if (!connection?.url) {
@@ -29,7 +45,7 @@ export default function App() {
       setSyncing(true);
       setStatus("Syncing last 30 days from Health Connect…");
       setResult("");
-      const syncResult = await syncHealthConnectLast30Days(connection.url, connection.token);
+      const syncResult = await syncHealthConnectLast30Days(connection.url, connection.token, selectedProfileId);
       setStatus(syncResult.status);
       setResult(syncResult.details);
     } catch (error) {
@@ -44,14 +60,51 @@ export default function App() {
     const fresh = await loadConnection();
     setConnection(fresh);
     setPairScreenVisible(false);
+    if (fresh?.url) {
+      await refreshProfiles(fresh.url);
+    }
     setStatus(`Paired with ${pairResult.url}`);
   }
 
   async function handleDisconnect(): Promise<void> {
     await clearConnection();
+    await clearSelectedProfileId();
     setConnection(null);
+    setProfiles([]);
+    setSelectedProfileId(null);
     setStatus("Disconnected. Tap Set Up Connection to pair again.");
     setResult("");
+  }
+
+  async function refreshProfiles(url: string): Promise<void> {
+    try {
+      const response = await fetch(`${url.replace(/\/+$/, "")}/api/profiles`);
+      const payload = (await response.json().catch(() => ({}))) as { profiles?: ProfileListEntry[]; activeProfileId?: string };
+      if (!response.ok || !Array.isArray(payload.profiles) || payload.profiles.length === 0) {
+        setProfiles([]);
+        setSelectedProfileId(null);
+        return;
+      }
+      const stored = await loadSelectedProfileId();
+      const resolved =
+        (stored && payload.profiles.some((entry) => entry.id === stored) ? stored : undefined) ??
+        payload.activeProfileId ??
+        payload.profiles[0]?.id ??
+        null;
+      setProfiles(payload.profiles);
+      setSelectedProfileId(resolved);
+      if (resolved) {
+        await saveSelectedProfileId(resolved);
+      }
+    } catch {
+      setProfiles([]);
+      setSelectedProfileId(null);
+    }
+  }
+
+  async function handleSelectProfile(profileId: string): Promise<void> {
+    setSelectedProfileId(profileId);
+    await saveSelectedProfileId(profileId);
   }
 
   if (pairScreenVisible) {
@@ -105,6 +158,28 @@ export default function App() {
           </View>
         </View>
 
+        {profiles.length > 0 ? (
+          <View style={styles.connectionCard}>
+            <Text style={styles.connectionLabel}>Target profile</Text>
+            <View style={styles.profileChips}>
+              {profiles.map((profile) => {
+                const selected = profile.id === selectedProfileId;
+                return (
+                  <Pressable
+                    key={profile.id}
+                    style={[styles.profileChip, selected ? styles.profileChipSelected : undefined]}
+                    onPress={() => { void handleSelectProfile(profile.id); }}
+                  >
+                    <Text style={[styles.profileChipText, selected ? styles.profileChipTextSelected : undefined]}>
+                      {profile.displayName}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
+
         <Pressable
           disabled={syncing || !connection?.url}
           onPress={() => { void handleSyncPress(); }}
@@ -151,6 +226,21 @@ const styles = StyleSheet.create({
   connectionMeta: { color: "#6b7280", fontSize: 12 },
   connectionEmpty: { color: "#9ca3af", fontSize: 14 },
   connectionButtons: { flexDirection: "row", gap: 8 },
+  profileChips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  profileChip: {
+    backgroundColor: "#f3f4f6",
+    borderColor: "#e5e7eb",
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8
+  },
+  profileChipSelected: {
+    backgroundColor: "#2563eb",
+    borderColor: "#2563eb"
+  },
+  profileChipText: { color: "#374151", fontSize: 13, fontWeight: "600" },
+  profileChipTextSelected: { color: "#ffffff" },
   button: {
     flex: 1,
     alignItems: "center",

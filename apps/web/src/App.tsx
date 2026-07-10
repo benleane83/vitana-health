@@ -11,7 +11,8 @@ import type {
   Insight,
   ManualLabEntryPayload,
   MeasurementType,
-  Profile
+  Profile,
+  ProfileListEntry
 } from "@local-fitness-advisor/shared";
 import { safetyNotice } from "@local-fitness-advisor/shared";
 import { api } from "./api.js";
@@ -101,6 +102,9 @@ export function App() {
   const [aiError, setAiError] = useState<string | undefined>();
 
   const [pendingPairings, setPendingPairings] = useState<PendingPairing[]>([]);
+  const [profiles, setProfiles] = useState<ProfileListEntry[]>([]);
+  const [activeProfileId, setActiveProfileId] = useState<string>("self");
+  const [newProfileName, setNewProfileName] = useState("");
 
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const bodyCompInputRef = useRef<HTMLInputElement>(null);
@@ -184,6 +188,7 @@ export function App() {
   }, [route, summaryDetailCode]);
 
   const profile = store?.profile;
+  const activeProfile = profiles.find((entry) => entry.id === activeProfileId) ?? profile;
   const latestInsight = store?.insights[0];
   const density = useMemo(() => {
     const counts = analytics?.counts;
@@ -200,9 +205,11 @@ export function App() {
   );
 
   async function refresh() {
-    const [nextStore, nextAnalytics] = await Promise.all([api.store(), api.analytics()]);
+    const [nextStore, nextAnalytics, nextProfiles] = await Promise.all([api.store(), api.analytics(), api.profiles.list()]);
     setStore(nextStore);
     setAnalytics(nextAnalytics);
+    setProfiles(nextProfiles.profiles);
+    setActiveProfileId(nextProfiles.activeProfileId);
   }
 
   async function loadSummary() {
@@ -228,6 +235,54 @@ export function App() {
       });
       await refresh();
       setProfileEditorOpen(false);
+    });
+  }
+
+  async function switchProfile(profileId: string) {
+    if (!profileId || profileId === activeProfileId) {
+      return;
+    }
+    await run("Active profile switched locally.", async () => {
+      await api.profiles.setActive(profileId);
+      await refresh();
+      if (route === "summary") {
+        const nextSummary = await loadSummary();
+        applySummary(nextSummary);
+        if (summaryDetailCode) {
+          setSummaryDetail(await api.healthDataDetail(summaryDetailCode));
+        }
+      }
+    });
+  }
+
+  async function createProfile(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const displayName = newProfileName.trim();
+    if (!displayName) {
+      setMessage("Enter a profile name.");
+      return;
+    }
+    await run("Profile created locally.", async () => {
+      const created = await api.profiles.create(displayName);
+      await api.profiles.setActive(created.id);
+      await refresh();
+      setNewProfileName("");
+      setProfileEditorOpen(false);
+    });
+  }
+
+  async function deleteActiveProfile() {
+    if (!activeProfileId) {
+      return;
+    }
+    const targetName = activeProfile?.displayName ?? "this profile";
+    const confirmation = window.confirm(`Delete profile \"${targetName}\" and all its local imports, analytics, and insights?`);
+    if (!confirmation) {
+      return;
+    }
+    await run("Profile deleted locally.", async () => {
+      await api.profiles.remove(activeProfileId);
+      await refresh();
     });
   }
 
@@ -564,7 +619,43 @@ export function App() {
         <button className={route === "query" ? "active" : ""} onClick={() => navigate("query")}>
           AI Query
         </button>
+        <div className="active-profile-pill" title={activeProfile?.id}>
+          Active profile: <strong>{activeProfile?.displayName ?? "Local user"}</strong>
+        </div>
       </nav>
+
+      <section className="profile-switcher panel">
+        <div className="panel-heading-row">
+          <h2>Profiles</h2>
+          <button type="button" disabled={busy || profiles.length <= 1} onClick={() => { void deleteActiveProfile(); }}>
+            Delete active
+          </button>
+        </div>
+        <div className="profile-switcher-row">
+          <label>
+            Select profile
+            <select value={activeProfileId} disabled={busy} onChange={(event) => { void switchProfile(event.target.value); }}>
+              {profiles.map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.displayName}
+                </option>
+              ))}
+            </select>
+          </label>
+          <form className="profile-create-form" onSubmit={createProfile}>
+            <label>
+              Create profile
+              <input
+                value={newProfileName}
+                onChange={(event) => setNewProfileName(event.target.value)}
+                placeholder="New profile name"
+                maxLength={80}
+              />
+            </label>
+            <button type="submit" disabled={busy}>Create</button>
+          </form>
+        </div>
+      </section>
 
       {message ? <div className="notice">{message}</div> : null}
 

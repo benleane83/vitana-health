@@ -168,6 +168,35 @@ textarea {
   color: var(--ink-on-accent);
 }
 
+.active-profile-pill {
+  color: var(--muted);
+  font-size: 0.9rem;
+  padding: 0 var(--space-3);
+  white-space: nowrap;
+}
+
+.active-profile-pill strong {
+  color: var(--text-strong);
+}
+
+.profile-switcher {
+  min-height: auto;
+  margin-bottom: var(--space-6);
+}
+
+.profile-switcher-row {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: minmax(220px, 1fr) minmax(280px, 1.2fr);
+}
+
+.profile-create-form {
+  display: grid;
+  gap: var(--space-3);
+  align-items: end;
+  grid-template-columns: minmax(180px, 1fr) auto;
+}
+
 .hero {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
@@ -1329,6 +1358,10 @@ label {
   .labs-manual-meta {
     grid-template-columns: 1fr;
   }
+
+  .profile-switcher-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 620px) {
@@ -1371,6 +1404,10 @@ label {
 
   .route-nav button {
     flex: 1 1 150px;
+  }
+
+  .profile-create-form {
+    grid-template-columns: 1fr;
   }
 
   .summary-header {

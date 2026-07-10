@@ -16,6 +16,7 @@ interface HealthConnectPointValue {
 }
 
 interface HealthConnectImportPayload {
+  profileId?: string;
   syncedAt: string;
   rangeStart: string;
   rangeEnd: string;
@@ -48,7 +49,11 @@ const readPermissions: Permission[] = [
   { accessType: "read", recordType: "ExerciseSession" }
 ];
 
-export async function syncHealthConnectLast30Days(endpointUrl: string, companionToken?: string | null): Promise<SyncResult> {
+export async function syncHealthConnectLast30Days(
+  endpointUrl: string,
+  companionToken?: string | null,
+  profileId?: string | null
+): Promise<SyncResult> {
   if (Platform.OS !== "android") {
     throw new Error("This app only supports Android Health Connect.");
   }
@@ -108,6 +113,7 @@ export async function syncHealthConnectLast30Days(endpointUrl: string, companion
   ]);
 
   const payload: HealthConnectImportPayload = {
+    ...(profileId ? { profileId } : {}),
     syncedAt: new Date().toISOString(),
     rangeStart: rangeStart.toISOString(),
     rangeEnd: rangeEnd.toISOString(),
