@@ -1,0 +1,174 @@
+import { describe, it, expect } from "vitest";
+import { compileQueryDSL, validateCompiledSql } from "../queryCompiler.js";
+import type { QueryDSL } from "../aiQueryPlanner.js";
+
+const baseDsl: QueryDSL = {
+  intent: "timeseries",
+  metric: "heart_rate",
+  aggregation: "avg",
+  groupBy: "day",
+  timeRange: { start: "2026-01-01", end: "2026-01-31" },
+  sort: "desc",
+  limit: 30,
+  chartType: "line"
+};
+
+// ─── compileQueryDSL ───────────────────────────────────────────────────────────
+
+describe("compileQueryDSL — timeseries", () => {
+  it("compiles a daily timeseries query successfully", () => {
+    const result = compileQueryDSL(baseDsl);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.sql).toMatch(/SELECT day/i);
+    expect(result.sql).toMatch(/FROM v_daily_metrics/i);
+    expect(result.sql).toMatch(/measurement_code = 'heart_rate'/);
+    expect(result.sql).toMatch(/LIMIT 30/);
+  });
+
+  it("compiles a weekly timeseries query", () => {
+    const result = compileQueryDSL({ ...baseDsl, groupBy: "week" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.sql).toMatch(/DATE_TRUNC\('week'/i);
+    expect(result.sql).toMatch(/week_start/i);
+  });
+
+  it("compiles a monthly timeseries query", () => {
+    const result = compileQueryDSL({ ...baseDsl, groupBy: "month" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.sql).toMatch(/DATE_TRUNC\('month'/i);
+    expect(result.sql).toMatch(/month_start/i);
+  });
+});
+
+describe("compileQueryDSL — aggregation", () => {
+  it("compiles an aggregation query", () => {
+    const result = compileQueryDSL({ ...baseDsl, intent: "aggregation", groupBy: null });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.sql).toMatch(/AVG\(avg_value\)/i);
+    expect(result.sql).toMatch(/LIMIT 1/i);
+  });
+});
+
+describe("compileQueryDSL — top_n", () => {
+  it("compiles a top_n query", () => {
+    const result = compileQueryDSL({ ...baseDsl, intent: "top_n", aggregation: "max", limit: 10 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.sql).toMatch(/ORDER BY value/i);
+    expect(result.sql).toMatch(/LIMIT 10/);
+  });
+});
+
+describe("compileQueryDSL — latest", () => {
+  it("compiles a latest query with LIMIT 1", () => {
+    const result = compileQueryDSL({ ...baseDsl, intent: "latest", aggregation: "latest", limit: 1 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.sql).toMatch(/LIMIT 1/);
+    expect(result.sql).toMatch(/ORDER BY day DESC/i);
+  });
+});
+
+describe("compileQueryDSL — list_activities", () => {
+  it("compiles a list_activities count query", () => {
+    const result = compileQueryDSL({
+      ...baseDsl,
+      intent: "list_activities",
+      metric: null,
+      aggregation: "count"
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.sql).toMatch(/FROM activities/i);
+    expect(result.sql).toMatch(/COUNT\(\*\)/i);
+  });
+
+  it("compiles a list_activities listing query (non-count aggregation)", () => {
+    const result = compileQueryDSL({
+      ...baseDsl,
+      intent: "list_activities",
+      metric: null,
+      aggregation: "avg"
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.sql).toMatch(/FROM activities/i);
+    expect(result.sql).toMatch(/SELECT activity_type/i);
+  });
+});
+
+describe("compileQueryDSL — limit capping", () => {
+  it("caps the limit at 200", () => {
+    const result = compileQueryDSL({ ...baseDsl, limit: 999 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.appliedLimit).toBe(200);
+    expect(result.sql).toMatch(/LIMIT 200/);
+  });
+});
+
+describe("compileQueryDSL — time-window capping", () => {
+  it("caps a time window longer than 366 days", () => {
+    const result = compileQueryDSL({
+      ...baseDsl,
+      timeRange: { start: "2020-01-01", end: "2026-01-01" }
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.resolvedTimeRange.label).toMatch(/capped at 366 days/);
+  });
+});
+
+describe("compileQueryDSL — error paths", () => {
+  it("returns an error for non-activity intent with null metric", () => {
+    const result = compileQueryDSL({ ...baseDsl, intent: "timeseries", metric: null });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toMatch(/metric is required/i);
+  });
+});
+
+// ─── validateCompiledSql ────────────────────────────────────────────────────────
+
+describe("validateCompiledSql — compiled output is always valid", () => {
+  const intents: Array<QueryDSL["intent"]> = ["timeseries", "aggregation", "top_n", "latest"];
+  for (const intent of intents) {
+    it(`${intent} query passes validation`, () => {
+      const dsl: QueryDSL = { ...baseDsl, intent, groupBy: intent === "aggregation" ? null : "day" };
+      const compiled = compileQueryDSL(dsl);
+      if (!compiled.ok) return;
+      const validation = validateCompiledSql(compiled.sql);
+      expect(validation.valid).toBe(true);
+      expect(validation.violations).toHaveLength(0);
+    });
+  }
+});
+
+describe("validateCompiledSql — injection payloads", () => {
+  const injections: Array<[string, string]> = [
+    ["DROP TABLE", "DROP TABLE observations"],
+    ["DELETE", "DELETE FROM observations WHERE 1=1"],
+    ["semicolon", "SELECT * FROM v_daily_metrics; DROP TABLE observations"],
+    ["ATTACH", "ATTACH DATABASE '/tmp/evil.db'"],
+    ["PRAGMA", "PRAGMA table_info(observations)"],
+    ["UPDATE", "UPDATE observations SET value=0"]
+  ];
+
+  for (const [name, sql] of injections) {
+    it(`rejects SQL with ${name}`, () => {
+      const result = validateCompiledSql(sql);
+      expect(result.valid).toBe(false);
+      expect(result.violations.length).toBeGreaterThan(0);
+    });
+  }
+
+  it("rejects SQL that does not start with SELECT", () => {
+    const result = validateCompiledSql("INSERT INTO foo VALUES (1)");
+    expect(result.valid).toBe(false);
+    expect(result.violations.some((v) => v.includes("SELECT"))).toBe(true);
+  });
+});

@@ -20,9 +20,6 @@ interface EncryptedEnvelope {
   payload: string;
 }
 
-const dataDir = process.env.LFA_DATA_DIR ? resolve(process.env.LFA_DATA_DIR) : resolveDataDir();
-const dataPath = resolve(dataDir, "health-store.enc");
-const localKeyPath = resolve(dataDir, "local.key");
 const maxRawImportChars = 1_000_000;
 const maxObservations = 250_000;
 const maxTimeSeriesSamples = 10_000;
@@ -34,21 +31,26 @@ const maxLabMarkers = 200_000;
 export class HealthStore {
   private data: HealthStoreData;
   private readonly passphrase: string;
+  private readonly dataPath: string;
+  private readonly localKeyPath: string;
   readonly securityMode: "env-secret" | "generated-local-key";
 
   constructor() {
-    mkdirSync(dirname(dataPath), { recursive: true });
+    const dataDir = process.env.LFA_DATA_DIR ? resolve(process.env.LFA_DATA_DIR) : resolveDataDir();
+    this.dataPath = resolve(dataDir, "health-store.enc");
+    this.localKeyPath = resolve(dataDir, "local.key");
+    mkdirSync(dirname(this.dataPath), { recursive: true });
     const configuredSecret = process.env.LFA_SECRET;
     if (configuredSecret && configuredSecret.length >= 16) {
       this.passphrase = configuredSecret;
       this.securityMode = "env-secret";
     } else {
-      this.passphrase = getOrCreateLocalKey();
+      this.passphrase = this.getOrCreateLocalKey();
       this.securityMode = "generated-local-key";
     }
-    this.data = existsSync(dataPath) ? this.readEncryptedStore() : createEmptyStore();
+    this.data = existsSync(this.dataPath) ? this.readEncryptedStore() : createEmptyStore();
     const registryChanged = reconcileDefaultMeasurementTypes(this.data);
-    if (!existsSync(dataPath)) {
+    if (!existsSync(this.dataPath)) {
       this.audit("store-created", "Encrypted local health store created.");
       this.persist();
     } else if (registryChanged) {
@@ -185,8 +187,18 @@ export class HealthStore {
     });
   }
 
+  private getOrCreateLocalKey(): string {
+    mkdirSync(dirname(this.localKeyPath), { recursive: true });
+    if (existsSync(this.localKeyPath)) {
+      return readFileSync(this.localKeyPath, "utf8").trim();
+    }
+    const key = randomBytes(32).toString("base64url");
+    writeFileSync(this.localKeyPath, key, { encoding: "utf8", mode: 0o600 });
+    return key;
+  }
+
   private readEncryptedStore(): HealthStoreData {
-    const envelope = JSON.parse(readFileSync(dataPath, "utf8")) as EncryptedEnvelope;
+    const envelope = JSON.parse(readFileSync(this.dataPath, "utf8")) as EncryptedEnvelope;
     const key = scryptSync(this.passphrase, Buffer.from(envelope.salt, "base64"), 32);
     const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(envelope.iv, "base64"));
     decipher.setAuthTag(Buffer.from(envelope.tag, "base64"));
@@ -210,18 +222,8 @@ export class HealthStore {
       tag: cipher.getAuthTag().toString("base64"),
       payload: encrypted.toString("base64")
     };
-    writeFileSync(dataPath, JSON.stringify(envelope, null, 2), { encoding: "utf8" });
+    writeFileSync(this.dataPath, JSON.stringify(envelope, null, 2), { encoding: "utf8" });
   }
-}
-
-function getOrCreateLocalKey(): string {
-  mkdirSync(dirname(localKeyPath), { recursive: true });
-  if (existsSync(localKeyPath)) {
-    return readFileSync(localKeyPath, "utf8").trim();
-  }
-  const key = randomBytes(32).toString("base64url");
-  writeFileSync(localKeyPath, key, { encoding: "utf8", mode: 0o600 });
-  return key;
 }
 
 function createEmptyStore(): HealthStoreData {
