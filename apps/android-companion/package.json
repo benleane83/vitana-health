@@ -3,13 +3,11 @@
   "version": "1.0.0",
   "main": "index.ts",
   "dependencies": {
-    "@react-native-async-storage/async-storage": "^3.1.1",
-    "eas-cli": "^20.5.1",
+    "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~57.0.2",
-    "expo-camera": "^57.0.0",
-    "expo-health-connect": "^0.1.1",
+    "expo-camera": "~57.0.1",
     "expo-status-bar": "~57.0.0",
-    "react": "19.2.3",
+    "react": "19.2.7",
     "react-native": "0.86.0",
     "react-native-health-connect": "^3.5.3",
     "react-native-zeroconf": "^0.14.0"
@@ -25,7 +23,14 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "build:android:preview": "eas build --platform android --profile preview"
+    "build:android:preview": "npx -y eas-cli@20.5.1 build --platform android --profile preview"
+  },
+  "expo": {
+    "install": {
+      "exclude": [
+        "react"
+      ]
+    }
   },
   "private": true
 }

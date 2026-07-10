@@ -209,7 +209,7 @@ The density bar has no progressbar semantics (`App.tsx:538`), sparkline labels a
 
 ### Maintainability and engineering quality
 
-#### P0 — No automated tests exist
+#### [DONE] P0 — No automated tests exist
 
 No test files, test framework, or test script exists. The highest-risk untested areas are:
 
@@ -223,7 +223,7 @@ No test files, test framework, or test script exists. The highest-risk untested 
 
 **Recommendation:** Start with characterization tests before refactoring. Add unit, API integration, component accessibility, and a small end-to-end smoke suite. Use synthetic fixtures only.
 
-#### P0 — No CI quality gates exist
+#### [DONE] P0 — No CI quality gates exist
 
 There are no GitHub Actions workflows. Pull requests can merge without install, typecheck, build, tests, audit review, or secret scanning.
 

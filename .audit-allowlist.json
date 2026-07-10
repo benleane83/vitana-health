@@ -1,0 +1,10 @@
+{
+  "allowedHighOrCriticalPackages": [
+    "duckdb",
+    "node-gyp",
+    "make-fetch-happen",
+    "cacache",
+    "tar"
+  ],
+  "notes": "Temporary allowlist for DuckDB transitive audit chain. Revisit monthly and on duckdb releases."
+}

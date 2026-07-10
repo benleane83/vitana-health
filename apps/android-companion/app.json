@@ -8,7 +8,6 @@
     "userInterfaceStyle": "light",
     "android": {
       "package": "com.localfitnessadvisor.companion",
-      "usesCleartextTraffic": true,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.health.READ_STEPS",
@@ -28,7 +27,6 @@
     },
     "plugins": [
       "./plugins/withDevNetworkSecurity",
-      "expo-health-connect",
       [
         "expo-camera",
         {
