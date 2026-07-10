@@ -15,7 +15,7 @@ import type {
 } from "@local-fitness-advisor/shared";
 import { safetyNotice } from "@local-fitness-advisor/shared";
 import { api } from "./api.js";
-import type { AiQueryResult, AiQueryChartSeries, PendingPairing } from "./api.js";
+import type { AiQueryResult, AiQueryChartSeries, PairedDevice, PendingPairing } from "./api.js";
 import { LAB_MARKER_CATALOG } from "./labMarkerCatalog.js";
 import type { LabMarkerCatalogEntry } from "./labMarkerCatalog.js";
 
@@ -985,6 +985,17 @@ function FitnessTrackerImportPanel({
   onApprove: (id: string) => void;
   onDeny: (id: string) => void;
 }) {
+  const [pairedDevices, setPairedDevices] = useState<PairedDevice[]>([]);
+
+  useEffect(() => {
+    void api.pairing.devices().then(setPairedDevices).catch(() => setPairedDevices([]));
+  }, [pendingPairings]);
+
+  async function revokeDevice(id: string) {
+    await api.pairing.revoke(id);
+    setPairedDevices(await api.pairing.devices());
+  }
+
   return (
     <section className="panel import-source-panel">
       <div>
@@ -1005,18 +1016,10 @@ function FitnessTrackerImportPanel({
           Open the companion app, tap <strong>Set Up Connection</strong>, and scan this QR code. The app will find this
           server automatically — no IP address required.
         </p>
-        <div className="pairing-qr-wrap">
-          <img
-            src="/api/pair/qr"
-            alt="QR code encoding this server's local network address for companion app pairing"
-            width={200}
-            height={200}
-            className="pairing-qr"
-          />
-        </div>
+        <PairingQr />
         <p className="empty pairing-hint">
-          The QR code encodes this server's LAN address. Make sure the API is accessible on your local network
-          (set <code>HOST=0.0.0.0</code> or your LAN IP when starting the server).
+          The QR code contains a short-lived pairing code and the server's LAN address. LAN use requires configured
+          authentication and HTTPS, except for the explicit development-only HTTP mode.
         </p>
       </div>
 
@@ -1039,10 +1042,33 @@ function FitnessTrackerImportPanel({
         </div>
       ) : null}
 
+      {pairedDevices.length > 0 ? (
+        <div className="pairing-requests">
+          <p className="eyebrow">Paired devices</p>
+          {pairedDevices.map((device) => (
+            <div key={device.id} className="pairing-request-row">
+              <div className="pairing-request-info">
+                <strong>{device.deviceName}</strong>
+                <span className="muted">
+                  {device.revokedAt
+                    ? `Revoked ${new Date(device.revokedAt).toLocaleString()}`
+                    : device.lastUsedAt
+                      ? `Last sync ${new Date(device.lastUsedAt).toLocaleString()}`
+                      : "Not synced yet"}
+                </span>
+              </div>
+              {!device.revokedAt ? (
+                <button type="button" onClick={() => { void revokeDevice(device.id); }}>Revoke</button>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       <div className="import-guidance-grid">
         <div>
           <strong>1. Open companion app</strong>
-          <span>Tap <em>Set Up Connection</em> and choose Scan QR or Find on Network.</span>
+          <span>Tap <em>Set Up Connection</em> and scan the short-lived QR code.</span>
         </div>
         <div>
           <strong>2. Approve pairing</strong>
@@ -1054,6 +1080,44 @@ function FitnessTrackerImportPanel({
         </div>
       </div>
     </section>
+  );
+}
+
+function PairingQr() {
+  const [url, setUrl] = useState<string>();
+  const [error, setError] = useState<string>();
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl: string | undefined;
+    void api.pairing.qr()
+      .then((blob) => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(blob);
+        setUrl(objectUrl);
+      })
+      .catch((cause: unknown) => {
+        if (active) setError(cause instanceof Error ? cause.message : "Unable to create pairing QR code.");
+      });
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, []);
+
+  if (error) return <p className="empty">{error}</p>;
+  return (
+    <div className="pairing-qr-wrap">
+      {url ? (
+        <img
+          src={url}
+          alt="Short-lived QR code for secure companion pairing"
+          width={200}
+          height={200}
+          className="pairing-qr"
+        />
+      ) : <span className="empty">Creating short-lived pairing code…</span>}
+    </div>
   );
 }
 

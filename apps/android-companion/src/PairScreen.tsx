@@ -30,6 +30,7 @@ export function PairScreen({
   const [status, setStatus] = useState<PairStatus>("idle");
   const [message, setMessage] = useState("");
   const [detectedUrl, setDetectedUrl] = useState("");
+  const [pairingCode, setPairingCode] = useState("");
   const [discoveredServices, setDiscoveredServices] = useState<DiscoveredService[]>([]);
   const [discovering, setDiscovering] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
@@ -47,9 +48,17 @@ export function PairScreen({
     scannedRef.current = true;
     try {
       const payload = JSON.parse(data) as Record<string, unknown>;
-      if (typeof payload.url === "string" && payload.app === "local-fitness-advisor") {
+      if (
+        typeof payload.url === "string" &&
+        typeof payload.pairingCode === "string" &&
+        payload.app === "local-fitness-advisor"
+      ) {
         const url = payload.url.replace(/\/+$/, "");
+        if (!__DEV__ && !url.startsWith("https://")) {
+          throw new Error("Production pairing requires HTTPS.");
+        }
         setDetectedUrl(url);
+        setPairingCode(payload.pairingCode);
         setStatus("detected");
         setMessage(`Found server: ${url}`);
       } else {
@@ -71,7 +80,11 @@ export function PairScreen({
   }
 
   async function handleConnect() {
-    if (!detectedUrl) return;
+    if (!detectedUrl || !pairingCode) {
+      setStatus("error");
+      setMessage("Scan the server QR code to obtain a short-lived pairing code.");
+      return;
+    }
     setStatus("requesting");
     setMessage("Sending pairing request…");
     try {
@@ -79,7 +92,7 @@ export function PairScreen({
       const response = await fetch(`${detectedUrl}/api/pairing/request`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ deviceId, deviceName: "Android Companion" })
+        body: JSON.stringify({ deviceId, deviceName: "Android Companion", pairingCode })
       });
       const body = (await response.json()) as Record<string, unknown>;
 
@@ -94,7 +107,8 @@ export function PairScreen({
       if (typeof body.pairingId === "string") {
         setStatus("waiting");
         setMessage("Waiting for approval in the web app on your PC…");
-        pollForApproval(detectedUrl, body.pairingId);
+        if (typeof body.pollingSecret !== "string") throw new Error("Pairing response did not include a polling secret.");
+        pollForApproval(detectedUrl, body.pairingId, body.pollingSecret);
       } else {
         setStatus("error");
         setMessage(typeof body.error === "string" ? body.error : "Pairing request failed.");
@@ -105,7 +119,7 @@ export function PairScreen({
     }
   }
 
-  function pollForApproval(url: string, pairingId: string) {
+  function pollForApproval(url: string, pairingId: string, pollingSecret: string) {
     let cancelled = false;
     let attempts = 0;
     const maxAttempts = 60;
@@ -126,7 +140,7 @@ export function PairScreen({
       attempts++;
       try {
         const response = await fetch(`${url}/api/pairing/status/${pairingId}`, {
-          headers: { Accept: "application/json" }
+          headers: { Accept: "application/json", "x-pairing-secret": pollingSecret }
         });
         const body = (await response.json()) as Record<string, unknown>;
         if (body.status === "approved" && typeof body.token === "string") {
@@ -182,6 +196,7 @@ export function PairScreen({
     setStatus("idle");
     setMessage("");
     setDetectedUrl("");
+    setPairingCode("");
     setMode(newMode);
   }
 
@@ -190,6 +205,7 @@ export function PairScreen({
     setStatus("idle");
     setMessage("");
     setDetectedUrl("");
+    setPairingCode("");
   }
 
   const isError = status === "error" || status === "denied";

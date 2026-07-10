@@ -12,14 +12,34 @@ import type {
   Profile
 } from "@local-fitness-advisor/shared";
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
+const ownerTokenKey = "local-fitness-advisor.ownerToken";
+
+function ownerHeaders(options?: RequestInit): HeadersInit {
+  const token = window.sessionStorage.getItem(ownerTokenKey);
+  return {
+    "content-type": "application/json",
+    ...(token ? { authorization: "Bearer " + token } : {}),
+    ...options?.headers
+  };
+}
+
+async function fetchAsOwner(path: string, options?: RequestInit, retry = true): Promise<Response> {
   const response = await fetch(path, {
     ...options,
-    headers: {
-      "content-type": "application/json",
-      ...options?.headers
-    }
+    headers: ownerHeaders(options)
   });
+  if (response.status === 401 && retry) {
+    const token = window.prompt("Enter the Local Fitness Advisor owner token shown by the API at startup:");
+    if (token) {
+      window.sessionStorage.setItem(ownerTokenKey, token);
+      return fetchAsOwner(path, options, false);
+    }
+  }
+  return response;
+}
+
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const response = await fetchAsOwner(path, options);
   if (!response.ok) {
     throw new Error(await response.text());
   }
@@ -35,6 +55,16 @@ export interface PendingPairing {
   deviceId: string;
   deviceName: string;
   requestedAt: string;
+}
+
+export interface PairedDevice {
+  id: string;
+  deviceId: string;
+  deviceName: string;
+  requestedAt: string;
+  resolvedAt: string | null;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
 }
 
 export interface AiQueryChartSeries {
@@ -87,9 +117,16 @@ export const api = {
     request<{ store: HealthStoreData }>("/api/import/labs/manual", { method: "POST", body: JSON.stringify(payload) }),
   generateInsight: () => request<Insight>("/api/insights/generate", { method: "POST" }),
   pairing: {
+    qr: async () => {
+      const response = await fetchAsOwner("/api/pair/qr");
+      if (!response.ok) throw new Error(await response.text());
+      return response.blob();
+    },
     pending: () => request<PendingPairing[]>("/api/pairing/pending"),
+    devices: () => request<PairedDevice[]>("/api/pairing/devices"),
     approve: (id: string) => request<{ id: string; status: string }>(`/api/pairing/approve/${id}`, { method: "POST" }),
-    deny: (id: string) => request<{ id: string; status: string }>(`/api/pairing/deny/${id}`, { method: "POST" })
+    deny: (id: string) => request<{ id: string; status: string }>(`/api/pairing/deny/${id}`, { method: "POST" }),
+    revoke: (id: string) => request<PairedDevice>(`/api/pairing/revoke/${id}`, { method: "POST" })
   },
   query: {
     ai: (question: string, options?: { timezone?: string; debug?: boolean }) =>

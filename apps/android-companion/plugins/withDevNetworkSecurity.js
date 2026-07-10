@@ -2,13 +2,13 @@ const fs = require("fs");
 const path = require("path");
 const { withAndroidManifest, withDangerousMod } = require("@expo/config-plugins");
 
-const NETWORK_SECURITY_CONFIG = `<?xml version="1.0" encoding="utf-8"?>
+function withDevNetworkSecurity(config, options = {}) {
+  const allowCleartext = options.allowCleartext === true;
+  const networkSecurityConfig = `<?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-  <base-config cleartextTrafficPermitted="true" />
+  <base-config cleartextTrafficPermitted="${allowCleartext ? "true" : "false"}" />
 </network-security-config>
 `;
-
-function withDevNetworkSecurity(config) {
   config = withAndroidManifest(config, (config) => {
     const application = config.modResults.manifest.application?.[0];
     if (!application) {
@@ -16,7 +16,7 @@ function withDevNetworkSecurity(config) {
     }
 
     application.$ = application.$ || {};
-    application.$["android:usesCleartextTraffic"] = "true";
+    application.$["android:usesCleartextTraffic"] = allowCleartext ? "true" : "false";
     application.$["android:networkSecurityConfig"] = "@xml/network_security_config";
 
     return config;
@@ -27,7 +27,7 @@ function withDevNetworkSecurity(config) {
     async (config) => {
       const xmlDir = path.join(config.modRequest.platformProjectRoot, "app", "src", "main", "res", "xml");
       fs.mkdirSync(xmlDir, { recursive: true });
-      fs.writeFileSync(path.join(xmlDir, "network_security_config.xml"), NETWORK_SECURITY_CONFIG);
+      fs.writeFileSync(path.join(xmlDir, "network_security_config.xml"), networkSecurityConfig);
       return config;
     }
   ]);

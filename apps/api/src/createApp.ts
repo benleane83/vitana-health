@@ -2,6 +2,7 @@ import cors from "cors";
 import express from "express";
 import { z } from "zod";
 import os from "node:os";
+import { timingSafeEqual } from "node:crypto";
 import QRCode from "qrcode";
 import { PairingStore } from "./pairing.js";
 import {
@@ -46,7 +47,8 @@ function getLanIp(): string | null {
 
 const pairingRequestSchema = z.object({
   deviceId: z.string().min(1).max(120),
-  deviceName: z.string().min(1).max(80)
+  deviceName: z.string().min(1).max(80),
+  pairingCode: z.string().min(8).max(120)
 });
 
 const profileSchema = z.object({
@@ -155,7 +157,10 @@ const observationIdParamSchema = z
 export function createApp(store: HealthStore, pairingStore: PairingStore): express.Application {
   const app = express();
 
-  app.use(express.json({ limit: "25mb" }));
+  app.disable("x-powered-by");
+  app.use("/api/import/body-composition/preview", express.json({ limit: "20mb" }));
+  app.use("/api/import/health-connect", express.json({ limit: "10mb" }));
+  app.use(express.json({ limit: "1mb" }));
   app.use(
     cors({
       origin(origin, callback) {
@@ -168,18 +173,86 @@ export function createApp(store: HealthStore, pairingStore: PairingStore): expre
     })
   );
 
-  function requireCompanionToken(request: express.Request, response: express.Response, next: express.NextFunction): void {
-    if (!pairingStore.hasAnyApproved()) {
+  const rateBuckets = new Map<string, { count: number; resetAt: number }>();
+  function rateLimit(max: number, windowMs: number) {
+    return (request: express.Request, response: express.Response, next: express.NextFunction): void => {
+      const now = Date.now();
+      if (rateBuckets.size > 5_000) {
+        for (const [bucketKey, bucketValue] of rateBuckets) {
+          if (bucketValue.resetAt <= now) rateBuckets.delete(bucketKey);
+        }
+      }
+      const routeGroup = request.baseUrl || request.path.split("/").slice(0, 3).join("/");
+      const key = `${request.ip}:${routeGroup}`;
+      const current = rateBuckets.get(key);
+      const bucket = !current || current.resetAt <= now ? { count: 0, resetAt: now + windowMs } : current;
+      bucket.count++;
+      rateBuckets.set(key, bucket);
+      response.setHeader("rate-limit-limit", String(max));
+      response.setHeader("rate-limit-remaining", String(Math.max(0, max - bucket.count)));
+      if (bucket.count > max) {
+        response.setHeader("retry-after", String(Math.ceil((bucket.resetAt - now) / 1000)));
+        response.status(429).json({ error: "Too many requests. Try again later." });
+        return;
+      }
+      next();
+    };
+  }
+
+  function ownerTokenIsValid(request: express.Request): boolean {
+    const configured = process.env.LFA_OWNER_TOKEN ?? "";
+    const supplied = request.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "";
+    const configuredBuffer = Buffer.from(configured);
+    const suppliedBuffer = Buffer.from(supplied);
+    return configuredBuffer.length >= 24 && configuredBuffer.length === suppliedBuffer.length && timingSafeEqual(configuredBuffer, suppliedBuffer);
+  }
+
+  app.use(rateLimit(300, 60_000));
+  app.use("/api/pairing", rateLimit(30, 60_000));
+  app.use("/api/llm", rateLimit(10, 60_000));
+  app.use("/api/query", rateLimit(30, 60_000));
+
+  app.post("/api/pairing/request", (request, response) => {
+    const parsed = pairingRequestSchema.parse(request.body ?? {});
+    const result = pairingStore.request(parsed.deviceId, parsed.deviceName, parsed.pairingCode);
+    if (!result) {
+      response.status(401).json({ error: "Pairing code is invalid or expired." });
+      return;
+    }
+    response.status(201).json({ pairingId: result.record.id, status: result.record.status, pollingSecret: result.pollingSecret });
+  });
+
+  app.get("/api/pairing/status/:pairingId", (request, response) => {
+    const pollingSecret = request.headers["x-pairing-secret"];
+    if (typeof pollingSecret !== "string") {
+      response.status(401).json({ error: "Pairing secret required." });
+      return;
+    }
+    const result = pairingStore.getStatus(request.params.pairingId, pollingSecret);
+    if (!result) {
+      response.status(404).json({ error: "Pairing request not found." });
+      return;
+    }
+    response.json({ id: result.record.id, status: result.record.status, token: result.token });
+  });
+
+  app.use("/api", (request, response, next) => {
+    const companionToken = request.headers["x-companion-token"];
+    if (
+      request.path === "/import/health-connect" &&
+      typeof companionToken === "string" &&
+      pairingStore.validateToken(companionToken)
+    ) {
       next();
       return;
     }
-    const token = request.headers["x-companion-token"];
-    if (typeof token !== "string" || !pairingStore.validateToken(token)) {
-      response.status(401).json({ error: "Valid companion token required. Pair the mobile app first via the companion pairing screen." });
+    if (!ownerTokenIsValid(request)) {
+      response.setHeader("www-authenticate", ["Bearer", 'realm="Local Fitness Advisor"'].join(" "));
+      response.status(401).json({ error: "Valid owner credential required." });
       return;
     }
     next();
-  }
+  });
 
   app.get("/api/health", (_request, response) => {
     const snapshot = store.snapshot();
@@ -191,7 +264,6 @@ export function createApp(store: HealthStore, pairingStore: PairingStore): expre
       counts: computeAnalytics(snapshot).counts,
       modelRuntime: {
         provider: model.provider,
-        endpoint: model.endpoint,
         model: model.model,
         timeoutMs: model.timeoutMs
       }
@@ -202,23 +274,16 @@ export function createApp(store: HealthStore, pairingStore: PairingStore): expre
     try {
       const lanIp = getLanIp() ?? "127.0.0.1";
       const port = Number.parseInt(process.env.PORT ?? "4317", 10);
-      const url = `http://${lanIp}:${port}`;
-      const payload = JSON.stringify({ url, app: "local-fitness-advisor" });
+      const scheme = process.env.LFA_TLS_CERT && process.env.LFA_TLS_KEY ? "https" : "http";
+      const url = `${scheme}://${lanIp}:${port}`;
+      const challenge = pairingStore.createChallenge();
+      const payload = JSON.stringify({ url, app: "local-fitness-advisor", pairingCode: challenge.code, expiresAt: challenge.expiresAt });
+      response.setHeader("cache-control", "no-store");
       const buffer = await QRCode.toBuffer(payload, { type: "png", width: 300, margin: 2 });
       response.setHeader("content-type", "image/png");
       response.send(buffer);
     } catch (error) {
       next(error);
-    }
-  });
-
-  app.post("/api/pairing/request", (request, response) => {
-    const parsed = pairingRequestSchema.parse(request.body ?? {});
-    const record = pairingStore.request(parsed.deviceId, parsed.deviceName);
-    if (record.status === "approved") {
-      response.json({ pairingId: record.id, status: "approved", token: record.token });
-    } else {
-      response.status(201).json({ pairingId: record.id, status: "pending" });
     }
   });
 
@@ -230,19 +295,6 @@ export function createApp(store: HealthStore, pairingStore: PairingStore): expre
       requestedAt: r.requestedAt
     }));
     response.json(pending);
-  });
-
-  app.get("/api/pairing/status/:pairingId", (request, response) => {
-    const record = pairingStore.getById(request.params.pairingId);
-    if (!record) {
-      response.status(404).json({ error: "Pairing request not found." });
-      return;
-    }
-    const payload: Record<string, unknown> = { id: record.id, status: record.status };
-    if (record.status === "approved") {
-      payload.token = record.token;
-    }
-    response.json(payload);
   });
 
   app.post("/api/pairing/approve/:pairingId", (request, response) => {
@@ -261,6 +313,19 @@ export function createApp(store: HealthStore, pairingStore: PairingStore): expre
       return;
     }
     response.json({ id: record.id, status: record.status });
+  });
+
+  app.get("/api/pairing/devices", (_request, response) => {
+    response.json(pairingStore.listDevices());
+  });
+
+  app.post("/api/pairing/revoke/:pairingId", (request, response) => {
+    const record = pairingStore.revoke(request.params.pairingId);
+    if (!record) {
+      response.status(404).json({ error: "Paired device not found." });
+      return;
+    }
+    response.json(record);
   });
 
   app.get("/api/store", (_request, response) => {
@@ -402,7 +467,7 @@ export function createApp(store: HealthStore, pairingStore: PairingStore): expre
     }
   });
 
-  app.post("/api/import/health-connect", requireCompanionToken, async (request, response, next) => {
+  app.post("/api/import/health-connect", async (request, response, next) => {
     try {
       const parsed = healthConnectImportRequestSchema.parse(request.body ?? {});
       const imported = parseHealthConnectImport(parsed);
@@ -749,9 +814,10 @@ export function createApp(store: HealthStore, pairingStore: PairingStore): expre
       return;
     }
     if (error instanceof Error) {
-      response.status(500).json({
-        error: error.message,
-        stack: process.env.NODE_ENV !== "production" ? error.stack : undefined
+      const status = "status" in error && typeof error.status === "number" ? error.status : 500;
+      response.status(status).json({
+        error: status === 413 ? "Request body is too large." : error.message,
+        stack: status === 500 && process.env.NODE_ENV !== "production" ? error.stack : undefined
       });
       return;
     }

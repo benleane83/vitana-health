@@ -4,9 +4,24 @@
     "appVersionSource": "remote"
   },
   "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "LFA_ALLOW_CLEARTEXT": "1"
+      }
+    },
     "preview": {
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "LFA_ALLOW_CLEARTEXT": "0"
+      }
+    },
+    "production": {
+      "env": {
+        "LFA_ALLOW_CLEARTEXT": "0"
       }
     }
   }
