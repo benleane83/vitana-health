@@ -1,7 +1,6 @@
 export type MeasurementKind = "point" | "interval" | "event" | "panel-component";
 
 export type SourceKind =
-  | "samsung-health"
   | "health-connect"
   | "manual-entry"
   | "blood-test-csv"

@@ -19,18 +19,10 @@ import type { AiQueryResult, AiQueryChartSeries, PendingPairing } from "./api.js
 import { LAB_MARKER_CATALOG } from "./labMarkerCatalog.js";
 import type { LabMarkerCatalogEntry } from "./labMarkerCatalog.js";
 
-const sampleSamsungCsv = `date,type,value,unit
-2026-06-25,steps,8421,count
-2026-06-26,steps,9630,count
-2026-06-27,steps,7102,count
-2026-06-28,heart_rate,64,bpm
-2026-06-29,heart_rate,61,bpm
-2026-06-30,weight,82.4,kg`;
-
 type AppRoute = "dashboard" | "summary" | "import" | "query";
 type SummarySort = "name" | "count" | "recency";
 type LabsMode = "manual" | "upload" | "bodycomp";
-type ImportMode = "labs" | "fitness" | "samsung";
+type ImportMode = "labs" | "fitness";
 
 interface ManualMarkerRow {
   id: string;
@@ -66,8 +58,6 @@ const minimumFlatChartPadding = 1;
 export function App() {
   const [store, setStore] = useState<HealthStoreData>();
   const [analytics, setAnalytics] = useState<AnalyticsSummary>();
-  const [samsungFileName, setSamsungFileName] = useState("samsung-health-sample.csv");
-  const [samsungCsv, setSamsungCsv] = useState(sampleSamsungCsv);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();
   const [route, setRoute] = useState<AppRoute>(() => routeFromPathname(window.location.pathname));
@@ -228,13 +218,6 @@ export function App() {
       });
       await refresh();
       setProfileEditorOpen(false);
-    });
-  }
-
-  async function importSamsungCsv() {
-    await run("Samsung Health import processed into the encrypted local store.", async () => {
-      await api.importSamsung(samsungFileName, samsungCsv);
-      await refresh();
     });
   }
 
@@ -746,11 +729,6 @@ export function App() {
           onPreviewBodyComp={previewBodyCompositionReport}
           onCommitBodyComp={commitBodyCompositionReport}
           bodyCompInputRef={bodyCompInputRef}
-          samsungFileName={samsungFileName}
-          samsungCsv={samsungCsv}
-          onSamsungFileNameChange={setSamsungFileName}
-          onSamsungCsvChange={setSamsungCsv}
-          onImportSamsungCsv={importSamsungCsv}
           pendingPairings={pendingPairings}
           onApprovePairing={approvePairing}
           onDenyPairing={denyPairing}
@@ -858,11 +836,6 @@ function ImportPage({
   onPreviewBodyComp,
   onCommitBodyComp,
   bodyCompInputRef,
-  samsungFileName,
-  samsungCsv,
-  onSamsungFileNameChange,
-  onSamsungCsvChange,
-  onImportSamsungCsv,
   pendingPairings,
   onApprovePairing,
   onDenyPairing
@@ -896,11 +869,6 @@ function ImportPage({
   onPreviewBodyComp: (event: React.FormEvent<HTMLFormElement>) => void;
   onCommitBodyComp: (event: React.FormEvent<HTMLFormElement>) => void;
   bodyCompInputRef: React.RefObject<HTMLInputElement | null>;
-  samsungFileName: string;
-  samsungCsv: string;
-  onSamsungFileNameChange: (value: string) => void;
-  onSamsungCsvChange: (value: string) => void;
-  onImportSamsungCsv: () => void;
   pendingPairings: PendingPairing[];
   onApprovePairing: (id: string) => void;
   onDenyPairing: (id: string) => void;
@@ -913,13 +881,12 @@ function ImportPage({
           <h1>Import</h1>
         </div>
         <p className="import-copy">
-          Labs, Health Connect, and Samsung exports live here so the dashboard can stay focused on review.
+          Labs and Health Connect imports live here so the dashboard can stay focused on review.
         </p>
       </div>
       <div className="import-tabs" role="tablist" aria-label="Import source">
         <button className={mode === "labs" ? "active" : ""} onClick={() => onModeChange("labs")}>Labs</button>
         <button className={mode === "fitness" ? "active" : ""} onClick={() => onModeChange("fitness")}>Fitness Tracker</button>
-        <button className={mode === "samsung" ? "active" : ""} onClick={() => onModeChange("samsung")}>Samsung CSV</button>
       </div>
 
       {mode === "labs" ? (
@@ -959,17 +926,6 @@ function ImportPage({
           pendingPairings={pendingPairings}
           onApprove={onApprovePairing}
           onDeny={onDenyPairing}
-        />
-      ) : null}
-
-      {mode === "samsung" ? (
-        <SamsungCsvImportPanel
-          busy={busy}
-          fileName={samsungFileName}
-          csv={samsungCsv}
-          onFileNameChange={onSamsungFileNameChange}
-          onCsvChange={onSamsungCsvChange}
-          onImport={onImportSamsungCsv}
         />
       ) : null}
     </section>
@@ -1053,41 +1009,6 @@ function FitnessTrackerImportPanel({
           <span>The app syncs automatically once paired. Token is stored on-device for future syncs.</span>
         </div>
       </div>
-    </section>
-  );
-}
-
-function SamsungCsvImportPanel({
-  busy,
-  fileName,
-  csv,
-  onFileNameChange,
-  onCsvChange,
-  onImport
-}: {
-  busy: boolean;
-  fileName: string;
-  csv: string;
-  onFileNameChange: (value: string) => void;
-  onCsvChange: (value: string) => void;
-  onImport: () => void;
-}) {
-  return (
-    <section className="panel import-source-panel">
-      <div>
-        <p className="eyebrow">Samsung Health export</p>
-        <h2>Samsung CSV</h2>
-      </div>
-      <p className="empty">Paste a Samsung Health CSV export or keep the sample data to test the local import pipeline.</p>
-      <label>
-        File name
-        <input value={fileName} onChange={(event) => onFileNameChange(event.target.value)} />
-      </label>
-      <label>
-        CSV content
-        <textarea className="csv-box" value={csv} onChange={(event) => onCsvChange(event.target.value)} />
-      </label>
-      <button disabled={busy} onClick={onImport}>Process into vault</button>
     </section>
   );
 }
@@ -1906,18 +1827,12 @@ function importModeFromPathname(pathname: string): ImportMode {
   if (pathname === "/import/fitness-tracker") {
     return "fitness";
   }
-  if (pathname === "/import/samsung-csv") {
-    return "samsung";
-  }
   return "labs";
 }
 
 function importModePath(mode: ImportMode): string {
   if (mode === "fitness") {
     return "/import/fitness-tracker";
-  }
-  if (mode === "samsung") {
-    return "/import/samsung-csv";
   }
   return "/import/labs";
 }

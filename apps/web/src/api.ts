@@ -75,8 +75,6 @@ export const api = {
     request<DeleteObservationsByTypeResponse>(`/api/observations/by-type/${encodeURIComponent(measurementCode)}`, { method: "DELETE" }),
   saveProfile: (profile: Omit<Profile, "id" | "updatedAt">) =>
     request<Profile>("/api/profile", { method: "PUT", body: JSON.stringify(profile) }),
-  importSamsung: (fileName: string, content: string) =>
-    request<{ store: HealthStoreData }>("/api/import/samsung", { method: "POST", body: JSON.stringify({ fileName, content }) }),
   importBloodTest: (fileName: string, content: string) =>
     request<{ store: HealthStoreData }>("/api/import/blood-test", { method: "POST", body: JSON.stringify({ fileName, content }) }),
   previewBodyCompositionReport: (payload: { fileName: string; mimeType: string; contentBase64: string }) =>

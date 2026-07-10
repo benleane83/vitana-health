@@ -1,8 +1,8 @@
-@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,650;9..144,800&display=swap");
-
 :root {
   color-scheme: dark;
-  font-family: Aptos, "Segoe UI", system-ui, sans-serif;
+  --font-sans: Aptos, "Segoe UI", "Helvetica Neue", Arial, system-ui, sans-serif;
+  --font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", "URW Palladio L", Palatino, Georgia, Cambria, "Times New Roman", serif;
+  font-family: var(--font-sans);
   font-kerning: normal;
   background: var(--bg);
   color: var(--text);
@@ -196,7 +196,7 @@ h3 {
 
 h1,
 .privacy-card strong {
-  font-family: "Fraunces", Georgia, serif;
+  font-family: var(--font-display);
 }
 
 h1 {
@@ -423,7 +423,7 @@ h3 {
 
 .summary-detail-chart-panel h3,
 .summary-detail-table h3 {
-  font-family: Aptos, "Segoe UI", system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.82rem;
   font-weight: 800;
   text-transform: uppercase;
@@ -951,7 +951,7 @@ label {
 
 .stat strong {
   display: block;
-  font-family: Aptos, "Segoe UI", system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 1.65rem;
   font-weight: 800;
   line-height: 1.05;
@@ -1133,7 +1133,7 @@ label {
 }
 
 .query-answer h3 {
-  font-family: Aptos, "Segoe UI", system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.82rem;
   font-weight: 800;
   text-transform: uppercase;
@@ -1171,7 +1171,7 @@ label {
 }
 
 .query-chart h3 {
-  font-family: Aptos, "Segoe UI", system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.82rem;
   font-weight: 800;
   text-transform: uppercase;
@@ -1241,7 +1241,7 @@ label {
 }
 
 .query-table h3 {
-  font-family: Aptos, "Segoe UI", system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.82rem;
   font-weight: 800;
   text-transform: uppercase;
