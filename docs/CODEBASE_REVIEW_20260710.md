@@ -38,7 +38,7 @@ Priorities:
 
 ### Security and privacy
 
-#### P0 — LAN API has no authentication or authorization
+#### [IN PROGRESS] P0 — LAN API has no authentication or authorization
 
 The README instructs users to bind the API to all interfaces for companion sync (`README.md:21-26`), but the API has no authentication middleware (`apps/api/src/server.ts:36-52`). CORS is not access control and does not restrict non-browser clients. Once exposed, any LAN client can:
 
@@ -50,13 +50,13 @@ The README instructs users to bind the API to all interfaces for companion sync 
 
 **Recommendation:** Require authentication on all routes, refuse non-loopback startup without a configured credential, and pair the companion using a short-lived code or QR flow that provisions a revocable device token. Apply authorization and rate/body limits centrally.
 
-#### P0 — Health Connect data is transmitted over unrestricted cleartext HTTP
+#### [IN PROGRESS] P0 — Health Connect data is transmitted over unrestricted cleartext HTTP
 
 The Android manifest enables cleartext globally (`apps/android-companion/app.json:9-12`). The `withDevNetworkSecurity` plugin applies `cleartextTrafficPermitted="true"` to every destination and every build (`plugins/withDevNetworkSecurity.js:5-30`). The sync sends 30 days of steps, heart rate, oxygen saturation, HRV, weight, and exercise data without authentication (`src/syncHealthConnect.ts:110-162`).
 
 **Recommendation:** Separate development and production configuration. Production should require an authenticated encrypted channel. If local certificates are used, build a deliberate pairing/trust mechanism rather than silently accepting arbitrary endpoints.
 
-#### P0 — Privacy claims do not match optional cloud-model behavior
+#### [DONE] P0 — Privacy claims do not match optional cloud-model behavior
 
 The README says no remote AI/vendor upload paths are implemented (`README.md:28-33`) while also documenting an OpenAI-compatible cloud provider (`README.md:52-62`). When configured, query evidence and health-derived summaries are included in model prompts (`apps/api/src/server.ts:431-439,481-488,581-591`).
 
@@ -93,7 +93,7 @@ The default non-production error response returns stack traces (`server.ts:714-7
 
 ### Data integrity, reliability, and performance
 
-#### P0 — Persistence and warehouse replacement are not crash-safe
+#### [DONE] P0 — Persistence and warehouse replacement are not crash-safe
 
 The encrypted store is written directly to its final path (`store.ts:200-214`). A crash, power loss, or disk-full condition can leave it truncated. The warehouse rebuild deletes the active database before creating its replacement (`apps/api/src/warehouse.ts:27-32`), so a failed rebuild can remove the last usable warehouse.
 

@@ -1,4 +1,14 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync
+} from "node:fs";
 import { dirname, resolve } from "node:path";
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
 import {
@@ -32,12 +42,14 @@ export class HealthStore {
   private data: HealthStoreData;
   private readonly passphrase: string;
   private readonly dataPath: string;
+  private readonly backupPath: string;
   private readonly localKeyPath: string;
   readonly securityMode: "env-secret" | "generated-local-key";
 
   constructor() {
     const dataDir = process.env.LFA_DATA_DIR ? resolve(process.env.LFA_DATA_DIR) : resolveDataDir();
     this.dataPath = resolve(dataDir, "health-store.enc");
+    this.backupPath = `${this.dataPath}.bak`;
     this.localKeyPath = resolve(dataDir, "local.key");
     mkdirSync(dirname(this.dataPath), { recursive: true });
     const configuredSecret = process.env.LFA_SECRET;
@@ -198,7 +210,20 @@ export class HealthStore {
   }
 
   private readEncryptedStore(): HealthStoreData {
-    const envelope = JSON.parse(readFileSync(this.dataPath, "utf8")) as EncryptedEnvelope;
+    try {
+      return this.readEncryptedStoreAtPath(this.dataPath);
+    } catch (primaryError) {
+      if (!existsSync(this.backupPath)) {
+        throw primaryError;
+      }
+      const recovered = this.readEncryptedStoreAtPath(this.backupPath);
+      writeFileSync(this.dataPath, readFileSync(this.backupPath), { encoding: "utf8", mode: 0o600 });
+      return recovered;
+    }
+  }
+
+  private readEncryptedStoreAtPath(path: string): HealthStoreData {
+    const envelope = JSON.parse(readFileSync(path, "utf8")) as EncryptedEnvelope;
     const key = scryptSync(this.passphrase, Buffer.from(envelope.salt, "base64"), 32);
     const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(envelope.iv, "base64"));
     decipher.setAuthTag(Buffer.from(envelope.tag, "base64"));
@@ -222,7 +247,31 @@ export class HealthStore {
       tag: cipher.getAuthTag().toString("base64"),
       payload: encrypted.toString("base64")
     };
-    writeFileSync(this.dataPath, JSON.stringify(envelope, null, 2), { encoding: "utf8" });
+    const serialized = JSON.stringify(envelope, null, 2);
+    const tempPath = `${this.dataPath}.tmp-${process.pid}-${Date.now()}-${randomBytes(4).toString("hex")}`;
+    let oldStoreMoved = false;
+    try {
+      writeFileSync(tempPath, serialized, { encoding: "utf8", mode: 0o600 });
+      this.readEncryptedStoreAtPath(tempPath);
+      fsyncPath(tempPath);
+
+      if (existsSync(this.dataPath)) {
+        renameSync(this.dataPath, this.backupPath);
+        oldStoreMoved = true;
+      }
+      renameSync(tempPath, this.dataPath);
+      fsyncPath(this.dataPath);
+      fsyncPath(dirname(this.dataPath));
+    } catch (error) {
+      if (oldStoreMoved && !existsSync(this.dataPath) && existsSync(this.backupPath)) {
+        renameSync(this.backupPath, this.dataPath);
+      }
+      throw error;
+    } finally {
+      if (existsSync(tempPath)) {
+        rmSync(tempPath, { force: true });
+      }
+    }
   }
 }
 
@@ -367,4 +416,18 @@ function limitByNewest<T>(
 
 function observationDeleteDetail(observation: Observation): string {
   return `Observation ${observation.measurementCode} deleted at ${observation.observedAt} (${observation.value} ${observation.unit}).`;
+}
+
+function fsyncPath(path: string): void {
+  let fd: number | undefined;
+  try {
+    fd = openSync(path, "r");
+    fsyncSync(fd);
+  } catch {
+    // Best-effort durability: some filesystems/OS combinations do not support fsync on all path types.
+  } finally {
+    if (fd !== undefined) {
+      closeSync(fd);
+    }
+  }
 }

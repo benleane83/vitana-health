@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  renameSync,
+  rmSync
+} from "node:fs";
 import { dirname, resolve } from "node:path";
 import duckdb from "duckdb";
 import type { HealthStoreData } from "@local-fitness-advisor/shared";
@@ -24,12 +32,17 @@ export async function rebuildWarehouseFromStore(store: HealthStoreData): Promise
   let conn: duckdb.Connection | undefined;
   let transactionStarted = false;
   const targetPath = warehousePath;
+  const tempPath = `${targetPath}.tmp-${process.pid}-${Date.now()}`;
+  const backupPath = `${targetPath}.bak`;
+  let builtTempDatabase = false;
+  let swappedOldDatabase = false;
+  let movedTempIntoPlace = false;
   try {
     mkdirSync(dirname(targetPath), { recursive: true });
-    if (existsSync(targetPath)) {
-      rmSync(targetPath, { force: true });
+    if (existsSync(tempPath)) {
+      await removeFileWithRetry(tempPath);
     }
-    db = new duckdb.Database(targetPath);
+    db = new duckdb.Database(tempPath);
     conn = db.connect();
 
     await exec(conn, "PRAGMA threads=4;");
@@ -225,21 +238,7 @@ export async function rebuildWarehouseFromStore(store: HealthStoreData): Promise
       scalar(conn, "SELECT COUNT(*) AS c FROM activities")
     ]);
 
-    const result: WarehouseBuildResult = {
-      databasePath: targetPath,
-      engine: "duckdb",
-      counts: {
-        imports: importCount,
-        observations: observationCount,
-        samples: sampleCount,
-        activities: activityCount
-      }
-    };
-
-
-    activeWarehousePath = targetPath;
-
-    return result;
+    builtTempDatabase = true;
   } catch (error) {
     if (conn && transactionStarted) {
       await exec(conn, "ROLLBACK;").catch(() => undefined);
@@ -262,6 +261,70 @@ export async function rebuildWarehouseFromStore(store: HealthStoreData): Promise
     if (db) {
       await closeDatabase(db);
     }
+  }
+
+  if (!builtTempDatabase) {
+    return {
+      databasePath: targetPath,
+      engine: "fallback",
+      warning: "Warehouse rebuild did not complete.",
+      counts: {
+        imports: store.sourceImports.length,
+        observations: store.observations.length,
+        samples: store.timeSeriesSamples.length,
+        activities: store.activitySessions.length
+      }
+    };
+  }
+
+  try {
+    if (existsSync(backupPath)) {
+      await removeFileWithRetry(backupPath);
+    }
+
+    if (existsSync(targetPath)) {
+      await renameWithRetry(targetPath, backupPath);
+      swappedOldDatabase = true;
+    }
+
+    await renameWithRetry(tempPath, targetPath);
+    movedTempIntoPlace = true;
+    fsyncPath(targetPath);
+    fsyncPath(dirname(targetPath));
+
+    activeWarehousePath = targetPath;
+
+    const result: WarehouseBuildResult = {
+      databasePath: targetPath,
+      engine: "duckdb",
+      counts: {
+        imports: store.sourceImports.length,
+        observations: store.observations.length,
+        samples: store.timeSeriesSamples.length,
+        activities: store.activitySessions.length
+      }
+    };
+
+    return result;
+  } catch (error) {
+    if (!movedTempIntoPlace && existsSync(tempPath)) {
+      await removeFileWithRetry(tempPath);
+    }
+    if (swappedOldDatabase && !existsSync(targetPath) && existsSync(backupPath)) {
+      await renameWithRetry(backupPath, targetPath);
+      activeWarehousePath = targetPath;
+    }
+    return {
+      databasePath: targetPath,
+      engine: "fallback",
+      warning: error instanceof Error ? error.message : "Warehouse swap failed",
+      counts: {
+        imports: store.sourceImports.length,
+        observations: store.observations.length,
+        samples: store.timeSeriesSamples.length,
+        activities: store.activitySessions.length
+      }
+    };
   }
 }
 
@@ -364,4 +427,62 @@ function resolveDataDir(): string {
   ];
   const existing = candidates.find((candidate) => existsSync(candidate));
   return existing ?? candidates[0];
+}
+
+function fsyncPath(path: string): void {
+  let fd: number | undefined;
+  try {
+    fd = openSync(path, "r");
+    fsyncSync(fd);
+  } catch {
+    // Best-effort durability: ignore fsync failures on unsupported filesystems.
+  } finally {
+    if (fd !== undefined) {
+      closeSync(fd);
+    }
+  }
+}
+
+async function renameWithRetry(fromPath: string, toPath: string): Promise<void> {
+  const maxAttempts = 6;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      renameSync(fromPath, toPath);
+      return;
+    } catch (error) {
+      if (!isTransientFsError(error) || attempt === maxAttempts) {
+        throw error;
+      }
+      await delay(25 * attempt);
+    }
+  }
+}
+
+async function removeFileWithRetry(path: string): Promise<void> {
+  const maxAttempts = 6;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      rmSync(path, { force: true });
+      return;
+    } catch (error) {
+      if (!isTransientFsError(error) || attempt === maxAttempts) {
+        return;
+      }
+      await delay(25 * attempt);
+    }
+  }
+}
+
+function isTransientFsError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    (error.code === "EBUSY" || error.code === "EPERM" || error.code === "EACCES")
+  );
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolvePromise) => {
+    setTimeout(resolvePromise, ms);
+  });
 }

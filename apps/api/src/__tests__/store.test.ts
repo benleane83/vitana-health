@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HealthStore } from "../store.js";
@@ -126,5 +126,33 @@ describe("HealthStore — persistence", () => {
     // Second instance: reads from the same file
     const store2 = makeStore();
     expect(store2.snapshot().observations.length).toBe(countAfterWrite);
+  });
+
+  it("keeps a recoverable backup and restores from it if the primary file is corrupted", () => {
+    const store = makeStore();
+    const parsed = parseSamsungHealthCsv("test.csv", samsungCsv, "2026-01-01T00:00:00.000Z");
+    store.mergeImport(parsed);
+    store.addInsight({
+      id: "insight_test_1",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      title: "test",
+      body: "test",
+      evidence: [],
+      confidence: "medium",
+      model: "deterministic",
+      safetyNotice: "test"
+    });
+
+    const dataPath = join(tempDir, "health-store.enc");
+    const backupPath = `${dataPath}.bak`;
+    expect(existsSync(dataPath)).toBe(true);
+    expect(existsSync(backupPath)).toBe(true);
+
+    writeFileSync(dataPath, "{\"version\":1,\"salt\":\"broken\"", { encoding: "utf8" });
+
+    const recovered = makeStore();
+    expect(recovered.snapshot().observations.length).toBeGreaterThan(0);
+    expect(recovered.snapshot().profile.id).toBe("self");
+    expect(existsSync(dataPath)).toBe(true);
   });
 });

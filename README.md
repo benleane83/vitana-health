@@ -54,7 +54,7 @@ Use this mode only with synthetic development data on a trusted network. It cann
 
 - Personal health data is stored locally under `data\health-store.enc`.
 - Raw imports are stored inside the encrypted local store and are omitted from normal API responses.
-- No telemetry, cloud sync, remote AI APIs, or vendor data upload paths are implemented.
+- No telemetry, cloud sync, remote AI APIs, or vendor data upload paths are implemented. The only exception is data transitted to a cloud-based AI model if provided by you. This data is always anonymized, and an option to use local AI models is available if you would prefer.
 - Set `LFA_SECRET` to control the encryption passphrase. If omitted, a generated local key is stored under `data\local.key`.
 - Owner authentication protects all API data and administration routes. Companion tokens are scoped to Health Connect import and can be revoked.
 - Pairing codes and polling secrets expire and are delivered through the owner-authenticated QR flow.
