@@ -12,8 +12,8 @@
     "@local-fitness-advisor/shared": "file:../../packages/shared",
     "@vitejs/plugin-react": "^4.3.4",
     "vite": "^6.2.1",
-    "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
