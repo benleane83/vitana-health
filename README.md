@@ -1,6 +1,6 @@
 # Local Fitness Advisor
 
-A local-first health analytics app for Samsung Health exports, manual blood-test results, profile metrics, deterministic analytics, and guarded AI recommendations from a configurable model runtime.
+A local-first health analytics app for Android Health Connect sync, manual blood-test results, profile metrics, deterministic analytics, and guarded AI recommendations from a configurable model runtime.
 
 ## Stack
 
@@ -73,23 +73,6 @@ Quick model connectivity test:
 ```powershell
 Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:4317/api/llm/simple" -ContentType "application/json" -Body '{"prompt":"Reply with exactly: model runtime ok"}'
 ```
-
-## Samsung JSON Upload Import
-
-If you place a full Samsung Health export folder under `data\uploads`, you can ingest it directly:
-
-```powershell
-Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:4317/api/import/samsung-json-upload" -ContentType "application/json" -Body "{}"
-```
-
-To target a specific folder explicitly:
-
-```powershell
-$body = @{ uploadPath = "Z:\repos\local-fitness-advisor\data\uploads\samsunghealth_ben.leane_20260702142947" } | ConvertTo-Json
-Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:4317/api/import/samsung-json-upload" -ContentType "application/json" -Body $body
-```
-
-Current parser coverage includes Samsung JSON datasets for heart rate, oxygen saturation, HRV, movement activity level, pedometer day summary step bins, and exercise live-data heart-rate/speed samples.
 
 ## Android Companion App (Expo / Health Connect)
 

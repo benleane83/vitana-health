@@ -13,7 +13,6 @@ import {
   computeAnalytics,
   parseBodyCompositionText,
   parseBloodTestCsv,
-  parseSamsungHealthCsv,
   type BodyCompositionDraftRow,
   type DeleteObservationResponse,
   type DeleteObservationsByTypeResponse,
@@ -21,7 +20,6 @@ import {
 } from "@local-fitness-advisor/shared";
 import { ProfileStoreManager } from "./store.js";
 import { generateInsight } from "./insights.js";
-import { importSamsungJsonUpload } from "./samsungJsonImport.js";
 import { healthConnectImportRequestSchema, parseHealthConnectImport } from "./healthConnectImport.js";
 import { rebuildWarehouseFromStore, runWarehouseQuery } from "./warehouse.js";
 import { planWarehouseQuery } from "./nlQuery.js";
@@ -168,10 +166,6 @@ const manualLabImportSchema = z.object({
         })
     )
     .min(1)
-});
-
-const samsungJsonUploadSchema = z.object({
-  uploadPath: z.string().min(1).max(400).optional()
 });
 
 const nlQuerySchema = z.object({
@@ -344,26 +338,6 @@ app.delete("/api/profiles/:id", (request, response) => {
   });
 });
 
-app.post("/api/import/samsung", async (request, response, next) => {
-  try {
-  const parsed = importSchema.parse(request.body);
-  const imported = parseSamsungHealthCsv(parsed.fileName, parsed.content);
-  const store = activeStore();
-  const merged = store.mergeImport(imported);
-  const warehouse = await rebuildWarehouseFromStore(merged);
-  response.status(201).json({
-    store: merged,
-    warehouse,
-    import: {
-      ...imported.sourceImport,
-      rawContent: undefined
-    }
-  });
-  } catch (error) {
-    next(error);
-  }
-});
-
 app.post("/api/import/blood-test", (request, response) => {
   const parsed = importSchema.parse(request.body);
   const imported = parseBloodTestCsv(parsed.fileName, parsed.content);
@@ -438,33 +412,6 @@ app.post("/api/import/body-composition/commit", async (request, response, next) 
       },
       warehouse
     });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.post("/api/import/samsung-json-upload", async (request, response, next) => {
-  try {
-  const parsed = samsungJsonUploadSchema.parse(request.body ?? {});
-  const imported = importSamsungJsonUpload({ uploadPath: parsed.uploadPath });
-  const store = activeStore();
-  const merged = store.mergeImport(imported.parsed);
-  const warehouse = await rebuildWarehouseFromStore(merged);
-  response.status(201).json({
-    counts: {
-      sourceImports: merged.sourceImports.length,
-      observations: merged.observations.length,
-      timeSeriesSamples: merged.timeSeriesSamples.length,
-      activitySessions: merged.activitySessions.length,
-      labMarkers: merged.labMarkers.length
-    },
-    import: {
-      ...imported.parsed.sourceImport,
-      rawContent: undefined
-    },
-    stats: imported.stats,
-    warehouse
-  });
   } catch (error) {
     next(error);
   }
