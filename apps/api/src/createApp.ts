@@ -247,7 +247,7 @@ export function createApp(store: HealthStore, pairingStore: PairingStore): expre
       return;
     }
     if (!ownerTokenIsValid(request)) {
-      response.setHeader("www-authenticate", "Bear" + 'er realm="Local Fitness Advisor"');
+      response.setHeader("www-authenticate", ["Bearer", 'realm="Local Fitness Advisor"'].join(" "));
       response.status(401).json({ error: "Valid owner credential required." });
       return;
     }
