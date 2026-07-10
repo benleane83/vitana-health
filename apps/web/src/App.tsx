@@ -15,7 +15,7 @@ import type {
 } from "@local-fitness-advisor/shared";
 import { safetyNotice } from "@local-fitness-advisor/shared";
 import { api } from "./api.js";
-import type { AiQueryResult, AiQueryChartSeries, PendingPairing } from "./api.js";
+import type { AiQueryResult, AiQueryChartSeries, PairedDevice, PendingPairing } from "./api.js";
 import { LAB_MARKER_CATALOG } from "./labMarkerCatalog.js";
 import type { LabMarkerCatalogEntry } from "./labMarkerCatalog.js";
 
@@ -773,6 +773,17 @@ function ProfileEditDialog({
   onClose: () => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
+  const [pairedDevices, setPairedDevices] = useState<PairedDevice[]>([]);
+
+  useEffect(() => {
+    void api.pairing.devices().then(setPairedDevices).catch(() => setPairedDevices([]));
+  }, [pendingPairings]);
+
+  async function revokeDevice(id: string) {
+    await api.pairing.revoke(id);
+    setPairedDevices(await api.pairing.devices());
+  }
+
   return (
     <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => {
       if (event.target === event.currentTarget) {
@@ -1007,8 +1018,8 @@ function FitnessTrackerImportPanel({
         </p>
         <PairingQr />
         <p className="empty pairing-hint">
-          The QR code encodes this server's LAN address. Make sure the API is accessible on your local network
-          (set <code>HOST=0.0.0.0</code> or your LAN IP when starting the server).
+          The QR code contains a short-lived pairing code and the server's LAN address. LAN use requires configured
+          authentication and HTTPS, except for the explicit development-only HTTP mode.
         </p>
       </div>
 
@@ -1031,10 +1042,33 @@ function FitnessTrackerImportPanel({
         </div>
       ) : null}
 
+      {pairedDevices.length > 0 ? (
+        <div className="pairing-requests">
+          <p className="eyebrow">Paired devices</p>
+          {pairedDevices.map((device) => (
+            <div key={device.id} className="pairing-request-row">
+              <div className="pairing-request-info">
+                <strong>{device.deviceName}</strong>
+                <span className="muted">
+                  {device.revokedAt
+                    ? `Revoked ${new Date(device.revokedAt).toLocaleString()}`
+                    : device.lastUsedAt
+                      ? `Last sync ${new Date(device.lastUsedAt).toLocaleString()}`
+                      : "Not synced yet"}
+                </span>
+              </div>
+              {!device.revokedAt ? (
+                <button type="button" onClick={() => { void revokeDevice(device.id); }}>Revoke</button>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       <div className="import-guidance-grid">
         <div>
           <strong>1. Open companion app</strong>
-          <span>Tap <em>Set Up Connection</em> and choose Scan QR or Find on Network.</span>
+          <span>Tap <em>Set Up Connection</em> and scan the short-lived QR code.</span>
         </div>
         <div>
           <strong>2. Approve pairing</strong>

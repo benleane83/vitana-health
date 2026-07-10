@@ -1,4 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const pairingLifetimeMs = 5 * 60 * 1000;
 
@@ -39,6 +41,24 @@ function hashesMatch(left: string, right: string): boolean {
 export class PairingStore {
   private records = new Map<string, InternalPairingRecord>();
   private challenges = new Map<string, PairingChallenge>();
+  private readonly dataPath: string;
+
+  constructor() {
+    const dataDir = resolve(process.env.LFA_DATA_DIR ?? "data");
+    this.dataPath = resolve(dataDir, "paired-devices.json");
+    mkdirSync(dataDir, { recursive: true });
+    if (!existsSync(this.dataPath)) return;
+    try {
+      const records = JSON.parse(readFileSync(this.dataPath, "utf8")) as InternalPairingRecord[];
+      for (const record of records) {
+        if (record.status === "approved" && record.tokenHash && !record.revokedAt) {
+          this.records.set(record.id, { ...record, pendingToken: null, tokenDelivered: true });
+        }
+      }
+    } catch {
+      throw new Error(`Could not read paired device registry at ${this.dataPath}.`);
+    }
+  }
 
   createChallenge(): { code: string; expiresAt: string } {
     this.prune();
@@ -111,6 +131,7 @@ export class PairingStore {
       result.token = record.pendingToken;
       record.pendingToken = null;
       record.tokenDelivered = true;
+      this.persist();
     }
     return result;
   }
@@ -120,6 +141,7 @@ export class PairingStore {
     for (const record of this.records.values()) {
       if (record.status === "approved" && !record.revokedAt && record.tokenHash && hashesMatch(record.tokenHash, candidate)) {
         record.lastUsedAt = new Date().toISOString();
+        this.persist();
         return true;
       }
     }
@@ -136,6 +158,7 @@ export class PairingStore {
     record.revokedAt = new Date().toISOString();
     record.tokenHash = null;
     record.pendingToken = null;
+    this.persist();
     return this.publicRecord(record);
   }
 
@@ -155,5 +178,12 @@ export class PairingStore {
   private publicRecord(record: InternalPairingRecord): PairingRecord {
     const { pollingSecretHash: _pollingSecretHash, tokenHash: _tokenHash, pendingToken: _pendingToken, ...publicRecord } = record;
     return publicRecord;
+  }
+
+  private persist(): void {
+    const records = [...this.records.values()].filter(
+      (record) => record.status === "approved" && record.tokenDelivered && record.tokenHash
+    );
+    writeFileSync(this.dataPath, JSON.stringify(records, null, 2), { encoding: "utf8", mode: 0o600 });
   }
 }

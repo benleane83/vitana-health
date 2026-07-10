@@ -18,7 +18,7 @@ function ownerHeaders(options?: RequestInit): HeadersInit {
   const token = window.sessionStorage.getItem(ownerTokenKey);
   return {
     "content-type": "application/json",
-    ...(token ? { authorization: `****** } : {}),
+    ...(token ? { authorization: "Bearer " + token } : {}),
     ...options?.headers
   };
 }
@@ -55,6 +55,16 @@ export interface PendingPairing {
   deviceId: string;
   deviceName: string;
   requestedAt: string;
+}
+
+export interface PairedDevice {
+  id: string;
+  deviceId: string;
+  deviceName: string;
+  requestedAt: string;
+  resolvedAt: string | null;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
 }
 
 export interface AiQueryChartSeries {
@@ -113,8 +123,10 @@ export const api = {
       return response.blob();
     },
     pending: () => request<PendingPairing[]>("/api/pairing/pending"),
+    devices: () => request<PairedDevice[]>("/api/pairing/devices"),
     approve: (id: string) => request<{ id: string; status: string }>(`/api/pairing/approve/${id}`, { method: "POST" }),
-    deny: (id: string) => request<{ id: string; status: string }>(`/api/pairing/deny/${id}`, { method: "POST" })
+    deny: (id: string) => request<{ id: string; status: string }>(`/api/pairing/deny/${id}`, { method: "POST" }),
+    revoke: (id: string) => request<PairedDevice>(`/api/pairing/revoke/${id}`, { method: "POST" })
   },
   query: {
     ai: (question: string, options?: { timezone?: string; debug?: boolean }) =>

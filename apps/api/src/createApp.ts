@@ -176,8 +176,14 @@ export function createApp(store: HealthStore, pairingStore: PairingStore): expre
   const rateBuckets = new Map<string, { count: number; resetAt: number }>();
   function rateLimit(max: number, windowMs: number) {
     return (request: express.Request, response: express.Response, next: express.NextFunction): void => {
-      const key = `${request.ip}:${request.path}`;
       const now = Date.now();
+      if (rateBuckets.size > 5_000) {
+        for (const [bucketKey, bucketValue] of rateBuckets) {
+          if (bucketValue.resetAt <= now) rateBuckets.delete(bucketKey);
+        }
+      }
+      const routeGroup = request.baseUrl || request.path.split("/").slice(0, 3).join("/");
+      const key = `${request.ip}:${routeGroup}`;
       const current = rateBuckets.get(key);
       const bucket = !current || current.resetAt <= now ? { count: 0, resetAt: now + windowMs } : current;
       bucket.count++;
@@ -241,7 +247,7 @@ export function createApp(store: HealthStore, pairingStore: PairingStore): expre
       return;
     }
     if (!ownerTokenIsValid(request)) {
-      response.setHeader("www-authenticate", '******"Local Fitness Advisor"');
+      response.setHeader("www-authenticate", "Bear" + 'er realm="Local Fitness Advisor"');
       response.status(401).json({ error: "Valid owner credential required." });
       return;
     }
@@ -808,9 +814,10 @@ export function createApp(store: HealthStore, pairingStore: PairingStore): expre
       return;
     }
     if (error instanceof Error) {
-      response.status(500).json({
-        error: error.message,
-        stack: process.env.NODE_ENV !== "production" ? error.stack : undefined
+      const status = "status" in error && typeof error.status === "number" ? error.status : 500;
+      response.status(status).json({
+        error: status === 413 ? "Request body is too large." : error.message,
+        stack: status === 500 && process.env.NODE_ENV !== "production" ? error.stack : undefined
       });
       return;
     }

@@ -19,11 +19,14 @@ let store: HealthStore;
 let pairingStore: PairingStore;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let app: any;
+const ownerToken = "test-owner-token-for-server-tests";
+const ownerAuthorization = "Bearer " + ownerToken;
 
 beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), "lfa-server-test-"));
   process.env.LFA_DATA_DIR = tempDir;
   process.env.LFA_SECRET = "test-secret-for-server-tests-1234";
+  process.env.LFA_OWNER_TOKEN = ownerToken;
 
   store = new HealthStore();
   pairingStore = new PairingStore();
@@ -33,6 +36,7 @@ beforeEach(() => {
 afterEach(() => {
   delete process.env.LFA_DATA_DIR;
   delete process.env.LFA_SECRET;
+  delete process.env.LFA_OWNER_TOKEN;
   rmSync(tempDir, { recursive: true, force: true });
   vi.clearAllMocks();
 });
@@ -41,7 +45,7 @@ afterEach(() => {
 
 describe("GET /api/health", () => {
   it("returns ok: true with the expected shape", async () => {
-    const res = await request(app).get("/api/health");
+    const res = await request(app).get("/api/health").set("authorization", ownerAuthorization);
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
     expect(res.body.app).toBe("local-fitness-advisor");
@@ -66,35 +70,44 @@ const minimalHealthConnectPayload = {
 };
 
 describe("POST /api/import/health-connect — auth middleware", () => {
-  it("allows request when no pairings exist (open mode)", async () => {
-    const res = await request(app)
-      .post("/api/import/health-connect")
-      .send(minimalHealthConnectPayload);
-    expect(res.status).toBe(201);
-  });
-
-  it("returns 401 when pairings exist and no token is provided", async () => {
-    // Approve a pairing to activate the token gate
-    const req = pairingStore.request("device-1", "Test Phone");
-    pairingStore.approve(req.id);
-
+  it("rejects an unpaired anonymous request", async () => {
     const res = await request(app)
       .post("/api/import/health-connect")
       .send(minimalHealthConnectPayload);
     expect(res.status).toBe(401);
-    expect(res.body.error).toMatch(/companion token required/i);
   });
 
-  it("accepts request when a valid companion token is provided", async () => {
-    const req = pairingStore.request("device-1", "Test Phone");
-    const approved = pairingStore.approve(req.id)!;
-    const token = approved.token!;
+  it("allows the owner credential", async () => {
+    const res = await request(app)
+      .post("/api/import/health-connect")
+      .set("authorization", ownerAuthorization)
+      .send(minimalHealthConnectPayload);
+    expect(res.status).toBe(201);
+  });
+
+  it("accepts a valid single-delivery companion token", async () => {
+    const challenge = pairingStore.createChallenge();
+    const requested = pairingStore.request("device-1", "Test Phone", challenge.code)!;
+    pairingStore.approve(requested.record.id);
+    const status = pairingStore.getStatus(requested.record.id, requested.pollingSecret)!;
+    const token = status.token!;
 
     const res = await request(app)
       .post("/api/import/health-connect")
       .set("x-companion-token", token)
       .send(minimalHealthConnectPayload);
     expect(res.status).toBe(201);
+    expect(pairingStore.getStatus(requested.record.id, requested.pollingSecret)?.token).toBeUndefined();
+  });
+});
+
+describe("central owner authorization", () => {
+  it("protects data and model routes", async () => {
+    const paths = ["/api/store", "/api/profile", "/api/export"];
+    for (const path of paths) {
+      expect((await request(app).get(path)).status).toBe(401);
+    }
+    expect((await request(app).post("/api/llm/simple").send({ prompt: "hello" })).status).toBe(401);
   });
 });
 
@@ -102,7 +115,7 @@ describe("POST /api/import/health-connect — auth middleware", () => {
 
 describe("DELETE /api/observations/:id", () => {
   it("returns 404 for a non-existent observation ID", async () => {
-    const res = await request(app).delete("/api/observations/obs_nonexistent123");
+    const res = await request(app).delete("/api/observations/obs_nonexistent123").set("authorization", ownerAuthorization);
     expect(res.status).toBe(404);
     expect(res.body.error).toMatch(/not found/i);
   });
@@ -115,7 +128,7 @@ describe("DELETE /api/observations/:id", () => {
     const observationId = store.snapshot().observations[0]?.id;
     expect(observationId).toBeDefined();
 
-    const res = await request(app).delete(`/api/observations/${observationId}`);
+    const res = await request(app).delete(`/api/observations/${observationId}`).set("authorization", ownerAuthorization);
     expect(res.status).toBe(200);
     expect(res.body.deletedCount).toBe(1);
     expect(store.snapshot().observations.find((o) => o.id === observationId)).toBeUndefined();
@@ -128,6 +141,7 @@ describe("POST /api/import/samsung — schema validation", () => {
   it("returns 400 when 'content' field is missing", async () => {
     const res = await request(app)
       .post("/api/import/samsung")
+      .set("authorization", ownerAuthorization)
       .send({ fileName: "test.csv" });
     expect(res.status).toBe(400);
     expect(res.body.error).toBeDefined();
@@ -136,6 +150,7 @@ describe("POST /api/import/samsung — schema validation", () => {
   it("returns 400 when 'fileName' field is missing", async () => {
     const res = await request(app)
       .post("/api/import/samsung")
+      .set("authorization", ownerAuthorization)
       .send({ content: "date,type,value\n2026-01-01,heart_rate,72" });
     expect(res.status).toBe(400);
   });

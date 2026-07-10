@@ -18,12 +18,37 @@ npm run dev
 
 The API binds to `127.0.0.1:4317` by default, and the Vite UI runs on `127.0.0.1:5173`.
 
-To receive sync requests from an Android phone on your local network, start the API with:
+Every API route requires an owner token. Loopback development generates a temporary token and prints it at startup; the web app prompts for it and keeps it only in the browser session.
+
+For LAN access, configure an explicit token and HTTPS. A publicly purchased certificate is **not required**. You can use a certificate from a local CA (for example, `mkcert`) or create a self-signed certificate with OpenSSL:
 
 ```powershell
+$env:LFA_OWNER_TOKEN = "<random value of at least 24 characters>"
+$lanIp = "192.168.1.20"
+New-Item -ItemType Directory -Force data\tls | Out-Null
+openssl req -x509 -newkey rsa:3072 -sha256 -days 365 -nodes `
+  -keyout data\tls\local-fitness-advisor.key `
+  -out data\tls\local-fitness-advisor.crt `
+  -subj "/CN=$lanIp" `
+  -addext "subjectAltName=IP:$lanIp,IP:127.0.0.1,DNS:localhost"
+$env:LFA_TLS_KEY = (Resolve-Path data\tls\local-fitness-advisor.key)
+$env:LFA_TLS_CERT = (Resolve-Path data\tls\local-fitness-advisor.crt)
 $env:HOST = "0.0.0.0"
 npm run dev -w apps/api
 ```
+
+Install the local certificate (or its issuing local CA) as trusted on devices that connect to it. The companion's preview/production builds reject HTTP and Android rejects untrusted certificates.
+
+For development with no certificate, an explicit opt-in permits LAN HTTP when `NODE_ENV` is not `production`:
+
+```powershell
+$env:LFA_OWNER_TOKEN = "<random value of at least 24 characters>"
+$env:LFA_ALLOW_INSECURE_HTTP = "1"
+$env:HOST = "0.0.0.0"
+npm run dev -w apps/api
+```
+
+Use this mode only with synthetic development data on a trusted network. It cannot be enabled in production.
 
 ## Privacy model
 
@@ -31,6 +56,8 @@ npm run dev -w apps/api
 - Raw imports are stored inside the encrypted local store and are omitted from normal API responses.
 - No telemetry, cloud sync, remote AI APIs, or vendor data upload paths are implemented.
 - Set `LFA_SECRET` to control the encryption passphrase. If omitted, a generated local key is stored under `data\local.key`.
+- Owner authentication protects all API data and administration routes. Companion tokens are scoped to Health Connect import and can be revoked.
+- Pairing codes and polling secrets expire and are delivered through the owner-authenticated QR flow.
 
 ## Safety boundaries
 
@@ -112,7 +139,15 @@ npx eas login
 npx eas build --platform android --profile preview
 ```
 
-Install the generated APK on your phone, open the app, set your local endpoint URL (for example `http://192.168.1.20:4317`), then tap **Sync now**.
+Install the generated APK on your phone, trust your local CA/certificate if applicable, scan the short-lived QR code in the web app, approve the request, then tap **Sync now**.
+
+Preview and production builds require HTTPS. For a development client that intentionally permits HTTP:
+
+```powershell
+npx eas build --platform android --profile development
+```
+
+The development profile sets `LFA_ALLOW_CLEARTEXT=1`; other profiles explicitly disable cleartext. Device tokens are stored with Android secure storage rather than AsyncStorage.
 
 ### Health Connect import endpoint
 
