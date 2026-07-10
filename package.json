@@ -13,6 +13,7 @@
     "typecheck": "npm run build -w packages/shared && npm run typecheck -w apps/api && npm run typecheck -w apps/web",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "package:desktop": "npm run build && npm run package -w @local-fitness-advisor/desktop",
     "audit:ci": "node ./scripts/audit-ci.mjs",
     "audit:prod": "npm audit --omit=dev",
     "audit:prod:api": "npm audit --omit=dev -w apps/api",

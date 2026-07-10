@@ -8,6 +8,7 @@ import {
   type ReadRecordsOptions,
   type RecordType
 } from "react-native-health-connect";
+import { pinnedFetch } from "./pinnedFetch";
 import { Platform } from "react-native";
 
 interface HealthConnectPointValue {
@@ -48,7 +49,11 @@ const readPermissions: Permission[] = [
   { accessType: "read", recordType: "ExerciseSession" }
 ];
 
-export async function syncHealthConnectLast30Days(endpointUrl: string, companionToken?: string | null): Promise<SyncResult> {
+export async function syncHealthConnectLast30Days(
+  endpointUrl: string,
+  companionToken?: string | null,
+  publicKeyHash?: string | null
+): Promise<SyncResult> {
   if (Platform.OS !== "android") {
     throw new Error("This app only supports Android Health Connect.");
   }
@@ -158,7 +163,10 @@ export async function syncHealthConnectLast30Days(endpointUrl: string, companion
     }))
   };
 
-  const response = await fetch(`${endpointUrl.replace(/\/+$/, "")}/api/import/health-connect`, {
+  const response = await pinnedFetch(
+    `${endpointUrl.replace(/\/+$/, "")}/api/import/health-connect`,
+    publicKeyHash ?? null,
+    {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -166,9 +174,15 @@ export async function syncHealthConnectLast30Days(endpointUrl: string, companion
       ...(companionToken ? { "x-companion-token": companionToken } : {})
     },
     body: JSON.stringify(payload)
-  });
+    }
+  );
 
-  const responseBody = await response.json().catch(() => ({}));
+  const responseBody = (await response.json().catch(() => ({}))) as {
+    error?: unknown;
+    issues?: Array<{ path?: string[]; message?: string }>;
+    counts?: { observations?: number; timeSeriesSamples?: number; activitySessions?: number };
+    import?: { status?: string };
+  };
   if (!response.ok) {
     const issueDetails = Array.isArray(responseBody.issues)
       ? responseBody.issues

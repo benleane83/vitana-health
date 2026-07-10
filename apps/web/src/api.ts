@@ -26,12 +26,16 @@ function ownerHeaders(options?: RequestInit): HeadersInit {
 async function fetchAsOwner(path: string, options?: RequestInit, retry = true): Promise<Response> {
   const response = await fetch(path, {
     ...options,
+    credentials: "include",
     headers: ownerHeaders(options)
   });
   if (response.status === 401 && retry) {
-    const token = window.prompt("Enter the Local Fitness Advisor owner token shown by the API at startup:");
-    if (token) {
-      window.sessionStorage.setItem(ownerTokenKey, token);
+    const authenticated = await fetch("/api/auth/local", {
+      method: "POST",
+      credentials: "include",
+      headers: { accept: "application/json" }
+    });
+    if (authenticated.ok) {
       return fetchAsOwner(path, options, false);
     }
   }

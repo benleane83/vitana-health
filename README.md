@@ -18,37 +18,21 @@ npm run dev
 
 The API binds to `127.0.0.1:4317` by default, and the Vite UI runs on `127.0.0.1:5173`.
 
-Every API route requires an owner token. Loopback development generates a temporary token and prints it at startup; the web app prompts for it and keeps it only in the browser session.
+The API generates and persists its owner credential automatically. A browser running on the same computer obtains an `HttpOnly` local session, so users never copy or enter a token.
 
-For LAN access, configure an explicit token and HTTPS. A publicly purchased certificate is **not required**. You can use a certificate from a local CA (for example, `mkcert`) or create a self-signed certificate with OpenSSL:
+When the API is exposed to the LAN, it also creates and reuses a private TLS certificate under the application data directory. The pairing QR code carries the certificate's public-key fingerprint. The Android app uses that fingerprint for every request, so no certificate generation, trust-store installation, configuration-file editing, or command-line setup is required.
 
-```powershell
-$env:LFA_OWNER_TOKEN = "<random value of at least 24 characters>"
-$lanIp = "192.168.1.20"
-New-Item -ItemType Directory -Force data\tls | Out-Null
-openssl req -x509 -newkey rsa:3072 -sha256 -days 365 -nodes `
-  -keyout data\tls\local-fitness-advisor.key `
-  -out data\tls\local-fitness-advisor.crt `
-  -subj "/CN=$lanIp" `
-  -addext "subjectAltName=IP:$lanIp,IP:127.0.0.1,DNS:localhost"
-$env:LFA_TLS_KEY = (Resolve-Path data\tls\local-fitness-advisor.key)
-$env:LFA_TLS_CERT = (Resolve-Path data\tls\local-fitness-advisor.crt)
-$env:HOST = "0.0.0.0"
-npm run dev -w apps/api
-```
+Environment overrides (`LFA_OWNER_TOKEN`, `LFA_TLS_KEY`, and `LFA_TLS_CERT`) remain available for development and managed deployments.
 
-Install the local certificate (or its issuing local CA) as trusted on devices that connect to it. The companion's preview/production builds reject HTTP and Android rejects untrusted certificates.
+### Packaged desktop installer
 
-For development with no certificate, an explicit opt-in permits LAN HTTP when `NODE_ENV` is not `production`:
+Build the Windows installer with:
 
 ```powershell
-$env:LFA_OWNER_TOKEN = "<random value of at least 24 characters>"
-$env:LFA_ALLOW_INSECURE_HTTP = "1"
-$env:HOST = "0.0.0.0"
-npm run dev -w apps/api
+npm run package:desktop
 ```
 
-Use this mode only with synthetic development data on a trusted network. It cannot be enabled in production.
+The installer packages the API and web UI, configures private-network firewall access, and stores generated credentials, certificates, and health data in the user's application-data directory. Opening Local Fitness Advisor starts the local service and web UI together.
 
 ## Privacy model
 
@@ -139,7 +123,7 @@ npx eas login
 npx eas build --platform android --profile preview
 ```
 
-Install the generated APK on your phone, trust your local CA/certificate if applicable, scan the short-lived QR code in the web app, approve the request, then tap **Sync now**.
+Install the generated APK, scan the short-lived QR code in the web app, approve the request, then tap **Sync now**. QR pairing pins the phone to that desktop server automatically.
 
 Preview and production builds require HTTPS. For a development client that intentionally permits HTTP:
 
@@ -147,7 +131,7 @@ Preview and production builds require HTTPS. For a development client that inten
 npx eas build --platform android --profile development
 ```
 
-The development profile sets `LFA_ALLOW_CLEARTEXT=1`; other profiles explicitly disable cleartext. Device tokens are stored with Android secure storage rather than AsyncStorage.
+The development profile sets `LFA_ALLOW_CLEARTEXT=1`; other profiles explicitly disable cleartext. Device tokens are stored with Android secure storage, and production HTTPS requests verify the server identity scanned from the pairing QR code.
 
 ### Health Connect import endpoint
 

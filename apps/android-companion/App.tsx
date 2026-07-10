@@ -29,7 +29,7 @@ export default function App() {
       setSyncing(true);
       setStatus("Syncing last 30 days from Health Connect…");
       setResult("");
-      const syncResult = await syncHealthConnectLast30Days(connection.url, connection.token);
+      const syncResult = await syncHealthConnectLast30Days(connection.url, connection.token, connection.publicKeyHash);
       setStatus(syncResult.status);
       setResult(syncResult.details);
     } catch (error) {

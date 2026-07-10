@@ -109,6 +109,23 @@ describe("central owner authorization", () => {
     }
     expect((await request(app).post("/api/llm/simple").send({ prompt: "hello" })).status).toBe(401);
   });
+
+  it("allows a paired companion to use non-administrative APIs", async () => {
+    const challenge = pairingStore.createChallenge();
+    const requested = pairingStore.request("device-api", "API Phone", challenge.code)!;
+    pairingStore.approve(requested.record.id);
+    const token = pairingStore.getStatus(requested.record.id, requested.pollingSecret)!.token!;
+
+    expect((await request(app).get("/api/store").set("x-companion-token", token)).status).toBe(200);
+    expect((await request(app).get("/api/pairing/devices").set("x-companion-token", token)).status).toBe(401);
+  });
+
+  it("creates an owner session only for a local client", async () => {
+    const agent = request.agent(app);
+    const authenticated = await agent.post("/api/auth/local");
+    expect(authenticated.status).toBe(204);
+    expect((await agent.get("/api/health")).status).toBe(200);
+  });
 });
 
 describe("companion pairing lifecycle", () => {
