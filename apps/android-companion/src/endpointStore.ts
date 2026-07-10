@@ -2,7 +2,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const CONNECTION_KEY = "local-fitness-advisor.connection";
 const DEVICE_ID_KEY = "local-fitness-advisor.deviceId";
-const PROFILE_ID_KEY = "local-fitness-advisor.profileId";
 
 export interface ConnectionDetails {
   url: string;
@@ -58,16 +57,4 @@ export async function updateLastSyncAt(url: string): Promise<void> {
 
 export async function clearConnection(): Promise<void> {
   await AsyncStorage.removeItem(CONNECTION_KEY);
-}
-
-export async function loadSelectedProfileId(): Promise<string | null> {
-  return AsyncStorage.getItem(PROFILE_ID_KEY);
-}
-
-export async function saveSelectedProfileId(profileId: string): Promise<void> {
-  await AsyncStorage.setItem(PROFILE_ID_KEY, profileId);
-}
-
-export async function clearSelectedProfileId(): Promise<void> {
-  await AsyncStorage.removeItem(PROFILE_ID_KEY);
 }

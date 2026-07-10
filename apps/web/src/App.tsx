@@ -11,8 +11,7 @@ import type {
   Insight,
   ManualLabEntryPayload,
   MeasurementType,
-  Profile,
-  ProfileListEntry
+  Profile
 } from "@local-fitness-advisor/shared";
 import { safetyNotice } from "@local-fitness-advisor/shared";
 import { api } from "./api.js";
@@ -20,10 +19,18 @@ import type { AiQueryResult, AiQueryChartSeries, PendingPairing } from "./api.js
 import { LAB_MARKER_CATALOG } from "./labMarkerCatalog.js";
 import type { LabMarkerCatalogEntry } from "./labMarkerCatalog.js";
 
+const sampleSamsungCsv = `date,type,value,unit
+2026-06-25,steps,8421,count
+2026-06-26,steps,9630,count
+2026-06-27,steps,7102,count
+2026-06-28,heart_rate,64,bpm
+2026-06-29,heart_rate,61,bpm
+2026-06-30,weight,82.4,kg`;
+
 type AppRoute = "dashboard" | "summary" | "import" | "query";
 type SummarySort = "name" | "count" | "recency";
 type LabsMode = "manual" | "upload" | "bodycomp";
-type ImportMode = "labs" | "fitness";
+type ImportMode = "labs" | "fitness" | "samsung";
 
 interface ManualMarkerRow {
   id: string;
@@ -59,6 +66,8 @@ const minimumFlatChartPadding = 1;
 export function App() {
   const [store, setStore] = useState<HealthStoreData>();
   const [analytics, setAnalytics] = useState<AnalyticsSummary>();
+  const [samsungFileName, setSamsungFileName] = useState("samsung-health-sample.csv");
+  const [samsungCsv, setSamsungCsv] = useState(sampleSamsungCsv);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();
   const [route, setRoute] = useState<AppRoute>(() => routeFromPathname(window.location.pathname));
@@ -92,10 +101,6 @@ export function App() {
   const [aiError, setAiError] = useState<string | undefined>();
 
   const [pendingPairings, setPendingPairings] = useState<PendingPairing[]>([]);
-  const [profiles, setProfiles] = useState<ProfileListEntry[]>([]);
-  const [activeProfileId, setActiveProfileId] = useState<string>("self");
-  const [newProfileName, setNewProfileName] = useState("");
-  const [profilesDialogOpen, setProfilesDialogOpen] = useState(false);
 
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const bodyCompInputRef = useRef<HTMLInputElement>(null);
@@ -179,7 +184,6 @@ export function App() {
   }, [route, summaryDetailCode]);
 
   const profile = store?.profile;
-  const activeProfile = profiles.find((entry) => entry.id === activeProfileId) ?? profile;
   const latestInsight = store?.insights[0];
   const density = useMemo(() => {
     const counts = analytics?.counts;
@@ -196,11 +200,9 @@ export function App() {
   );
 
   async function refresh() {
-    const [nextStore, nextAnalytics, nextProfiles] = await Promise.all([api.store(), api.analytics(), api.profiles.list()]);
+    const [nextStore, nextAnalytics] = await Promise.all([api.store(), api.analytics()]);
     setStore(nextStore);
     setAnalytics(nextAnalytics);
-    setProfiles(nextProfiles.profiles);
-    setActiveProfileId(nextProfiles.activeProfileId);
   }
 
   async function loadSummary() {
@@ -229,50 +231,9 @@ export function App() {
     });
   }
 
-  async function switchProfile(profileId: string) {
-    if (!profileId || profileId === activeProfileId) {
-      return;
-    }
-    await run("Active profile switched locally.", async () => {
-      await api.profiles.setActive(profileId);
-      await refresh();
-      if (route === "summary") {
-        const nextSummary = await loadSummary();
-        applySummary(nextSummary);
-        if (summaryDetailCode) {
-          setSummaryDetail(await api.healthDataDetail(summaryDetailCode));
-        }
-      }
-    });
-  }
-
-  async function createProfile(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const displayName = newProfileName.trim();
-    if (!displayName) {
-      setMessage("Enter a profile name.");
-      return;
-    }
-    await run("Profile created locally.", async () => {
-      const created = await api.profiles.create(displayName);
-      await api.profiles.setActive(created.id);
-      await refresh();
-      setNewProfileName("");
-      setProfileEditorOpen(false);
-    });
-  }
-
-  async function deleteActiveProfile() {
-    if (!activeProfileId) {
-      return;
-    }
-    const targetName = activeProfile?.displayName ?? "this profile";
-    const confirmation = window.confirm(`Delete profile \"${targetName}\" and all its local imports, analytics, and insights?`);
-    if (!confirmation) {
-      return;
-    }
-    await run("Profile deleted locally.", async () => {
-      await api.profiles.remove(activeProfileId);
+  async function importSamsungCsv() {
+    await run("Samsung Health import processed into the encrypted local store.", async () => {
+      await api.importSamsung(samsungFileName, samsungCsv);
       await refresh();
     });
   }
@@ -603,34 +564,9 @@ export function App() {
         <button className={route === "query" ? "active" : ""} onClick={() => navigate("query")}>
           AI Query
         </button>
-        <div className="active-profile-pill" title={activeProfile?.id}>
-          Active profile: <strong>{activeProfile?.displayName ?? "Local user"}</strong>
-        </div>
-        <button type="button" className="manage-profiles-button" onClick={() => setProfilesDialogOpen(true)}>
-          Manage profiles
-        </button>
       </nav>
 
       {message ? <div className="notice">{message}</div> : null}
-
-      {profilesDialogOpen ? (
-        <ManageProfilesDialog
-          busy={busy}
-          profiles={profiles}
-          activeProfile={activeProfile}
-          activeProfileId={activeProfileId}
-          newProfileName={newProfileName}
-          onNewProfileNameChange={setNewProfileName}
-          onClose={() => setProfilesDialogOpen(false)}
-          onSwitchProfile={(profileId) => {
-            void switchProfile(profileId);
-          }}
-          onCreateProfile={createProfile}
-          onDeleteActive={() => {
-            void deleteActiveProfile();
-          }}
-        />
-      ) : null}
 
       {route === "dashboard" ? (
         <>
@@ -810,6 +746,11 @@ export function App() {
           onPreviewBodyComp={previewBodyCompositionReport}
           onCommitBodyComp={commitBodyCompositionReport}
           bodyCompInputRef={bodyCompInputRef}
+          samsungFileName={samsungFileName}
+          samsungCsv={samsungCsv}
+          onSamsungFileNameChange={setSamsungFileName}
+          onSamsungCsvChange={setSamsungCsv}
+          onImportSamsungCsv={importSamsungCsv}
           pendingPairings={pendingPairings}
           onApprovePairing={approvePairing}
           onDenyPairing={denyPairing}
@@ -818,84 +759,6 @@ export function App() {
         null
       )}
     </main>
-  );
-}
-
-function ManageProfilesDialog({
-  busy,
-  profiles,
-  activeProfile,
-  activeProfileId,
-  newProfileName,
-  onNewProfileNameChange,
-  onClose,
-  onSwitchProfile,
-  onCreateProfile,
-  onDeleteActive
-}: {
-  busy: boolean;
-  profiles: ProfileListEntry[];
-  activeProfile?: ProfileListEntry | Profile;
-  activeProfileId: string;
-  newProfileName: string;
-  onNewProfileNameChange: (value: string) => void;
-  onClose: () => void;
-  onSwitchProfile: (profileId: string) => void;
-  onCreateProfile: (event: React.FormEvent<HTMLFormElement>) => void;
-  onDeleteActive: () => void;
-}) {
-  return (
-    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => {
-      if (event.target === event.currentTarget) {
-        onClose();
-      }
-    }}>
-      <section className="profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-management-dialog-title">
-        <div className="panel-heading-row">
-          <div>
-            <p className="eyebrow">Local profile controls</p>
-            <h2 id="profile-management-dialog-title">Manage profiles</h2>
-          </div>
-          <button type="button" onClick={onClose}>Close</button>
-        </div>
-
-        <p className="profile-dialog-active" title={activeProfile?.id}>
-          Active profile: <strong>{activeProfile?.displayName ?? "Local user"}</strong>
-        </p>
-
-        <div className="profile-switcher-row">
-          <label>
-            Switch profile
-            <select value={activeProfileId} disabled={busy} onChange={(event) => onSwitchProfile(event.target.value)}>
-              {profiles.map((entry) => (
-                <option key={entry.id} value={entry.id}>
-                  {entry.displayName}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <form className="profile-create-form" onSubmit={onCreateProfile}>
-            <label>
-              Create profile
-              <input
-                value={newProfileName}
-                onChange={(event) => onNewProfileNameChange(event.target.value)}
-                placeholder="New profile name"
-                maxLength={80}
-              />
-            </label>
-            <button type="submit" disabled={busy}>Create</button>
-          </form>
-        </div>
-
-        <div className="profile-dialog-actions">
-          <button type="button" disabled={busy || profiles.length <= 1} onClick={onDeleteActive}>
-            Delete active profile
-          </button>
-        </div>
-      </section>
-    </div>
   );
 }
 
@@ -995,6 +858,11 @@ function ImportPage({
   onPreviewBodyComp,
   onCommitBodyComp,
   bodyCompInputRef,
+  samsungFileName,
+  samsungCsv,
+  onSamsungFileNameChange,
+  onSamsungCsvChange,
+  onImportSamsungCsv,
   pendingPairings,
   onApprovePairing,
   onDenyPairing
@@ -1028,6 +896,11 @@ function ImportPage({
   onPreviewBodyComp: (event: React.FormEvent<HTMLFormElement>) => void;
   onCommitBodyComp: (event: React.FormEvent<HTMLFormElement>) => void;
   bodyCompInputRef: React.RefObject<HTMLInputElement | null>;
+  samsungFileName: string;
+  samsungCsv: string;
+  onSamsungFileNameChange: (value: string) => void;
+  onSamsungCsvChange: (value: string) => void;
+  onImportSamsungCsv: () => void;
   pendingPairings: PendingPairing[];
   onApprovePairing: (id: string) => void;
   onDenyPairing: (id: string) => void;
@@ -1040,12 +913,13 @@ function ImportPage({
           <h1>Import</h1>
         </div>
         <p className="import-copy">
-          Labs and Health Connect imports live here so the dashboard can stay focused on review.
+          Labs, Health Connect, and Samsung exports live here so the dashboard can stay focused on review.
         </p>
       </div>
       <div className="import-tabs" role="tablist" aria-label="Import source">
         <button className={mode === "labs" ? "active" : ""} onClick={() => onModeChange("labs")}>Labs</button>
         <button className={mode === "fitness" ? "active" : ""} onClick={() => onModeChange("fitness")}>Fitness Tracker</button>
+        <button className={mode === "samsung" ? "active" : ""} onClick={() => onModeChange("samsung")}>Samsung CSV</button>
       </div>
 
       {mode === "labs" ? (
@@ -1085,6 +959,17 @@ function ImportPage({
           pendingPairings={pendingPairings}
           onApprove={onApprovePairing}
           onDeny={onDenyPairing}
+        />
+      ) : null}
+
+      {mode === "samsung" ? (
+        <SamsungCsvImportPanel
+          busy={busy}
+          fileName={samsungFileName}
+          csv={samsungCsv}
+          onFileNameChange={onSamsungFileNameChange}
+          onCsvChange={onSamsungCsvChange}
+          onImport={onImportSamsungCsv}
         />
       ) : null}
     </section>
@@ -1168,6 +1053,41 @@ function FitnessTrackerImportPanel({
           <span>The app syncs automatically once paired. Token is stored on-device for future syncs.</span>
         </div>
       </div>
+    </section>
+  );
+}
+
+function SamsungCsvImportPanel({
+  busy,
+  fileName,
+  csv,
+  onFileNameChange,
+  onCsvChange,
+  onImport
+}: {
+  busy: boolean;
+  fileName: string;
+  csv: string;
+  onFileNameChange: (value: string) => void;
+  onCsvChange: (value: string) => void;
+  onImport: () => void;
+}) {
+  return (
+    <section className="panel import-source-panel">
+      <div>
+        <p className="eyebrow">Samsung Health export</p>
+        <h2>Samsung CSV</h2>
+      </div>
+      <p className="empty">Paste a Samsung Health CSV export or keep the sample data to test the local import pipeline.</p>
+      <label>
+        File name
+        <input value={fileName} onChange={(event) => onFileNameChange(event.target.value)} />
+      </label>
+      <label>
+        CSV content
+        <textarea className="csv-box" value={csv} onChange={(event) => onCsvChange(event.target.value)} />
+      </label>
+      <button disabled={busy} onClick={onImport}>Process into vault</button>
     </section>
   );
 }
@@ -1986,12 +1906,18 @@ function importModeFromPathname(pathname: string): ImportMode {
   if (pathname === "/import/fitness-tracker") {
     return "fitness";
   }
+  if (pathname === "/import/samsung-csv") {
+    return "samsung";
+  }
   return "labs";
 }
 
 function importModePath(mode: ImportMode): string {
   if (mode === "fitness") {
     return "/import/fitness-tracker";
+  }
+  if (mode === "samsung") {
+    return "/import/samsung-csv";
   }
   return "/import/labs";
 }

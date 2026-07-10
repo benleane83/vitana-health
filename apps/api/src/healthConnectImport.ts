@@ -26,7 +26,6 @@ const exerciseSchema = z.object({
 });
 
 export const healthConnectImportRequestSchema = z.object({
-  profileId: z.string().trim().toLowerCase().min(1).max(64).regex(/^[a-z0-9][a-z0-9_-]{0,63}$/).optional(),
   syncedAt: isoDateString,
   rangeStart: isoDateString,
   rangeEnd: isoDateString,

@@ -112,6 +112,95 @@ function splitCsvLine(line: string): string[] {
   return cells;
 }
 
+export function parseSamsungHealthCsv(fileName: string, content: string, importedAt = new Date().toISOString()): ParsedImport {
+  const rows = parseCsv(content);
+  const importId = cryptoId("import");
+  const sourceId = cryptoId("source");
+  const diagnostics: string[] = [];
+  const observations: Observation[] = [];
+  const samples: TimeSeriesSample[] = [];
+  const activities: ActivitySession[] = [];
+
+  for (const row of rows) {
+    const normalized = normalizeKeys(row);
+    const metricName = normalized.type || normalized.metric || normalized.measurement || normalized.data_type || inferSamsungMetric(fileName, normalized);
+    const measurementType = metricName ? findMeasurementType(metricName) : undefined;
+    const value = readNumber(normalized.value ?? normalized.count ?? normalized.heart_rate ?? normalized.weight ?? normalized.duration);
+    const observedAt = readDate(normalized.start_time ?? normalized.start_at ?? normalized.date_time ?? normalized.time ?? normalized.day_time ?? normalized.date);
+    const endAt = readDate(normalized.end_time ?? normalized.end_at ?? normalized.end_date_time);
+
+    if (normalized.exercise_type || normalized.activity_type || normalized.workout_type) {
+      activities.push({
+        id: cryptoId("activity"),
+        activityType: normalized.exercise_type || normalized.activity_type || normalized.workout_type || "Workout",
+        startAt: observedAt ?? importedAt,
+        endAt,
+        durationMinutes: readNumber(normalized.duration_min ?? normalized.duration_minutes ?? normalized.duration),
+        energyKcal: readNumber(normalized.calorie ?? normalized.calories ?? normalized.energy_kcal),
+        distanceMeters: readNumber(normalized.distance ?? normalized.distance_meter ?? normalized.distance_meters),
+        sourceId
+      });
+      continue;
+    }
+
+    if (!measurementType || value === undefined || !observedAt) {
+      diagnostics.push(`Skipped row with unrecognized metric or missing value/date: ${JSON.stringify(row).slice(0, 180)}`);
+      continue;
+    }
+
+    if (measurementType.code === "steps" || measurementType.code === "heart_rate") {
+      samples.push({
+        id: cryptoId("sample"),
+        measurementCode: measurementType.code,
+        startAt: observedAt,
+        endAt: endAt ?? observedAt,
+        value,
+        unit: normalized.unit || measurementType.canonicalUnit,
+        sourceId
+      });
+    } else {
+      observations.push({
+        id: cryptoId("obs"),
+        measurementCode: measurementType.code,
+        observedAt,
+        effectiveStart: observedAt,
+        effectiveEnd: endAt,
+        value,
+        unit: normalized.unit || measurementType.canonicalUnit,
+        sourceId,
+        sourceJson: row
+      });
+    }
+  }
+
+  return {
+    sourceImport: {
+      id: importId,
+      sourceKind: "samsung-health",
+      fileName,
+      importedAt,
+      parserVersion: "samsung-csv-v1",
+      checksum: checksum(content),
+      rowCount: rows.length,
+      status: diagnostics.length > rows.length / 2 ? "needs-review" : "processed",
+      diagnostics: diagnostics.slice(0, 25),
+      rawContent: content
+    },
+    dataSource: {
+      id: sourceId,
+      sourceKind: "samsung-health",
+      label: `Samsung Health: ${fileName}`,
+      importId,
+      createdAt: importedAt
+    },
+    observations,
+    timeSeriesSamples: samples,
+    activitySessions: activities,
+    labPanels: [],
+    labMarkers: []
+  };
+}
+
 export function parseBloodTestCsv(fileName: string, content: string, importedAt = new Date().toISOString()): ParsedImport {
   const rows = parseCsv(content);
   const importId = cryptoId("import");
@@ -627,6 +716,16 @@ function toDisplayName(value: string): string {
 
 function stableId(prefix: string, parts: string[]): string {
   return `${prefix}_${checksum(parts.join("|")).replace(/^fnv1a-/, "")}`;
+}
+
+function inferSamsungMetric(fileName: string, row: Record<string, string>): string | undefined {
+  const name = fileName.toLowerCase();
+  if (name.includes("step")) return "steps";
+  if (name.includes("heart")) return "heart_rate";
+  if (name.includes("weight")) return "weight";
+  if (name.includes("sleep")) return "sleep_duration";
+  if (row.pkg_name?.includes("step")) return "steps";
+  return undefined;
 }
 
 function normalizeKeys(row: Record<string, string>): Record<string, string> {

@@ -1,6 +1,6 @@
 # Local Fitness Advisor
 
-A local-first health analytics app for Android Health Connect sync, manual blood-test results, profile metrics, deterministic analytics, and guarded AI recommendations from a configurable model runtime.
+A local-first health analytics app for Samsung Health exports, manual blood-test results, profile metrics, deterministic analytics, and guarded AI recommendations from a configurable model runtime.
 
 ## Stack
 
@@ -27,8 +27,7 @@ npm run dev -w apps/api
 
 ## Privacy model
 
-- Personal health data is stored locally in per-profile encrypted files: `data\health-store-<profileId>.enc`.
-- Profile registry and active selection are stored locally in `data\profiles.json` and `data\active-profile.json`.
+- Personal health data is stored locally under `data\health-store.enc`.
 - Raw imports are stored inside the encrypted local store and are omitted from normal API responses.
 - No telemetry, cloud sync, remote AI APIs, or vendor data upload paths are implemented.
 - Set `LFA_SECRET` to control the encryption passphrase. If omitted, a generated local key is stored under `data\local.key`.
@@ -74,6 +73,23 @@ Quick model connectivity test:
 Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:4317/api/llm/simple" -ContentType "application/json" -Body '{"prompt":"Reply with exactly: model runtime ok"}'
 ```
 
+## Samsung JSON Upload Import
+
+If you place a full Samsung Health export folder under `data\uploads`, you can ingest it directly:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:4317/api/import/samsung-json-upload" -ContentType "application/json" -Body "{}"
+```
+
+To target a specific folder explicitly:
+
+```powershell
+$body = @{ uploadPath = "Z:\repos\local-fitness-advisor\data\uploads\samsunghealth_ben.leane_20260702142947" } | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:4317/api/import/samsung-json-upload" -ContentType "application/json" -Body $body
+```
+
+Current parser coverage includes Samsung JSON datasets for heart rate, oxygen saturation, HRV, movement activity level, pedometer day summary step bins, and exercise live-data heart-rate/speed samples.
+
 ## Android Companion App (Expo / Health Connect)
 
 An Android MVP companion app lives at `apps/android-companion`.
@@ -81,7 +97,6 @@ An Android MVP companion app lives at `apps/android-companion`.
 It supports:
 
 - Manual endpoint URL input
-- Profile target selection (persisted locally on device)
 - Manual "Sync now" action
 - Last-30-days Health Connect read for steps, heart rate, oxygen saturation, HRV RMSSD, weight, and exercise sessions
 - POST to `POST /api/import/health-connect` on your local API
@@ -111,7 +126,6 @@ You can also call it directly if needed:
 
 ```powershell
 $body = @{
-  profileId = "self"
   syncedAt = "2026-07-04T09:00:00.000Z"
   rangeStart = "2026-06-04T09:00:00.000Z"
   rangeEnd = "2026-07-04T09:00:00.000Z"
@@ -124,16 +138,6 @@ $body = @{
   exerciseSessions = @()
 } | ConvertTo-Json -Depth 6
 Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:4317/api/import/health-connect" -ContentType "application/json" -Body $body
-```
-
-### Profile management endpoints
-
-```text
-GET    /api/profiles
-POST   /api/profiles
-GET    /api/profiles/active
-PUT    /api/profiles/active
-DELETE /api/profiles/:id
 ```
 
 ## Local Warehouse (DuckDB)
