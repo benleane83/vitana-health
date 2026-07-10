@@ -12,12 +12,20 @@
     "build": "npm run build -w packages/shared && npm run build -w apps/api && npm run build -w apps/web",
     "typecheck": "npm run build -w packages/shared && npm run typecheck -w apps/api && npm run typecheck -w apps/web",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "audit:ci": "node ./scripts/audit-ci.mjs",
+    "audit:prod": "npm audit --omit=dev",
+    "audit:prod:api": "npm audit --omit=dev -w apps/api",
+    "audit:prod:android": "npm audit --omit=dev -w apps/android-companion",
+    "deps:outdated:android": "npm outdated -w apps/android-companion"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.1.10",
     "concurrently": "^9.1.2",
     "typescript": "^5.8.3",
     "vitest": "^4.1.10"
+  },
+  "dependencies": {
+    "local-fitness-advisor": "file:"
   }
 }
