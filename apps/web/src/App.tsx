@@ -11,7 +11,8 @@ import type {
   Insight,
   ManualLabEntryPayload,
   MeasurementType,
-  Profile
+  Profile,
+  ProfileListEntry
 } from "@local-fitness-advisor/shared";
 import { safetyNotice } from "@local-fitness-advisor/shared";
 import { api } from "./api.js";
@@ -91,6 +92,10 @@ export function App() {
   const [aiError, setAiError] = useState<string | undefined>();
 
   const [pendingPairings, setPendingPairings] = useState<PendingPairing[]>([]);
+  const [profiles, setProfiles] = useState<ProfileListEntry[]>([]);
+  const [activeProfileId, setActiveProfileId] = useState<string>("self");
+  const [newProfileName, setNewProfileName] = useState("");
+  const [profilesDialogOpen, setProfilesDialogOpen] = useState(false);
 
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const bodyCompInputRef = useRef<HTMLInputElement>(null);
@@ -174,6 +179,7 @@ export function App() {
   }, [route, summaryDetailCode]);
 
   const profile = store?.profile;
+  const activeProfile = profiles.find((entry) => entry.id === activeProfileId) ?? profile;
   const latestInsight = store?.insights[0];
   const density = useMemo(() => {
     const counts = analytics?.counts;
@@ -190,9 +196,11 @@ export function App() {
   );
 
   async function refresh() {
-    const [nextStore, nextAnalytics] = await Promise.all([api.store(), api.analytics()]);
+    const [nextStore, nextAnalytics, nextProfiles] = await Promise.all([api.store(), api.analytics(), api.profiles.list()]);
     setStore(nextStore);
     setAnalytics(nextAnalytics);
+    setProfiles(nextProfiles.profiles);
+    setActiveProfileId(nextProfiles.activeProfileId);
   }
 
   async function loadSummary() {
@@ -218,6 +226,54 @@ export function App() {
       });
       await refresh();
       setProfileEditorOpen(false);
+    });
+  }
+
+  async function switchProfile(profileId: string) {
+    if (!profileId || profileId === activeProfileId) {
+      return;
+    }
+    await run("Active profile switched locally.", async () => {
+      await api.profiles.setActive(profileId);
+      await refresh();
+      if (route === "summary") {
+        const nextSummary = await loadSummary();
+        applySummary(nextSummary);
+        if (summaryDetailCode) {
+          setSummaryDetail(await api.healthDataDetail(summaryDetailCode));
+        }
+      }
+    });
+  }
+
+  async function createProfile(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const displayName = newProfileName.trim();
+    if (!displayName) {
+      setMessage("Enter a profile name.");
+      return;
+    }
+    await run("Profile created locally.", async () => {
+      const created = await api.profiles.create(displayName);
+      await api.profiles.setActive(created.id);
+      await refresh();
+      setNewProfileName("");
+      setProfileEditorOpen(false);
+    });
+  }
+
+  async function deleteActiveProfile() {
+    if (!activeProfileId) {
+      return;
+    }
+    const targetName = activeProfile?.displayName ?? "this profile";
+    const confirmation = window.confirm(`Delete profile \"${targetName}\" and all its local imports, analytics, and insights?`);
+    if (!confirmation) {
+      return;
+    }
+    await run("Profile deleted locally.", async () => {
+      await api.profiles.remove(activeProfileId);
+      await refresh();
     });
   }
 
@@ -547,9 +603,34 @@ export function App() {
         <button className={route === "query" ? "active" : ""} onClick={() => navigate("query")}>
           AI Query
         </button>
+        <div className="active-profile-pill" title={activeProfile?.id}>
+          Active profile: <strong>{activeProfile?.displayName ?? "Local user"}</strong>
+        </div>
+        <button type="button" className="manage-profiles-button" onClick={() => setProfilesDialogOpen(true)}>
+          Manage profiles
+        </button>
       </nav>
 
       {message ? <div className="notice">{message}</div> : null}
+
+      {profilesDialogOpen ? (
+        <ManageProfilesDialog
+          busy={busy}
+          profiles={profiles}
+          activeProfile={activeProfile}
+          activeProfileId={activeProfileId}
+          newProfileName={newProfileName}
+          onNewProfileNameChange={setNewProfileName}
+          onClose={() => setProfilesDialogOpen(false)}
+          onSwitchProfile={(profileId) => {
+            void switchProfile(profileId);
+          }}
+          onCreateProfile={createProfile}
+          onDeleteActive={() => {
+            void deleteActiveProfile();
+          }}
+        />
+      ) : null}
 
       {route === "dashboard" ? (
         <>
@@ -737,6 +818,84 @@ export function App() {
         null
       )}
     </main>
+  );
+}
+
+function ManageProfilesDialog({
+  busy,
+  profiles,
+  activeProfile,
+  activeProfileId,
+  newProfileName,
+  onNewProfileNameChange,
+  onClose,
+  onSwitchProfile,
+  onCreateProfile,
+  onDeleteActive
+}: {
+  busy: boolean;
+  profiles: ProfileListEntry[];
+  activeProfile?: ProfileListEntry | Profile;
+  activeProfileId: string;
+  newProfileName: string;
+  onNewProfileNameChange: (value: string) => void;
+  onClose: () => void;
+  onSwitchProfile: (profileId: string) => void;
+  onCreateProfile: (event: React.FormEvent<HTMLFormElement>) => void;
+  onDeleteActive: () => void;
+}) {
+  return (
+    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) {
+        onClose();
+      }
+    }}>
+      <section className="profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-management-dialog-title">
+        <div className="panel-heading-row">
+          <div>
+            <p className="eyebrow">Local profile controls</p>
+            <h2 id="profile-management-dialog-title">Manage profiles</h2>
+          </div>
+          <button type="button" onClick={onClose}>Close</button>
+        </div>
+
+        <p className="profile-dialog-active" title={activeProfile?.id}>
+          Active profile: <strong>{activeProfile?.displayName ?? "Local user"}</strong>
+        </p>
+
+        <div className="profile-switcher-row">
+          <label>
+            Switch profile
+            <select value={activeProfileId} disabled={busy} onChange={(event) => onSwitchProfile(event.target.value)}>
+              {profiles.map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.displayName}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <form className="profile-create-form" onSubmit={onCreateProfile}>
+            <label>
+              Create profile
+              <input
+                value={newProfileName}
+                onChange={(event) => onNewProfileNameChange(event.target.value)}
+                placeholder="New profile name"
+                maxLength={80}
+              />
+            </label>
+            <button type="submit" disabled={busy}>Create</button>
+          </form>
+        </div>
+
+        <div className="profile-dialog-actions">
+          <button type="button" disabled={busy || profiles.length <= 1} onClick={onDeleteActive}>
+            Delete active profile
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }
 

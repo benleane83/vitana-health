@@ -168,6 +168,48 @@ textarea {
   color: var(--ink-on-accent);
 }
 
+.active-profile-pill {
+  color: var(--muted);
+  font-size: 0.9rem;
+  padding: 0 var(--space-3);
+  white-space: nowrap;
+}
+
+.active-profile-pill strong {
+  color: var(--text-strong);
+}
+
+.manage-profiles-button {
+  min-height: 38px;
+  background: transparent;
+  border-color: var(--line);
+  color: var(--muted);
+  padding: 0.45rem 0.82rem;
+}
+
+.manage-profiles-button:hover,
+.manage-profiles-button:focus-visible {
+  color: var(--text-strong);
+}
+
+.profile-switcher {
+  min-height: auto;
+  margin-bottom: var(--space-6);
+}
+
+.profile-switcher-row {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: minmax(220px, 1fr) minmax(280px, 1.2fr);
+}
+
+.profile-create-form {
+  display: grid;
+  gap: var(--space-3);
+  align-items: end;
+  grid-template-columns: minmax(180px, 1fr) auto;
+}
+
 .hero {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
@@ -861,6 +903,31 @@ label {
   box-shadow: 0 24px 90px oklch(5% 0.015 160 / 0.65);
 }
 
+.profile-dialog-active {
+  margin: 0 0 var(--space-4);
+  color: var(--muted);
+}
+
+.profile-dialog-active strong {
+  color: var(--text-strong);
+}
+
+.profile-dialog-actions {
+  margin-top: var(--space-4);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.profile-dialog-actions button {
+  background: transparent;
+  border-color: oklch(72% 0.13 32 / 0.45);
+  color: oklch(86% 0.08 34);
+}
+
+.profile-dialog-actions button:hover:not(:disabled) {
+  background: oklch(48% 0.16 35 / 0.22);
+}
+
 .import-page {
   display: grid;
   gap: var(--space-5);
@@ -1329,6 +1396,10 @@ label {
   .labs-manual-meta {
     grid-template-columns: 1fr;
   }
+
+  .profile-switcher-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 620px) {
@@ -1371,6 +1442,10 @@ label {
 
   .route-nav button {
     flex: 1 1 150px;
+  }
+
+  .profile-create-form {
+    grid-template-columns: 1fr;
   }
 
   .summary-header {
