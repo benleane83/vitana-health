@@ -48,7 +48,7 @@ const readPermissions: Permission[] = [
   { accessType: "read", recordType: "ExerciseSession" }
 ];
 
-export async function syncHealthConnectLast30Days(endpointUrl: string): Promise<SyncResult> {
+export async function syncHealthConnectLast30Days(endpointUrl: string, companionToken?: string | null): Promise<SyncResult> {
   if (Platform.OS !== "android") {
     throw new Error("This app only supports Android Health Connect.");
   }
@@ -156,7 +156,8 @@ export async function syncHealthConnectLast30Days(endpointUrl: string): Promise<
     method: "POST",
     headers: {
       Accept: "application/json",
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      ...(companionToken ? { "x-companion-token": companionToken } : {})
     },
     body: JSON.stringify(payload)
   });

@@ -30,6 +30,13 @@ export interface AiQueryRow {
   [key: string]: unknown;
 }
 
+export interface PendingPairing {
+  id: string;
+  deviceId: string;
+  deviceName: string;
+  requestedAt: string;
+}
+
 export interface AiQueryChartSeries {
   label: string;
   value: number;
@@ -79,6 +86,11 @@ export const api = {
   importManualLabEntry: (payload: ManualLabEntryPayload) =>
     request<{ store: HealthStoreData }>("/api/import/labs/manual", { method: "POST", body: JSON.stringify(payload) }),
   generateInsight: () => request<Insight>("/api/insights/generate", { method: "POST" }),
+  pairing: {
+    pending: () => request<PendingPairing[]>("/api/pairing/pending"),
+    approve: (id: string) => request<{ id: string; status: string }>(`/api/pairing/approve/${id}`, { method: "POST" }),
+    deny: (id: string) => request<{ id: string; status: string }>(`/api/pairing/deny/${id}`, { method: "POST" })
+  },
   query: {
     ai: (question: string, options?: { timezone?: string; debug?: boolean }) =>
       request<AiQueryResult>("/api/query/ai", {
