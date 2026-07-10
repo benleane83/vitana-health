@@ -40,6 +40,7 @@ class LfaPinnedHttpModule : Module() {
       sslContext.init(null, arrayOf(trustManager), SecureRandom())
       val client = OkHttpClient.Builder()
         .sslSocketFactory(sslContext.socketFactory, trustManager)
+        // The QR-pinned key is the server identity and remains valid when its private LAN address changes.
         .hostnameVerifier { _, _ -> true }
         .build()
       val requestBuilder = Request.Builder().url(url)

@@ -156,6 +156,28 @@ const observationIdParamSchema = z
   .max(160)
   .regex(/^[A-Za-z0-9._:-]+$/, "Observation id contains unsupported characters.");
 
+function isLoopbackAddress(address: string): boolean {
+  return address === "::1" || address.startsWith("127.") || address.startsWith("::ffff:127.") || address === "::ffff:7f00:1";
+}
+
+function isOwnerOnlyPath(requestPath: string): boolean {
+  return (
+    requestPath === "/pair/qr" ||
+    requestPath === "/pairing/pending" ||
+    requestPath === "/pairing/devices" ||
+    /^\/pairing\/(approve|deny|revoke)\//.test(requestPath)
+  );
+}
+
+function decodeCookieToken(value: string | undefined): string {
+  if (!value) return "";
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return "";
+  }
+}
+
 export interface AppOptions {
   publicKeyHash?: string | null;
   webRoot?: string;
@@ -209,12 +231,12 @@ export function createApp(store: HealthStore, pairingStore: PairingStore, option
 
   function ownerTokenIsValid(request: express.Request): boolean {
     const configured = process.env.LFA_OWNER_TOKEN ?? "";
-    const cookieToken = request.headers.cookie
+    const encodedCookieToken = request.headers.cookie
       ?.split(";")
       .map((part) => part.trim())
       .find((part) => part.startsWith("lfa_owner="))
       ?.slice("lfa_owner=".length);
-    const supplied = request.headers.authorization?.replace(/^Bearer\s+/i, "") ?? cookieToken ?? "";
+    const supplied = request.headers.authorization?.replace(/^Bearer\s+/i, "") ?? decodeCookieToken(encodedCookieToken);
     const configuredBuffer = Buffer.from(configured);
     const suppliedBuffer = Buffer.from(supplied);
     return configuredBuffer.length >= 24 && configuredBuffer.length === suppliedBuffer.length && timingSafeEqual(configuredBuffer, suppliedBuffer);
@@ -227,7 +249,7 @@ export function createApp(store: HealthStore, pairingStore: PairingStore, option
 
   app.post("/api/auth/local", (request, response) => {
     const address = request.socket.remoteAddress ?? "";
-    const loopback = address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
+    const loopback = isLoopbackAddress(address);
     const origin = request.headers.origin;
     const localOrigin = !origin || /^https?:\/\/(127\.0\.0\.1|localhost):\d+$/.test(origin);
     if (!loopback || !localOrigin) {
@@ -272,11 +294,7 @@ export function createApp(store: HealthStore, pairingStore: PairingStore, option
       next();
       return;
     }
-    const ownerOnly =
-      request.path === "/pair/qr" ||
-      request.path === "/pairing/pending" ||
-      request.path === "/pairing/devices" ||
-      /^\/pairing\/(approve|deny|revoke)\//.test(request.path);
+    const ownerOnly = isOwnerOnlyPath(request.path);
     if (!ownerOnly && typeof companionToken === "string" && pairingStore.validateToken(companionToken)) {
       next();
       return;
@@ -843,7 +861,9 @@ export function createApp(store: HealthStore, pairingStore: PairingStore, option
 
   if (options.webRoot && existsSync(options.webRoot)) {
     app.use(express.static(options.webRoot));
-    app.get("*", (_request, response) => response.sendFile(path.join(options.webRoot!, "index.html")));
+    app.get("*", rateLimit(120, 60_000), (_request, response) =>
+      response.sendFile(path.join(options.webRoot!, "index.html"))
+    );
   }
 
   app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
