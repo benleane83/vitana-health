@@ -111,6 +111,45 @@ describe("central owner authorization", () => {
   });
 });
 
+describe("companion pairing lifecycle", () => {
+  it("requires a one-time code and polling secret, then supports revocation", async () => {
+    const challenge = pairingStore.createChallenge();
+    const pairingResponse = await request(app)
+      .post("/api/pairing/request")
+      .send({ deviceId: "device-2", deviceName: "Second Phone", pairingCode: challenge.code });
+    expect(pairingResponse.status).toBe(201);
+    expect((await request(app).post("/api/pairing/request").send({
+      deviceId: "attacker",
+      deviceName: "Replay",
+      pairingCode: challenge.code
+    })).status).toBe(401);
+
+    const pairingId = pairingResponse.body.pairingId as string;
+    const pollingSecret = pairingResponse.body.pollingSecret as string;
+    expect((await request(app).get(`/api/pairing/status/${pairingId}`)).status).toBe(401);
+    expect((await request(app)
+      .post(`/api/pairing/approve/${pairingId}`)
+      .set("authorization", ownerAuthorization)).status).toBe(200);
+
+    const approved = await request(app)
+      .get(`/api/pairing/status/${pairingId}`)
+      .set("x-pairing-secret", pollingSecret);
+    const companionToken = approved.body.token as string;
+    expect(companionToken).toBeTruthy();
+    expect((await request(app)
+      .get(`/api/pairing/status/${pairingId}`)
+      .set("x-pairing-secret", pollingSecret)).body.token).toBeUndefined();
+
+    expect((await request(app)
+      .post(`/api/pairing/revoke/${pairingId}`)
+      .set("authorization", ownerAuthorization)).status).toBe(200);
+    expect((await request(app)
+      .post("/api/import/health-connect")
+      .set("x-companion-token", companionToken)
+      .send(minimalHealthConnectPayload)).status).toBe(401);
+  });
+});
+
 // ─── DELETE /api/observations/:id ─────────────────────────────────────────────
 
 describe("DELETE /api/observations/:id", () => {

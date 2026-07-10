@@ -773,17 +773,6 @@ function ProfileEditDialog({
   onClose: () => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
-  const [pairedDevices, setPairedDevices] = useState<PairedDevice[]>([]);
-
-  useEffect(() => {
-    void api.pairing.devices().then(setPairedDevices).catch(() => setPairedDevices([]));
-  }, [pendingPairings]);
-
-  async function revokeDevice(id: string) {
-    await api.pairing.revoke(id);
-    setPairedDevices(await api.pairing.devices());
-  }
-
   return (
     <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => {
       if (event.target === event.currentTarget) {
@@ -996,6 +985,17 @@ function FitnessTrackerImportPanel({
   onApprove: (id: string) => void;
   onDeny: (id: string) => void;
 }) {
+  const [pairedDevices, setPairedDevices] = useState<PairedDevice[]>([]);
+
+  useEffect(() => {
+    void api.pairing.devices().then(setPairedDevices).catch(() => setPairedDevices([]));
+  }, [pendingPairings]);
+
+  async function revokeDevice(id: string) {
+    await api.pairing.revoke(id);
+    setPairedDevices(await api.pairing.devices());
+  }
+
   return (
     <section className="panel import-source-panel">
       <div>
