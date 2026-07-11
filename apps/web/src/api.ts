@@ -9,10 +9,12 @@ import type {
   HealthStoreData,
   Insight,
   ManualLabEntryPayload,
-  Profile
+  Profile,
+  ProfileListEntry
 } from "@local-fitness-advisor/shared";
 
 const ownerTokenKey = "local-fitness-advisor.ownerToken";
+let ownerTokenPromptInFlight: Promise<string | null> | undefined;
 
 function ownerHeaders(options?: RequestInit): HeadersInit {
   const token = window.sessionStorage.getItem(ownerTokenKey);
@@ -38,8 +40,24 @@ async function fetchAsOwner(path: string, options?: RequestInit, retry = true): 
     if (authenticated.ok) {
       return fetchAsOwner(path, options, false);
     }
+    const token = await promptForOwnerToken();
+    if (token) {
+      window.sessionStorage.setItem(ownerTokenKey, token);
+      return fetchAsOwner(path, options, false);
+    }
   }
   return response;
+}
+
+async function promptForOwnerToken(): Promise<string | null> {
+  if (!ownerTokenPromptInFlight) {
+    ownerTokenPromptInFlight = Promise.resolve(
+      window.prompt("Enter the Local Fitness Advisor owner token shown by the API at startup:")
+    ).finally(() => {
+      ownerTokenPromptInFlight = undefined;
+    });
+  }
+  return ownerTokenPromptInFlight;
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -98,6 +116,11 @@ export interface AiQueryResult {
   suggestedRephrase?: string;
 }
 
+export interface ProfilesResponse {
+  profiles: ProfileListEntry[];
+  activeProfileId: string;
+}
+
 export const api = {
   health: () => request<{ ok: boolean; storage: string; counts: AnalyticsSummary["counts"] }>("/api/health"),
   store: () => request<HealthStoreData>("/api/store"),
@@ -109,8 +132,6 @@ export const api = {
     request<DeleteObservationsByTypeResponse>(`/api/observations/by-type/${encodeURIComponent(measurementCode)}`, { method: "DELETE" }),
   saveProfile: (profile: Omit<Profile, "id" | "updatedAt">) =>
     request<Profile>("/api/profile", { method: "PUT", body: JSON.stringify(profile) }),
-  importSamsung: (fileName: string, content: string) =>
-    request<{ store: HealthStoreData }>("/api/import/samsung", { method: "POST", body: JSON.stringify({ fileName, content }) }),
   importBloodTest: (fileName: string, content: string) =>
     request<{ store: HealthStoreData }>("/api/import/blood-test", { method: "POST", body: JSON.stringify({ fileName, content }) }),
   previewBodyCompositionReport: (payload: { fileName: string; mimeType: string; contentBase64: string }) =>
@@ -131,6 +152,16 @@ export const api = {
     approve: (id: string) => request<{ id: string; status: string }>(`/api/pairing/approve/${id}`, { method: "POST" }),
     deny: (id: string) => request<{ id: string; status: string }>(`/api/pairing/deny/${id}`, { method: "POST" }),
     revoke: (id: string) => request<PairedDevice>(`/api/pairing/revoke/${id}`, { method: "POST" })
+  },
+  profiles: {
+    list: () => request<ProfilesResponse>("/api/profiles"),
+    create: (displayName: string) =>
+      request<ProfileListEntry>("/api/profiles", { method: "POST", body: JSON.stringify({ displayName }) }),
+    active: () => request<{ profileId: string }>("/api/profiles/active"),
+    setActive: (profileId: string) =>
+      request<{ profileId: string }>("/api/profiles/active", { method: "PUT", body: JSON.stringify({ profileId }) }),
+    remove: (profileId: string) =>
+      request<{ activeProfileId: string; profiles: ProfileListEntry[] }>(`/api/profiles/${encodeURIComponent(profileId)}`, { method: "DELETE" })
   },
   query: {
     ai: (question: string, options?: { timezone?: string; debug?: boolean }) =>

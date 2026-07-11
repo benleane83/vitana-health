@@ -1,5 +1,6 @@
 import {
   closeSync,
+  copyFileSync,
   existsSync,
   fsyncSync,
   mkdirSync,
@@ -7,6 +8,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  unlinkSync,
   writeFileSync
 } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -18,6 +20,8 @@ import {
   type HealthDataDetailEntry,
   type HealthStoreData,
   type Observation,
+  type Profile,
+  type ProfileListEntry,
   type SourceImport
 } from "@local-fitness-advisor/shared";
 import { listHealthDataDetailEntries } from "./summary.js";
@@ -28,6 +32,15 @@ interface EncryptedEnvelope {
   iv: string;
   tag: string;
   payload: string;
+}
+
+interface ProfileRegistryFile {
+  profiles: ProfileListEntry[];
+}
+
+interface StoreSecurityConfig {
+  passphrase: string;
+  securityMode: "env-secret" | "generated-local-key";
 }
 
 const maxRawImportChars = 1_000_000;
@@ -43,24 +56,23 @@ export class HealthStore {
   private readonly passphrase: string;
   private readonly dataPath: string;
   private readonly backupPath: string;
-  private readonly localKeyPath: string;
+  readonly profileId: string;
   readonly securityMode: "env-secret" | "generated-local-key";
 
-  constructor() {
-    const dataDir = process.env.LFA_DATA_DIR ? resolve(process.env.LFA_DATA_DIR) : resolveDataDir();
-    this.dataPath = resolve(dataDir, "health-store.enc");
+  constructor(options: { profileId?: string; passphrase?: string; securityMode?: "env-secret" | "generated-local-key" } = {}) {
+    this.profileId = normalizeProfileId(options.profileId ?? "self");
+    this.dataPath = resolveStorePath(this.profileId);
     this.backupPath = `${this.dataPath}.bak`;
-    this.localKeyPath = resolve(dataDir, "local.key");
     mkdirSync(dirname(this.dataPath), { recursive: true });
-    const configuredSecret = process.env.LFA_SECRET;
-    if (configuredSecret && configuredSecret.length >= 16) {
-      this.passphrase = configuredSecret;
-      this.securityMode = "env-secret";
+    if (options.passphrase && options.securityMode) {
+      this.passphrase = options.passphrase;
+      this.securityMode = options.securityMode;
     } else {
-      this.passphrase = this.getOrCreateLocalKey();
-      this.securityMode = "generated-local-key";
+      const security = resolveStoreSecurityConfig();
+      this.passphrase = security.passphrase;
+      this.securityMode = security.securityMode;
     }
-    this.data = existsSync(this.dataPath) ? this.readEncryptedStore() : createEmptyStore();
+    this.data = existsSync(this.dataPath) ? this.readEncryptedStore() : createEmptyStore(this.profileId);
     const registryChanged = reconcileDefaultMeasurementTypes(this.data);
     if (!existsSync(this.dataPath)) {
       this.audit("store-created", "Encrypted local health store created.");
@@ -78,7 +90,7 @@ export class HealthStore {
   }
 
   replaceProfile(profile: HealthStoreData["profile"]): HealthStoreData["profile"] {
-    this.data.profile = { ...profile, id: "self", updatedAt: new Date().toISOString() };
+    this.data.profile = { ...profile, id: this.profileId, updatedAt: new Date().toISOString() };
     this.audit("profile-updated", "Profile details updated locally.");
     this.persist();
     return this.data.profile;
@@ -199,86 +211,233 @@ export class HealthStore {
     });
   }
 
-  private getOrCreateLocalKey(): string {
-    mkdirSync(dirname(this.localKeyPath), { recursive: true });
-    if (existsSync(this.localKeyPath)) {
-      return readFileSync(this.localKeyPath, "utf8").trim();
-    }
-    const key = randomBytes(32).toString("base64url");
-    writeFileSync(this.localKeyPath, key, { encoding: "utf8", mode: 0o600 });
-    return key;
-  }
-
   private readEncryptedStore(): HealthStoreData {
     try {
-      return this.readEncryptedStoreAtPath(this.dataPath);
+      return readEncryptedStoreAtPath(this.dataPath, this.passphrase);
     } catch (primaryError) {
       if (!existsSync(this.backupPath)) {
         throw primaryError;
       }
-      const recovered = this.readEncryptedStoreAtPath(this.backupPath);
+      const recovered = readEncryptedStoreAtPath(this.backupPath, this.passphrase);
       writeFileSync(this.dataPath, readFileSync(this.backupPath), { encoding: "utf8", mode: 0o600 });
       return recovered;
     }
   }
 
-  private readEncryptedStoreAtPath(path: string): HealthStoreData {
-    const envelope = JSON.parse(readFileSync(path, "utf8")) as EncryptedEnvelope;
-    const key = scryptSync(this.passphrase, Buffer.from(envelope.salt, "base64"), 32);
-    const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(envelope.iv, "base64"));
-    decipher.setAuthTag(Buffer.from(envelope.tag, "base64"));
-    const decrypted = Buffer.concat([
-      decipher.update(Buffer.from(envelope.payload, "base64")),
-      decipher.final()
-    ]);
-    return JSON.parse(decrypted.toString("utf8")) as HealthStoreData;
-  }
-
   private persist(): void {
-    const salt = randomBytes(16);
-    const iv = randomBytes(12);
-    const key = scryptSync(this.passphrase, salt, 32);
-    const cipher = createCipheriv("aes-256-gcm", key, iv);
-    const encrypted = Buffer.concat([cipher.update(JSON.stringify(this.data)), cipher.final()]);
-    const envelope: EncryptedEnvelope = {
-      version: 1,
-      salt: salt.toString("base64"),
-      iv: iv.toString("base64"),
-      tag: cipher.getAuthTag().toString("base64"),
-      payload: encrypted.toString("base64")
-    };
-    const serialized = JSON.stringify(envelope, null, 2);
-    const tempPath = `${this.dataPath}.tmp-${process.pid}-${Date.now()}-${randomBytes(4).toString("hex")}`;
-    let oldStoreMoved = false;
-    try {
-      writeFileSync(tempPath, serialized, { encoding: "utf8", mode: 0o600 });
-      this.readEncryptedStoreAtPath(tempPath);
-      fsyncPath(tempPath);
-
-      if (existsSync(this.dataPath)) {
-        renameSync(this.dataPath, this.backupPath);
-        oldStoreMoved = true;
-      }
-      renameSync(tempPath, this.dataPath);
-      fsyncPath(this.dataPath);
-      fsyncPath(dirname(this.dataPath));
-    } catch (error) {
-      if (oldStoreMoved && !existsSync(this.dataPath) && existsSync(this.backupPath)) {
-        renameSync(this.backupPath, this.dataPath);
-      }
-      throw error;
-    } finally {
-      if (existsSync(tempPath)) {
-        rmSync(tempPath, { force: true });
-      }
-    }
+    writeEncryptedStore(this.dataPath, this.backupPath, this.passphrase, this.data);
   }
 }
 
-function createEmptyStore(): HealthStoreData {
+export class ProfileStoreManager {
+  readonly securityMode: "env-secret" | "generated-local-key";
+
+  private readonly passphrase: string;
+  private stores = new Map<string, HealthStore>();
+  private profiles: ProfileListEntry[] = [];
+  private activeProfileId = "self";
+
+  constructor() {
+    mkdirSync(resolveDataDir(), { recursive: true });
+    const security = resolveStoreSecurityConfig();
+    this.passphrase = security.passphrase;
+    this.securityMode = security.securityMode;
+    this.initialize();
+  }
+
+  listProfiles(): ProfileListEntry[] {
+    return [...this.profiles];
+  }
+
+  getActiveProfileId(): string {
+    return this.activeProfileId;
+  }
+
+  getActiveStore(): HealthStore {
+    return this.getStore(this.activeProfileId);
+  }
+
+  getStore(profileId: string): HealthStore {
+    const normalizedId = normalizeProfileId(profileId);
+    const existing = this.stores.get(normalizedId);
+    if (existing) {
+      return existing;
+    }
+    try {
+      const created = new HealthStore({
+        profileId: normalizedId,
+        passphrase: this.passphrase,
+        securityMode: this.securityMode
+      });
+      this.stores.set(normalizedId, created);
+      return created;
+    } catch (error) {
+      if (!isDecryptFailure(error)) {
+        throw error;
+      }
+
+      // Recover startup by quarantining unreadable encrypted files and recreating an empty profile store.
+      quarantineCorruptedStoreFiles(normalizedId);
+      const recovered = new HealthStore({
+        profileId: normalizedId,
+        passphrase: this.passphrase,
+        securityMode: this.securityMode
+      });
+      const existingEntry = this.profiles.find((entry) => entry.id === normalizedId);
+      if (existingEntry?.displayName) {
+        recovered.replaceProfile({
+          ...recovered.snapshot().profile,
+          id: normalizedId,
+          displayName: existingEntry.displayName
+        });
+      }
+      this.stores.set(normalizedId, recovered);
+      return recovered;
+    }
+  }
+
+  createProfile(displayName: string): ProfileListEntry {
+    const name = displayName.trim() || "Local user";
+    const id = generateProfileId(name, new Set(this.profiles.map((entry) => entry.id)));
+    const store = this.getStore(id);
+    store.replaceProfile({
+      ...store.snapshot().profile,
+      id,
+      displayName: name
+    });
+    const entry = profileListEntryFromProfile(store.snapshot().profile);
+    this.profiles.push(entry);
+    this.persistProfiles();
+    return entry;
+  }
+
+  setActiveProfile(profileId: string): string {
+    const normalizedId = normalizeProfileId(profileId);
+    if (!this.profiles.some((entry) => entry.id === normalizedId)) {
+      throw new Error("Profile not found.");
+    }
+    this.activeProfileId = normalizedId;
+    this.persistActiveProfile();
+    return this.activeProfileId;
+  }
+
+  deleteProfile(profileId: string): { activeProfileId: string } {
+    const normalizedId = normalizeProfileId(profileId);
+    if (this.profiles.length <= 1) {
+      throw new Error("Cannot delete the last remaining profile.");
+    }
+    if (!this.profiles.some((entry) => entry.id === normalizedId)) {
+      throw new Error("Profile not found.");
+    }
+
+    this.profiles = this.profiles.filter((entry) => entry.id !== normalizedId);
+    this.stores.delete(normalizedId);
+
+    const profileDataPath = resolveStorePath(normalizedId);
+    if (existsSync(profileDataPath)) {
+      try {
+        unlinkSync(profileDataPath);
+      } catch {
+        // Best effort filesystem cleanup.
+      }
+    }
+    const backupPath = `${profileDataPath}.bak`;
+    if (existsSync(backupPath)) {
+      try {
+        unlinkSync(backupPath);
+      } catch {
+        // Best effort backup cleanup.
+      }
+    }
+
+    if (this.activeProfileId === normalizedId) {
+      this.activeProfileId = this.profiles[0].id;
+      this.persistActiveProfile();
+    }
+    this.persistProfiles();
+    return { activeProfileId: this.activeProfileId };
+  }
+
+  syncProfileEntry(profile: Profile): void {
+    const normalizedId = normalizeProfileId(profile.id);
+    const next = profileListEntryFromProfile(profile);
+    const index = this.profiles.findIndex((entry) => entry.id === normalizedId);
+    if (index === -1) {
+      this.profiles.push(next);
+    } else {
+      this.profiles[index] = next;
+    }
+    this.persistProfiles();
+  }
+
+  private initialize(): void {
+    this.migrateLegacyIfNeeded();
+    this.profiles = loadProfileRegistry();
+    if (this.profiles.length === 0) {
+      const store = this.getStore("self");
+      this.profiles = [profileListEntryFromProfile(store.snapshot().profile)];
+      this.persistProfiles();
+    }
+
+    this.refreshProfileEntriesFromStores();
+
+    const active = loadActiveProfileId();
+    if (active && this.profiles.some((entry) => entry.id === active)) {
+      this.activeProfileId = active;
+    } else {
+      this.activeProfileId = this.profiles[0].id;
+      this.persistActiveProfile();
+    }
+  }
+
+  private refreshProfileEntriesFromStores(): void {
+    this.profiles = this.profiles.map((entry) => profileListEntryFromProfile(this.getStore(entry.id).snapshot().profile));
+    this.persistProfiles();
+  }
+
+  private migrateLegacyIfNeeded(): void {
+    if (existsSync(profilesPath())) {
+      return;
+    }
+
+    if (existsSync(legacyDataPath())) {
+      const targetPath = resolveStorePath("self");
+      if (!existsSync(targetPath)) {
+        copyFileSync(legacyDataPath(), targetPath);
+      }
+      const legacyBackupPath = `${legacyDataPath()}.bak`;
+      const targetBackupPath = `${targetPath}.bak`;
+      if (existsSync(legacyBackupPath) && !existsSync(targetBackupPath)) {
+        copyFileSync(legacyBackupPath, targetBackupPath);
+      }
+      const store = this.getStore("self");
+      this.profiles = [profileListEntryFromProfile(store.snapshot().profile)];
+      this.activeProfileId = "self";
+      this.persistProfiles();
+      this.persistActiveProfile();
+      return;
+    }
+
+    const store = this.getStore("self");
+    this.profiles = [profileListEntryFromProfile(store.snapshot().profile)];
+    this.activeProfileId = "self";
+    this.persistProfiles();
+    this.persistActiveProfile();
+  }
+
+  private persistProfiles(): void {
+    writeFileSync(profilesPath(), JSON.stringify({ profiles: this.profiles }, null, 2), { encoding: "utf8" });
+  }
+
+  private persistActiveProfile(): void {
+    writeFileSync(activeProfilePath(), JSON.stringify({ profileId: this.activeProfileId }, null, 2), { encoding: "utf8" });
+  }
+}
+
+function createEmptyStore(profileId = "self"): HealthStoreData {
   return {
     profile: {
-      id: "self",
+      id: normalizeProfileId(profileId),
       displayName: "Local user",
       units: "metric",
       updatedAt: new Date().toISOString()
@@ -336,12 +495,43 @@ function appendUniqueById<T extends { id: string }>(existing: T[], additions: T[
 }
 
 function resolveDataDir(): string {
+  if (process.env.LFA_DATA_DIR) {
+    return resolve(process.env.LFA_DATA_DIR);
+  }
   const candidates = [
-    resolve(process.cwd(), "data"),
-    resolve(process.cwd(), "..", "..", "data")
+    // Prefer repository-level data first so workspace runs do not accidentally use apps/api/data shadow state.
+    resolve(process.cwd(), "..", "..", "data"),
+    resolve(process.cwd(), "data")
   ];
   const existing = candidates.find((candidate) => existsSync(candidate));
   return existing ?? candidates[0];
+}
+
+function resolveStorePath(profileId: string): string {
+  const normalizedId = normalizeProfileId(profileId);
+  const dataDir = resolveDataDir();
+  return normalizedId === "self"
+    ? resolve(dataDir, "health-store-self.enc")
+    : resolve(dataDir, `health-store-${normalizedId}.enc`);
+}
+
+export function resolveStoreSecurityConfig(): StoreSecurityConfig {
+  const configuredSecret = process.env.LFA_SECRET;
+  if (configuredSecret && configuredSecret.length >= 16) {
+    return { passphrase: configuredSecret, securityMode: "env-secret" };
+  }
+  return { passphrase: getOrCreateLocalKey(), securityMode: "generated-local-key" };
+}
+
+function getOrCreateLocalKey(): string {
+  const keyPath = localKeyPath();
+  mkdirSync(dirname(keyPath), { recursive: true });
+  if (existsSync(keyPath)) {
+    return readFileSync(keyPath, "utf8").trim();
+  }
+  const key = randomBytes(32).toString("base64url");
+  writeFileSync(keyPath, key, { encoding: "utf8", mode: 0o600 });
+  return key;
 }
 
 function sanitizeSourceImport(sourceImport: SourceImport): SourceImport {
@@ -412,6 +602,154 @@ function limitByNewest<T>(
   }
 
   return selected;
+}
+
+function normalizeProfileId(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "self";
+}
+
+function generateProfileId(displayName: string, existing: Set<string>): string {
+  const base = normalizeProfileId(displayName);
+  if (!existing.has(base)) {
+    return base;
+  }
+  let suffix = 2;
+  while (existing.has(`${base}-${suffix}`)) {
+    suffix += 1;
+  }
+  return `${base}-${suffix}`;
+}
+
+function profileListEntryFromProfile(profile: Profile): ProfileListEntry {
+  return {
+    id: normalizeProfileId(profile.id),
+    displayName: profile.displayName,
+    updatedAt: profile.updatedAt
+  };
+}
+
+function loadProfileRegistry(): ProfileListEntry[] {
+  const path = profilesPath();
+  if (!existsSync(path)) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as ProfileRegistryFile;
+    if (!Array.isArray(parsed.profiles)) {
+      return [];
+    }
+    return parsed.profiles
+      .map((entry) => ({
+        id: normalizeProfileId(entry.id),
+        displayName: typeof entry.displayName === "string" && entry.displayName.trim() ? entry.displayName : "Local user",
+        updatedAt: typeof entry.updatedAt === "string" && entry.updatedAt ? entry.updatedAt : new Date().toISOString()
+      }))
+      .filter((entry, index, list) => list.findIndex((candidate) => candidate.id === entry.id) === index);
+  } catch {
+    return [];
+  }
+}
+
+function loadActiveProfileId(): string | undefined {
+  const path = activeProfilePath();
+  if (!existsSync(path)) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as { profileId?: string };
+    return typeof parsed.profileId === "string" ? normalizeProfileId(parsed.profileId) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function profilesPath(): string {
+  return resolve(resolveDataDir(), "profiles.json");
+}
+
+function activeProfilePath(): string {
+  return resolve(resolveDataDir(), "active-profile.json");
+}
+
+function legacyDataPath(): string {
+  return resolve(resolveDataDir(), "health-store.enc");
+}
+
+function localKeyPath(): string {
+  return resolve(resolveDataDir(), "local.key");
+}
+
+function isDecryptFailure(error: unknown): boolean {
+  return error instanceof Error && /authenticate data|unsupported state/i.test(error.message);
+}
+
+function quarantineCorruptedStoreFiles(profileId: string): void {
+  const dataPath = resolveStorePath(profileId);
+  const backupPath = `${dataPath}.bak`;
+  const stamp = `${Date.now()}-${randomBytes(3).toString("hex")}`;
+  const files = [dataPath, backupPath];
+  for (const filePath of files) {
+    if (!existsSync(filePath)) {
+      continue;
+    }
+    try {
+      renameSync(filePath, `${filePath}.corrupt-${stamp}`);
+    } catch {
+      // If quarantine rename fails, continue and let the caller surface the original read failure.
+    }
+  }
+}
+
+function readEncryptedStoreAtPath(path: string, passphrase: string): HealthStoreData {
+  const envelope = JSON.parse(readFileSync(path, "utf8")) as EncryptedEnvelope;
+  const key = scryptSync(passphrase, Buffer.from(envelope.salt, "base64"), 32);
+  const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(envelope.iv, "base64"));
+  decipher.setAuthTag(Buffer.from(envelope.tag, "base64"));
+  const decrypted = Buffer.concat([
+    decipher.update(Buffer.from(envelope.payload, "base64")),
+    decipher.final()
+  ]);
+  return JSON.parse(decrypted.toString("utf8")) as HealthStoreData;
+}
+
+function writeEncryptedStore(filePath: string, backupPath: string, passphrase: string, data: HealthStoreData): void {
+  const salt = randomBytes(16);
+  const iv = randomBytes(12);
+  const key = scryptSync(passphrase, salt, 32);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const encrypted = Buffer.concat([cipher.update(JSON.stringify(data)), cipher.final()]);
+  const envelope: EncryptedEnvelope = {
+    version: 1,
+    salt: salt.toString("base64"),
+    iv: iv.toString("base64"),
+    tag: cipher.getAuthTag().toString("base64"),
+    payload: encrypted.toString("base64")
+  };
+  const serialized = JSON.stringify(envelope, null, 2);
+  const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}-${randomBytes(4).toString("hex")}`;
+  let oldStoreMoved = false;
+  try {
+    writeFileSync(tempPath, serialized, { encoding: "utf8", mode: 0o600 });
+    readEncryptedStoreAtPath(tempPath, passphrase);
+    fsyncPath(tempPath);
+
+    if (existsSync(filePath)) {
+      renameSync(filePath, backupPath);
+      oldStoreMoved = true;
+    }
+    renameSync(tempPath, filePath);
+    fsyncPath(filePath);
+    fsyncPath(dirname(filePath));
+  } catch (error) {
+    if (oldStoreMoved && !existsSync(filePath) && existsSync(backupPath)) {
+      renameSync(backupPath, filePath);
+    }
+    throw error;
+  } finally {
+    if (existsSync(tempPath)) {
+      rmSync(tempPath, { force: true });
+    }
+  }
 }
 
 function observationDeleteDetail(observation: Observation): string {

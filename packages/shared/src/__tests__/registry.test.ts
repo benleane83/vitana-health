@@ -76,8 +76,8 @@ describe("findMeasurementType", () => {
     expect(findMeasurementType("heart rate")?.code).toBe("heart_rate");
   });
 
-  it("finds Samsung-prefixed alias", () => {
-    expect(findMeasurementType("com.samsung.health.step_count")?.code).toBe("steps");
+  it("does not resolve retired Samsung-prefixed alias", () => {
+    expect(findMeasurementType("com.samsung.health.step_count")).toBeUndefined();
   });
 
   it("returns undefined for unknown input", () => {

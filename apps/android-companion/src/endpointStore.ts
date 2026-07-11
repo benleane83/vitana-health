@@ -4,6 +4,7 @@ import * as SecureStore from "expo-secure-store";
 const CONNECTION_KEY = "local-fitness-advisor.connection";
 const DEVICE_ID_KEY = "local-fitness-advisor.deviceId";
 const TOKEN_KEY = "local-fitness-advisor.companionToken";
+const SELECTED_PROFILE_ID_KEY = "local-fitness-advisor.selectedProfileId";
 
 export interface ConnectionDetails {
   url: string;
@@ -69,4 +70,16 @@ export async function updateLastSyncAt(url: string): Promise<void> {
 
 export async function clearConnection(): Promise<void> {
   await Promise.all([AsyncStorage.removeItem(CONNECTION_KEY), SecureStore.deleteItemAsync(TOKEN_KEY)]);
+}
+
+export async function loadSelectedProfileId(): Promise<string | null> {
+  return AsyncStorage.getItem(SELECTED_PROFILE_ID_KEY);
+}
+
+export async function saveSelectedProfileId(profileId: string): Promise<void> {
+  await AsyncStorage.setItem(SELECTED_PROFILE_ID_KEY, profileId);
+}
+
+export async function clearSelectedProfileId(): Promise<void> {
+  await AsyncStorage.removeItem(SELECTED_PROFILE_ID_KEY);
 }

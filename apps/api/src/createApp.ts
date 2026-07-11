@@ -13,15 +13,13 @@ import {
   computeAnalytics,
   parseBodyCompositionText,
   parseBloodTestCsv,
-  parseSamsungHealthCsv,
   type BodyCompositionDraftRow,
   type DeleteObservationResponse,
   type DeleteObservationsByTypeResponse,
   type Profile
 } from "@local-fitness-advisor/shared";
-import { HealthStore } from "./store.js";
+import { HealthStore, ProfileStoreManager } from "./store.js";
 import { generateInsight } from "./insights.js";
-import { importSamsungJsonUpload } from "./samsungJsonImport.js";
 import { healthConnectImportRequestSchema, parseHealthConnectImport } from "./healthConnectImport.js";
 import { rebuildWarehouseFromStore, runWarehouseQuery } from "./warehouse.js";
 import { planWarehouseQuery } from "./nlQuery.js";
@@ -60,6 +58,22 @@ const profileSchema = z.object({
   heightCm: z.number().positive().max(260).optional(),
   goalSummary: z.string().max(500).optional(),
   units: z.enum(["metric", "imperial"])
+});
+
+const profileIdSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .min(1)
+  .max(64)
+  .regex(/^[a-z0-9][a-z0-9_-]{0,63}$/, "Profile id contains unsupported characters.");
+
+const createProfileSchema = z.object({
+  displayName: z.string().min(1).max(80)
+});
+
+const setActiveProfileSchema = z.object({
+  profileId: profileIdSchema
 });
 
 const importSchema = z.object({
@@ -115,10 +129,6 @@ const manualLabImportSchema = z.object({
         })
     )
     .min(1)
-});
-
-const samsungJsonUploadSchema = z.object({
-  uploadPath: z.string().min(1).max(400).optional()
 });
 
 const nlQuerySchema = z.object({
@@ -183,8 +193,16 @@ export interface AppOptions {
   webRoot?: string;
 }
 
-export function createApp(store: HealthStore, pairingStore: PairingStore, options: AppOptions = {}): express.Application {
+export function createApp(
+  storeManager: ProfileStoreManager,
+  pairingStore: PairingStore,
+  options: AppOptions = {}
+): express.Application {
   const app = express();
+
+  function activeStore(): HealthStore {
+    return storeManager.getActiveStore();
+  }
 
   app.disable("x-powered-by");
   app.use("/api/import/body-composition/preview", express.json({ limit: "20mb" }));
@@ -304,12 +322,12 @@ export function createApp(store: HealthStore, pairingStore: PairingStore, option
   });
 
   app.get("/api/health", (_request, response) => {
-    const snapshot = store.snapshot();
+    const snapshot = activeStore().snapshot();
     const model = currentModelConfig();
     response.json({
       ok: true,
       app: "local-fitness-advisor",
-      storage: store.securityMode,
+      storage: storeManager.securityMode,
       counts: computeAnalytics(snapshot).counts,
       modelRuntime: {
         provider: model.provider,
@@ -384,45 +402,63 @@ export function createApp(store: HealthStore, pairingStore: PairingStore, option
   });
 
   app.get("/api/store", (_request, response) => {
-    response.json(store.snapshot());
+    response.json(activeStore().snapshot());
   });
 
   app.get("/api/profile", (_request, response) => {
-    response.json(store.snapshot().profile);
+    response.json(activeStore().snapshot().profile);
   });
 
   app.put("/api/profile", (request, response) => {
     const parsed = profileSchema.parse(request.body);
+    const store = activeStore();
     const profile: Profile = {
       ...parsed,
-      id: "self",
+      id: store.profileId,
       updatedAt: new Date().toISOString()
     };
-    response.json(store.replaceProfile(profile));
+    const saved = store.replaceProfile(profile);
+    storeManager.syncProfileEntry(saved);
+    response.json(saved);
   });
 
-  app.post("/api/import/samsung", async (request, response, next) => {
-    try {
-      const parsed = importSchema.parse(request.body);
-      const imported = parseSamsungHealthCsv(parsed.fileName, parsed.content);
-      const merged = store.mergeImport(imported);
-      const warehouse = await rebuildWarehouseFromStore(merged);
-      response.status(201).json({
-        store: merged,
-        warehouse,
-        import: {
-          ...imported.sourceImport,
-          rawContent: undefined
-        }
-      });
-    } catch (error) {
-      next(error);
-    }
+  app.get("/api/profiles", (_request, response) => {
+    response.json({
+      profiles: storeManager.listProfiles(),
+      activeProfileId: storeManager.getActiveProfileId()
+    });
+  });
+
+  app.post("/api/profiles", (request, response) => {
+    const parsed = createProfileSchema.parse(request.body ?? {});
+    const created = storeManager.createProfile(parsed.displayName);
+    response.status(201).json(created);
+  });
+
+  app.get("/api/profiles/active", (_request, response) => {
+    response.json({ profileId: storeManager.getActiveProfileId() });
+  });
+
+  app.put("/api/profiles/active", (request, response) => {
+    const parsed = setActiveProfileSchema.parse(request.body ?? {});
+    const profileId = storeManager.setActiveProfile(parsed.profileId);
+    response.json({ profileId });
+  });
+
+  app.delete("/api/profiles/:id", (request, response) => {
+    const profileId = profileIdSchema.parse(request.params.id);
+    const result = storeManager.deleteProfile(profileId);
+    response.json({
+      deletedProfileId: profileId,
+      activeProfileId: result.activeProfileId,
+      profiles: storeManager.listProfiles()
+    });
   });
 
   app.post("/api/import/blood-test", (request, response) => {
     const parsed = importSchema.parse(request.body);
     const imported = parseBloodTestCsv(parsed.fileName, parsed.content);
+    const store = activeStore();
     response.status(201).json({
       store: store.mergeImport(imported),
       import: {
@@ -435,6 +471,7 @@ export function createApp(store: HealthStore, pairingStore: PairingStore, option
   app.post("/api/import/labs/manual", (request, response) => {
     const parsed = manualLabImportSchema.parse(request.body ?? {});
     const imported = buildManualLabEntryImport(parsed);
+    const store = activeStore();
     response.status(201).json({
       store: store.mergeImport(imported),
       import: {
@@ -474,6 +511,7 @@ export function createApp(store: HealthStore, pairingStore: PairingStore, option
         ...parsed,
         rows: parsed.rows as BodyCompositionDraftRow[]
       });
+      const store = activeStore();
       const merged = store.mergeImport(imported);
       const warehouse = await rebuildWarehouseFromStore(merged);
       response.status(201).json({
@@ -496,37 +534,13 @@ export function createApp(store: HealthStore, pairingStore: PairingStore, option
     }
   });
 
-  app.post("/api/import/samsung-json-upload", async (request, response, next) => {
-    try {
-      const parsed = samsungJsonUploadSchema.parse(request.body ?? {});
-      const imported = importSamsungJsonUpload({ uploadPath: parsed.uploadPath });
-      const merged = store.mergeImport(imported.parsed);
-      const warehouse = await rebuildWarehouseFromStore(merged);
-      response.status(201).json({
-        counts: {
-          sourceImports: merged.sourceImports.length,
-          observations: merged.observations.length,
-          timeSeriesSamples: merged.timeSeriesSamples.length,
-          activitySessions: merged.activitySessions.length,
-          labMarkers: merged.labMarkers.length
-        },
-        import: {
-          ...imported.parsed.sourceImport,
-          rawContent: undefined
-        },
-        stats: imported.stats,
-        warehouse
-      });
-    } catch (error) {
-      next(error);
-    }
-  });
-
   app.post("/api/import/health-connect", async (request, response, next) => {
     try {
       const parsed = healthConnectImportRequestSchema.parse(request.body ?? {});
+      const targetProfileId = parsed.profileId ?? storeManager.getActiveProfileId();
+      const targetStore = storeManager.getStore(targetProfileId);
       const imported = parseHealthConnectImport(parsed);
-      const merged = store.mergeImport(imported);
+      const merged = targetStore.mergeImport(imported);
       const warehouse = await rebuildWarehouseFromStore(merged);
       response.status(201).json({
         counts: {
@@ -547,21 +561,22 @@ export function createApp(store: HealthStore, pairingStore: PairingStore, option
   });
 
   app.get("/api/analytics", (_request, response) => {
-    response.json(computeAnalytics(store.snapshot()));
+    response.json(computeAnalytics(activeStore().snapshot()));
   });
 
   app.get("/api/summary", (_request, response) => {
-    response.json(summarizeStoreData(store.snapshot()));
+    response.json(summarizeStoreData(activeStore().snapshot()));
   });
 
   app.get("/api/summary/:measurementCode", (request, response) => {
     const measurementCode = measurementCodeParamSchema.parse(request.params.measurementCode);
-    response.json(summarizeMeasurementDetail(store.snapshot(), measurementCode));
+    response.json(summarizeMeasurementDetail(activeStore().snapshot(), measurementCode));
   });
 
   app.delete("/api/observations/:id", async (request, response, next) => {
     try {
       const id = observationIdParamSchema.parse(request.params.id);
+      const store = activeStore();
       const deleted = store.deleteObservation(id);
       if (!deleted) {
         response.status(404).json({ error: "Observation not found." });
@@ -577,6 +592,7 @@ export function createApp(store: HealthStore, pairingStore: PairingStore, option
   app.delete("/api/observations/by-type/:measurementCode", async (request, response, next) => {
     try {
       const measurementCode = measurementCodeParamSchema.parse(request.params.measurementCode);
+      const store = activeStore();
       const deleted = store.deleteObservationsByMeasurementCode(measurementCode);
       const warehouse = await rebuildWarehouseFromStore(deleted.store);
       response.json(deleteObservationsByTypeResponse(deleted, warehouse));
@@ -587,7 +603,7 @@ export function createApp(store: HealthStore, pairingStore: PairingStore, option
 
   app.post("/api/warehouse/rebuild", async (_request, response, next) => {
     try {
-      const result = await rebuildWarehouseFromStore(store.snapshot());
+      const result = await rebuildWarehouseFromStore(activeStore().snapshot());
       response.status(201).json(result);
     } catch (error) {
       next(error);
@@ -667,7 +683,7 @@ export function createApp(store: HealthStore, pairingStore: PairingStore, option
   app.post("/api/query/ask-store", async (request, response, next) => {
     try {
       const parsed = askSchema.parse(request.body ?? {});
-      const plan = planStoreAnswer(parsed.question, store.snapshot());
+      const plan = planStoreAnswer(parsed.question, activeStore().snapshot());
       if (!plan) {
         response.status(400).json({
           error: "Question is not yet supported by the store ask planner.",
@@ -847,6 +863,7 @@ export function createApp(store: HealthStore, pairingStore: PairingStore, option
 
   app.post("/api/insights/generate", async (_request, response, next) => {
     try {
+      const store = activeStore();
       const insight = await generateInsight(store.snapshot());
       response.status(201).json(store.addInsight(insight));
     } catch (error) {
@@ -856,7 +873,7 @@ export function createApp(store: HealthStore, pairingStore: PairingStore, option
 
   app.get("/api/export", (_request, response) => {
     response.setHeader("content-disposition", "attachment; filename=local-fitness-advisor-export.json");
-    response.json(store.exportData());
+    response.json(activeStore().exportData());
   });
 
   if (options.webRoot && existsSync(options.webRoot)) {

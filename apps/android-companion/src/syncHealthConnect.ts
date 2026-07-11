@@ -17,6 +17,7 @@ interface HealthConnectPointValue {
 }
 
 interface HealthConnectImportPayload {
+  profileId?: string;
   syncedAt: string;
   rangeStart: string;
   rangeEnd: string;
@@ -52,6 +53,7 @@ const readPermissions: Permission[] = [
 export async function syncHealthConnectLast30Days(
   endpointUrl: string,
   companionToken?: string | null,
+  profileId?: string | null,
   publicKeyHash?: string | null
 ): Promise<SyncResult> {
   if (Platform.OS !== "android") {
@@ -119,6 +121,7 @@ export async function syncHealthConnectLast30Days(
   ]);
 
   const payload: HealthConnectImportPayload = {
+    ...(profileId ? { profileId } : {}),
     syncedAt: new Date().toISOString(),
     rangeStart: rangeStart.toISOString(),
     rangeEnd: rangeEnd.toISOString(),

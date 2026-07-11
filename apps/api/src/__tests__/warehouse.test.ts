@@ -3,14 +3,20 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HealthStore } from "../store.js";
-import { parseSamsungHealthCsv } from "@local-fitness-advisor/shared";
+import { buildManualLabEntryImport } from "@local-fitness-advisor/shared";
 
 let tempDir: string;
 
-const samsungCsv = `date,type,value,unit
-2026-01-01,heart_rate,72,bpm
-2026-01-02,heart_rate,68,bpm
-2026-01-03,weight,82,kg`;
+function makeImport(markers: Array<{ markerName: string; value: number; unit?: string }>, importedAt: string) {
+  return buildManualLabEntryImport(
+    {
+      collectedAt: "2026-01-01T00:00:00.000Z",
+      panelName: "Warehouse test panel",
+      markers
+    },
+    importedAt
+  );
+}
 
 beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), "lfa-warehouse-test-"));
@@ -31,7 +37,13 @@ describe("warehouse rebuild", () => {
     const backupPath = `${warehousePath}.bak`;
 
     const store = new HealthStore();
-    const firstImport = parseSamsungHealthCsv("first.csv", samsungCsv, "2026-01-01T00:00:00.000Z");
+    const firstImport = makeImport(
+      [
+        { markerName: "Weight", value: 82, unit: "kg" },
+        { markerName: "Glucose", value: 91, unit: "mg/dL" }
+      ],
+      "2026-01-01T00:00:00.000Z"
+    );
     const merged1 = store.mergeImport(firstImport);
 
     const { rebuildWarehouseFromStore, runWarehouseQuery } = await import("../warehouse.js");
@@ -49,7 +61,13 @@ describe("warehouse rebuild", () => {
     const rowsAfterFirst = await runWarehouseQuery("SELECT COUNT(*) AS c FROM observations");
     expect(Number(rowsAfterFirst[0]?.c ?? 0)).toBeGreaterThan(0);
 
-    const secondImport = parseSamsungHealthCsv("second.csv", `${samsungCsv}\n2026-01-04,heart_rate,70,bpm`, "2026-01-02T00:00:00.000Z");
+    const secondImport = makeImport(
+      [
+        { markerName: "Weight", value: 80, unit: "kg" },
+        { markerName: "HbA1c", value: 5.4, unit: "%" }
+      ],
+      "2026-01-02T00:00:00.000Z"
+    );
     const merged2 = store.mergeImport(secondImport);
 
     const secondResult = await rebuildWarehouseFromStore(merged2);

@@ -3,8 +3,9 @@ import { createServer as createHttpServer, type Server } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
 import os from "node:os";
 import path from "node:path";
+import { Bonjour } from "bonjour-service";
 import { PairingStore } from "./pairing.js";
-import { HealthStore } from "./store.js";
+import { ProfileStoreManager } from "./store.js";
 import { createApp } from "./createApp.js";
 import { configureRuntimeSecurity } from "./security.js";
 
@@ -34,9 +35,9 @@ export async function startServer(): Promise<Server> {
     throw new Error("Could not configure HTTPS for non-loopback API access.");
   }
 
-  const store = new HealthStore();
+  const storeManager = new ProfileStoreManager();
   const pairingStore = new PairingStore();
-  const app = createApp(store, pairingStore, {
+  const app = createApp(storeManager, pairingStore, {
     publicKeyHash: security.publicKeyHash,
     webRoot: process.env.LFA_WEB_ROOT
   });
@@ -57,6 +58,9 @@ export async function startServer(): Promise<Server> {
       console.log(`Local Fitness Advisor API listening at ${scheme}://${host}:${port}`);
       const lanIp = getLanIp();
       if (lanIp) console.log(`LAN address for companion pairing: ${scheme}://${lanIp}:${port}`);
+      const bonjour = new Bonjour();
+      bonjour.publish({ name: "Local Fitness Advisor", type: "local-fitness-advisor", port });
+      process.on("exit", () => bonjour.destroy());
       resolve();
     });
   });

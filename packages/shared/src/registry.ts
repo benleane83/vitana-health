@@ -7,7 +7,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     category: "activity",
     kind: "interval",
     canonicalUnit: "count",
-    aliases: ["step_count", "count", "steps", "com.samsung.health.step_count"],
+    aliases: ["step_count", "count", "steps"],
     openMHealthSchema: "step-count",
     aggregation: "sum"
   },
@@ -17,7 +17,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     category: "cardio",
     kind: "point",
     canonicalUnit: "bpm",
-    aliases: ["heart_rate", "heart rate", "pulse", "com.samsung.health.heart_rate"],
+    aliases: ["heart_rate", "heart rate", "pulse"],
     fhirCode: "8867-4",
     loincCode: "8867-4",
     openMHealthSchema: "heart-rate",
@@ -31,7 +31,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     category: "body",
     kind: "point",
     canonicalUnit: "kg",
-    aliases: ["weight", "body_weight", "body weight", "com.samsung.health.weight"],
+    aliases: ["weight", "body_weight", "body weight"],
     fhirCode: "29463-7",
     loincCode: "29463-7",
     openMHealthSchema: "body-weight",
@@ -142,7 +142,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     category: "sleep",
     kind: "interval",
     canonicalUnit: "min",
-    aliases: ["sleep", "sleep_duration", "sleep duration", "com.samsung.health.sleep"],
+    aliases: ["sleep", "sleep_duration", "sleep duration"],
     openMHealthSchema: "sleep-duration",
     normalLow: 420,
     normalHigh: 540,
@@ -154,7 +154,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     category: "cardio",
     kind: "interval",
     canonicalUnit: "%",
-    aliases: ["spo2", "oxygen_saturation", "oxygen saturation", "com.samsung.health.oxygen_saturation"],
+    aliases: ["spo2", "oxygen_saturation", "oxygen saturation"],
     normalLow: 92,
     normalHigh: 100,
     aggregation: "average"
@@ -183,7 +183,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     category: "activity",
     kind: "interval",
     canonicalUnit: "score",
-    aliases: ["activity_level", "activity level", "com.samsung.health.movement"],
+    aliases: ["activity_level", "activity level"],
     aggregation: "average"
   },
   {

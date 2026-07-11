@@ -6,7 +6,7 @@ product
 
 ## Users
 
-People using their own Samsung Health, Health Connect, profile, and lab data locally to understand patterns before discussing questions with a clinician. They are usually in a review or investigation workflow: checking what was imported, looking for trends, asking constrained questions, or preparing a more informed health conversation.
+People using their own Health Connect, profile, and lab data locally to understand patterns before discussing questions with a clinician. They are usually in a review or investigation workflow: checking what was imported, looking for trends, asking constrained questions, or preparing a more informed health conversation.
 
 ## Product Purpose
 

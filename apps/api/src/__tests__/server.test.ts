@@ -3,10 +3,10 @@ import request from "supertest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { HealthStore } from "../store.js";
+import { ProfileStoreManager } from "../store.js";
 import { PairingStore } from "../pairing.js";
 import { createApp } from "../createApp.js";
-import { parseSamsungHealthCsv } from "@local-fitness-advisor/shared";
+import { buildManualLabEntryImport } from "@local-fitness-advisor/shared";
 
 // Mock the DuckDB warehouse so tests don't need the native binary.
 vi.mock("../warehouse.js", () => ({
@@ -15,7 +15,7 @@ vi.mock("../warehouse.js", () => ({
 }));
 
 let tempDir: string;
-let store: HealthStore;
+let storeManager: ProfileStoreManager;
 let pairingStore: PairingStore;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let app: any;
@@ -28,9 +28,9 @@ beforeEach(() => {
   process.env.LFA_SECRET = "test-secret-for-server-tests-1234";
   process.env.LFA_OWNER_TOKEN = ownerToken;
 
-  store = new HealthStore();
+  storeManager = new ProfileStoreManager();
   pairingStore = new PairingStore();
-  app = createApp(store, pairingStore);
+  app = createApp(storeManager, pairingStore);
 });
 
 afterEach(() => {
@@ -128,6 +128,64 @@ describe("central owner authorization", () => {
   });
 });
 
+describe("profile lifecycle routes", () => {
+  it("creates, switches, and deletes profiles", async () => {
+    const created = await request(app)
+      .post("/api/profiles")
+      .set("authorization", ownerAuthorization)
+      .send({ displayName: "Shabnam" });
+    expect(created.status).toBe(201);
+    expect(created.body.id).toBe("shabnam");
+
+    const switched = await request(app)
+      .put("/api/profiles/active")
+      .set("authorization", ownerAuthorization)
+      .send({ profileId: "shabnam" });
+    expect(switched.status).toBe(200);
+    expect(switched.body.profileId).toBe("shabnam");
+
+    const saved = await request(app)
+      .put("/api/profile")
+      .set("authorization", ownerAuthorization)
+      .send({ displayName: "Shabnam S", units: "metric" });
+    expect(saved.status).toBe(200);
+    expect(saved.body.id).toBe("shabnam");
+
+    const listed = await request(app)
+      .get("/api/profiles")
+      .set("authorization", ownerAuthorization);
+    expect(listed.status).toBe(200);
+    expect(listed.body.activeProfileId).toBe("shabnam");
+    expect(listed.body.profiles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "self" }),
+        expect.objectContaining({ id: "shabnam", displayName: "Shabnam S" })
+      ])
+    );
+
+    const removed = await request(app)
+      .delete("/api/profiles/shabnam")
+      .set("authorization", ownerAuthorization);
+    expect(removed.status).toBe(200);
+    expect(removed.body.activeProfileId).toBe("self");
+  });
+
+  it("imports Health Connect data into the targeted profile", async () => {
+    await request(app)
+      .post("/api/profiles")
+      .set("authorization", ownerAuthorization)
+      .send({ displayName: "Shabnam" });
+
+    const res = await request(app)
+      .post("/api/import/health-connect")
+      .set("authorization", ownerAuthorization)
+      .send({ ...minimalHealthConnectPayload, profileId: "shabnam" });
+    expect(res.status).toBe(201);
+    expect(storeManager.getStore("shabnam").snapshot().sourceImports).toHaveLength(1);
+    expect(storeManager.getStore("self").snapshot().sourceImports).toHaveLength(0);
+  });
+});
+
 describe("companion pairing lifecycle", () => {
   it("requires a one-time code and polling secret, then supports revocation", async () => {
     const challenge = pairingStore.createChallenge();
@@ -177,8 +235,15 @@ describe("DELETE /api/observations/:id", () => {
   });
 
   it("returns 200 and removes the observation when ID exists", async () => {
-    const csv = `date,type,value,unit\n2026-01-01,weight,82,kg`;
-    const parsed = parseSamsungHealthCsv("test.csv", csv, "2026-01-01T00:00:00.000Z");
+    const parsed = buildManualLabEntryImport(
+      {
+        collectedAt: "2026-01-01T00:00:00.000Z",
+        panelName: "Test panel",
+        markers: [{ markerName: "Weight", value: 82, unit: "kg" }]
+      },
+      "2026-01-01T00:00:00.000Z"
+    );
+    const store = storeManager.getActiveStore();
     store.mergeImport(parsed);
 
     const observationId = store.snapshot().observations[0]?.id;
@@ -193,10 +258,10 @@ describe("DELETE /api/observations/:id", () => {
 
 // ─── Schema validation ─────────────────────────────────────────────────────────
 
-describe("POST /api/import/samsung — schema validation", () => {
+describe("POST /api/import/blood-test — schema validation", () => {
   it("returns 400 when 'content' field is missing", async () => {
     const res = await request(app)
-      .post("/api/import/samsung")
+      .post("/api/import/blood-test")
       .set("authorization", ownerAuthorization)
       .send({ fileName: "test.csv" });
     expect(res.status).toBe(400);
@@ -205,7 +270,7 @@ describe("POST /api/import/samsung — schema validation", () => {
 
   it("returns 400 when 'fileName' field is missing", async () => {
     const res = await request(app)
-      .post("/api/import/samsung")
+      .post("/api/import/blood-test")
       .set("authorization", ownerAuthorization)
       .send({ content: "date,type,value\n2026-01-01,heart_rate,72" });
     expect(res.status).toBe(400);
