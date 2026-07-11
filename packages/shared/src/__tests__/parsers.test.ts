@@ -2,8 +2,11 @@ import { describe, it, expect } from "vitest";
 import {
   buildBodyCompositionImportFromDraft,
   buildManualLabEntryImport,
+  buildManualObservationImport,
   checksum,
-  parseBloodTestCsv
+  parseBloodTestCsv,
+  parseBloodTestScanText,
+  parseObservationCsv
 } from "../parsers.js";
 
 // ─── checksum ──────────────────────────────────────────────────────────────────
@@ -84,6 +87,7 @@ describe("buildManualLabEntryImport", () => {
         { markerName: "HDL", value: 55, unit: "mg/dL" }
       ]
     });
+
     expect(result.sourceImport.sourceKind).toBe("manual-entry");
     expect(result.observationGroups).toEqual([expect.objectContaining({ kind: "lab_panel", label: "Lipid panel" })]);
     expect(result.observations).toHaveLength(2);
@@ -126,6 +130,30 @@ describe("buildManualLabEntryImport", () => {
     const second = buildManualLabEntryImport(payload);
     expect(second.observationGroups[0].id).toBe(first.observationGroups[0].id);
     expect(second.observations[0].id).toBe(first.observations[0].id);
+  });
+});
+
+describe("generic observation imports", () => {
+  it("accepts manual body-composition observations", () => {
+    const result = buildManualObservationImport({
+      observedAt: "2026-06-15", label: "Home scale",
+      observations: [{ measurementName: "Weight", value: 82, unit: "kg" }]
+    });
+    expect(result.observations[0]).toMatchObject({ measurementCode: "weight", value: 82 });
+  });
+
+  it("maps generic CSV observations and generates a fallback code", () => {
+    const result = parseObservationCsv("observations.csv", "observedAt,measurement,value,unit\n2026-06-15,Custom score,7,points");
+    expect(result.sourceImport.sourceKind).toBe("observation-csv");
+    expect(result.observations[0].measurementCode).toBe("manual_custom_score");
+  });
+});
+
+describe("parseBloodTestScanText", () => {
+  it("creates editable blood-test draft rows with diagnostics", () => {
+    const result = parseBloodTestScanText("cbc-2026-06-15.pdf", "Report date: 2026-06-15\nGlucose: 95 mg/dL");
+    expect(result.rows).toEqual([expect.objectContaining({ measurementCode: "glucose", included: true, confidence: "high" })]);
+    expect(result.reportDate).toContain("2026-06-15");
   });
 });
 

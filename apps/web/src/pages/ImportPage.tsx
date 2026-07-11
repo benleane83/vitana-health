@@ -3,7 +3,7 @@ import type { BodyCompositionDraft } from "@local-fitness-advisor/shared";
 import { MANUAL_LAB_MARKER_CATALOG } from "@local-fitness-advisor/shared";
 import { api } from "../api.js";
 import type { PairedDevice, PendingPairing } from "../api.js";
-import type { BodyCompositionEditableRow, ImportMode, LabsMode, ManualMarkerRow } from "../types.js";
+import type { BodyCompositionEditableRow, ImportMode, ManualMarkerRow, ScanKind } from "../types.js";
 import { formatBytes } from "../utils.js";
 
 // ─── Tab IDs for tablist/tabpanel ARIA wiring ─────────────────────────────────
@@ -12,8 +12,8 @@ export function ImportPage({
   busy,
   mode,
   onModeChange,
-  labsMode,
-  onLabsModeChange,
+  scanKind,
+  onScanKindChange,
   panelName,
   labName,
   collectedAt,
@@ -45,8 +45,8 @@ export function ImportPage({
   busy: boolean;
   mode: ImportMode;
   onModeChange: (mode: ImportMode) => void;
-  labsMode: LabsMode;
-  onLabsModeChange: (mode: LabsMode) => void;
+  scanKind: ScanKind;
+  onScanKindChange: (kind: ScanKind) => void;
   panelName: string;
   labName: string;
   collectedAt: string;
@@ -75,9 +75,13 @@ export function ImportPage({
   onApprovePairing: (id: string) => void;
   onDenyPairing: (id: string) => void;
 }) {
-  const labsTabId = "import-tab-labs";
+  const manualTabId = "import-tab-manual";
+  const uploadTabId = "import-tab-upload";
+  const scanTabId = "import-tab-scan";
   const fitnessTabId = "import-tab-fitness";
-  const labsPanelId = "import-panel-labs";
+  const manualPanelId = "import-panel-manual";
+  const uploadPanelId = "import-panel-upload";
+  const scanPanelId = "import-panel-scan";
   const fitnessPanelId = "import-panel-fitness";
 
   return (
@@ -88,22 +92,44 @@ export function ImportPage({
           <h1>Import</h1>
         </div>
         <p className="import-copy">
-          Labs and Health Connect imports live here so the dashboard can stay focused on review.
+          Add observations manually, from CSV files, scans, or your fitness tracker.
         </p>
       </div>
 
       {/* Tab list — proper ARIA tab semantics */}
-      <div className="import-tabs" role="tablist" aria-label="Import source">
+      <div className="import-tabs" role="tablist" aria-label="Import mode">
         <button
-          id={labsTabId}
+          id={manualTabId}
           role="tab"
-          aria-selected={mode === "labs"}
-          aria-controls={labsPanelId}
-          className={mode === "labs" ? "active" : ""}
-          onClick={() => onModeChange("labs")}
-          tabIndex={mode === "labs" ? 0 : -1}
+          aria-selected={mode === "manual"}
+          aria-controls={manualPanelId}
+          className={mode === "manual" ? "active" : ""}
+          onClick={() => onModeChange("manual")}
+          tabIndex={mode === "manual" ? 0 : -1}
         >
-          Labs
+          Manual
+        </button>
+        <button
+          id={uploadTabId}
+          role="tab"
+          aria-selected={mode === "upload"}
+          aria-controls={uploadPanelId}
+          className={mode === "upload" ? "active" : ""}
+          onClick={() => onModeChange("upload")}
+          tabIndex={mode === "upload" ? 0 : -1}
+        >
+          Upload CSV
+        </button>
+        <button
+          id={scanTabId}
+          role="tab"
+          aria-selected={mode === "scan"}
+          aria-controls={scanPanelId}
+          className={mode === "scan" ? "active" : ""}
+          onClick={() => onModeChange("scan")}
+          tabIndex={mode === "scan" ? 0 : -1}
+        >
+          Scan
         </button>
         <button
           id={fitnessTabId}
@@ -116,155 +142,6 @@ export function ImportPage({
         >
           Fitness Tracker
         </button>
-      </div>
-
-      {mode === "labs" ? (
-        <div id={labsPanelId} role="tabpanel" aria-labelledby={labsTabId}>
-          <LabsPage
-            busy={busy}
-            mode={labsMode}
-            onModeChange={onLabsModeChange}
-            panelName={panelName}
-            labName={labName}
-            collectedAt={collectedAt}
-            rows={rows}
-            onPanelNameChange={onPanelNameChange}
-            onLabNameChange={onLabNameChange}
-            onCollectedAtChange={onCollectedAtChange}
-            onRowChange={onRowChange}
-            onAddRow={onAddRow}
-            onRemoveRow={onRemoveRow}
-            onSubmitManual={onSubmitManual}
-            onSubmitUpload={onSubmitUpload}
-            onUploadFileChange={onUploadFileChange}
-            uploadInputRef={uploadInputRef}
-            bodyCompFile={bodyCompFile}
-            bodyCompDraft={bodyCompDraft}
-            bodyCompRows={bodyCompRows}
-            bodyCompReportDate={bodyCompReportDate}
-            onBodyCompFileChange={onBodyCompFileChange}
-            onBodyCompReportDateChange={onBodyCompReportDateChange}
-            onBodyCompRowChange={onBodyCompRowChange}
-            onPreviewBodyComp={onPreviewBodyComp}
-            onCommitBodyComp={onCommitBodyComp}
-            bodyCompInputRef={bodyCompInputRef}
-          />
-        </div>
-      ) : (
-        <div id={fitnessPanelId} role="tabpanel" aria-labelledby={fitnessTabId}>
-          <FitnessTrackerImportPanel
-            pendingPairings={pendingPairings}
-            onApprove={onApprovePairing}
-            onDeny={onDenyPairing}
-          />
-        </div>
-      )}
-    </section>
-  );
-}
-
-// ─── Labs page ────────────────────────────────────────────────────────────────
-
-function LabsPage({
-  busy,
-  mode,
-  onModeChange,
-  panelName,
-  labName,
-  collectedAt,
-  rows,
-  onPanelNameChange,
-  onLabNameChange,
-  onCollectedAtChange,
-  onRowChange,
-  onAddRow,
-  onRemoveRow,
-  onSubmitManual,
-  onSubmitUpload,
-  onUploadFileChange,
-  uploadInputRef,
-  bodyCompFile,
-  bodyCompDraft,
-  bodyCompRows,
-  bodyCompReportDate,
-  onBodyCompFileChange,
-  onBodyCompReportDateChange,
-  onBodyCompRowChange,
-  onPreviewBodyComp,
-  onCommitBodyComp,
-  bodyCompInputRef
-}: {
-  busy: boolean;
-  mode: LabsMode;
-  onModeChange: (mode: LabsMode) => void;
-  panelName: string;
-  labName: string;
-  collectedAt: string;
-  rows: ManualMarkerRow[];
-  onPanelNameChange: (value: string) => void;
-  onLabNameChange: (value: string) => void;
-  onCollectedAtChange: (value: string) => void;
-  onRowChange: (id: string, patch: Partial<ManualMarkerRow>) => void;
-  onAddRow: () => void;
-  onRemoveRow: (id: string) => void;
-  onSubmitManual: (event: React.FormEvent<HTMLFormElement>) => void;
-  onSubmitUpload: (event: React.FormEvent<HTMLFormElement>) => void;
-  onUploadFileChange: (file?: File) => void;
-  uploadInputRef: React.RefObject<HTMLInputElement | null>;
-  bodyCompFile?: File;
-  bodyCompDraft?: BodyCompositionDraft;
-  bodyCompRows: BodyCompositionEditableRow[];
-  bodyCompReportDate: string;
-  onBodyCompFileChange: (file?: File) => void;
-  onBodyCompReportDateChange: (value: string) => void;
-  onBodyCompRowChange: (id: string, patch: Partial<BodyCompositionEditableRow>) => void;
-  onPreviewBodyComp: (event: React.FormEvent<HTMLFormElement>) => void;
-  onCommitBodyComp: (event: React.FormEvent<HTMLFormElement>) => void;
-  bodyCompInputRef: React.RefObject<HTMLInputElement | null>;
-}) {
-  const manualTabId = "labs-tab-manual";
-  const uploadTabId = "labs-tab-upload";
-  const bodycompTabId = "labs-tab-bodycomp";
-  const manualPanelId = "labs-panel-manual";
-  const uploadPanelId = "labs-panel-upload";
-  const bodycompPanelId = "labs-panel-bodycomp";
-
-  return (
-    <section className="panel labs-panel">
-      <div className="labs-header">
-        <div>
-          <p className="eyebrow">Lab intake workflow</p>
-          <h2>Labs</h2>
-        </div>
-        <div className="segmented" role="tablist" aria-label="Labs entry mode">
-          <button
-            id={manualTabId}
-            role="tab"
-            aria-selected={mode === "manual"}
-            aria-controls={manualPanelId}
-            className={mode === "manual" ? "active" : ""}
-            tabIndex={mode === "manual" ? 0 : -1}
-            onClick={() => onModeChange("manual")}
-          >Manual entry</button>
-          <button
-            id={uploadTabId}
-            role="tab"
-            aria-selected={mode === "upload"}
-            aria-controls={uploadPanelId}
-            className={mode === "upload" ? "active" : ""}
-            tabIndex={mode === "upload" ? 0 : -1}
-            onClick={() => onModeChange("upload")}
-          >Upload CSV</button>
-          <button
-            id={bodycompTabId}
-            role="tab"
-            aria-selected={mode === "bodycomp"}
-            aria-controls={bodycompPanelId}
-            className={mode === "bodycomp" ? "active" : ""}
-            tabIndex={mode === "bodycomp" ? 0 : -1}
-            onClick={() => onModeChange("bodycomp")}
-          >Body comp scan</button>
-        </div>
       </div>
 
       {mode === "manual" ? (
@@ -287,31 +164,33 @@ function LabsPage({
       ) : mode === "upload" ? (
         <div id={uploadPanelId} role="tabpanel" aria-labelledby={uploadTabId}>
           <form className="labs-upload-form" onSubmit={onSubmitUpload}>
-            <label htmlFor="csv-upload">Select blood-test CSV</label>
-            <input
-              id="csv-upload"
-              ref={uploadInputRef}
-              type="file"
-              accept=".csv,text/csv"
-              onChange={(event) => onUploadFileChange(event.target.files?.[0])}
-            />
+            <label htmlFor="csv-upload">Select observation CSV</label>
+            <input id="csv-upload" ref={uploadInputRef} type="file" accept=".csv,text/csv" onChange={(event) => onUploadFileChange(event.target.files?.[0])} />
+            <p className="empty">Use columns: observedAt, measurement, value, unit, label, sourceName.</p>
             <button disabled={busy} type="submit">Upload CSV</button>
           </form>
         </div>
+      ) : mode === "scan" ? (
+        <div id={scanPanelId} role="tabpanel" aria-labelledby={scanTabId}>
+          <section className="panel labs-panel">
+            <label htmlFor="scan-kind">Report type</label>
+            <select id="scan-kind" value={scanKind} onChange={(event) => onScanKindChange(event.target.value as ScanKind)}>
+              <option value="body-composition">Body composition</option>
+              <option value="blood-test">Blood test</option>
+            </select>
+            <BodyCompositionImportPanel
+              busy={busy} file={bodyCompFile} draft={bodyCompDraft} rows={bodyCompRows} reportDate={bodyCompReportDate}
+              inputRef={bodyCompInputRef} onFileChange={onBodyCompFileChange} onReportDateChange={onBodyCompReportDateChange}
+              onRowChange={onBodyCompRowChange} onPreview={onPreviewBodyComp} onCommit={onCommitBodyComp}
+            />
+          </section>
+        </div>
       ) : (
-        <div id={bodycompPanelId} role="tabpanel" aria-labelledby={bodycompTabId}>
-          <BodyCompositionImportPanel
-            busy={busy}
-            file={bodyCompFile}
-            draft={bodyCompDraft}
-            rows={bodyCompRows}
-            reportDate={bodyCompReportDate}
-            inputRef={bodyCompInputRef}
-            onFileChange={onBodyCompFileChange}
-            onReportDateChange={onBodyCompReportDateChange}
-            onRowChange={onBodyCompRowChange}
-            onPreview={onPreviewBodyComp}
-            onCommit={onCommitBodyComp}
+        <div id={fitnessPanelId} role="tabpanel" aria-labelledby={fitnessTabId}>
+          <FitnessTrackerImportPanel
+            pendingPairings={pendingPairings}
+            onApprove={onApprovePairing}
+            onDeny={onDenyPairing}
           />
         </div>
       )}

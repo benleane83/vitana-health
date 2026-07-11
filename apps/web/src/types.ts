@@ -4,8 +4,8 @@
 
 export type AppRoute = "dashboard" | "summary" | "import" | "export" | "query";
 export type SummarySort = "name" | "count" | "recency";
-export type LabsMode = "manual" | "upload" | "bodycomp";
-export type ImportMode = "labs" | "fitness";
+export type ImportMode = "manual" | "upload" | "scan" | "fitness";
+export type ScanKind = "body-composition" | "blood-test";
 
 export interface ManualMarkerRow {
   id: string;

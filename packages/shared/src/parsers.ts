@@ -31,6 +31,20 @@ export interface ManualLabEntryPayload {
   markers: ManualLabEntryMarkerInput[];
 }
 
+export interface ManualObservationInput {
+  measurementName?: string;
+  measurementCode?: string;
+  value: number;
+  unit?: string;
+}
+
+export interface ManualObservationPayload {
+  observedAt: string;
+  label: string;
+  sourceName?: string;
+  observations: ManualObservationInput[];
+}
+
 export type BodyCompositionDraftConfidence = "high" | "medium" | "low";
 
 export interface BodyCompositionDraftRow {
@@ -181,29 +195,116 @@ export function parseBloodTestCsv(fileName: string, content: string, importedAt 
   };
 }
 
-export function buildManualLabEntryImport(payload: ManualLabEntryPayload, importedAt = new Date().toISOString()): ParsedImport {
+/**
+ * Parses the strict generic observation CSV template:
+ * observedAt,measurement,value,unit,label,sourceName
+ *
+ * `measurementCode` and common aliases may be used in place of `measurement`.
+ */
+export function parseObservationCsv(fileName: string, content: string, importedAt = new Date().toISOString()): ParsedImport {
+  const rows = parseCsv(content);
+  const sourceChecksum = checksum(content);
+  const importId = stableId("import", ["observation-csv", fileName, sourceChecksum]);
+  const sourceId = stableId("source", ["observation-csv", fileName, sourceChecksum]);
   const diagnostics: string[] = [];
-  const panelName = payload.panelName.trim() || "Manual lab panel";
-  const collectedAt = readDate(payload.collectedAt) ?? importedAt;
-  const serializedPayload = JSON.stringify({ collectedAt, panelName, labName: payload.labName?.trim(), markers: payload.markers });
+  const first = normalizeKeys(rows[0] ?? {});
+  const observedAt = readDate(first.observed_at ?? first.collected_at ?? first.date) ?? importedAt;
+  const label = first.label || first.panel_name || "Observation CSV";
+  const groupId = stableId("group", ["observation-csv", sourceChecksum]);
+  const group: ObservationGroup = {
+    id: groupId,
+    kind: "custom",
+    label,
+    sourceId,
+    importId,
+    collectedAt: observedAt,
+    metadata: { sourceName: first.source_name }
+  };
+  const observations: Observation[] = [];
+
+  for (const row of rows) {
+    const normalized = normalizeKeys(row);
+    const name = normalized.measurement ?? normalized.measurement_name ?? normalized.marker ?? normalized.name ?? "";
+    const code = normalized.measurement_code ?? normalized.marker_code;
+    const measurementType = (code ? findMeasurementType(code) : undefined) ?? findMeasurementType(name);
+    const value = readNumber(normalized.value ?? normalized.result);
+    if (value === undefined || (!name && !code)) {
+      diagnostics.push(`Skipped observation row with missing measurement or value: ${JSON.stringify(row).slice(0, 180)}`);
+      continue;
+    }
+    const measurementCode = measurementType?.code ?? code ?? fallbackMeasurementCode(name);
+    if (!measurementType) diagnostics.push(`Used generated code for "${name || code}".`);
+    const unit = normalized.unit || measurementType?.canonicalUnit || "unknown";
+    const rowObservedAt = readDate(normalized.observed_at ?? normalized.collected_at ?? normalized.date) ?? observedAt;
+    observations.push({
+      id: stableId("obs", ["observation-csv", sourceChecksum, rowObservedAt, measurementCode, String(value), unit]),
+      measurementCode,
+      observedAt: rowObservedAt,
+      value,
+      unit,
+      sourceId,
+      observationGroupId: groupId,
+      note: `Observation from ${label}`,
+      sourceJson: row
+    });
+  }
+  return {
+    sourceImport: {
+      id: importId, sourceKind: "observation-csv", fileName, importedAt, parserVersion: "observation-csv-v1",
+      checksum: sourceChecksum, rowCount: rows.length,
+      status: diagnostics.length > rows.length / 2 ? "needs-review" : "processed",
+      diagnostics: diagnostics.slice(0, 25), rawContent: content
+    },
+    dataSource: { id: sourceId, sourceKind: "observation-csv", label: `Observation CSV: ${fileName}`, importId, createdAt: importedAt },
+    observations, observationGroups: [group], timeSeriesSamples: [], activitySessions: []
+  };
+}
+
+export function buildManualLabEntryImport(payload: ManualLabEntryPayload, importedAt = new Date().toISOString()): ParsedImport {
+  return buildManualObservationImport(
+    {
+      observedAt: payload.collectedAt,
+      label: payload.panelName,
+      sourceName: payload.labName,
+      observations: payload.markers.map(({ markerName, markerCode, value, unit }) => ({
+        measurementName: markerName,
+        measurementCode: markerCode,
+        value,
+        unit
+      }))
+    },
+    importedAt,
+    "lab_panel"
+  );
+}
+
+export function buildManualObservationImport(
+  payload: ManualObservationPayload,
+  importedAt = new Date().toISOString(),
+  groupKind: ObservationGroup["kind"] = "custom"
+): ParsedImport {
+  const diagnostics: string[] = [];
+  const panelName = payload.label.trim() || "Manual observations";
+  const collectedAt = readDate(payload.observedAt) ?? importedAt;
+  const serializedPayload = JSON.stringify({ collectedAt, panelName, sourceName: payload.sourceName?.trim(), observations: payload.observations });
   const sourceChecksum = checksum(serializedPayload);
   const importId = stableId("import", ["manual-entry", sourceChecksum]);
   const sourceId = stableId("source", ["manual-entry", sourceChecksum]);
   const groupId = stableId("group", ["lab_panel", sourceChecksum]);
   const group: ObservationGroup = {
     id: groupId,
-    kind: "lab_panel",
+    kind: groupKind,
     label: panelName,
     sourceId,
     importId,
     collectedAt,
-    metadata: { labName: payload.labName?.trim() || undefined }
+    metadata: { sourceName: payload.sourceName?.trim() || undefined }
   };
   const observations: Observation[] = [];
 
-  for (const row of payload.markers) {
-    const markerName = row.markerName?.trim();
-    const markerCode = row.markerCode?.trim();
+  for (const row of payload.observations) {
+    const markerName = row.measurementName?.trim();
+    const markerCode = row.measurementCode?.trim();
     const measurementType = markerCode
       ? findMeasurementType(markerCode) ?? (markerName ? findMeasurementType(markerName) : undefined)
       : markerName
@@ -211,11 +312,11 @@ export function buildManualLabEntryImport(payload: ManualLabEntryPayload, import
         : undefined;
     const value = row.value;
     if (!Number.isFinite(value)) {
-      diagnostics.push(`Skipped manual marker with invalid value: ${JSON.stringify(row).slice(0, 180)}`);
+      diagnostics.push(`Skipped manual observation with invalid value: ${JSON.stringify(row).slice(0, 180)}`);
       continue;
     }
     if (!measurementType && !markerName && !markerCode) {
-      diagnostics.push(`Skipped manual marker with no name or code: ${JSON.stringify(row).slice(0, 180)}`);
+      diagnostics.push(`Skipped manual observation with no name or code: ${JSON.stringify(row).slice(0, 180)}`);
       continue;
     }
     const displayName = markerName || measurementType?.display || markerCode || "Manual marker";
@@ -229,7 +330,7 @@ export function buildManualLabEntryImport(payload: ManualLabEntryPayload, import
       unit,
       sourceId,
       observationGroupId: groupId,
-      note: `Lab marker from ${group.label}`,
+      note: `Manual observation from ${group.label}`,
       sourceJson: row
     });
   }
@@ -244,15 +345,15 @@ export function buildManualLabEntryImport(payload: ManualLabEntryPayload, import
       importedAt,
       parserVersion: "manual-lab-entry-v1",
       checksum: sourceChecksum,
-      rowCount: payload.markers.length,
-      status: diagnostics.length > payload.markers.length / 2 ? "needs-review" : "processed",
+      rowCount: payload.observations.length,
+      status: diagnostics.length > payload.observations.length / 2 ? "needs-review" : "processed",
       diagnostics: diagnostics.slice(0, 25),
       rawContent: serializedPayload
     },
     dataSource: {
       id: sourceId,
       sourceKind: "manual-entry",
-      label: `Manual lab entry: ${panelName}`,
+      label: `Manual observations: ${panelName}`,
       importId,
       createdAt: importedAt
     },
@@ -416,6 +517,67 @@ export function buildBodyCompositionImportFromDraft(
     timeSeriesSamples: [],
     activitySessions: []
   };
+}
+
+export type BloodTestDraft = BodyCompositionDraft;
+export type BloodTestDraftCommitPayload = BodyCompositionDraftCommitPayload;
+
+export function parseBloodTestScanText(fileName: string, sourceText: string, importedAt = new Date().toISOString()): BloodTestDraft {
+  const normalizedText = sourceText.replace(/\r/g, "").trim();
+  const sourceChecksum = checksum(normalizedText || fileName);
+  const diagnostics: string[] = [];
+  const reportDate = readBodyCompositionDate(normalizedText) ?? readDateFromFileName(fileName);
+  const rows = new Map<string, BodyCompositionDraftRow>();
+  for (const line of normalizedText.split("\n").map((item) => item.trim()).filter(Boolean)) {
+    const match = line.match(/^(.{2,100}?)\s*(?::|\s{2,}|-)\s*(-?\d+(?:[.,]\d+)?)\s*([A-Za-z%/]+)?(?:\s|$)/);
+    if (!match) continue;
+    const label = match[1].trim();
+    const value = readNumber(match[2]);
+    if (value === undefined || looksLikeDateOnly(line)) continue;
+    const measurementType = findMeasurementType(label);
+    const measurementCode = measurementType?.code ?? fallbackMeasurementCode(label);
+    const unit = match[3] || measurementType?.canonicalUnit || "unknown";
+    const key = `${measurementCode}:${value}:${unit}`;
+    if (rows.has(key)) continue;
+    const generatedCode = !measurementType;
+    if (generatedCode) diagnostics.push(`Used generated code for "${label}".`);
+    rows.set(key, {
+      id: stableId("draft", [sourceChecksum, measurementCode, String(value), unit]),
+      label, measurementCode, displayName: measurementType?.display ?? toDisplayName(label), value, unit,
+      observedAt: reportDate, confidence: measurementType ? "high" : "low", sourceText: line,
+      included: !generatedCode, generatedCode
+    });
+  }
+  if (!normalizedText) diagnostics.push("No text was extracted from the report.");
+  if (!reportDate) diagnostics.push("No report date was detected; confirm the date before saving.");
+  if (rows.size === 0 && normalizedText) diagnostics.push("No blood-test measurements were detected in the extracted text.");
+  return {
+    fileName, reportDate, sourceText: normalizedText, checksum: sourceChecksum,
+    parserVersion: "body-composition-text-v1", diagnostics: diagnostics.slice(0, 50), rows: [...rows.values()]
+  };
+}
+
+export function buildBloodTestImportFromDraft(
+  payload: BloodTestDraftCommitPayload,
+  importedAt = new Date().toISOString()
+): ParsedImport {
+  const imported = buildManualObservationImport({
+    observedAt: payload.reportDate ?? importedAt,
+    label: payload.fileName,
+    observations: payload.rows.filter((row) => row.included).map((row) => ({
+      measurementName: row.displayName || row.label,
+      measurementCode: row.measurementCode,
+      value: Number(row.value),
+      unit: row.unit
+    }))
+  }, importedAt, "lab_panel");
+  imported.sourceImport.sourceKind = "blood-test-report";
+  imported.sourceImport.fileName = payload.fileName;
+  imported.sourceImport.parserVersion = "blood-test-report-v1";
+  imported.sourceImport.rawContent = payload.sourceText;
+  imported.dataSource.sourceKind = "blood-test-report";
+  imported.dataSource.label = `Blood test report: ${payload.fileName}`;
+  return imported;
 }
 
 interface BodyCompositionLineCandidate {

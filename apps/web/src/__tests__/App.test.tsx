@@ -132,13 +132,15 @@ describe("App — import tab", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("tab", { name: /^import$/i }));
     // Import source tabs should now be visible
-    expect(screen.getByRole("tablist", { name: /import source/i })).toBeInTheDocument();
+    expect(screen.getByRole("tablist", { name: /import mode/i })).toBeInTheDocument();
   });
 
-  it("shows Labs and Fitness Tracker tabs in the import view", () => {
+  it("shows the four import modes", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("tab", { name: /^import$/i }));
-    expect(screen.getByRole("tab", { name: /labs/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /^manual$/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /upload csv/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /^scan$/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /fitness tracker/i })).toBeInTheDocument();
   });
 });
