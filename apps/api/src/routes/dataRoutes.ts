@@ -5,6 +5,8 @@ import type { ProfileStoreManager, HealthStore } from "../store.js";
 import { rebuildWarehouseFromStore } from "../warehouse.js";
 import { generateInsight } from "../insights.js";
 import { summarizeMeasurementDetail, summarizeStoreData } from "../summary.js";
+import { buildClinicianReport } from "../clinicianReport.js";
+import { createClinicianReportPdf } from "../pdfReport.js";
 
 const measurementCodeParamSchema = z
   .string()
@@ -130,6 +132,20 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
   router.get("/export", (_request, response) => {
     response.setHeader("content-disposition", "attachment; filename=local-fitness-advisor-export.json");
     response.json(activeStore().exportData());
+  });
+
+  router.get("/export/pdf", async (_request, response, next) => {
+    try {
+      const report = buildClinicianReport(activeStore().snapshot());
+      const pdf = await createClinicianReportPdf(report);
+      const safeName = report.patient.displayName.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "health";
+      response.setHeader("content-type", "application/pdf");
+      response.setHeader("content-disposition", `attachment; filename="${safeName}-health-report.pdf"`);
+      response.setHeader("content-length", String(pdf.length));
+      response.send(pdf);
+    } catch (error) {
+      next(error);
+    }
   });
 
   return router;

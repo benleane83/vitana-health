@@ -47,6 +47,12 @@ The installer packages the API and web UI, configures private-network firewall a
 
 The app generates wellness-oriented summaries and questions to discuss with a clinician. It does not diagnose conditions, prescribe treatment, recommend medication changes, or handle urgent medical concerns.
 
+## Clinician PDF export
+
+Use the **Export** tab to download a PDF for the active profile. It includes profile details, data totals, recent
+measurements, flagged lab results and reference ranges, trends, and imported-source provenance. The report is a
+non-diagnostic summary intended to support a conversation with a healthcare professional.
+
 ## Model Runtime Configuration
 
 The API supports two model providers for insight generation and `/api/llm/simple` debugging.

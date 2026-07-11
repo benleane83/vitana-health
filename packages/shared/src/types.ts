@@ -333,6 +333,46 @@ export interface HealthDataDetail {
   };
 }
 
+export interface ClinicianReport {
+  generatedAt: string;
+  disclaimer: string;
+  patient: Pick<Profile, "displayName" | "birthYear" | "sex" | "heightCm" | "units">;
+  totals: {
+    observations: number;
+    samples: number;
+    activities: number;
+    sleepSessions: number;
+    labMarkers: number;
+  };
+  latestMeasurements: Array<{
+    displayName: string;
+    value: number;
+    unit: string;
+    measuredAt: string;
+  }>;
+  flaggedLabs: Array<{
+    displayName: string;
+    value: number;
+    unit: string;
+    flag: "low" | "high" | "critical" | "unknown";
+    collectedAt: string;
+    referenceRange?: string;
+  }>;
+  trends: Array<{
+    displayName: string;
+    unit: string;
+    direction: "up" | "down" | "flat" | "unknown";
+    summary: string;
+  }>;
+  sources: Array<{
+    fileName: string;
+    sourceKind: SourceKind;
+    importedAt: string;
+    status: SourceImport["status"];
+    rowCount: number;
+  }>;
+}
+
 export interface DeleteObservationResponse {
   deletedCount: number;
   deletedObservation?: Observation;

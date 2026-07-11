@@ -157,6 +157,14 @@ DELETE /api/profiles/:id
 
 ## Data (store / analytics / export)
 
+### Download clinician report PDF
+```
+GET /api/export/pdf
+```
+Requires owner or companion authentication. Returns an `application/pdf` attachment containing the active profile's
+details, data totals, latest measurements, flagged laboratory results, trends, and import provenance. The report is a
+health-data summary for discussion with a clinician and is not diagnostic.
+
 ### Get store summary
 ```
 GET /api/store

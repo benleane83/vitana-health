@@ -137,6 +137,39 @@ describe("central owner authorization", () => {
   });
 });
 
+describe("GET /api/export/pdf", () => {
+  it("requires authentication and returns a PDF for an empty profile", async () => {
+    expect((await request(app).get("/api/export/pdf")).status).toBe(401);
+
+    const report = await request(app).get("/api/export/pdf").set("authorization", ownerAuthorization);
+    expect(report.status).toBe(200);
+    expect(report.headers["content-type"]).toMatch(/^application\/pdf/);
+    expect(report.headers["content-disposition"]).toMatch(/attachment; filename="local-user-health-report\.pdf"/);
+    expect(Buffer.isBuffer(report.body)).toBe(true);
+    expect(report.body.subarray(0, 4).toString()).toBe("%PDF");
+  });
+
+  it("exports only the active profile and uses its safe display name in the filename", async () => {
+    await request(app)
+      .post("/api/profiles")
+      .set("authorization", ownerAuthorization)
+      .send({ displayName: "Second Profile" });
+    await request(app)
+      .put("/api/profiles/active")
+      .set("authorization", ownerAuthorization)
+      .send({ profileId: "second-profile" });
+    const saved = await request(app)
+      .put("/api/profile")
+      .set("authorization", ownerAuthorization)
+      .send({ displayName: "Doctor / Test", units: "metric" });
+    expect(saved.status).toBe(200);
+
+    const report = await request(app).get("/api/export/pdf").set("authorization", ownerAuthorization);
+    expect(report.status).toBe(200);
+    expect(report.headers["content-disposition"]).toMatch(/doctor-test-health-report\.pdf/);
+  });
+});
+
 describe("profile lifecycle routes", () => {
   it("creates, switches, and deletes profiles", async () => {
     const created = await request(app)
