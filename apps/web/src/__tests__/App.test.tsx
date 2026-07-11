@@ -90,6 +90,27 @@ describe("App — navigation landmarks", () => {
     expect(screen.getByRole("tab", { name: /health data summary/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /^export$/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /ai query/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /settings/i })).toBeInTheDocument();
+  });
+
+  it("opens the AI setup screen from Settings", async () => {
+    global.fetch = mockFetch({
+      "/api/store": makeEmptyStore(),
+      "/api/analytics": makeEmptyAnalytics(),
+      "/api/profiles": { profiles: [], activeProfileId: "self" },
+      "/api/settings/ai": {
+        provider: "ollama",
+        endpoint: "http://127.0.0.1:11434/api/generate",
+        model: "llama3.2",
+        timeoutMs: 30000,
+        hasApiKey: false
+      }
+    });
+    render(<App />);
+    fireEvent.click(screen.getByRole("tab", { name: /settings/i }));
+    expect(await screen.findByRole("heading", { name: /ai setup/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/endpoint url/i)).toHaveValue("http://127.0.0.1:11434/api/generate");
+    expect(screen.getByRole("button", { name: /connect openrouter/i })).toBeInTheDocument();
   });
 
   describe("App — PDF export", () => {

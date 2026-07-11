@@ -119,6 +119,34 @@ describe("central owner authorization", () => {
     expect((await request(app).post("/api/llm/simple").send({ prompt: "hello" })).status).toBe(401);
   });
 
+  describe("AI settings routes", () => {
+    it("saves model settings without exposing the API key", async () => {
+      const saved = await request(app)
+        .put("/api/settings/ai")
+        .set("authorization", ownerAuthorization)
+        .send({
+          provider: "openai",
+          endpoint: "https://example.test/v1/chat/completions",
+          apiKey: "test-api-key",
+          model: "test-model",
+          timeoutMs: 30000
+        });
+      expect(saved.status).toBe(200);
+      expect(saved.body).toMatchObject({
+        provider: "openai",
+        endpoint: "https://example.test/v1/chat/completions",
+        model: "test-model",
+        hasApiKey: true
+      });
+      expect(saved.text).not.toContain("test-api-key");
+
+      const current = await request(app).get("/api/settings/ai").set("authorization", ownerAuthorization);
+      expect(current.status).toBe(200);
+      expect(current.body.hasApiKey).toBe(true);
+      expect(current.text).not.toContain("test-api-key");
+    });
+  });
+
   it("allows a paired companion to use non-administrative APIs", async () => {
     const challenge = pairingStore.createChallenge();
     const requested = pairingStore.request("device-api", "API Phone", challenge.code)!;

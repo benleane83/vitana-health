@@ -24,6 +24,7 @@ import { ImportPage } from "./pages/ImportPage.js";
 import { SummaryPage, ObservationTypeDetailPage } from "./pages/SummaryPage.js";
 import { QueryPage } from "./pages/QueryPage.js";
 import { ExportPage } from "./pages/ExportPage.js";
+import { SettingsPage } from "./pages/SettingsPage.js";
 
 export function App() {
   const [store, setStore] = useState<HealthStoreData>();
@@ -225,7 +226,8 @@ export function App() {
       import: importModePath(nextImportMode),
       summary: summaryPath(),
       export: "/export",
-      query: "/query"
+      query: "/query",
+      settings: "/settings"
     };
     const nextPath = routePaths[nextRoute] ?? "/";
     if (window.location.pathname !== nextPath) window.history.pushState({}, "", nextPath);
@@ -590,7 +592,8 @@ export function App() {
     import: "nav-tab-import",
     summary: "nav-tab-summary",
     export: "nav-tab-export",
-    query: "nav-tab-query"
+    query: "nav-tab-query",
+    settings: "nav-tab-settings"
   };
 
   return (
@@ -598,13 +601,14 @@ export function App() {
       {/* Navigation tablist */}
       <nav className="route-nav" aria-label="Page navigation">
         <div role="tablist" aria-label="App sections">
-          {(["dashboard", "import", "summary", "export", "query"] as AppRoute[]).map((r) => {
+          {(["dashboard", "import", "summary", "export", "query", "settings"] as AppRoute[]).map((r) => {
             const labels: Record<AppRoute, string> = {
               dashboard: "Dashboard",
               import: "Import",
               summary: "Health Data Summary",
               export: "Export",
-              query: "AI Query"
+              query: "AI Query",
+              settings: "⚙ Settings"
             };
             const panelId = `route-panel-${r}`;
             return (
@@ -660,6 +664,10 @@ export function App() {
             onGenerateInsight={() => { void generateInsight(); }}
           />
         ) : null}
+      </div>
+
+      <div id="route-panel-settings" role="tabpanel" aria-labelledby={navTabIds.settings} hidden={route !== "settings"}>
+        {route === "settings" ? <SettingsPage /> : null}
       </div>
 
       <div
@@ -824,6 +832,7 @@ function routeFromPathname(pathname: string): AppRoute {
   if (pathname === "/import" || pathname.startsWith("/import/") || pathname === "/labs") return "import";
   if (pathname === "/query") return "query";
   if (pathname === "/export") return "export";
+  if (pathname === "/settings") return "settings";
   return "dashboard";
 }
 

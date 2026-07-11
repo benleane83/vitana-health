@@ -116,6 +116,20 @@ export interface AiQueryResult {
   suggestedRephrase?: string;
 }
 
+export interface AiSettings {
+  provider: "ollama" | "openai";
+  endpoint: string;
+  model: string;
+  timeoutMs: number;
+  hasApiKey: boolean;
+}
+
+export interface ModelValidation {
+  ok: boolean;
+  elapsedMs: number;
+  error?: string;
+}
+
 export interface ProfilesResponse {
   profiles: ProfileListEntry[];
   activeProfileId: string;
