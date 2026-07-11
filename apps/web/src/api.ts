@@ -148,12 +148,20 @@ export const api = {
   },
   importBloodTest: (fileName: string, content: string) =>
     request<{ store: HealthStoreData }>("/api/import/blood-test", { method: "POST", body: JSON.stringify({ fileName, content }) }),
+  importObservationCsv: (fileName: string, content: string) =>
+    request<{ store: HealthStoreData }>("/api/import/observations/csv", { method: "POST", body: JSON.stringify({ fileName, content }) }),
   previewBodyCompositionReport: (payload: { fileName: string; mimeType: string; contentBase64: string }) =>
     request<BodyCompositionDraft>("/api/import/body-composition/preview", { method: "POST", body: JSON.stringify(payload) }),
   commitBodyCompositionReport: (payload: BodyCompositionDraftCommitPayload) =>
     request<{ store: HealthStoreData }>("/api/import/body-composition/commit", { method: "POST", body: JSON.stringify(payload) }),
+  previewBloodTestReport: (payload: { fileName: string; mimeType: string; contentBase64: string }) =>
+    request<BodyCompositionDraft>("/api/import/blood-test/preview", { method: "POST", body: JSON.stringify(payload) }),
+  commitBloodTestReport: (payload: BodyCompositionDraftCommitPayload) =>
+    request<{ store: HealthStoreData }>("/api/import/blood-test/commit", { method: "POST", body: JSON.stringify(payload) }),
   importManualLabEntry: (payload: ManualLabEntryPayload) =>
     request<{ store: HealthStoreData }>("/api/import/labs/manual", { method: "POST", body: JSON.stringify(payload) }),
+  importManualObservations: (payload: { observedAt: string; label: string; sourceName?: string; observations: Array<{ measurementName?: string; measurementCode?: string; value: number; unit?: string }> }) =>
+    request<{ store: HealthStoreData }>("/api/import/observations/manual", { method: "POST", body: JSON.stringify(payload) }),
   generateInsight: () => request<Insight>("/api/insights/generate", { method: "POST" }),
   pairing: {
     qr: async () => {

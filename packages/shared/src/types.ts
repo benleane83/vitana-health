@@ -4,6 +4,8 @@ export type SourceKind =
   | "health-connect"
   | "manual-entry"
   | "blood-test-csv"
+  | "observation-csv"
+  | "blood-test-report"
   | "body-composition-report"
   | "derived";
 

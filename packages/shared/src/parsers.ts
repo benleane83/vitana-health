@@ -31,6 +31,20 @@ export interface ManualLabEntryPayload {
   markers: ManualLabEntryMarkerInput[];
 }
 
+export interface ManualObservationInput {
+  measurementName?: string;
+  measurementCode?: string;
+  value: number;
+  unit?: string;
+}
+
+export interface ManualObservationPayload {
+  observedAt: string;
+  label: string;
+  sourceName?: string;
+  observations: ManualObservationInput[];
+}
+
 export type BodyCompositionDraftConfidence = "high" | "medium" | "low";
 
 export interface BodyCompositionDraftRow {
@@ -181,29 +195,116 @@ export function parseBloodTestCsv(fileName: string, content: string, importedAt 
   };
 }
 
-export function buildManualLabEntryImport(payload: ManualLabEntryPayload, importedAt = new Date().toISOString()): ParsedImport {
+/**
+ * Parses the strict generic observation CSV template:
+ * observedAt,measurement,value,unit,label,sourceName
+ *
+ * `measurementCode` and common aliases may be used in place of `measurement`.
+ */
+export function parseObservationCsv(fileName: string, content: string, importedAt = new Date().toISOString()): ParsedImport {
+  const rows = parseCsv(content);
+  const sourceChecksum = checksum(content);
+  const importId = stableId("import", ["observation-csv", fileName, sourceChecksum]);
+  const sourceId = stableId("source", ["observation-csv", fileName, sourceChecksum]);
   const diagnostics: string[] = [];
-  const panelName = payload.panelName.trim() || "Manual lab panel";
-  const collectedAt = readDate(payload.collectedAt) ?? importedAt;
-  const serializedPayload = JSON.stringify({ collectedAt, panelName, labName: payload.labName?.trim(), markers: payload.markers });
+  const first = normalizeKeys(rows[0] ?? {});
+  const observedAt = readDate(first.observed_at ?? first.collected_at ?? first.date) ?? importedAt;
+  const label = first.label || first.panel_name || "Observation CSV";
+  const groupId = stableId("group", ["observation-csv", sourceChecksum]);
+  const group: ObservationGroup = {
+    id: groupId,
+    kind: "custom",
+    label,
+    sourceId,
+    importId,
+    collectedAt: observedAt,
+    metadata: { sourceName: first.source_name }
+  };
+  const observations: Observation[] = [];
+
+  for (const row of rows) {
+    const normalized = normalizeKeys(row);
+    const name = normalized.measurement ?? normalized.measurement_name ?? normalized.marker ?? normalized.name ?? "";
+    const code = normalized.measurement_code ?? normalized.marker_code;
+    const measurementType = (code ? findMeasurementType(code) : undefined) ?? findMeasurementType(name);
+    const value = readNumber(normalized.value ?? normalized.result);
+    if (value === undefined || (!name && !code)) {
+      diagnostics.push(`Skipped observation row with missing measurement or value: ${JSON.stringify(row).slice(0, 180)}`);
+      continue;
+    }
+    const measurementCode = measurementType?.code ?? code ?? fallbackMeasurementCode(name);
+    if (!measurementType) diagnostics.push(`Used generated code for "${name || code}".`);
+    const unit = normalized.unit || measurementType?.canonicalUnit || "unknown";
+    const rowObservedAt = readDate(normalized.observed_at ?? normalized.collected_at ?? normalized.date) ?? observedAt;
+    observations.push({
+      id: stableId("obs", ["observation-csv", sourceChecksum, rowObservedAt, measurementCode, String(value), unit]),
+      measurementCode,
+      observedAt: rowObservedAt,
+      value,
+      unit,
+      sourceId,
+      observationGroupId: groupId,
+      note: `Observation from ${label}`,
+      sourceJson: row
+    });
+  }
+  return {
+    sourceImport: {
+      id: importId, sourceKind: "observation-csv", fileName, importedAt, parserVersion: "observation-csv-v1",
+      checksum: sourceChecksum, rowCount: rows.length,
+      status: diagnostics.length > rows.length / 2 ? "needs-review" : "processed",
+      diagnostics: diagnostics.slice(0, 25), rawContent: content
+    },
+    dataSource: { id: sourceId, sourceKind: "observation-csv", label: `Observation CSV: ${fileName}`, importId, createdAt: importedAt },
+    observations, observationGroups: [group], timeSeriesSamples: [], activitySessions: []
+  };
+}
+
+export function buildManualLabEntryImport(payload: ManualLabEntryPayload, importedAt = new Date().toISOString()): ParsedImport {
+  return buildManualObservationImport(
+    {
+      observedAt: payload.collectedAt,
+      label: payload.panelName,
+      sourceName: payload.labName,
+      observations: payload.markers.map(({ markerName, markerCode, value, unit }) => ({
+        measurementName: markerName,
+        measurementCode: markerCode,
+        value,
+        unit
+      }))
+    },
+    importedAt,
+    "lab_panel"
+  );
+}
+
+export function buildManualObservationImport(
+  payload: ManualObservationPayload,
+  importedAt = new Date().toISOString(),
+  groupKind: ObservationGroup["kind"] = "custom"
+): ParsedImport {
+  const diagnostics: string[] = [];
+  const panelName = payload.label.trim() || "Manual observations";
+  const collectedAt = readDate(payload.observedAt) ?? importedAt;
+  const serializedPayload = JSON.stringify({ collectedAt, panelName, sourceName: payload.sourceName?.trim(), observations: payload.observations });
   const sourceChecksum = checksum(serializedPayload);
   const importId = stableId("import", ["manual-entry", sourceChecksum]);
   const sourceId = stableId("source", ["manual-entry", sourceChecksum]);
   const groupId = stableId("group", ["lab_panel", sourceChecksum]);
   const group: ObservationGroup = {
     id: groupId,
-    kind: "lab_panel",
+    kind: groupKind,
     label: panelName,
     sourceId,
     importId,
     collectedAt,
-    metadata: { labName: payload.labName?.trim() || undefined }
+    metadata: { sourceName: payload.sourceName?.trim() || undefined }
   };
   const observations: Observation[] = [];
 
-  for (const row of payload.markers) {
-    const markerName = row.markerName?.trim();
-    const markerCode = row.markerCode?.trim();
+  for (const row of payload.observations) {
+    const markerName = row.measurementName?.trim();
+    const markerCode = row.measurementCode?.trim();
     const measurementType = markerCode
       ? findMeasurementType(markerCode) ?? (markerName ? findMeasurementType(markerName) : undefined)
       : markerName
@@ -211,11 +312,11 @@ export function buildManualLabEntryImport(payload: ManualLabEntryPayload, import
         : undefined;
     const value = row.value;
     if (!Number.isFinite(value)) {
-      diagnostics.push(`Skipped manual marker with invalid value: ${JSON.stringify(row).slice(0, 180)}`);
+      diagnostics.push(`Skipped manual observation with invalid value: ${JSON.stringify(row).slice(0, 180)}`);
       continue;
     }
     if (!measurementType && !markerName && !markerCode) {
-      diagnostics.push(`Skipped manual marker with no name or code: ${JSON.stringify(row).slice(0, 180)}`);
+      diagnostics.push(`Skipped manual observation with no name or code: ${JSON.stringify(row).slice(0, 180)}`);
       continue;
     }
     const displayName = markerName || measurementType?.display || markerCode || "Manual marker";
@@ -229,7 +330,7 @@ export function buildManualLabEntryImport(payload: ManualLabEntryPayload, import
       unit,
       sourceId,
       observationGroupId: groupId,
-      note: `Lab marker from ${group.label}`,
+      note: `Manual observation from ${group.label}`,
       sourceJson: row
     });
   }
@@ -244,15 +345,15 @@ export function buildManualLabEntryImport(payload: ManualLabEntryPayload, import
       importedAt,
       parserVersion: "manual-lab-entry-v1",
       checksum: sourceChecksum,
-      rowCount: payload.markers.length,
-      status: diagnostics.length > payload.markers.length / 2 ? "needs-review" : "processed",
+      rowCount: payload.observations.length,
+      status: diagnostics.length > payload.observations.length / 2 ? "needs-review" : "processed",
       diagnostics: diagnostics.slice(0, 25),
       rawContent: serializedPayload
     },
     dataSource: {
       id: sourceId,
       sourceKind: "manual-entry",
-      label: `Manual lab entry: ${panelName}`,
+      label: `Manual observations: ${panelName}`,
       importId,
       createdAt: importedAt
     },
@@ -418,6 +519,68 @@ export function buildBodyCompositionImportFromDraft(
   };
 }
 
+// Both scan types use the same editable review-row lifecycle.
+export type BloodTestDraft = BodyCompositionDraft;
+export type BloodTestDraftCommitPayload = BodyCompositionDraftCommitPayload;
+
+export function parseBloodTestScanText(fileName: string, sourceText: string, importedAt = new Date().toISOString()): BloodTestDraft {
+  const normalizedText = sourceText.replace(/\r/g, "").trim();
+  const sourceChecksum = checksum(normalizedText || fileName);
+  const diagnostics: string[] = [];
+  const reportDate = readBodyCompositionDate(normalizedText) ?? readDateFromFileName(fileName);
+  const rows = new Map<string, BodyCompositionDraftRow>();
+  for (const line of normalizedText.split("\n").map((item) => item.trim()).filter(Boolean)) {
+    const match = line.match(/^(.{2,100}?)\s*(?::|\s{2,}|-)\s*(-?\d+(?:[.,]\d+)?)\s*([A-Za-z%/]+)?(?:\s|$)/);
+    if (!match) continue;
+    const label = match[1].trim();
+    const value = readNumber(match[2]);
+    if (value === undefined || looksLikeDateOnly(line)) continue;
+    const measurementType = findMeasurementType(label);
+    const measurementCode = measurementType?.code ?? fallbackMeasurementCode(label);
+    const unit = match[3] || measurementType?.canonicalUnit || "unknown";
+    const key = `${measurementCode}:${value}:${unit}`;
+    if (rows.has(key)) continue;
+    const generatedCode = !measurementType;
+    if (generatedCode) diagnostics.push(`Used generated code for "${label}".`);
+    rows.set(key, {
+      id: stableId("draft", [sourceChecksum, measurementCode, String(value), unit]),
+      label, measurementCode, displayName: measurementType?.display ?? toDisplayName(label), value, unit,
+      observedAt: reportDate, confidence: measurementType ? "high" : "low", sourceText: line,
+      included: !generatedCode, generatedCode
+    });
+  }
+  if (!normalizedText) diagnostics.push("No text was extracted from the report.");
+  if (!reportDate) diagnostics.push("No report date was detected; confirm the date before saving.");
+  if (rows.size === 0 && normalizedText) diagnostics.push("No blood-test measurements were detected in the extracted text.");
+  return {
+    fileName, reportDate, sourceText: normalizedText, checksum: sourceChecksum,
+    parserVersion: "body-composition-text-v1", diagnostics: diagnostics.slice(0, 50), rows: [...rows.values()]
+  };
+}
+
+export function buildBloodTestImportFromDraft(
+  payload: BloodTestDraftCommitPayload,
+  importedAt = new Date().toISOString()
+): ParsedImport {
+  const imported = buildManualObservationImport({
+    observedAt: payload.reportDate ?? importedAt,
+    label: payload.fileName,
+    observations: payload.rows.filter((row) => row.included).map((row) => ({
+      measurementName: row.displayName || row.label,
+      measurementCode: row.measurementCode,
+      value: Number(row.value),
+      unit: row.unit
+    }))
+  }, importedAt, "lab_panel");
+  imported.sourceImport.sourceKind = "blood-test-report";
+  imported.sourceImport.fileName = payload.fileName;
+  imported.sourceImport.parserVersion = "blood-test-report-v1";
+  imported.sourceImport.rawContent = payload.sourceText;
+  imported.dataSource.sourceKind = "blood-test-report";
+  imported.dataSource.label = `Blood test report: ${payload.fileName}`;
+  return imported;
+}
+
 interface BodyCompositionLineCandidate {
   label: string;
   value: number;
@@ -554,10 +717,40 @@ function normalizeBodyCompositionUnit(unit: string): string {
   return unit.trim();
 }
 
+const maxDateWhitespaceGap = 20;
+const monthNameToIndex: Record<string, number> = {
+  jan: 1,
+  january: 1,
+  feb: 2,
+  february: 2,
+  mar: 3,
+  march: 3,
+  apr: 4,
+  april: 4,
+  may: 5,
+  jun: 6,
+  june: 6,
+  jul: 7,
+  july: 7,
+  aug: 8,
+  august: 8,
+  sep: 9,
+  sept: 9,
+  september: 9,
+  oct: 10,
+  october: 10,
+  nov: 11,
+  november: 11,
+  dec: 12,
+  december: 12
+};
+
 function readBodyCompositionDate(text: string): string | undefined {
   const datePatterns = [
-    /(?:test|scan|report|measurement|measured|date)\s*(?:date)?\s*[:\-]?\s*(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})/i,
-    /(?:test|scan|report|measurement|measured|date)\s*(?:date)?\s*[:\-]?\s*([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})/i,
+    new RegExp(`(?:test|scan|report|measurement|measured|date)\\s{0,${maxDateWhitespaceGap}}(?:date)?\\s{0,${maxDateWhitespaceGap}}[:\\-]?\\s{0,${maxDateWhitespaceGap}}(\\d{1,2}[\\/\\-.][A-Za-z]{3,9}[\\/\\-.]\\d{2,4}(?:\\s+\\d{1,2}:\\d{2}(?::\\d{2})?)?)`, "i"),
+    new RegExp(`(?:test|scan|report|measurement|measured|date)\\s{0,${maxDateWhitespaceGap}}(?:date)?\\s{0,${maxDateWhitespaceGap}}[:\\-]?\\s{0,${maxDateWhitespaceGap}}(\\d{1,2}[\\/\\-.]\\d{1,2}[\\/\\-.]\\d{2,4})`, "i"),
+    new RegExp(`(?:test|scan|report|measurement|measured|date)\\s{0,${maxDateWhitespaceGap}}(?:date)?\\s{0,${maxDateWhitespaceGap}}[:\\-]?\\s{0,${maxDateWhitespaceGap}}([A-Za-z]{3,9}\\s{1,${maxDateWhitespaceGap}}\\d{1,2},?\\s{1,${maxDateWhitespaceGap}}\\d{4})`, "i"),
+    /\b(\d{1,2}[\/\-.][A-Za-z]{3,9}[\/\-.]\d{2,4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?)\b/,
     /\b(\d{4}[\/\-.]\d{1,2}[\/\-.]\d{1,2})\b/,
     /\b(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})\b/
   ];
@@ -636,8 +829,99 @@ function readNumber(value: string | undefined): number | undefined {
 
 function readDate(value: string | undefined): string | undefined {
   if (!value) return undefined;
-  const parsed = new Date(value);
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const structured = parseStructuredDate(trimmed);
+  if (structured) {
+    const parsed = new Date(Date.UTC(structured.year, structured.month - 1, structured.day, structured.hour, structured.minute, structured.second));
+    return parsed.toISOString();
+  }
+  const parsed = new Date(trimmed);
   return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+}
+
+interface StructuredDate {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+}
+
+function parseStructuredDate(value: string): StructuredDate | undefined {
+  const dateTimeMatch = value.match(/^(.*?)(?:\s+(\d{1,2})(?::(\d{2}))(?::(\d{2}))?)?$/);
+  if (!dateTimeMatch) {
+    return undefined;
+  }
+
+  const datePart = dateTimeMatch[1]?.trim();
+  if (!datePart) {
+    return undefined;
+  }
+
+  const hour = Number.parseInt(dateTimeMatch[2] ?? "0", 10);
+  const minute = Number.parseInt(dateTimeMatch[3] ?? "0", 10);
+  const second = Number.parseInt(dateTimeMatch[4] ?? "0", 10);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) {
+    return undefined;
+  }
+
+  const ymd = datePart.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/);
+  if (ymd) {
+    return normalizeStructuredDate(Number.parseInt(ymd[1], 10), Number.parseInt(ymd[2], 10), Number.parseInt(ymd[3], 10), hour, minute, second);
+  }
+
+  const dayMonthNameYear = datePart.match(/^(\d{1,2})[\/\-.]([A-Za-z]{3,9})[\/\-.](\d{2,4})$/);
+  if (dayMonthNameYear) {
+    const month = monthNameToIndex[dayMonthNameYear[2].toLowerCase()];
+    if (!month) {
+      return undefined;
+    }
+    return normalizeStructuredDate(Number.parseInt(dayMonthNameYear[3], 10), month, Number.parseInt(dayMonthNameYear[1], 10), hour, minute, second);
+  }
+
+  const monthNameDayYear = datePart.match(/^([A-Za-z]{3,9})\s+(\d{1,2}),?\s+(\d{2,4})$/);
+  if (monthNameDayYear) {
+    const month = monthNameToIndex[monthNameDayYear[1].toLowerCase()];
+    if (!month) {
+      return undefined;
+    }
+    return normalizeStructuredDate(Number.parseInt(monthNameDayYear[3], 10), month, Number.parseInt(monthNameDayYear[2], 10), hour, minute, second);
+  }
+
+  const ambiguousNumeric = datePart.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+  if (ambiguousNumeric) {
+    const first = Number.parseInt(ambiguousNumeric[1], 10);
+    const secondPart = Number.parseInt(ambiguousNumeric[2], 10);
+    const year = Number.parseInt(ambiguousNumeric[3], 10);
+    if (first > 12) {
+      return normalizeStructuredDate(year, secondPart, first, hour, minute, second);
+    }
+    if (secondPart > 12) {
+      return normalizeStructuredDate(year, first, secondPart, hour, minute, second);
+    }
+    // Preserve prior behavior for ambiguous values where both month/day are <= 12.
+    return normalizeStructuredDate(year, first, secondPart, hour, minute, second);
+  }
+
+  return undefined;
+}
+
+function normalizeStructuredDate(year: number, month: number, day: number, hour: number, minute: number, second: number): StructuredDate | undefined {
+  const normalizedYear = year < 100 ? 2000 + year : year;
+  if (month < 1 || month > 12 || day < 1 || day > 31) {
+    return undefined;
+  }
+  const normalized = new Date(Date.UTC(normalizedYear, month - 1, day, hour, minute, second));
+  if (
+    normalized.getUTCFullYear() !== normalizedYear ||
+    normalized.getUTCMonth() !== month - 1 ||
+    normalized.getUTCDate() !== day
+  ) {
+    return undefined;
+  }
+  return { year: normalizedYear, month, day, hour, minute, second };
 }
 
 function fallbackMeasurementCode(value: string): string {

@@ -8,15 +8,15 @@ import type {
   HealthDataDetailEntry,
   HealthDataSummary,
   HealthStoreData,
-  ManualLabEntryPayload,
+  ManualObservationPayload,
   MeasurementType,
   Profile,
   ProfileListEntry
 } from "@local-fitness-advisor/shared";
-import { MANUAL_LAB_MARKER_CATALOG, safetyNotice } from "@local-fitness-advisor/shared";
+import { safetyNotice } from "@local-fitness-advisor/shared";
 import { api } from "./api.js";
 import type { AiQueryResult, LlmConfig, PairedDevice, PendingPairing } from "./api.js";
-import type { AppRoute, BodyCompositionEditableRow, ImportMode, LabsMode, ManualMarkerRow } from "./types.js";
+import type { AppRoute, BodyCompositionEditableRow, ImportMode, ManualMarkerRow, ScanKind } from "./types.js";
 import { todayIsoDate, numberOrUndefined, readFileAsBase64, isSupportedBodyCompMimeType } from "./utils.js";
 import { ConfirmDialog } from "./components/ConfirmDialog.js";
 import { ProfileEditDialog, ProfileManagerDialog } from "./components/ProfileDialogs.js";
@@ -54,9 +54,9 @@ export function App() {
   const [summarySort, setSummarySort] = useState<"name" | "count" | "recency">("recency");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
-  const [labsMode, setLabsMode] = useState<LabsMode>("manual");
+  const [scanKind, setScanKind] = useState<ScanKind>("body-composition");
   const [manualCollectedAt, setManualCollectedAt] = useState(todayIsoDate());
-  const [manualPanelName, setManualPanelName] = useState("Lipid panel");
+  const [manualObservationGroup, setManualObservationGroup] = useState("General observations");
   const [manualLabName, setManualLabName] = useState("");
   const [manualRows, setManualRows] = useState<ManualMarkerRow[]>(() => createStarterRows());
   const [uploadFile, setUploadFile] = useState<File>();
@@ -87,13 +87,21 @@ export function App() {
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const bodyCompInputRef = useRef<HTMLInputElement>(null);
 
-  const labMeasurementTypes = useMemo(
-    () =>
-      (store?.measurementTypes ?? []).filter(
-        (type) => type.kind === "panel-component" || type.category === "lab" || type.category === "metabolic"
-      ),
+  const recordedMeasurementTypes = useMemo(
+    () => [...(store?.measurementTypes ?? [])].sort((left, right) => left.display.localeCompare(right.display)),
     [store?.measurementTypes]
   );
+  const observationGroupOptions = useMemo(() => {
+    const labels = new Set<string>();
+    for (const group of store?.observationGroups ?? []) {
+      const label = group.label?.trim();
+      if (label) labels.add(label);
+    }
+    if (labels.size === 0) {
+      ["General observations", "Lab panel", "Body composition report"].forEach((label) => labels.add(label));
+    }
+    return [...labels].sort((left, right) => left.localeCompare(right));
+  }, [store?.observationGroups]);
 
   const profile = store?.profile;
   const activeProfile = profiles.find((entry) => entry.id === activeProfileId) ?? profile;
@@ -366,13 +374,13 @@ export function App() {
     event.preventDefault();
     const payload = toManualPayload({
       collectedAt: manualCollectedAt,
-      panelName: manualPanelName,
+      observationGroup: manualObservationGroup,
       labName: manualLabName,
       rows: manualRows,
-      knownMeasurements: labMeasurementTypes
+      knownMeasurements: recordedMeasurementTypes
     });
-    await run("Manual lab panel imported.", async () => {
-      await api.importManualLabEntry(payload);
+    await run("Manual observations imported.", async () => {
+      await api.importManualObservations(payload);
       await refresh();
       resetManualForm();
     });
@@ -384,9 +392,9 @@ export function App() {
       setMessage("Select a CSV file before upload.");
       return;
     }
-    await run("Blood test CSV imported.", async () => {
+    await run("Observation CSV imported.", async () => {
       const content = await uploadFile.text();
-      await api.importBloodTest(uploadFile.name, content);
+      await api.importObservationCsv(uploadFile.name, content);
       await refresh();
       setUploadFile(undefined);
       if (uploadInputRef.current) uploadInputRef.current.value = "";
@@ -405,7 +413,7 @@ export function App() {
     }
     await run("Body composition scan parsed for review.", async () => {
       const contentBase64 = await readFileAsBase64(bodyCompFile);
-      const draft = await api.previewBodyCompositionReport({
+      const draft = await (scanKind === "blood-test" ? api.previewBloodTestReport : api.previewBodyCompositionReport)({
         fileName: bodyCompFile.name,
         mimeType: bodyCompFile.type,
         contentBase64
@@ -429,7 +437,7 @@ export function App() {
       return;
     }
     await run("Approved body composition observations saved.", async () => {
-      await api.commitBodyCompositionReport({
+      await (scanKind === "blood-test" ? api.commitBloodTestReport : api.commitBodyCompositionReport)({
         fileName: bodyCompDraft.fileName,
         reportDate: bodyCompReportDate,
         sourceText: bodyCompDraft.sourceText,
@@ -598,9 +606,7 @@ export function App() {
         if (row.id !== id) return row;
         const next = { ...row, ...patch };
         if (patch.marker !== undefined && patch.unit === undefined && !next.unit.trim()) {
-          const resolvedUnit =
-            findKnownCatalogMarker(patch.marker)?.unit ??
-            findKnownMeasurement(patch.marker, labMeasurementTypes)?.canonicalUnit;
+          const resolvedUnit = findKnownMeasurement(patch.marker, recordedMeasurementTypes)?.canonicalUnit;
           if (resolvedUnit) next.unit = resolvedUnit;
         }
         return next;
@@ -614,7 +620,7 @@ export function App() {
 
   function resetManualForm() {
     setManualCollectedAt(todayIsoDate());
-    setManualPanelName("Lipid panel");
+    setManualObservationGroup("General observations");
     setManualLabName("");
     setManualRows(createStarterRows());
   }
@@ -716,13 +722,14 @@ export function App() {
             busy={busy}
             mode={importMode}
             onModeChange={(mode) => navigate("import", mode)}
-            labsMode={labsMode}
-            onLabsModeChange={setLabsMode}
-            panelName={manualPanelName}
+            scanKind={scanKind}
+            onScanKindChange={setScanKind}
+            observationGroup={manualObservationGroup}
+            observationGroupOptions={observationGroupOptions}
             labName={manualLabName}
             collectedAt={manualCollectedAt}
             rows={manualRows}
-            onPanelNameChange={setManualPanelName}
+            onObservationGroupChange={setManualObservationGroup}
             onLabNameChange={setManualLabName}
             onCollectedAtChange={setManualCollectedAt}
             onRowChange={updateManualRow}
@@ -739,6 +746,7 @@ export function App() {
             onBodyCompFileChange={setBodyCompFile}
             onBodyCompReportDateChange={setBodyCompReportDate}
             onBodyCompRowChange={updateBodyCompRow}
+            measurementTypes={recordedMeasurementTypes}
             onPreviewBodyComp={previewBodyCompositionReport}
             onCommitBodyComp={commitBodyCompositionReport}
             bodyCompInputRef={bodyCompInputRef}
@@ -901,11 +909,14 @@ function summaryDetailCodeFromPathname(pathname: string): string | undefined {
 }
 
 function importModeFromPathname(pathname: string): ImportMode {
-  return pathname === "/import/fitness-tracker" ? "fitness" : "labs";
+  if (pathname === "/import/upload") return "upload";
+  if (pathname === "/import/scan") return "scan";
+  if (pathname === "/import/fitness-tracker") return "fitness";
+  return "manual";
 }
 
 function importModePath(mode: ImportMode): string {
-  return mode === "fitness" ? "/import/fitness-tracker" : "/import/labs";
+  return `/import/${mode === "fitness" ? "fitness-tracker" : mode}`;
 }
 
 function summaryPath(measurementCode?: string): string {
@@ -913,12 +924,6 @@ function summaryPath(measurementCode?: string): string {
 }
 
 // ─── Manual lab helpers ───────────────────────────────────────────────────────
-
-function findKnownCatalogMarker(input: string): (typeof MANUAL_LAB_MARKER_CATALOG)[number] | undefined {
-  const normalized = input.trim().toLowerCase();
-  if (!normalized) return undefined;
-  return MANUAL_LAB_MARKER_CATALOG.find((entry) => entry.marker.toLowerCase() === normalized);
-}
 
 function findKnownMeasurement(input: string, knownMeasurements: MeasurementType[]): MeasurementType | undefined {
   const normalized = input.trim().toLowerCase();
@@ -931,37 +936,39 @@ function findKnownMeasurement(input: string, knownMeasurements: MeasurementType[
 
 function toManualPayload({
   collectedAt,
-  panelName,
+  observationGroup,
   labName,
   rows,
   knownMeasurements
 }: {
   collectedAt: string;
-  panelName: string;
+  observationGroup: string;
   labName: string;
   rows: ManualMarkerRow[];
   knownMeasurements: MeasurementType[];
-}): ManualLabEntryPayload {
+}): ManualObservationPayload {
   if (!collectedAt) throw new Error("Collection date is required.");
-  if (!panelName.trim()) throw new Error("Panel name is required.");
-  const markers = rows
+  if (!observationGroup.trim()) throw new Error("Observation group is required.");
+  const observations = rows
     .map((row) => {
       const markerName = row.marker.trim();
       const hasRowData = markerName || row.value.trim() || row.unit.trim();
       if (!hasRowData) return undefined;
       const value = Number.parseFloat(row.value);
       if (!Number.isFinite(value)) throw new Error(`Enter a numeric value for ${markerName || "all rows"}.`);
-      const known = findKnownMeasurement(markerName, knownMeasurements);
+      const known =
+        findKnownMeasurement(row.measurementCode?.trim() || "", knownMeasurements) ??
+        findKnownMeasurement(markerName, knownMeasurements);
       return {
-        markerName: markerName || known?.display,
-        markerCode: known?.code,
+        measurementName: markerName || known?.display,
+        measurementCode: row.measurementCode?.trim() || known?.code,
         value,
         unit: row.unit.trim() || known?.canonicalUnit
       };
     })
     .filter((row): row is NonNullable<typeof row> => Boolean(row));
-  if (markers.length === 0) throw new Error("Enter at least one marker row before import.");
-  return { collectedAt, panelName: panelName.trim(), labName: labName.trim() || undefined, markers };
+  if (observations.length === 0) throw new Error("Enter at least one observation row before import.");
+  return { observedAt: collectedAt, label: observationGroup.trim(), sourceName: labName.trim() || undefined, observations };
 }
 
 function toEditableBodyCompRow(row: BodyCompositionDraftRow): BodyCompositionEditableRow {
@@ -984,13 +991,13 @@ function toBodyCompositionDraftRow(row: BodyCompositionEditableRow): BodyComposi
 
 function createStarterRows(): ManualMarkerRow[] {
   return [
-    createEmptyRow("HDL cholesterol", "", "mg/dL"),
-    createEmptyRow("LDL cholesterol", "", "mg/dL"),
-    createEmptyRow("Triglycerides", "", "mg/dL"),
-    createEmptyRow("Glucose", "", "mg/dL")
+    createEmptyRow("HDL cholesterol", "hdl_cholesterol", "", "mg/dL"),
+    createEmptyRow("LDL cholesterol", "ldl_cholesterol", "", "mg/dL"),
+    createEmptyRow("Triglycerides", "triglycerides", "", "mg/dL"),
+    createEmptyRow("Glucose", "glucose", "", "mg/dL")
   ];
 }
 
-function createEmptyRow(marker = "", value = "", unit = ""): ManualMarkerRow {
-  return { id: globalThis.crypto.randomUUID(), marker, value, unit };
+function createEmptyRow(marker = "", measurementCode = "", value = "", unit = ""): ManualMarkerRow {
+  return { id: globalThis.crypto.randomUUID(), marker, measurementCode, value, unit };
 }

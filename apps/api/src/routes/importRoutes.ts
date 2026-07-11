@@ -2,8 +2,12 @@ import express from "express";
 import { z } from "zod";
 import {
   buildBodyCompositionImportFromDraft,
+  buildBloodTestImportFromDraft,
   buildManualLabEntryImport,
+  buildManualObservationImport,
   parseBloodTestCsv,
+  parseBloodTestScanText,
+  parseObservationCsv,
   type BodyCompositionDraftRow
 } from "@local-fitness-advisor/shared";
 import type { ProfileStoreManager } from "../store.js";
@@ -68,6 +72,21 @@ const manualLabImportSchema = z.object({
     .min(1)
 });
 
+const manualObservationImportSchema = z.object({
+  observedAt: z.string().min(1).max(80),
+  label: z.string().min(1).max(160),
+  sourceName: z.string().max(160).optional(),
+  observations: z.array(z.object({
+    measurementName: z.string().max(160).optional(),
+    measurementCode: z.string().max(120).optional(),
+    value: z.number().finite(),
+    unit: z.string().max(32).optional()
+  }).refine(
+    (row) => (row.measurementName?.trim()?.length ?? 0) > 0 || (row.measurementCode?.trim()?.length ?? 0) > 0,
+    { message: "measurementName or measurementCode is required" }
+  )).min(1)
+});
+
 export function makeImportRoutes(storeManager: ProfileStoreManager): express.Router {
   const router = express.Router();
 
@@ -85,6 +104,20 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
     });
   });
 
+  router.post("/observations/csv", (request, response) => {
+    const parsed = importSchema.parse(request.body);
+    const imported = parseObservationCsv(parsed.fileName, parsed.content);
+    const store = activeStore();
+    response.status(201).json({ store: store.mergeImport(imported), import: { ...imported.sourceImport, rawContent: undefined } });
+  });
+
+  router.post("/observations/manual", (request, response) => {
+    const parsed = manualObservationImportSchema.parse(request.body ?? {});
+    const imported = buildManualObservationImport(parsed);
+    const store = activeStore();
+    response.status(201).json({ store: store.mergeImport(imported), import: { ...imported.sourceImport, rawContent: undefined } });
+  });
+
   router.post("/labs/manual", (request, response) => {
     const parsed = manualLabImportSchema.parse(request.body ?? {});
     const imported = buildManualLabEntryImport(parsed);
@@ -93,6 +126,39 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
       store: store.mergeImport(imported),
       import: { ...imported.sourceImport, rawContent: undefined }
     });
+  });
+
+  router.post("/blood-test/preview", async (request, response, next) => {
+    try {
+      const parsed = bodyCompositionPreviewSchema.parse(request.body ?? {});
+      const buffer = Buffer.from(parsed.contentBase64, "base64");
+      if (buffer.length === 0) {
+        response.status(400).json({ error: "Uploaded report was empty.", code: "EMPTY_PAYLOAD" });
+        return;
+      }
+      if (buffer.length > 15_000_000) {
+        response.status(413).json({ error: "Uploaded report is too large for local preview.", code: "PAYLOAD_TOO_LARGE" });
+        return;
+      }
+      const extracted = await extractBodyCompositionText(buffer, parsed.mimeType);
+      const draft = parseBloodTestScanText(parsed.fileName, extracted.text);
+      response.json({ ...draft, diagnostics: [...extracted.diagnostics, ...draft.diagnostics].slice(0, 75) });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/blood-test/commit", async (request, response, next) => {
+    try {
+      const parsed = bodyCompositionCommitSchema.parse(request.body ?? {});
+      const imported = buildBloodTestImportFromDraft({ ...parsed, rows: parsed.rows as BodyCompositionDraftRow[] });
+      const store = activeStore();
+      const merged = store.mergeImport(imported);
+      const warehouse = await rebuildWarehouseFromStore(merged);
+      response.status(201).json({ store: merged, import: { ...imported.sourceImport, rawContent: undefined }, warehouse });
+    } catch (error) {
+      next(error);
+    }
   });
 
   router.post("/body-composition/preview", async (request, response, next) => {

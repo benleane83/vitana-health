@@ -1,9 +1,8 @@
 import { useEffect, useId, useState } from "react";
-import type { BodyCompositionDraft } from "@local-fitness-advisor/shared";
-import { MANUAL_LAB_MARKER_CATALOG } from "@local-fitness-advisor/shared";
+import type { BodyCompositionDraft, MeasurementType } from "@local-fitness-advisor/shared";
 import { api } from "../api.js";
 import type { PairedDevice, PendingPairing } from "../api.js";
-import type { BodyCompositionEditableRow, ImportMode, LabsMode, ManualMarkerRow } from "../types.js";
+import type { BodyCompositionEditableRow, ImportMode, ManualMarkerRow, ScanKind } from "../types.js";
 import { formatBytes } from "../utils.js";
 
 // ─── Tab IDs for tablist/tabpanel ARIA wiring ─────────────────────────────────
@@ -12,13 +11,14 @@ export function ImportPage({
   busy,
   mode,
   onModeChange,
-  labsMode,
-  onLabsModeChange,
-  panelName,
+  scanKind,
+  onScanKindChange,
+  observationGroup,
+  observationGroupOptions,
   labName,
   collectedAt,
   rows,
-  onPanelNameChange,
+  onObservationGroupChange,
   onLabNameChange,
   onCollectedAtChange,
   onRowChange,
@@ -35,6 +35,7 @@ export function ImportPage({
   onBodyCompFileChange,
   onBodyCompReportDateChange,
   onBodyCompRowChange,
+  measurementTypes,
   onPreviewBodyComp,
   onCommitBodyComp,
   bodyCompInputRef,
@@ -45,13 +46,14 @@ export function ImportPage({
   busy: boolean;
   mode: ImportMode;
   onModeChange: (mode: ImportMode) => void;
-  labsMode: LabsMode;
-  onLabsModeChange: (mode: LabsMode) => void;
-  panelName: string;
+  scanKind: ScanKind;
+  onScanKindChange: (kind: ScanKind) => void;
+  observationGroup: string;
+  observationGroupOptions: string[];
   labName: string;
   collectedAt: string;
   rows: ManualMarkerRow[];
-  onPanelNameChange: (value: string) => void;
+  onObservationGroupChange: (value: string) => void;
   onLabNameChange: (value: string) => void;
   onCollectedAtChange: (value: string) => void;
   onRowChange: (id: string, patch: Partial<ManualMarkerRow>) => void;
@@ -68,6 +70,7 @@ export function ImportPage({
   onBodyCompFileChange: (file?: File) => void;
   onBodyCompReportDateChange: (value: string) => void;
   onBodyCompRowChange: (id: string, patch: Partial<BodyCompositionEditableRow>) => void;
+  measurementTypes: MeasurementType[];
   onPreviewBodyComp: (event: React.FormEvent<HTMLFormElement>) => void;
   onCommitBodyComp: (event: React.FormEvent<HTMLFormElement>) => void;
   bodyCompInputRef: React.RefObject<HTMLInputElement | null>;
@@ -75,9 +78,13 @@ export function ImportPage({
   onApprovePairing: (id: string) => void;
   onDenyPairing: (id: string) => void;
 }) {
-  const labsTabId = "import-tab-labs";
+  const manualTabId = "import-tab-manual";
+  const uploadTabId = "import-tab-upload";
+  const scanTabId = "import-tab-scan";
   const fitnessTabId = "import-tab-fitness";
-  const labsPanelId = "import-panel-labs";
+  const manualPanelId = "import-panel-manual";
+  const uploadPanelId = "import-panel-upload";
+  const scanPanelId = "import-panel-scan";
   const fitnessPanelId = "import-panel-fitness";
 
   return (
@@ -88,22 +95,44 @@ export function ImportPage({
           <h1>Import</h1>
         </div>
         <p className="import-copy">
-          Labs and Health Connect imports live here so the dashboard can stay focused on review.
+          Add observations manually, from CSV files, scans, or your fitness tracker.
         </p>
       </div>
 
       {/* Tab list — proper ARIA tab semantics */}
-      <div className="import-tabs" role="tablist" aria-label="Import source">
+      <div className="import-tabs" role="tablist" aria-label="Import mode">
         <button
-          id={labsTabId}
+          id={manualTabId}
           role="tab"
-          aria-selected={mode === "labs"}
-          aria-controls={labsPanelId}
-          className={mode === "labs" ? "active" : ""}
-          onClick={() => onModeChange("labs")}
-          tabIndex={mode === "labs" ? 0 : -1}
+          aria-selected={mode === "manual"}
+          aria-controls={manualPanelId}
+          className={mode === "manual" ? "active" : ""}
+          onClick={() => onModeChange("manual")}
+          tabIndex={mode === "manual" ? 0 : -1}
         >
-          Labs
+          Manual
+        </button>
+        <button
+          id={uploadTabId}
+          role="tab"
+          aria-selected={mode === "upload"}
+          aria-controls={uploadPanelId}
+          className={mode === "upload" ? "active" : ""}
+          onClick={() => onModeChange("upload")}
+          tabIndex={mode === "upload" ? 0 : -1}
+        >
+          Upload CSV
+        </button>
+        <button
+          id={scanTabId}
+          role="tab"
+          aria-selected={mode === "scan"}
+          aria-controls={scanPanelId}
+          className={mode === "scan" ? "active" : ""}
+          onClick={() => onModeChange("scan")}
+          tabIndex={mode === "scan" ? 0 : -1}
+        >
+          Scan
         </button>
         <button
           id={fitnessTabId}
@@ -118,37 +147,52 @@ export function ImportPage({
         </button>
       </div>
 
-      {mode === "labs" ? (
-        <div id={labsPanelId} role="tabpanel" aria-labelledby={labsTabId}>
-          <LabsPage
+      {mode === "manual" ? (
+        <div id={manualPanelId} role="tabpanel" aria-labelledby={manualTabId}>
+          <ManualEntryForm
             busy={busy}
-            mode={labsMode}
-            onModeChange={onLabsModeChange}
-            panelName={panelName}
+            observationGroup={observationGroup}
+            observationGroupOptions={observationGroupOptions}
             labName={labName}
             collectedAt={collectedAt}
             rows={rows}
-            onPanelNameChange={onPanelNameChange}
+            measurementTypes={measurementTypes}
+            onObservationGroupChange={onObservationGroupChange}
             onLabNameChange={onLabNameChange}
             onCollectedAtChange={onCollectedAtChange}
             onRowChange={onRowChange}
             onAddRow={onAddRow}
             onRemoveRow={onRemoveRow}
-            onSubmitManual={onSubmitManual}
-            onSubmitUpload={onSubmitUpload}
-            onUploadFileChange={onUploadFileChange}
-            uploadInputRef={uploadInputRef}
-            bodyCompFile={bodyCompFile}
-            bodyCompDraft={bodyCompDraft}
-            bodyCompRows={bodyCompRows}
-            bodyCompReportDate={bodyCompReportDate}
-            onBodyCompFileChange={onBodyCompFileChange}
-            onBodyCompReportDateChange={onBodyCompReportDateChange}
-            onBodyCompRowChange={onBodyCompRowChange}
-            onPreviewBodyComp={onPreviewBodyComp}
-            onCommitBodyComp={onCommitBodyComp}
-            bodyCompInputRef={bodyCompInputRef}
+            onSubmit={onSubmitManual}
           />
+        </div>
+      ) : mode === "upload" ? (
+        <div id={uploadPanelId} role="tabpanel" aria-labelledby={uploadTabId}>
+          <form className="labs-upload-form" onSubmit={onSubmitUpload}>
+            <label htmlFor="csv-upload">Select observation CSV</label>
+            <input id="csv-upload" ref={uploadInputRef} type="file" accept=".csv,text/csv" aria-describedby="csv-upload-help" onChange={(event) => onUploadFileChange(event.target.files?.[0])} />
+            <p id="csv-upload-help" className="empty">Use columns: observedAt, measurement, value, unit, label, sourceName.</p>
+            <div className="labs-upload-actions">
+              <button disabled={busy} type="submit">Upload CSV</button>
+              <button type="button" onClick={downloadObservationCsvTemplate}>Download CSV Template</button>
+            </div>
+          </form>
+        </div>
+      ) : mode === "scan" ? (
+        <div id={scanPanelId} role="tabpanel" aria-labelledby={scanTabId}>
+          <section className="panel labs-panel">
+            <label htmlFor="scan-kind">Report type</label>
+            <select id="scan-kind" value={scanKind} onChange={(event) => onScanKindChange(event.target.value as ScanKind)}>
+              <option value="body-composition">Body composition</option>
+              <option value="blood-test">Blood test</option>
+            </select>
+            <BodyCompositionImportPanel
+              busy={busy} file={bodyCompFile} draft={bodyCompDraft} rows={bodyCompRows} reportDate={bodyCompReportDate}
+              measurementTypes={measurementTypes}
+              inputRef={bodyCompInputRef} onFileChange={onBodyCompFileChange} onReportDateChange={onBodyCompReportDateChange}
+              onRowChange={onBodyCompRowChange} onPreview={onPreviewBodyComp} onCommit={onCommitBodyComp}
+            />
+          </section>
         </div>
       ) : (
         <div id={fitnessPanelId} role="tabpanel" aria-labelledby={fitnessTabId}>
@@ -163,171 +207,31 @@ export function ImportPage({
   );
 }
 
-// ─── Labs page ────────────────────────────────────────────────────────────────
-
-function LabsPage({
-  busy,
-  mode,
-  onModeChange,
-  panelName,
-  labName,
-  collectedAt,
-  rows,
-  onPanelNameChange,
-  onLabNameChange,
-  onCollectedAtChange,
-  onRowChange,
-  onAddRow,
-  onRemoveRow,
-  onSubmitManual,
-  onSubmitUpload,
-  onUploadFileChange,
-  uploadInputRef,
-  bodyCompFile,
-  bodyCompDraft,
-  bodyCompRows,
-  bodyCompReportDate,
-  onBodyCompFileChange,
-  onBodyCompReportDateChange,
-  onBodyCompRowChange,
-  onPreviewBodyComp,
-  onCommitBodyComp,
-  bodyCompInputRef
-}: {
-  busy: boolean;
-  mode: LabsMode;
-  onModeChange: (mode: LabsMode) => void;
-  panelName: string;
-  labName: string;
-  collectedAt: string;
-  rows: ManualMarkerRow[];
-  onPanelNameChange: (value: string) => void;
-  onLabNameChange: (value: string) => void;
-  onCollectedAtChange: (value: string) => void;
-  onRowChange: (id: string, patch: Partial<ManualMarkerRow>) => void;
-  onAddRow: () => void;
-  onRemoveRow: (id: string) => void;
-  onSubmitManual: (event: React.FormEvent<HTMLFormElement>) => void;
-  onSubmitUpload: (event: React.FormEvent<HTMLFormElement>) => void;
-  onUploadFileChange: (file?: File) => void;
-  uploadInputRef: React.RefObject<HTMLInputElement | null>;
-  bodyCompFile?: File;
-  bodyCompDraft?: BodyCompositionDraft;
-  bodyCompRows: BodyCompositionEditableRow[];
-  bodyCompReportDate: string;
-  onBodyCompFileChange: (file?: File) => void;
-  onBodyCompReportDateChange: (value: string) => void;
-  onBodyCompRowChange: (id: string, patch: Partial<BodyCompositionEditableRow>) => void;
-  onPreviewBodyComp: (event: React.FormEvent<HTMLFormElement>) => void;
-  onCommitBodyComp: (event: React.FormEvent<HTMLFormElement>) => void;
-  bodyCompInputRef: React.RefObject<HTMLInputElement | null>;
-}) {
-  const manualTabId = "labs-tab-manual";
-  const uploadTabId = "labs-tab-upload";
-  const bodycompTabId = "labs-tab-bodycomp";
-  const manualPanelId = "labs-panel-manual";
-  const uploadPanelId = "labs-panel-upload";
-  const bodycompPanelId = "labs-panel-bodycomp";
-
-  return (
-    <section className="panel labs-panel">
-      <div className="labs-header">
-        <div>
-          <p className="eyebrow">Lab intake workflow</p>
-          <h2>Labs</h2>
-        </div>
-        <div className="segmented" role="tablist" aria-label="Labs entry mode">
-          <button
-            id={manualTabId}
-            role="tab"
-            aria-selected={mode === "manual"}
-            aria-controls={manualPanelId}
-            className={mode === "manual" ? "active" : ""}
-            tabIndex={mode === "manual" ? 0 : -1}
-            onClick={() => onModeChange("manual")}
-          >Manual entry</button>
-          <button
-            id={uploadTabId}
-            role="tab"
-            aria-selected={mode === "upload"}
-            aria-controls={uploadPanelId}
-            className={mode === "upload" ? "active" : ""}
-            tabIndex={mode === "upload" ? 0 : -1}
-            onClick={() => onModeChange("upload")}
-          >Upload CSV</button>
-          <button
-            id={bodycompTabId}
-            role="tab"
-            aria-selected={mode === "bodycomp"}
-            aria-controls={bodycompPanelId}
-            className={mode === "bodycomp" ? "active" : ""}
-            tabIndex={mode === "bodycomp" ? 0 : -1}
-            onClick={() => onModeChange("bodycomp")}
-          >Body comp scan</button>
-        </div>
-      </div>
-
-      {mode === "manual" ? (
-        <div id={manualPanelId} role="tabpanel" aria-labelledby={manualTabId}>
-          <ManualEntryForm
-            busy={busy}
-            panelName={panelName}
-            labName={labName}
-            collectedAt={collectedAt}
-            rows={rows}
-            onPanelNameChange={onPanelNameChange}
-            onLabNameChange={onLabNameChange}
-            onCollectedAtChange={onCollectedAtChange}
-            onRowChange={onRowChange}
-            onAddRow={onAddRow}
-            onRemoveRow={onRemoveRow}
-            onSubmit={onSubmitManual}
-          />
-        </div>
-      ) : mode === "upload" ? (
-        <div id={uploadPanelId} role="tabpanel" aria-labelledby={uploadTabId}>
-          <form className="labs-upload-form" onSubmit={onSubmitUpload}>
-            <label htmlFor="csv-upload">Select blood-test CSV</label>
-            <input
-              id="csv-upload"
-              ref={uploadInputRef}
-              type="file"
-              accept=".csv,text/csv"
-              onChange={(event) => onUploadFileChange(event.target.files?.[0])}
-            />
-            <button disabled={busy} type="submit">Upload CSV</button>
-          </form>
-        </div>
-      ) : (
-        <div id={bodycompPanelId} role="tabpanel" aria-labelledby={bodycompTabId}>
-          <BodyCompositionImportPanel
-            busy={busy}
-            file={bodyCompFile}
-            draft={bodyCompDraft}
-            rows={bodyCompRows}
-            reportDate={bodyCompReportDate}
-            inputRef={bodyCompInputRef}
-            onFileChange={onBodyCompFileChange}
-            onReportDateChange={onBodyCompReportDateChange}
-            onRowChange={onBodyCompRowChange}
-            onPreview={onPreviewBodyComp}
-            onCommit={onCommitBodyComp}
-          />
-        </div>
-      )}
-    </section>
-  );
+function downloadObservationCsvTemplate() {
+  const template = [
+    "observedAt,measurement,value,unit,label,sourceName",
+    "2026-07-11T08:30:00Z,glucose,95,mg/dL,Morning check,Home lab"
+  ].join("\n");
+  const blob = new Blob([template], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = "observation-template.csv";
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 
 // ─── Manual lab entry form ────────────────────────────────────────────────────
 
 function ManualEntryForm({
   busy,
-  panelName,
+  observationGroup,
+  observationGroupOptions,
   labName,
   collectedAt,
+  measurementTypes,
   rows,
-  onPanelNameChange,
+  onObservationGroupChange,
   onLabNameChange,
   onCollectedAtChange,
   onRowChange,
@@ -336,11 +240,13 @@ function ManualEntryForm({
   onSubmit
 }: {
   busy: boolean;
-  panelName: string;
+  observationGroup: string;
+  observationGroupOptions: string[];
   labName: string;
   collectedAt: string;
+  measurementTypes: MeasurementType[];
   rows: ManualMarkerRow[];
-  onPanelNameChange: (value: string) => void;
+  onObservationGroupChange: (value: string) => void;
   onLabNameChange: (value: string) => void;
   onCollectedAtChange: (value: string) => void;
   onRowChange: (id: string, patch: Partial<ManualMarkerRow>) => void;
@@ -348,23 +254,44 @@ function ManualEntryForm({
   onRemoveRow: (id: string) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
+  const [customMeasurementRows, setCustomMeasurementRows] = useState<Record<string, true>>({});
+
+  useEffect(() => {
+    setCustomMeasurementRows((current) => {
+      const next: Record<string, true> = {};
+      const rowIds = new Set(rows.map((row) => row.id));
+      for (const rowId of Object.keys(current)) {
+        if (rowIds.has(rowId)) {
+          next[rowId] = true;
+        }
+      }
+      return Object.keys(next).length === Object.keys(current).length ? current : next;
+    });
+  }, [rows]);
+
   return (
     <form className="labs-manual-form" onSubmit={onSubmit}>
       <div className="labs-manual-meta">
-        <label htmlFor="manual-collected-at">Collection date</label>
+        <label htmlFor="manual-collected-at">Observation date</label>
         <input
           id="manual-collected-at"
           type="date"
           value={collectedAt}
           onChange={(event) => onCollectedAtChange(event.target.value)}
         />
-        <label htmlFor="manual-panel-name">Panel name</label>
+        <label htmlFor="manual-observation-group">Observation group</label>
         <input
-          id="manual-panel-name"
-          value={panelName}
-          onChange={(event) => onPanelNameChange(event.target.value)}
-          placeholder="Lipid panel"
+          id="manual-observation-group"
+          list="manual-observation-group-options"
+          value={observationGroup}
+          onChange={(event) => onObservationGroupChange(event.target.value)}
+          placeholder="General observations"
         />
+        <datalist id="manual-observation-group-options">
+          {observationGroupOptions.map((option) => (
+            <option key={option} value={option} />
+          ))}
+        </datalist>
         <label htmlFor="manual-lab-name">Lab name (optional)</label>
         <input
           id="manual-lab-name"
@@ -374,18 +301,33 @@ function ManualEntryForm({
         />
       </div>
 
-      <div className="labs-rows" role="table" aria-label="Manual lab markers">
+      <div className="labs-rows" role="table" aria-label="Manual observations">
         <div className="summary-row summary-row-head" role="row">
-          <span role="columnheader">Marker</span>
+          <span role="columnheader">Measurement</span>
           <span role="columnheader">Value</span>
           <span role="columnheader">Unit</span>
           <span role="columnheader">Actions</span>
         </div>
         {rows.map((row, index) => (
-          <LabMarkerRow
+          <ManualMeasurementRow
             key={row.id}
             row={row}
             rowIndex={index + 1}
+            measurementTypes={measurementTypes}
+            customMeasurement={Boolean(customMeasurementRows[row.id])}
+            onSetCustomMeasurement={(enabled) => {
+              setCustomMeasurementRows((current) => {
+                if (enabled) {
+                  return { ...current, [row.id]: true };
+                }
+                if (!(row.id in current)) {
+                  return current;
+                }
+                const next = { ...current };
+                delete next[row.id];
+                return next;
+              });
+            }}
             onChange={onRowChange}
             onRemove={onRemoveRow}
           />
@@ -394,58 +336,93 @@ function ManualEntryForm({
 
       <div className="labs-actions">
         <button type="button" onClick={onAddRow}>Add row</button>
-        <button disabled={busy} type="submit">Import manual panel</button>
+        <button disabled={busy} type="submit">Import observations</button>
       </div>
     </form>
   );
 }
 
-function LabMarkerRow({
+function ManualMeasurementRow({
   row,
   rowIndex,
+  measurementTypes,
+  customMeasurement,
+  onSetCustomMeasurement,
   onChange,
   onRemove
 }: {
   row: ManualMarkerRow;
   rowIndex: number;
+  measurementTypes: MeasurementType[];
+  customMeasurement: boolean;
+  onSetCustomMeasurement: (enabled: boolean) => void;
   onChange: (id: string, patch: Partial<ManualMarkerRow>) => void;
   onRemove: (id: string) => void;
 }) {
-  const markerSelectId = `lab-marker-select-${row.id}`;
-  const markerInputId = `lab-marker-input-${row.id}`;
+  const measurementSelectId = `manual-measurement-select-${row.id}`;
+  const markerInputId = `manual-measurement-input-${row.id}`;
+  const codeInputId = `manual-code-input-${row.id}`;
   const valueInputId = `lab-value-${row.id}`;
   const unitInputId = `lab-unit-${row.id}`;
+  const selectedMeasurementCode = customMeasurement ? "" : resolveKnownMeasurementSelectionForManual(row, measurementTypes);
+  const showCustomFields = selectedMeasurementCode === "";
 
   return (
     <div className="summary-row labs-row" role="row">
       <span role="cell" className="labs-marker-cell">
-        <label htmlFor={markerSelectId} className="sr-only">
-          Row {rowIndex}: select known marker
+        <label htmlFor={measurementSelectId} className="sr-only">
+          Row {rowIndex}: select known measurement
         </label>
         <select
-          id={markerSelectId}
-          value={getCatalogMarkerOrEmpty(row.marker)}
+          id={measurementSelectId}
+          value={selectedMeasurementCode}
           onChange={(event) => {
-            const selectedMarker = event.target.value;
-            const knownMarker = findKnownCatalogMarker(selectedMarker);
-            onChange(row.id, { marker: selectedMarker, unit: knownMarker?.unit ?? row.unit });
+            const selectedCode = event.target.value;
+            if (!selectedCode) {
+              onSetCustomMeasurement(true);
+              return;
+            }
+            onSetCustomMeasurement(false);
+            const selectedMeasurement = measurementTypes.find((type) => type.code === selectedCode);
+            if (!selectedMeasurement) {
+              return;
+            }
+            onChange(row.id, {
+              marker: selectedMeasurement.display,
+              measurementCode: selectedMeasurement.code,
+              unit: selectedMeasurement.canonicalUnit || row.unit
+            });
           }}
         >
-          <option value="">Custom marker</option>
-          {MANUAL_LAB_MARKER_CATALOG.map((entry) => (
-            <option value={entry.marker} key={entry.marker}>{entry.marker}</option>
+          <option value="">Custom / free text</option>
+          {measurementTypes.map((type) => (
+            <option value={type.code} key={type.code}>{type.display} ({type.code})</option>
           ))}
         </select>
-        <label htmlFor={markerInputId} className="sr-only">
-          Row {rowIndex}: marker name
-        </label>
-        <input
-          id={markerInputId}
-          value={row.marker}
-          onChange={(event) => onChange(row.id, { marker: event.target.value })}
-          placeholder="HDL cholesterol"
-          aria-label={`Row ${rowIndex} marker name`}
-        />
+        {showCustomFields ? (
+          <>
+            <label htmlFor={markerInputId} className="sr-only">
+              Row {rowIndex}: measurement name
+            </label>
+            <input
+              id={markerInputId}
+              value={row.marker}
+              onChange={(event) => onChange(row.id, { marker: event.target.value, measurementCode: row.measurementCode })}
+              placeholder="HDL cholesterol"
+              aria-label={`Row ${rowIndex} measurement name`}
+            />
+            <label htmlFor={codeInputId} className="sr-only">
+              Row {rowIndex}: measurement code
+            </label>
+            <input
+              id={codeInputId}
+              value={row.measurementCode ?? ""}
+              onChange={(event) => onChange(row.id, { measurementCode: event.target.value })}
+              placeholder="hdl_cholesterol"
+              aria-label={`Row ${rowIndex} measurement code`}
+            />
+          </>
+        ) : null}
       </span>
       <span role="cell">
         <label htmlFor={valueInputId} className="sr-only">Row {rowIndex} value</label>
@@ -489,6 +466,7 @@ function BodyCompositionImportPanel({
   draft,
   rows,
   reportDate,
+  measurementTypes,
   inputRef,
   onFileChange,
   onReportDateChange,
@@ -501,6 +479,7 @@ function BodyCompositionImportPanel({
   draft?: BodyCompositionDraft;
   rows: BodyCompositionEditableRow[];
   reportDate: string;
+  measurementTypes: MeasurementType[];
   inputRef: React.RefObject<HTMLInputElement | null>;
   onFileChange: (file?: File) => void;
   onReportDateChange: (value: string) => void;
@@ -509,10 +488,25 @@ function BodyCompositionImportPanel({
   onCommit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
   const includedCount = rows.filter((row) => row.included).length;
+  const [customMeasurementRows, setCustomMeasurementRows] = useState<Record<string, true>>({});
+
+  useEffect(() => {
+    setCustomMeasurementRows((current) => {
+      const next: Record<string, true> = {};
+      const rowIds = new Set(rows.map((row) => row.id));
+      for (const rowId of Object.keys(current)) {
+        if (rowIds.has(rowId)) {
+          next[rowId] = true;
+        }
+      }
+      return Object.keys(next).length === Object.keys(current).length ? current : next;
+    });
+  }, [rows]);
+
   return (
     <div className="bodycomp-import">
       <form className="labs-upload-form" onSubmit={onPreview}>
-        <label htmlFor="bodycomp-file">Select body composition report</label>
+        <label htmlFor="bodycomp-file">Select report</label>
         <input
           id="bodycomp-file"
           ref={inputRef}
@@ -564,6 +558,11 @@ function BodyCompositionImportPanel({
               <span role="columnheader">Confidence</span>
             </div>
             {rows.map((row, index) => (
+              (() => {
+                const forcedCustom = Boolean(customMeasurementRows[row.id]);
+                const selectedMeasurementCode = forcedCustom ? "" : resolveKnownMeasurementSelection(row, measurementTypes);
+                const showCustomFields = selectedMeasurementCode === "";
+                return (
               <div
                 className="bodycomp-row"
                 role="row"
@@ -583,21 +582,64 @@ function BodyCompositionImportPanel({
                   <label htmlFor={`bodycomp-displayname-${row.id}`} className="sr-only">
                     Row {index + 1} display name
                   </label>
-                  <input
-                    id={`bodycomp-displayname-${row.id}`}
-                    value={row.displayName}
-                    onChange={(event) => onRowChange(row.id, { displayName: event.target.value })}
-                    aria-label={`Row ${index + 1} display name`}
-                  />
-                  <label htmlFor={`bodycomp-code-${row.id}`} className="sr-only">
-                    Row {index + 1} measurement code
+                  <label htmlFor={`bodycomp-measurement-select-${row.id}`} className="sr-only">
+                    Row {index + 1} select known measurement
                   </label>
-                  <input
-                    id={`bodycomp-code-${row.id}`}
-                    value={row.measurementCode}
-                    onChange={(event) => onRowChange(row.id, { measurementCode: event.target.value })}
-                    aria-label={`Row ${index + 1} measurement code`}
-                  />
+                  <select
+                    id={`bodycomp-measurement-select-${row.id}`}
+                    value={selectedMeasurementCode}
+                    onChange={(event) => {
+                      const selectedCode = event.target.value;
+                      if (!selectedCode) {
+                        setCustomMeasurementRows((current) => ({ ...current, [row.id]: true }));
+                        return;
+                      }
+                      setCustomMeasurementRows((current) => {
+                        if (!(row.id in current)) {
+                          return current;
+                        }
+                        const next = { ...current };
+                        delete next[row.id];
+                        return next;
+                      });
+                      const selectedMeasurement = measurementTypes.find((type) => type.code === selectedCode);
+                      if (!selectedMeasurement) {
+                        return;
+                      }
+                      onRowChange(row.id, {
+                        displayName: selectedMeasurement.display,
+                        measurementCode: selectedMeasurement.code,
+                        unit: selectedMeasurement.canonicalUnit || row.unit
+                      });
+                    }}
+                    aria-label={`Row ${index + 1} known measurement`}
+                  >
+                    <option value="">Custom / detected text</option>
+                    {measurementTypes.map((type) => (
+                      <option key={type.code} value={type.code}>
+                        {type.display} ({type.code})
+                      </option>
+                    ))}
+                  </select>
+                  {showCustomFields ? (
+                    <>
+                      <input
+                        id={`bodycomp-displayname-${row.id}`}
+                        value={row.displayName}
+                        onChange={(event) => onRowChange(row.id, { displayName: event.target.value })}
+                        aria-label={`Row ${index + 1} display name`}
+                      />
+                      <label htmlFor={`bodycomp-code-${row.id}`} className="sr-only">
+                        Row {index + 1} measurement code
+                      </label>
+                      <input
+                        id={`bodycomp-code-${row.id}`}
+                        value={row.measurementCode}
+                        onChange={(event) => onRowChange(row.id, { measurementCode: event.target.value })}
+                        aria-label={`Row ${index + 1} measurement code`}
+                      />
+                    </>
+                  ) : null}
                   {row.sourceText ? <em>{row.sourceText}</em> : null}
                 </span>
                 <span role="cell">
@@ -628,6 +670,8 @@ function BodyCompositionImportPanel({
                   {row.generatedCode ? <small>Generated code</small> : null}
                 </span>
               </div>
+                );
+              })()
             ))}
           </div>
 
@@ -805,12 +849,47 @@ function PairingQr() {
 
 // ─── Helpers (kept local, not exported) ──────────────────────────────────────
 
-function getCatalogMarkerOrEmpty(marker: string): string {
-  return findKnownCatalogMarker(marker)?.marker ?? "";
+function resolveKnownMeasurementSelectionForManual(row: ManualMarkerRow, measurementTypes: MeasurementType[]): string {
+  if (measurementTypes.length === 0) {
+    return "";
+  }
+  const explicitCode = row.measurementCode?.trim();
+  if (explicitCode) {
+    const byCode = measurementTypes.find((type) => type.code === explicitCode);
+    if (byCode) {
+      return byCode.code;
+    }
+  }
+  const normalizedLabel = row.marker.trim().toLowerCase();
+  if (!normalizedLabel) {
+    return "";
+  }
+  const byLabel = measurementTypes.find((type) => {
+    if (type.display.trim().toLowerCase() === normalizedLabel) {
+      return true;
+    }
+    return type.aliases.some((alias) => alias.trim().toLowerCase() === normalizedLabel);
+  });
+  return byLabel?.code ?? "";
 }
 
-function findKnownCatalogMarker(input: string): (typeof MANUAL_LAB_MARKER_CATALOG)[number] | undefined {
-  const normalized = input.trim().toLowerCase();
-  if (!normalized) return undefined;
-  return MANUAL_LAB_MARKER_CATALOG.find((entry) => entry.marker.toLowerCase() === normalized);
+function resolveKnownMeasurementSelection(row: BodyCompositionEditableRow, measurementTypes: MeasurementType[]): string {
+  if (measurementTypes.length === 0) {
+    return "";
+  }
+  const byCode = measurementTypes.find((type) => type.code === row.measurementCode.trim());
+  if (byCode) {
+    return byCode.code;
+  }
+  const normalizedLabel = row.displayName.trim().toLowerCase();
+  if (!normalizedLabel) {
+    return "";
+  }
+  const byLabel = measurementTypes.find((type) => {
+    if (type.display.trim().toLowerCase() === normalizedLabel) {
+      return true;
+    }
+    return type.aliases.some((alias) => alias.trim().toLowerCase() === normalizedLabel);
+  });
+  return byLabel?.code ?? "";
 }
