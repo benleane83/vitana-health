@@ -4,6 +4,7 @@ export interface ModelRequestOptions {
   model?: string;
   timeoutMs?: number;
   provider?: "ollama" | "openai";
+  allowCloud?: boolean;
 }
 
 export interface ModelCallResult {
@@ -20,18 +21,31 @@ export interface ModelCallResult {
 }
 
 export async function callConfiguredModel(prompt: string, options?: ModelRequestOptions): Promise<ModelCallResult> {
-  const settings = getAiSettings();
-  const provider = options?.provider ?? settings.provider;
-  const timeoutMs = options?.timeoutMs ?? settings.timeoutMs;
+  const provider = resolveProvider(options?.provider);
+  const timeoutMs = options?.timeoutMs ?? parseTimeoutMs(process.env.MODEL_TIMEOUT_MS ?? process.env.OLLAMA_TIMEOUT_MS, 30000);
   if (provider === "openai") {
     return callOpenAiResponses(prompt, settings, options?.model, timeoutMs);
   }
   return callOllama(prompt, settings, options?.model, timeoutMs);
 }
 
-export function currentModelConfig(): Omit<AiSettings, "apiKey"> {
-  const { apiKey: _apiKey, ...settings } = getAiSettings();
-  return settings;
+export function currentModelConfig(): { provider: "ollama" | "openai"; endpoint: string; model: string; timeoutMs: number } {
+  const provider = resolveProvider();
+  const timeoutMs = parseTimeoutMs(process.env.MODEL_TIMEOUT_MS ?? process.env.OLLAMA_TIMEOUT_MS, 30000);
+  if (provider === "openai") {
+    return {
+      provider,
+      endpoint: process.env.OPENAI_RESPONSES_ENDPOINT ?? "",
+      model: process.env.OPENAI_MODEL ?? "gpt-5.4-mini",
+      timeoutMs
+    };
+  }
+  return {
+    provider,
+    endpoint: process.env.OLLAMA_ENDPOINT ?? "http://127.0.0.1:11434/api/generate",
+    model: process.env.OLLAMA_MODEL ?? "llama3.2",
+    timeoutMs
+  };
 }
 
 async function callOllama(prompt: string, settings: AiSettings, overrideModel: string | undefined, timeoutMs: number): Promise<ModelCallResult> {
@@ -200,4 +214,29 @@ async function callJsonEndpoint(args: {
   } finally {
     clearTimeout(timer);
   }
+}
+
+function resolveProvider(override?: "ollama" | "openai"): "ollama" | "openai" {
+  if (override) {
+    return override;
+  }
+  const configured = (process.env.LLM_PROVIDER ?? "").trim().toLowerCase();
+  if (configured === "openai" || configured === "azure") {
+    return "openai";
+  }
+  if (configured === "ollama") {
+    return "ollama";
+  }
+  if (process.env.OPENAI_RESPONSES_ENDPOINT && process.env.OPENAI_API_KEY) {
+    return "openai";
+  }
+  return "ollama";
+}
+
+function parseTimeoutMs(rawValue: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(rawValue ?? "", 10);
+  if (!Number.isFinite(parsed) || parsed < 1000) {
+    return fallback;
+  }
+  return parsed;
 }

@@ -1,5 +1,6 @@
 import { buildInsightPrompt, computeAnalytics, safetyNotice, type HealthStoreData, type Insight } from "@local-fitness-advisor/shared";
 import { callConfiguredModel } from "./modelClient.js";
+import { hasCloudAiConsent, redactFreeText } from "./privacy.js";
 
 export async function generateInsight(store: HealthStoreData): Promise<Insight> {
   const analytics = computeAnalytics(store);
@@ -9,7 +10,9 @@ export async function generateInsight(store: HealthStoreData): Promise<Insight> 
     ...analytics.labAlerts.map((alert) => `${alert.marker}: ${alert.value} ${alert.unit}, flagged ${alert.flag}${alert.reference ? ` against ${alert.reference}` : ""}.`)
   ];
 
-  const modelResult = await callConfiguredModel(buildInsightPrompt(evidence));
+  const modelResult = await callConfiguredModel(buildInsightPrompt(evidence.map((item) => redactFreeText(item))), {
+    allowCloud: hasCloudAiConsent(store.profile)
+  });
   if (modelResult.ok && modelResult.text) {
     return {
       id: id("insight"),

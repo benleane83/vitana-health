@@ -12,6 +12,12 @@ const profileSchema = z.object({
   units: z.enum(["metric", "imperial"])
 });
 
+const cloudConsentSchema = z.object({
+  enabled: z.boolean(),
+  providerScopeAccepted: z.boolean(),
+  consentVersion: z.string().min(1).max(40).optional()
+});
+
 const profileIdSchema = z
   .string()
   .trim()
@@ -38,7 +44,9 @@ export function makeProfileRoutes(storeManager: ProfileStoreManager): express.Ro
   router.put("/", (request, response) => {
     const parsed = profileSchema.parse(request.body);
     const store = storeManager.getActiveStore();
+    const existing = store.snapshot().profile;
     const profile: Profile = {
+      ...existing,
       ...parsed,
       id: store.profileId,
       updatedAt: new Date().toISOString()
@@ -46,6 +54,46 @@ export function makeProfileRoutes(storeManager: ProfileStoreManager): express.Ro
     const saved = store.replaceProfile(profile);
     storeManager.syncProfileEntry(saved);
     response.json(saved);
+  });
+
+  router.get("/cloud-ai-consent", (_request, response) => {
+    const profile = storeManager.getActiveStore().snapshot().profile;
+    response.json(
+      profile.cloudAiConsent ?? {
+        enabled: false,
+        providerScopeAccepted: false,
+        consentedAt: undefined,
+        consentVersion: undefined
+      }
+    );
+  });
+
+  router.put("/cloud-ai-consent", (request, response) => {
+    const parsed = cloudConsentSchema.parse(request.body ?? {});
+    const store = storeManager.getActiveStore();
+    const current = store.snapshot().profile;
+    const nextConsent = parsed.enabled
+      ? {
+          enabled: true,
+          providerScopeAccepted: parsed.providerScopeAccepted,
+          consentedAt: new Date().toISOString(),
+          consentVersion: parsed.consentVersion ?? "v1"
+        }
+      : {
+          enabled: false,
+          providerScopeAccepted: false,
+          consentedAt: undefined,
+          consentVersion: parsed.consentVersion ?? current.cloudAiConsent?.consentVersion ?? "v1"
+        };
+
+    const saved = store.replaceProfile({
+      ...current,
+      cloudAiConsent: nextConsent,
+      id: store.profileId,
+      updatedAt: new Date().toISOString()
+    });
+    storeManager.syncProfileEntry(saved);
+    response.json(saved.cloudAiConsent);
   });
 
   return router;
