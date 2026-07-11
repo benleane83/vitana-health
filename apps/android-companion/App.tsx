@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
+import { useKeepAwake } from "expo-keep-awake";
 import {
   clearConnection,
   clearSelectedProfileId,
@@ -29,6 +30,9 @@ export default function App() {
   const [result, setResult] = useState("");
   const [profiles, setProfiles] = useState<ProfileListEntry[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
+
+  // Avoid Android sleep/Doze interrupting long-running upload requests.
+  useKeepAwake(syncing ? "health-connect-sync" : undefined);
 
   useEffect(() => {
     loadConnection()

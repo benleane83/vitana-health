@@ -28,8 +28,8 @@
     "build:android:preview": "npx -y eas-cli@20.5.1 build --platform android --profile preview",
     "build:android:development": "npx -y eas-cli@20.5.1 build --platform android --profile development",
     "build:android:production": "npx -y eas-cli@20.5.1 build --platform android --profile production",
-    "update:preview": "npx -y eas-cli@20.5.1 update --channel preview",
-    "update:production": "npx -y eas-cli@20.5.1 update --channel production"
+    "update:preview": "npx -y eas-cli@20.5.1 update --channel preview --environment preview",
+    "update:production": "npx -y eas-cli@20.5.1 update --channel production --environment production"
   },
   "expo": {
     "install": {

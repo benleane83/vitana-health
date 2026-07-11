@@ -17,7 +17,28 @@ import {
 import { pinnedFetch } from "./pinnedFetch";
 
 const OVERLAP_MS = 5 * 60 * 1000;
-const MAX_ROWS_PER_UPLOAD = 5_000;
+const MAX_UPLOAD_BYTES = 2_000_000;
+const MAX_UPLOAD_ATTEMPTS = 3;
+
+const PAYLOAD_COLLECTION_KEYS = [
+  "steps",
+  "heartRate",
+  "oxygenSaturation",
+  "hrvRmssd",
+  "weightKg",
+  "exerciseSessions",
+  "distanceMeters",
+  "floorsClimbed",
+  "activeCaloriesKcal",
+  "totalCaloriesKcal",
+  "sleepSessions",
+  "bodyFatPct",
+  "leanBodyMassKg",
+  "bodyWaterMassKg",
+  "boneMassKg"
+] as const;
+
+type PayloadCollectionKey = (typeof PAYLOAD_COLLECTION_KEYS)[number];
 
 interface HealthConnectProvenance {
   recordId?: string;
@@ -308,47 +329,110 @@ function chunkPayload(payload: HealthConnectImportPayload): HealthConnectImportP
     ...payload.bodyWaterMassKg.map((value) => ["bodyWaterMassKg", value] as const),
     ...payload.boneMassKg.map((value) => ["boneMassKg", value] as const)
   ];
-  const chunks = rows.length ? Array.from({ length: Math.ceil(rows.length / MAX_ROWS_PER_UPLOAD) }, (_, index) => rows.slice(index * MAX_ROWS_PER_UPLOAD, (index + 1) * MAX_ROWS_PER_UPLOAD)) : [[]];
-  return chunks.map((rowsForChunk, index) => {
-    const chunk: HealthConnectImportPayload = {
-      ...payload,
-      batchId: `${payload.rangeEnd}:${index + 1}/${chunks.length}`,
-      steps: [],
-      heartRate: [],
-      oxygenSaturation: [],
-      hrvRmssd: [],
-      weightKg: [],
-      exerciseSessions: [],
-      distanceMeters: [],
-      floorsClimbed: [],
-      activeCaloriesKcal: [],
-      totalCaloriesKcal: [],
-      sleepSessions: [],
-      bodyFatPct: [],
-      leanBodyMassKg: [],
-      bodyWaterMassKg: [],
-      boneMassKg: []
-    };
-    for (const [category, value] of rowsForChunk) chunk[category].push(value as never);
-    return chunk;
-  });
+
+  if (rows.length === 0) {
+    return [{ ...makeChunkSkeleton(payload), batchId: `${payload.rangeEnd}:1/1` }];
+  }
+
+  const chunks: HealthConnectImportPayload[] = [];
+  let current = makeChunkSkeleton(payload);
+
+  for (const [category, value] of rows) {
+    const candidate = cloneChunk(current);
+    candidate[category].push(value as never);
+
+    const candidateSize = JSON.stringify(candidate).length;
+    if (candidateSize <= MAX_UPLOAD_BYTES || countRows(current) === 0) {
+      current = candidate;
+      continue;
+    }
+
+    chunks.push(current);
+    current = makeChunkSkeleton(payload);
+    current[category].push(value as never);
+  }
+
+  if (countRows(current) > 0) chunks.push(current);
+
+  return chunks.map((chunk, index) => ({
+    ...chunk,
+    batchId: `${payload.rangeEnd}:${index + 1}/${chunks.length}`
+  }));
 }
 
 async function uploadChunk(endpointUrl: string, publicKeyHash: string | null | undefined, token: string, payload: HealthConnectImportPayload) {
   const importUrl = `${endpointUrl.replace(/\/+$/, "")}/api/import/health-connect`;
-  let response: Awaited<ReturnType<typeof pinnedFetch>>;
-  try {
-    response = await pinnedFetch(importUrl, publicKeyHash ?? null, {
-      method: "POST",
-      headers: { Accept: "application/json", "Content-Type": "application/json", "x-companion-token": token },
-      body: JSON.stringify(payload)
-    });
-  } catch (error) {
-    throw new Error(`Sync request failed before the API could respond: ${error instanceof Error ? error.message : "Unknown network error"}`);
+  let response: Awaited<ReturnType<typeof pinnedFetch>> | null = null;
+  let lastNetworkError: string | null = null;
+
+  for (let attempt = 1; attempt <= MAX_UPLOAD_ATTEMPTS; attempt++) {
+    try {
+      response = await pinnedFetch(importUrl, publicKeyHash ?? null, {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json", "x-companion-token": token },
+        body: JSON.stringify(payload)
+      });
+      break;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown network error";
+      lastNetworkError = message;
+      const retryable = /network i\/o error|timed out|could not connect|connection abort|connection reset/i.test(message);
+      if (!retryable || attempt === MAX_UPLOAD_ATTEMPTS) {
+        throw new Error(`Sync request failed before the API could respond: ${message}`);
+      }
+      await sleep(attempt * 1000);
+    }
   }
+
+  if (!response) {
+    throw new Error(`Sync request failed before the API could respond: ${lastNetworkError ?? "Unknown network error"}`);
+  }
+
   const body = (await response.json().catch(() => ({}))) as { error?: unknown; counts?: { observations?: number; timeSeriesSamples?: number; activitySessions?: number } };
-  if (!response.ok) throw new Error(typeof body.error === "string" ? body.error : `Sync endpoint returned ${response.status}.`);
+  if (!response.ok) {
+    if (response.status === 413) {
+      throw new Error("Sync payload exceeded API size limits. Reduce selected categories or sync window and try again.");
+    }
+    throw new Error(typeof body.error === "string" ? body.error : `Sync endpoint returned ${response.status}.`);
+  }
   return body;
+}
+
+function makeChunkSkeleton(payload: HealthConnectImportPayload): HealthConnectImportPayload {
+  return {
+    ...payload,
+    batchId: undefined,
+    steps: [],
+    heartRate: [],
+    oxygenSaturation: [],
+    hrvRmssd: [],
+    weightKg: [],
+    exerciseSessions: [],
+    distanceMeters: [],
+    floorsClimbed: [],
+    activeCaloriesKcal: [],
+    totalCaloriesKcal: [],
+    sleepSessions: [],
+    bodyFatPct: [],
+    leanBodyMassKg: [],
+    bodyWaterMassKg: [],
+    boneMassKg: []
+  };
+}
+
+function cloneChunk(chunk: HealthConnectImportPayload): HealthConnectImportPayload {
+  const cloned = {
+    ...chunk,
+    batchId: chunk.batchId
+  } as HealthConnectImportPayload;
+  for (const key of PAYLOAD_COLLECTION_KEYS) {
+    cloned[key] = [...chunk[key]] as never;
+  }
+  return cloned;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function extractProvenance(record: unknown): HealthConnectProvenance | undefined {
