@@ -44,6 +44,12 @@ module.exports = {
         }
       }]
     ],
+    runtimeVersion: {
+      policy: "appVersion"
+    },
+    updates: {
+      fallbackToCacheTimeout: 0
+    },
     extra: {
       allowCleartext,
       eas: {
