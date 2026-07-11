@@ -5,6 +5,8 @@ import type { ProfileStoreManager, HealthStore } from "../store.js";
 import { rebuildWarehouseFromStore } from "../warehouse.js";
 import { generateInsight } from "../insights.js";
 import { summarizeMeasurementDetail, summarizeStoreData } from "../summary.js";
+import { buildClinicianReport } from "../clinicianReport.js";
+import { createClinicianReportPdf } from "../pdfReport.js";
 
 const measurementCodeParamSchema = z
   .string()
@@ -51,9 +53,17 @@ function storeCounts(snapshot: ReturnType<HealthStore["snapshot"]>) {
     sourceImports: snapshot.sourceImports.length,
     observations: snapshot.observations.length,
     timeSeriesSamples: snapshot.timeSeriesSamples.length,
-    activitySessions: snapshot.activitySessions.length,
-    labMarkers: snapshot.labMarkers.length
+    activitySessions: snapshot.activitySessions.length
   };
+}
+
+function reportFilename(displayName: string): string {
+  const safeStem = displayName
+    .replace(/[^A-Za-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80)
+    .toLowerCase();
+  return `${safeStem || "health"}-health-report.pdf`;
 }
 
 export function makeDataRoutes(storeManager: ProfileStoreManager): express.Router {
@@ -130,6 +140,19 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
   router.get("/export", (_request, response) => {
     response.setHeader("content-disposition", "attachment; filename=local-fitness-advisor-export.json");
     response.json(activeStore().exportData());
+  });
+
+  router.get("/export/pdf", async (_request, response, next) => {
+    try {
+      const report = buildClinicianReport(activeStore().snapshot());
+      const pdf = await createClinicianReportPdf(report);
+      response.setHeader("content-type", "application/pdf");
+      response.setHeader("content-disposition", `attachment; filename="${reportFilename(report.patient.displayName)}"`);
+      response.setHeader("content-length", String(pdf.length));
+      response.send(pdf);
+    } catch (error) {
+      next(error);
+    }
   });
 
   return router;

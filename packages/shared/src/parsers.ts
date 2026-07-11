@@ -1,8 +1,6 @@
 import type {
   ActivitySession,
   DataSource,
-  LabResultMarker,
-  LabResultPanel,
   Observation,
   ObservationGroup,
   SourceImport,
@@ -17,8 +15,6 @@ export interface ParsedImport {
   observationGroups: ObservationGroup[];
   timeSeriesSamples: TimeSeriesSample[];
   activitySessions: ActivitySession[];
-  labPanels: LabResultPanel[];
-  labMarkers: LabResultMarker[];
 }
 
 export interface ManualLabEntryMarkerInput {
@@ -181,9 +177,7 @@ export function parseBloodTestCsv(fileName: string, content: string, importedAt 
     observations,
     observationGroups: [group],
     timeSeriesSamples: [],
-    activitySessions: [],
-    labPanels: [],
-    labMarkers: []
+    activitySessions: []
   };
 }
 
@@ -265,9 +259,7 @@ export function buildManualLabEntryImport(payload: ManualLabEntryPayload, import
     observations,
     observationGroups: [group],
     timeSeriesSamples: [],
-    activitySessions: [],
-    labPanels: [],
-    labMarkers: []
+    activitySessions: []
   };
 }
 
@@ -422,9 +414,7 @@ export function buildBodyCompositionImportFromDraft(
     observations,
     observationGroups: [group],
     timeSeriesSamples: [],
-    activitySessions: [],
-    labPanels: [],
-    labMarkers: []
+    activitySessions: []
   };
 }
 

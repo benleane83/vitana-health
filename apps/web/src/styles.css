@@ -371,6 +371,10 @@ h3 {
   margin: var(--space-4) 0;
 }
 
+.summary-detail-stats {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .summary-detail-header {
   display: flex;
   justify-content: space-between;
@@ -1079,6 +1083,15 @@ label {
 
 .stat {
   padding: var(--space-4);
+}
+
+button.stat {
+  appearance: none;
+  border: 1px solid var(--line);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
 }
 
 .stat strong {

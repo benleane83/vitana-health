@@ -23,6 +23,7 @@ import { DashboardPage } from "./pages/DashboardPage.js";
 import { ImportPage } from "./pages/ImportPage.js";
 import { SummaryPage, ObservationTypeDetailPage } from "./pages/SummaryPage.js";
 import { QueryPage } from "./pages/QueryPage.js";
+import { ExportPage } from "./pages/ExportPage.js";
 
 export function App() {
   const [store, setStore] = useState<HealthStoreData>();
@@ -46,6 +47,8 @@ export function App() {
   const [summaryDetailBusy, setSummaryDetailBusy] = useState(false);
   const [summaryDetailError, setSummaryDetailError] = useState<string>();
   const [summaryDetailActionBusy, setSummaryDetailActionBusy] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportError, setExportError] = useState<string>();
   const [summarySort, setSummarySort] = useState<"name" | "count" | "recency">("recency");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
@@ -94,7 +97,7 @@ export function App() {
   const density = useMemo(() => {
     const counts = analytics?.counts;
     if (!counts) return 0;
-    return Math.min(100, counts.observations + counts.samples / 10 + counts.labMarkers * 8);
+    return Math.min(100, counts.observations + counts.samples / 10 + counts.activities * 4);
   }, [analytics]);
 
   // Initial data load
@@ -221,6 +224,7 @@ export function App() {
       dashboard: "/",
       import: importModePath(nextImportMode),
       summary: summaryPath(),
+      export: "/export",
       query: "/query"
     };
     const nextPath = routePaths[nextRoute] ?? "/";
@@ -235,6 +239,24 @@ export function App() {
     if (window.location.pathname !== nextPath) window.history.pushState({}, "", nextPath);
     setRoute("summary");
     setSummaryDetailCode(measurementCode);
+  }
+
+  async function downloadPdfReport() {
+    setExportBusy(true);
+    setExportError(undefined);
+    try {
+      const { blob, filename } = await api.exportPdf();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "Unable to create the PDF report.");
+    } finally {
+      setExportBusy(false);
+    }
   }
 
   async function run(success: string, task: () => Promise<void>) {
@@ -567,6 +589,7 @@ export function App() {
     dashboard: "nav-tab-dashboard",
     import: "nav-tab-import",
     summary: "nav-tab-summary",
+    export: "nav-tab-export",
     query: "nav-tab-query"
   };
 
@@ -575,11 +598,12 @@ export function App() {
       {/* Navigation tablist */}
       <nav className="route-nav" aria-label="Page navigation">
         <div role="tablist" aria-label="App sections">
-          {(["dashboard", "import", "summary", "query"] as AppRoute[]).map((r) => {
+          {(["dashboard", "import", "summary", "export", "query"] as AppRoute[]).map((r) => {
             const labels: Record<AppRoute, string> = {
               dashboard: "Dashboard",
               import: "Import",
               summary: "Health Data Summary",
+              export: "Export",
               query: "AI Query"
             };
             const panelId = `route-panel-${r}`;
@@ -715,6 +739,24 @@ export function App() {
       </div>
 
       <div
+        id="route-panel-export"
+        role="tabpanel"
+        aria-labelledby={navTabIds.export}
+        hidden={route !== "export"}
+      >
+        {route === "export" ? (
+          <ExportPage
+            busy={exportBusy}
+            error={exportError}
+            hasHealthData={Boolean(
+              store && (store.observations.length || store.timeSeriesSamples.length || store.activitySessions.length)
+            )}
+            onDownload={() => { void downloadPdfReport(); }}
+          />
+        ) : null}
+      </div>
+
+      <div
         id="route-panel-query"
         role="tabpanel"
         aria-labelledby={navTabIds.query}
@@ -781,6 +823,7 @@ function routeFromPathname(pathname: string): AppRoute {
   if (pathname === "/summary" || pathname.startsWith("/summary/")) return "summary";
   if (pathname === "/import" || pathname.startsWith("/import/") || pathname === "/labs") return "import";
   if (pathname === "/query") return "query";
+  if (pathname === "/export") return "export";
   return "dashboard";
 }
 

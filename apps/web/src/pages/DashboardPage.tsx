@@ -57,7 +57,7 @@ export function DashboardPage({
           <p className="eyebrow">Private health intelligence / local only</p>
           <h1>Your body data, held close.</h1>
           <p className="hero-copy">
-            A local insights portal for your Android Health exports, lab markers, profile, and personal AI summaries.
+            A local insights portal for your Android Health exports, activities, profile, and personal AI summaries.
           </p>
         </div>
         <div className="privacy-card">
@@ -96,7 +96,7 @@ export function DashboardPage({
             <Stat label="Imports" value={analytics?.counts.imports ?? 0} />
             <Stat label="Observations" value={analytics?.counts.observations ?? 0} />
             <Stat label="Samples" value={analytics?.counts.samples ?? 0} />
-            <Stat label="Labs" value={analytics?.counts.labMarkers ?? 0} />
+            <Stat label="Activities" value={analytics?.counts.activities ?? 0} />
           </div>
           <div className="metric-list" aria-label="Latest metrics">
             {analytics?.latestMetrics.length

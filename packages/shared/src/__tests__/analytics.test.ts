@@ -15,10 +15,6 @@ function makeEmptyStore(): HealthStoreData {
     observationGroups: [],
     timeSeriesSamples: [],
     activitySessions: [],
-    sleepSessions: [],
-    sleepStageIntervals: [],
-    labPanels: [],
-    labMarkers: [],
     insights: [],
     auditEvents: []
   };
@@ -36,7 +32,6 @@ describe("computeAnalytics — counts", () => {
       observations: 0,
       samples: 0,
       activities: 0,
-      labMarkers: 0,
       insights: 0
     });
   });

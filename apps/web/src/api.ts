@@ -125,6 +125,14 @@ export const api = {
   health: () => request<{ ok: boolean; storage: string; counts: AnalyticsSummary["counts"] }>("/api/health"),
   store: () => request<HealthStoreData>("/api/store"),
   analytics: () => request<AnalyticsSummary>("/api/analytics"),
+  exportPdf: async () => {
+    const response = await fetchAsOwner("/api/export/pdf", { headers: { accept: "application/pdf" } });
+    if (!response.ok) throw new Error(await response.text());
+    return {
+      blob: await response.blob(),
+      filename: response.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "health-report.pdf"
+    };
+  },
   summary: () => request<HealthDataSummary>("/api/summary"),
   healthDataDetail: (measurementCode: string) => request<HealthDataDetail>(`/api/summary/${encodeURIComponent(measurementCode)}`),
   deleteObservation: (id: string) => request<DeleteObservationResponse>(`/api/observations/${encodeURIComponent(id)}`, { method: "DELETE" }),

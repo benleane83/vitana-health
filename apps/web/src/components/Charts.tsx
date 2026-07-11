@@ -14,7 +14,7 @@ const flatChartPaddingRatio = 0.05;
 const minimumFlatChartPadding = 1;
 
 function detailKindLabel(kind: HealthDataDetailEntry["kind"]): string {
-  return { observation: "Observation", sample: "Sample", "lab-marker": "Lab marker" }[kind];
+  return { observation: "Observation", sample: "Sample", activity: "Activity" }[kind];
 }
 
 // ─── Density bar (progress semantics) ────────────────────────────────────────

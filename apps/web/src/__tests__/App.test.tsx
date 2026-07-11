@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import { App } from "../App.js";
 import { safetyNotice } from "@local-fitness-advisor/shared";
 
@@ -14,12 +14,9 @@ function makeEmptyStore() {
     devices: [],
     measurementTypes: [],
     observations: [],
+    observationGroups: [],
     timeSeriesSamples: [],
     activitySessions: [],
-    sleepSessions: [],
-    sleepStageIntervals: [],
-    labPanels: [],
-    labMarkers: [],
     insights: [],
     auditEvents: []
   };
@@ -27,7 +24,7 @@ function makeEmptyStore() {
 
 function makeEmptyAnalytics() {
   return {
-    counts: { imports: 0, observations: 0, samples: 0, activities: 0, labMarkers: 0, insights: 0 },
+    counts: { imports: 0, observations: 0, samples: 0, activities: 0, insights: 0 },
     latestMetrics: [],
     trendCards: [],
     labAlerts: [],
@@ -43,7 +40,9 @@ function mockFetch(urlResponses: Record<string, unknown>) {
     return Promise.resolve({
       ok: true,
       json: () => Promise.resolve(body),
-      text: () => Promise.resolve(JSON.stringify(body))
+      text: () => Promise.resolve(JSON.stringify(body)),
+      blob: () => Promise.resolve(body instanceof Blob ? body : new Blob([JSON.stringify(body)])),
+      headers: new Headers({ "content-disposition": 'attachment; filename="health-report.pdf"' })
     } as Response);
   });
 }
@@ -51,7 +50,8 @@ function mockFetch(urlResponses: Record<string, unknown>) {
 beforeEach(() => {
   global.fetch = mockFetch({
     "/api/store": makeEmptyStore(),
-    "/api/analytics": makeEmptyAnalytics()
+    "/api/analytics": makeEmptyAnalytics(),
+    "/api/profiles": { profiles: [], activeProfileId: "self" }
   });
 });
 
@@ -83,12 +83,36 @@ describe("App — navigation landmarks", () => {
     expect(nav).toBeInTheDocument();
   });
 
-  it("renders the four main navigation tabs", () => {
+  it("renders the main navigation tabs", () => {
     render(<App />);
     expect(screen.getByRole("tab", { name: /dashboard/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /import/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /health data summary/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /^export$/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /ai query/i })).toBeInTheDocument();
+  });
+
+  describe("App — PDF export", () => {
+    it("downloads the PDF report from the Export page", async () => {
+      const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+      vi.stubGlobal("URL", { createObjectURL: vi.fn(() => "blob:report"), revokeObjectURL: vi.fn() });
+      global.fetch = mockFetch({
+        "/api/store": makeEmptyStore(),
+        "/api/analytics": makeEmptyAnalytics(),
+        "/api/profiles": { profiles: [], activeProfileId: "self" },
+        "/api/export/pdf": new Blob(["%PDF-test"], { type: "application/pdf" })
+      });
+
+      render(<App />);
+      fireEvent.click(screen.getByRole("tab", { name: /^export$/i }));
+      fireEvent.click(screen.getByRole("button", { name: /download pdf report/i }));
+
+      await waitFor(() => expect(click).toHaveBeenCalled());
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/export/pdf",
+        expect.objectContaining({ credentials: "include" })
+      );
+    });
   });
 });
 
