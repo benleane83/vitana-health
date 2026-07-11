@@ -1,3 +1,4 @@
+import type { CloudAiConsent } from "@local-fitness-advisor/shared";
 import { safetyNotice } from "@local-fitness-advisor/shared";
 import type { AiQueryResult } from "../api.js";
 import { QueryChart } from "../components/Charts.js";
@@ -16,6 +17,10 @@ export function QueryPage({
   onQuestionChange,
   onSubmit,
   busy,
+  cloudProvider,
+  cloudConsent,
+  cloudConsentBusy,
+  onCloudConsentChange,
   result,
   error
 }: {
@@ -23,9 +28,16 @@ export function QueryPage({
   onQuestionChange: (value: string) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
   busy: boolean;
+  cloudProvider?: "ollama" | "openai";
+  cloudConsent?: CloudAiConsent;
+  cloudConsentBusy: boolean;
+  onCloudConsentChange: (enabled: boolean) => void;
   result?: AiQueryResult;
   error?: string;
 }) {
+  const cloudEnabled = cloudConsent?.enabled === true && cloudConsent?.providerScopeAccepted === true;
+  const providerLabel = cloudProvider === "openai" ? "Cloud model" : "Local model";
+
   return (
     <section className="panel query-panel">
       <div>
@@ -33,6 +45,46 @@ export function QueryPage({
         <h2>Ask your health data</h2>
       </div>
       <p className="safety">{safetyNotice}</p>
+
+      <section className="query-privacy-card" aria-label="AI privacy and provider scope">
+        <div className="query-privacy-head">
+          <strong>{providerLabel}</strong>
+          <span className={`query-provider-badge ${cloudProvider === "openai" ? "cloud" : "local"}`}>
+            {cloudProvider === "openai" ? "Off-device prompt processing" : "On-device processing"}
+          </span>
+        </div>
+        {cloudProvider === "openai" ? (
+          <>
+            <p>
+              Only minimized model prompts may leave this device. Direct identifiers and raw import content are excluded.
+            </p>
+            <ul>
+              <li>Sent: de-identified question + bounded metric evidence.</li>
+              <li>Never sent: profile identity, source labels, file names, notes, raw imports, or auth tokens.</li>
+            </ul>
+            <div className="query-privacy-actions">
+              <button
+                type="button"
+                onClick={() => onCloudConsentChange(!cloudEnabled)}
+                disabled={cloudConsentBusy || busy}
+              >
+                {cloudConsentBusy
+                  ? "Saving…"
+                  : cloudEnabled
+                    ? "Disable cloud prompts"
+                    : "Enable cloud prompts"}
+              </button>
+              <span>
+                {cloudEnabled
+                  ? `Enabled${cloudConsent?.consentedAt ? ` (${cloudConsent.consentedAt.slice(0, 10)})` : ""}`
+                  : "Cloud prompts disabled"}
+              </span>
+            </div>
+          </>
+        ) : (
+          <p>Prompts stay local when using a local model provider.</p>
+        )}
+      </section>
 
       <form className="query-form" onSubmit={onSubmit}>
         <label htmlFor="ai-question">Question</label>

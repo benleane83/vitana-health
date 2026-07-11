@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { defaultMeasurementTypes } from "@local-fitness-advisor/shared";
 import { callConfiguredModel } from "./modelClient.js";
+import { sanitizeQuestionForModel } from "./privacy.js";
 
 // ─── DSL Schema ──────────────────────────────────────────────────────────────
 
@@ -226,11 +227,12 @@ function extractJson(raw: string): string {
 
 export async function planAiQuery(
   question: string,
-  options?: { timezone?: string; timeoutMs?: number }
+  options?: { timezone?: string; timeoutMs?: number; allowCloud?: boolean }
 ): Promise<PlannerOutcome> {
-  const prompt = buildPlannerPrompt(question, options?.timezone);
+  const prompt = buildPlannerPrompt(sanitizeQuestionForModel(question), options?.timezone);
   const modelResult = await callConfiguredModel(prompt, {
-    timeoutMs: options?.timeoutMs ?? 30000
+    timeoutMs: options?.timeoutMs ?? 30000,
+    allowCloud: options?.allowCloud
   });
 
   const elapsedMs = modelResult.elapsedMs;

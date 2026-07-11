@@ -264,7 +264,7 @@ export function createApp(
   app.use("/api/profiles", makeProfilesRoutes(storeManager));
   app.use("/api/import", makeImportRoutes(storeManager));
   app.use("/api/query", makeQueryRoutes(storeManager));
-  app.use("/api/llm", makeLlmRoutes());
+  app.use("/api/llm", makeLlmRoutes(storeManager));
   app.use("/api", makeDataRoutes(storeManager));
 
   // Static web serving

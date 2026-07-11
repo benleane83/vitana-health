@@ -2,6 +2,7 @@ import type {
   AnalyticsSummary,
   BodyCompositionDraft,
   BodyCompositionDraftCommitPayload,
+  CloudAiConsent,
   DeleteObservationResponse,
   DeleteObservationsByTypeResponse,
   HealthDataDetail,
@@ -116,6 +117,13 @@ export interface AiQueryResult {
   suggestedRephrase?: string;
 }
 
+export interface LlmConfig {
+  provider: "ollama" | "openai";
+  endpoint: string;
+  model: string;
+  timeoutMs: number;
+}
+
 export interface ProfilesResponse {
   profiles: ProfileListEntry[];
   activeProfileId: string;
@@ -140,6 +148,11 @@ export const api = {
     request<DeleteObservationsByTypeResponse>(`/api/observations/by-type/${encodeURIComponent(measurementCode)}`, { method: "DELETE" }),
   saveProfile: (profile: Omit<Profile, "id" | "updatedAt">) =>
     request<Profile>("/api/profile", { method: "PUT", body: JSON.stringify(profile) }),
+  cloudAiConsent: {
+    get: () => request<CloudAiConsent>("/api/profile/cloud-ai-consent"),
+    set: (payload: { enabled: boolean; providerScopeAccepted: boolean; consentVersion?: string }) =>
+      request<CloudAiConsent>("/api/profile/cloud-ai-consent", { method: "PUT", body: JSON.stringify(payload) })
+  },
   importBloodTest: (fileName: string, content: string) =>
     request<{ store: HealthStoreData }>("/api/import/blood-test", { method: "POST", body: JSON.stringify({ fileName, content }) }),
   previewBodyCompositionReport: (payload: { fileName: string; mimeType: string; contentBase64: string }) =>
@@ -177,5 +190,8 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ question, ...options })
       })
+  },
+  llm: {
+    config: () => request<LlmConfig>("/api/llm/config")
   }
 };

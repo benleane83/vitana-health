@@ -14,8 +14,16 @@ export interface Profile {
   sex?: "female" | "male" | "intersex" | "unknown" | "not-specified";
   heightCm?: number;
   goalSummary?: string;
+  cloudAiConsent?: CloudAiConsent;
   units: "metric" | "imperial";
   updatedAt: string;
+}
+
+export interface CloudAiConsent {
+  enabled: boolean;
+  providerScopeAccepted: boolean;
+  consentedAt?: string;
+  consentVersion?: string;
 }
 
 export interface ProfileListEntry {

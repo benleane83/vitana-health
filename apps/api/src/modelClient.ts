@@ -2,6 +2,7 @@ export interface ModelRequestOptions {
   model?: string;
   timeoutMs?: number;
   provider?: "ollama" | "openai";
+  allowCloud?: boolean;
 }
 
 export interface ModelCallResult {
@@ -18,8 +19,19 @@ export interface ModelCallResult {
 }
 
 export async function callConfiguredModel(prompt: string, options?: ModelRequestOptions): Promise<ModelCallResult> {
-  const provider = resolveProvider(options?.provider);
+  const provider = resolvedModelProvider(options?.provider);
   const timeoutMs = options?.timeoutMs ?? parseTimeoutMs(process.env.MODEL_TIMEOUT_MS ?? process.env.OLLAMA_TIMEOUT_MS, 30000);
+  if (provider === "openai" && options?.allowCloud === false) {
+    return {
+      ok: false,
+      provider,
+      endpoint: process.env.OPENAI_RESPONSES_ENDPOINT ?? "",
+      model: options?.model ?? process.env.OPENAI_MODEL ?? "gpt-5.4-mini",
+      timeoutMs,
+      elapsedMs: 0,
+      error: "CLOUD_CONSENT_REQUIRED"
+    };
+  }
   if (provider === "openai") {
     return callOpenAiResponses(prompt, {
       model: options?.model,
@@ -33,7 +45,7 @@ export async function callConfiguredModel(prompt: string, options?: ModelRequest
 }
 
 export function currentModelConfig(): { provider: "ollama" | "openai"; endpoint: string; model: string; timeoutMs: number } {
-  const provider = resolveProvider();
+  const provider = resolvedModelProvider();
   const timeoutMs = parseTimeoutMs(process.env.MODEL_TIMEOUT_MS ?? process.env.OLLAMA_TIMEOUT_MS, 30000);
   if (provider === "openai") {
     return {
@@ -218,7 +230,7 @@ async function callJsonEndpoint(args: {
   }
 }
 
-function resolveProvider(override?: "ollama" | "openai"): "ollama" | "openai" {
+export function resolvedModelProvider(override?: "ollama" | "openai"): "ollama" | "openai" {
   if (override) {
     return override;
   }
