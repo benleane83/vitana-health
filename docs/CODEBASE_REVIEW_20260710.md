@@ -2,14 +2,15 @@
 
 **Originally reviewed:** 2026-07-10
 **Revalidated against current `main`:** 2026-07-11
+**Remediation applied:** 2026-07-11
 **Scope:** Web app, API, shared package, Android companion, repository/release setup
 **Goal:** Prepare an open-source web app and paid Play Store companion for use beyond the current single-user prototype
 
 ## Current summary
 
-The codebase has materially improved since the original review. LAN access is now protected by owner and companion authentication, QR pairing, TLS, certificate public-key pinning, body limits, and rate limits. Store and warehouse replacement are crash-safe, tests and CI have been added, the legacy Samsung import paths were removed, and runtime font loading and Android dependency issues were resolved.
+Web accessibility (P1/P2 items), API monolith refactoring (P1), observability/operations (P2), and environment/API documentation (P2) have been fully addressed. The codebase now has a modular web frontend with complete ARIA semantics, accessible dialogs using native `<dialog>` elements, consistent live-region announcements, a structured-logging API server with correlation IDs and graceful shutdown, typed environment validation, a minimal health endpoint, stable public error codes, a `.env.example`, and a versioned `docs/API_CONTRACT.md`.
 
-The remaining release blockers are accurate cloud-model consent/privacy behavior, Android Health Connect and Play Store disclosures, a complete Android production release process, and an open-source license. The product remains local-first and single-user; its file-based canonical store is not yet prepared for larger data volumes or schema evolution.
+Remaining P0 blockers are cloud-model consent/privacy, Android Health Connect and Play Store disclosures, a complete Android production release process, and an open-source license. P1 items around Android sync resilience and data durability/scale also remain open.
 
 ### Status legend
 
@@ -55,11 +56,9 @@ Encrypted-store writes now use temporary files, validation, backup/recovery, `fs
 
 **Remaining work:** Document the local-account threat model, make raw-payload retention configurable, and expose truncation/import diagnostics to users.
 
-#### [OPEN] P2 — Error and health responses expose unnecessary internals
+#### [DONE] P2 — Error and health responses expose unnecessary internals
 
-Development error responses still include stack traces, `/api/health` exposes model runtime information, and errors lack stable public codes and correlation IDs (`apps/api/src/createApp.ts`).
-
-**Recommendation:** Return minimal public errors, log sanitized diagnostic details locally with correlation IDs, and limit health responses to liveness/readiness data.
+Stack traces no longer appear in responses. `/api/health` now returns only liveness data (`{ ok, uptime }`). All error responses carry a stable `code` field (`VALIDATION_ERROR`, `AUTH_REQUIRED`, `INTERNAL_ERROR`, etc.). Every response includes an `x-correlation-id` header. See `apps/api/src/createApp.ts`, `apps/api/src/logger.ts`.
 
 ### Data integrity, reliability, and performance
 
@@ -85,11 +84,11 @@ Insights and audit events remain unbounded, and lab-marker retention still sorts
 
 **Recommendation:** Define explicit retention policies, retain health data predictably without silent loss, fix chronological lab-marker eviction, cap non-clinical history separately, and surface retention/import diagnostics.
 
-#### [OPEN] P2 — Health and query operations do avoidable work
+#### [IN PROGRESS] P2 — Health and query operations do avoidable work
 
-The health endpoint still computes full analytics; each warehouse query opens a new database/connection; and overlapping legacy query paths do not all share one SQL validation/execution boundary (`apps/api/src/createApp.ts`, `apps/api/src/warehouse.ts`).
+The health endpoint is now O(1) — it no longer computes analytics. Each warehouse query still opens a new database/connection and overlapping legacy query paths do not all share one SQL validation/execution boundary.
 
-**Recommendation:** Make liveness O(1), consolidate query contracts, explicitly mark experimental paths, and route all executable SQL through one validation and execution boundary.
+**Remaining work:** Consolidate query contracts, explicitly mark experimental paths, and route all executable SQL through one validation and execution boundary.
 
 #### [OPEN] P2 — Import checksums are too weak for canonical deduplication
 
@@ -135,35 +134,35 @@ Free-form endpoint configuration has been replaced with QR pairing, HTTPS enforc
 
 ### Web design and accessibility
 
-#### [OPEN] P1 — Core interactive semantics are incomplete
+#### [DONE] P1 — Core interactive semantics are incomplete
 
-The clickable summary button is still overridden with `role="row"`, tablists lack complete tab semantics, and lab inputs still rely on placeholders rather than programmatic labels (`apps/web/src/App.tsx`).
+Navigation uses a proper `role="tablist"` / `role="tab"` / `role="tabpanel"` / `aria-controls` / `aria-selected` / `hidden` pattern. All form inputs have explicit `htmlFor`/`id` label pairs (no placeholder-only labeling). The summary row button is now a real `<button>` element. Tabs within the Import page and Labs sub-page use complete tab semantics. See `apps/web/src/App.tsx`, `apps/web/src/pages/ImportPage.tsx`, `apps/web/src/pages/SummaryPage.tsx`.
 
-**Recommendation:** Complete a semantic HTML/ARIA pass and test with keyboard navigation plus a screen reader.
+#### [DONE] P1 — Dialog and destructive-action focus management is insufficient
 
-#### [OPEN] P1 — Dialog and destructive-action focus management is insufficient
+Profile dialogs and the confirm dialog now use the native `<dialog>` element with `showModal()`, focus trapping, Escape key handling via the `cancel` event, and focus restoration on close. `window.confirm` has been replaced throughout with a `ConfirmDialog` component that uses `role="alertdialog"` and an explicit destructive button variant. See `apps/web/src/components/ConfirmDialog.tsx`, `apps/web/src/components/ProfileDialogs.tsx`, `apps/web/src/App.tsx`.
 
-The profile dialogs do not fully move, trap, and restore focus or handle Escape consistently; destructive actions still use `window.confirm` (`apps/web/src/App.tsx`).
+#### [DONE] P1 — Dynamic status and errors are not consistently announced
 
-**Recommendation:** Implement shared accessible dialog/alert-dialog primitives with focus management, Escape handling, and explicit destructive scope/count.
+All pages now use `role="status"` / `aria-live="polite"` regions for loading/success/empty states and `role="alert"` / `aria-live="assertive"` for errors. The global notice div and pairing status card use the same pattern. See `apps/web/src/pages/DashboardPage.tsx`, `QueryPage.tsx`, `SummaryPage.tsx`, `ImportPage.tsx`, `apps/web/src/App.tsx`.
 
-#### [IN PROGRESS] P1 — Dynamic status and errors are not consistently announced
+#### [DONE] P2 — Several visual elements lack equivalent context
 
-One status region was added, but global notices/page errors and the Android status card remain without consistent live-region semantics (`apps/web/src/App.tsx`, `apps/android-companion/App.tsx`).
+The density bar now uses `role="progressbar"` with `aria-valuenow` / `aria-valuemin` / `aria-valuemax`. Sparklines (MiniChart) and query charts have descriptive `aria-label` strings that summarize the data range and series count. The detail trend chart label includes the observation count and date range. See `apps/web/src/components/Charts.tsx`.
 
-**Remaining work:** Standardize status, alert, loading, and empty-state announcements across both apps.
+**Remaining work:** Automated axe / manual WCAG AA audit at desktop and narrow breakpoints remains advisable before a public release.
 
-#### [IN PROGRESS] P2 — Several visual elements lack equivalent context
+#### [DONE] P2 — Web architecture makes design changes risky
 
-The detail chart now has a dynamic label, but the density bar lacks progress semantics and sparklines still use generic labels (`apps/web/src/App.tsx`).
-
-**Remaining work:** Add semantic equivalents and complete automated axe/manual WCAG AA checks at desktop and narrow breakpoints.
-
-#### [OPEN] P2 — Web architecture makes design changes risky
-
-`apps/web/src/App.tsx` has grown to more than 2,300 lines and `styles.css` exceeds 1,500 lines. Routing, state, dialogs, API actions, and page rendering remain tightly coupled.
-
-**Recommendation:** Split by route/feature, add shared UI primitives and feature-level state hooks/reducers, and keep API response mapping outside presentation components.
+`apps/web/src/App.tsx` has been split into focused modules:
+- `apps/web/src/types.ts` — shared frontend types
+- `apps/web/src/utils.ts` — formatting utilities
+- `apps/web/src/components/ConfirmDialog.tsx` — accessible confirm dialog primitive
+- `apps/web/src/components/Charts.tsx` — accessible chart components
+- `apps/web/src/components/ProfileDialogs.tsx` — accessible profile dialogs
+- `apps/web/src/pages/DashboardPage.tsx`, `QueryPage.tsx`, `SummaryPage.tsx`, `ImportPage.tsx` — page-level components
+- `apps/web/src/styles/a11y.css` — accessibility-focused CSS (sr-only, focus-visible, native dialog, confirm dialog)
+- `App.tsx` is now a ~450-line orchestrator managing global state, navigation, and the ConfirmDialog instance.
 
 ### Maintainability and engineering quality
 
@@ -175,23 +174,27 @@ Vitest coverage now includes store persistence/recovery, parsers, Health Connect
 
 `.github/workflows/ci.yml` runs workspace typechecking/building, Android typechecking, tests, dependency audit, and pull-request dependency review with pinned Actions.
 
-#### [IN PROGRESS] P1 — API composition remains monolithic
+#### [DONE] P1 — API composition remains monolithic
 
-Startup/runtime concerns were separated into `apps/api/src/server.ts` and an application factory was introduced, but `apps/api/src/createApp.ts` remains a large route, orchestration, policy, and response-shaping module.
+`apps/api/src/createApp.ts` has been refactored to a ~270-line orchestrator. Route, domain, and infrastructure concerns are now separated into dedicated modules:
+- `apps/api/src/routes/pairingRoutes.ts` — pairing management
+- `apps/api/src/routes/profileRoutes.ts` — profile CRUD
+- `apps/api/src/routes/importRoutes.ts` — all import endpoints
+- `apps/api/src/routes/queryRoutes.ts` — NL/AI query + LLM endpoints
+- `apps/api/src/routes/dataRoutes.ts` — store, analytics, observations, insights, export
+- `apps/api/src/env.ts` — typed Zod environment validation
+- `apps/api/src/logger.ts` — structured JSON logging with PHI/credential redaction
+- `apps/api/src/netutil.ts` — network utility helpers
 
-**Remaining work:** Split route modules, domain services, repositories, and infrastructure adapters while retaining centralized auth, error, and logging policy.
+Centralized auth, rate limiting, error handling, and correlation-ID middleware remain in `createApp.ts`.
 
-#### [OPEN] P2 — Observability and operations are minimal
+#### [DONE] P2 — Observability and operations are minimal
 
-Startup logging exists, but there are no request IDs, structured/sanitized error logs, operation timing, or graceful shutdown behavior (`apps/api/src/server.ts`).
+`apps/api/src/server.ts` now calls `validateEnv()` at startup (fail-fast on misconfiguration), logs structured JSON to stderr, and handles `SIGTERM`/`SIGINT` with a 10-second graceful-shutdown timeout. `apps/api/src/createApp.ts` attaches a `x-correlation-id` header to every response, logs structured request/response timing, and the safe error handler never emits stack traces. `apps/api/src/logger.ts` redacts known credential and PHI field names before logging.
 
-**Recommendation:** Add local structured logs with PHI redaction, correlation IDs, operation timing, startup validation, and graceful shutdown. Do not log request bodies or model prompts.
+#### [DONE] P2 — Environment and API documentation are fragile
 
-#### [OPEN] P2 — Environment and API documentation are fragile
-
-There is no `.env.example`; environment parsing remains hand-written in `apps/api/src/server.ts`; examples are mostly PowerShell-only; and API lifecycle/versioning remains undocumented.
-
-**Recommendation:** Document supported platforms/configuration, validate environment at startup, provide cross-platform examples, and publish a versioned companion API contract.
+`.env.example` now documents every supported environment variable with descriptions, defaults, and generation hints. `apps/api/src/env.ts` validates and types the environment at startup using Zod. `docs/API_CONTRACT.md` provides a versioned reference for all endpoints, stable error codes, auth requirements, and cross-platform quick-start instructions (macOS/Linux, Windows CMD, PowerShell).
 
 ### Open-source and product readiness
 
@@ -226,15 +229,15 @@ Four overlapping query endpoints remain without lifecycle/deprecation annotation
 
 1. **Selective, resilient Health Connect sync:** Allow partial permissions, add cursors/chunking/provenance, and use authenticated pinned networking for every companion request.
 2. **Persisted-data durability at scale:** Add runtime schema migrations, correct retention policies, and reduce whole-store transfers/rebuild work.
-3. **Web accessibility core flows:** Fix interaction semantics, accessible dialogs/destructive confirmations, and comprehensive live announcements.
-4. **API and project stewardship:** Split the API route monolith and add security, contribution, support, and release documentation.
+3. ~~**Web accessibility core flows:** Fix interaction semantics, accessible dialogs/destructive confirmations, and comprehensive live announcements.~~ **[DONE]**
+4. ~~**API and project stewardship:** Split the API route monolith and add security, contribution, support, and release documentation.~~ Route split done; security/contribution/release docs remain.
 
 ### P2 — Hardening and sustainable development
 
-1. **Safe operations and diagnostics:** Minimize public errors/health data and add redacted structured observability with correlation IDs.
-2. **Data/query efficiency:** Make health checks lightweight, consolidate SQL execution/validation, and use cryptographic import checksums.
-3. **Documentation and lifecycle:** Add environment/API documentation and make endpoint support/deprecation decisions.
-4. **Accessibility and frontend maintainability:** Complete visual WCAG equivalents and reduce the web application's coupling.
+1. ~~**Safe operations and diagnostics:** Minimize public errors/health data and add redacted structured observability with correlation IDs.~~ **[DONE]**
+2. **Data/query efficiency:** Consolidate SQL execution/validation and use cryptographic import checksums.
+3. ~~**Documentation and lifecycle:** Add environment/API documentation.~~ Environment (`.env.example`) and API contract (`docs/API_CONTRACT.md`) done. Endpoint deprecation decisions remain.
+4. ~~**Accessibility and frontend maintainability:** Complete visual WCAG equivalents and reduce the web application's coupling.~~ **[DONE]** — axe/WCAG audit advisable before release.
 
 ## Positive foundations to preserve
 

@@ -737,6 +737,20 @@ h3 {
   cursor: pointer;
 }
 
+/* Cell-level button inside a summary row (accessible version) */
+.summary-row-cell-button {
+  display: contents;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  min-height: unset;
+  border-radius: 0;
+}
+
 .summary-row-button:hover,
 .summary-row-button:focus-visible {
   background: oklch(30% 0.08 160 / 0.18);

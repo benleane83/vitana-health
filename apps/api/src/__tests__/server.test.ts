@@ -48,9 +48,18 @@ describe("GET /api/health", () => {
     const res = await request(app).get("/api/health").set("authorization", ownerAuthorization);
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
-    expect(res.body.app).toBe("local-fitness-advisor");
-    expect(res.body.counts).toBeDefined();
-    expect(res.body.modelRuntime).toBeDefined();
+    expect(res.body.uptime).toBeGreaterThanOrEqual(0);
+    // Health endpoint intentionally does not expose internals
+    expect(res.body.app).toBeUndefined();
+    expect(res.body.storage).toBeUndefined();
+    expect(res.body.counts).toBeUndefined();
+    expect(res.body.modelRuntime).toBeUndefined();
+  });
+
+  it("returns ok: true without a credential (public liveness check)", async () => {
+    const res = await request(app).get("/api/health");
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
   });
 });
 

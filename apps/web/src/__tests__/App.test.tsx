@@ -83,12 +83,12 @@ describe("App — navigation landmarks", () => {
     expect(nav).toBeInTheDocument();
   });
 
-  it("renders the four main navigation buttons", () => {
+  it("renders the four main navigation tabs", () => {
     render(<App />);
-    expect(screen.getByRole("button", { name: /dashboard/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /import/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /health data summary/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /ai query/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /dashboard/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /import/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /health data summary/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /ai query/i })).toBeInTheDocument();
   });
 });
 
@@ -106,16 +106,16 @@ describe("App — safety notice", () => {
 describe("App — import tab", () => {
   it("navigates to the import tab when Import button is clicked", () => {
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: /^import$/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /^import$/i }));
     // Import source tabs should now be visible
     expect(screen.getByRole("tablist", { name: /import source/i })).toBeInTheDocument();
   });
 
   it("shows Labs and Fitness Tracker tabs in the import view", () => {
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: /^import$/i }));
-    expect(screen.getByRole("button", { name: /labs/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /fitness tracker/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: /^import$/i }));
+    expect(screen.getByRole("tab", { name: /labs/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /fitness tracker/i })).toBeInTheDocument();
   });
 });
 

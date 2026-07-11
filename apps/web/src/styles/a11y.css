@@ -1,0 +1,103 @@
+/**
+ * Accessibility foundations:
+ * - Visually-hidden utility class for screen-reader-only text
+ * - Visible focus indicators (keyboard navigation)
+ * - Native <dialog> element styling
+ * - Accessible confirmation dialog
+ * - Skip-to-main link
+ */
+
+/* Visually hidden but accessible to screen readers */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Ensure keyboard focus is always clearly visible */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* Remove default browser focus ring for pointer users only */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ─── Native dialog base ───────────────────────────────────────────────────── */
+
+dialog {
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  color: var(--text);
+  max-width: min(480px, calc(100vw - 2rem));
+  padding: var(--space-6);
+  box-shadow: 0 24px 80px oklch(0% 0 0 / 0.7);
+}
+
+dialog::backdrop {
+  background: oklch(10% 0.02 160 / 0.8);
+  backdrop-filter: blur(4px);
+}
+
+/* ─── Confirm dialog ───────────────────────────────────────────────────────── */
+
+.confirm-dialog h2 {
+  margin: 0 0 var(--space-3);
+  font-size: 1.1rem;
+  color: var(--text-strong);
+}
+
+.confirm-dialog p {
+  margin: 0 0 var(--space-6);
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  gap: var(--space-3);
+  justify-content: flex-end;
+}
+
+.confirm-dialog-cancel {
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+}
+
+.confirm-dialog-cancel:hover:not(:disabled) {
+  background: var(--surface-3);
+}
+
+.confirm-dialog-confirm {
+  background: var(--primary);
+  color: var(--ink-on-accent);
+}
+
+.confirm-dialog-destructive {
+  background: var(--danger);
+  color: oklch(98% 0.01 0);
+}
+
+.confirm-dialog-destructive:hover:not(:disabled) {
+  background: oklch(65% 0.2 35);
+}
+
+/* ─── Profile dialog (now uses <dialog> element) ──────────────────────────── */
+
+.profile-dialog {
+  width: min(640px, calc(100vw - 2rem));
+  max-height: calc(100vh - 4rem);
+  overflow-y: auto;
+}
