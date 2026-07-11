@@ -270,6 +270,16 @@ export const defaultMeasurementTypes: MeasurementType[] = [
   }
 ];
 
+for (const type of defaultMeasurementTypes) {
+  if (type.normalLow !== undefined || type.normalHigh !== undefined) {
+    type.referenceRanges = [{ low: type.normalLow, high: type.normalHigh, unit: type.canonicalUnit }];
+  }
+}
+
+export const manualLabMarkerCatalog = defaultMeasurementTypes
+  .filter((type) => type.category === "lab" || type.category === "metabolic")
+  .map((type) => ({ marker: type.display, unit: type.canonicalUnit, measurementCode: type.code }));
+
 export function findMeasurementType(input: string, registry = defaultMeasurementTypes): MeasurementType | undefined {
   const normalized = input.trim().toLowerCase().replaceAll("_", " ");
   return registry.find((type) => {
@@ -283,9 +293,20 @@ export function findMeasurementType(input: string, registry = defaultMeasurement
 export function classifyValue(
   value: number,
   type: MeasurementType,
-  low = type.normalLow,
-  high = type.normalHigh
+  unitOrLow: string | number = type.canonicalUnit,
+  legacyHigh?: number
 ): "low" | "normal" | "high" | "unknown" {
+  if (typeof unitOrLow === "number") {
+    if (value < unitOrLow) return "low";
+    if (legacyHigh !== undefined && value > legacyHigh) return "high";
+    return "normal";
+  }
+  const unit = unitOrLow;
+  const range = type.referenceRanges?.find((candidate) => candidate.unit === unit);
+  if (!range) {
+    return "unknown";
+  }
+  const { low, high } = range;
   if (Number.isFinite(low) && value < Number(low)) {
     return "low";
   }
@@ -297,4 +318,3 @@ export function classifyValue(
   }
   return "unknown";
 }
-

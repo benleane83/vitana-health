@@ -4,6 +4,7 @@ import type {
   LabResultMarker,
   LabResultPanel,
   Observation,
+  ObservationGroup,
   SourceImport,
   TimeSeriesSample
 } from "./types.js";
@@ -13,6 +14,7 @@ export interface ParsedImport {
   sourceImport: SourceImport;
   dataSource: DataSource;
   observations: Observation[];
+  observationGroups: ObservationGroup[];
   timeSeriesSamples: TimeSeriesSample[];
   activitySessions: ActivitySession[];
   labPanels: LabResultPanel[];
@@ -24,8 +26,6 @@ export interface ManualLabEntryMarkerInput {
   markerCode?: string;
   value: number;
   unit?: string;
-  referenceLow?: number;
-  referenceHigh?: number;
 }
 
 export interface ManualLabEntryPayload {
@@ -114,18 +114,22 @@ function splitCsvLine(line: string): string[] {
 
 export function parseBloodTestCsv(fileName: string, content: string, importedAt = new Date().toISOString()): ParsedImport {
   const rows = parseCsv(content);
-  const importId = cryptoId("import");
-  const sourceId = cryptoId("source");
-  const panelId = cryptoId("panel");
+  const sourceChecksum = checksum(content);
+  const importId = stableId("import", ["blood-test-csv", fileName, sourceChecksum]);
+  const sourceId = stableId("source", ["blood-test-csv", fileName, sourceChecksum]);
+  const groupId = stableId("group", ["lab_panel", sourceChecksum]);
   const diagnostics: string[] = [];
-  const panel: LabResultPanel = {
-    id: panelId,
-    collectedAt: readDate(rows[0]?.collectedAt ?? rows[0]?.collected_at ?? rows[0]?.date) ?? importedAt,
-    labName: rows[0]?.labName ?? rows[0]?.lab_name,
-    panelName: rows[0]?.panelName ?? rows[0]?.panel_name ?? "Blood test panel",
-    sourceId
+  const collectedAt =
+    readDate(rows[0]?.collectedAt ?? rows[0]?.collected_at ?? rows[0]?.date) ?? importedAt;
+  const group: ObservationGroup = {
+    id: groupId,
+    kind: "lab_panel",
+    label: rows[0]?.panelName ?? rows[0]?.panel_name ?? "Blood test panel",
+    sourceId,
+    importId,
+    collectedAt,
+    metadata: { labName: rows[0]?.labName ?? rows[0]?.lab_name }
   };
-  const markers: LabResultMarker[] = [];
   const observations: Observation[] = [];
 
   for (const row of rows) {
@@ -137,28 +141,16 @@ export function parseBloodTestCsv(fileName: string, content: string, importedAt 
       diagnostics.push(`Skipped lab row with unrecognized marker or missing value: ${JSON.stringify(row).slice(0, 180)}`);
       continue;
     }
-    const referenceLow = readNumber(normalized.reference_low ?? normalized.ref_low ?? normalized.low);
-    const referenceHigh = readNumber(normalized.reference_high ?? normalized.ref_high ?? normalized.high);
-    const marker: LabResultMarker = {
-      id: cryptoId("marker"),
-      panelId,
-      measurementCode: measurementType.code,
-      displayName: label || measurementType.display,
-      value,
-      unit: normalized.unit || measurementType.canonicalUnit,
-      referenceLow,
-      referenceHigh,
-      flag: readFlag(value, referenceLow, referenceHigh)
-    };
-    markers.push(marker);
+    const unit = normalized.unit || measurementType.canonicalUnit;
     observations.push({
-      id: cryptoId("obs"),
+      id: stableId("obs", ["blood-test-csv", sourceChecksum, measurementType.code, String(value), unit]),
       measurementCode: measurementType.code,
-      observedAt: panel.collectedAt,
+      observedAt: collectedAt,
       value,
-      unit: marker.unit,
+      unit,
       sourceId,
-      note: `Lab marker from ${panel.panelName}`,
+      observationGroupId: groupId,
+      note: `Lab marker from ${group.label}`,
       sourceJson: row
     });
   }
@@ -170,7 +162,7 @@ export function parseBloodTestCsv(fileName: string, content: string, importedAt 
       fileName,
       importedAt,
       parserVersion: "blood-test-csv-v1",
-      checksum: checksum(content),
+      checksum: sourceChecksum,
       rowCount: rows.length,
       status: diagnostics.length > rows.length / 2 ? "needs-review" : "processed",
       diagnostics: diagnostics.slice(0, 25),
@@ -184,27 +176,27 @@ export function parseBloodTestCsv(fileName: string, content: string, importedAt 
       createdAt: importedAt
     },
     observations,
+    observationGroups: [group],
     timeSeriesSamples: [],
     activitySessions: [],
-    labPanels: [panel],
-    labMarkers: markers
+    labPanels: [],
+    labMarkers: []
   };
 }
 
 export function buildManualLabEntryImport(payload: ManualLabEntryPayload, importedAt = new Date().toISOString()): ParsedImport {
-  const importId = cryptoId("import");
-  const sourceId = cryptoId("source");
-  const panelId = cryptoId("panel");
   const diagnostics: string[] = [];
   const panelName = payload.panelName.trim() || "Manual lab panel";
-  const panel: LabResultPanel = {
-    id: panelId,
-    collectedAt: readDate(payload.collectedAt) ?? importedAt,
-    labName: payload.labName?.trim() || undefined,
-    panelName,
-    sourceId
+  const collectedAt = readDate(payload.collectedAt) ?? importedAt;
+  const serializedPayload = JSON.stringify({ collectedAt, panelName, labName: payload.labName?.trim(), markers: payload.markers });
+  const sourceChecksum = checksum(serializedPayload);
+  const importId = stableId("import", ["manual-entry", sourceChecksum]);
+  const sourceId = stableId("source", ["manual-entry", sourceChecksum]);
+  const groupId = stableId("group", ["lab_panel", sourceChecksum]);
+  const group: ObservationGroup = {
+    id: groupId, kind: "lab_panel", label: panelName, sourceId, importId, collectedAt,
+    metadata: { labName: payload.labName?.trim() || undefined }
   };
-  const markers: LabResultMarker[] = [];
   const observations: Observation[] = [];
 
   for (const row of payload.markers) {
@@ -224,41 +216,23 @@ export function buildManualLabEntryImport(payload: ManualLabEntryPayload, import
       diagnostics.push(`Skipped manual marker with no name or code: ${JSON.stringify(row).slice(0, 180)}`);
       continue;
     }
-    const referenceLow = row.referenceLow;
-    const referenceHigh = row.referenceHigh;
     const displayName = markerName || measurementType?.display || markerCode || "Manual marker";
     const measurementCode = measurementType?.code || markerCode || fallbackMeasurementCode(displayName);
-    const marker: LabResultMarker = {
-      id: cryptoId("marker"),
-      panelId,
-      measurementCode,
-      displayName,
-      value,
-      unit: row.unit?.trim() || measurementType?.canonicalUnit || "unknown",
-      referenceLow,
-      referenceHigh,
-      flag: readFlag(value, referenceLow, referenceHigh)
-    };
-    markers.push(marker);
+    const unit = row.unit?.trim() || measurementType?.canonicalUnit || "unknown";
     observations.push({
-      id: cryptoId("obs"),
+      id: stableId("obs", ["manual-entry", sourceChecksum, measurementCode, String(value), unit]),
       measurementCode,
-      observedAt: panel.collectedAt,
+      observedAt: collectedAt,
       value,
-      unit: marker.unit,
+      unit,
       sourceId,
-      note: `Lab marker from ${panel.panelName}`,
+      observationGroupId: groupId,
+      note: `Lab marker from ${group.label}`,
       sourceJson: row
     });
   }
 
-  const serializedPayload = JSON.stringify({
-    collectedAt: panel.collectedAt,
-    panelName: panel.panelName,
-    labName: panel.labName,
-    markers: payload.markers
-  });
-  const fileName = `${panel.panelName.replace(/\s+/g, "-").toLowerCase()}-${panel.collectedAt.slice(0, 10)}.manual-entry`;
+  const fileName = `${panelName.replace(/\s+/g, "-").toLowerCase()}-${collectedAt.slice(0, 10)}.manual-entry`;
 
   return {
     sourceImport: {
@@ -267,7 +241,7 @@ export function buildManualLabEntryImport(payload: ManualLabEntryPayload, import
       fileName,
       importedAt,
       parserVersion: "manual-lab-entry-v1",
-      checksum: checksum(serializedPayload),
+      checksum: sourceChecksum,
       rowCount: payload.markers.length,
       status: diagnostics.length > payload.markers.length / 2 ? "needs-review" : "processed",
       diagnostics: diagnostics.slice(0, 25),
@@ -276,15 +250,16 @@ export function buildManualLabEntryImport(payload: ManualLabEntryPayload, import
     dataSource: {
       id: sourceId,
       sourceKind: "manual-entry",
-      label: `Manual lab entry: ${panel.panelName}`,
+      label: `Manual lab entry: ${panelName}`,
       importId,
       createdAt: importedAt
     },
     observations,
+    observationGroups: [group],
     timeSeriesSamples: [],
     activitySessions: [],
-    labPanels: [panel],
-    labMarkers: markers
+    labPanels: [],
+    labMarkers: []
   };
 }
 
@@ -368,6 +343,11 @@ export function buildBodyCompositionImportFromDraft(
   const observations: Observation[] = [];
   const includedRows = payload.rows.filter((row) => row.included !== false);
   const observedAt = readDate(payload.reportDate) ?? importedAt;
+  const groupId = stableId("group", ["body_composition_report", sourceChecksum]);
+  const group: ObservationGroup = {
+    id: groupId, kind: "body_composition_report", label: payload.fileName, sourceId, importId,
+    collectedAt: observedAt
+  };
 
   for (const row of includedRows) {
     const measurementCode = row.measurementCode?.trim() || fallbackBodyCompositionCode(row.label || row.displayName);
@@ -387,6 +367,7 @@ export function buildBodyCompositionImportFromDraft(
       value,
       unit,
       sourceId,
+      observationGroupId: groupId,
       note: `Body composition report: ${payload.fileName}`,
       sourceJson: {
         label: row.label,
@@ -427,6 +408,7 @@ export function buildBodyCompositionImportFromDraft(
       createdAt: importedAt
     },
     observations,
+    observationGroups: [group],
     timeSeriesSamples: [],
     activitySessions: [],
     labPanels: [],
@@ -654,13 +636,6 @@ function readDate(value: string | undefined): string | undefined {
   if (!value) return undefined;
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
-}
-
-function readFlag(value: number, low?: number, high?: number): LabResultMarker["flag"] {
-  if (low !== undefined && value < low) return "low";
-  if (high !== undefined && value > high) return "high";
-  if (low !== undefined || high !== undefined) return "normal";
-  return "unknown";
 }
 
 function fallbackMeasurementCode(value: string): string {

@@ -7,6 +7,7 @@ import type {
   HealthStoreData,
   MeasurementType
 } from "@local-fitness-advisor/shared";
+import { classifyValue } from "@local-fitness-advisor/shared";
 
 const categoryLabels: Record<HealthDataSummaryTypeRow["category"], string> = {
   activity: "Activity",
@@ -21,7 +22,6 @@ const categoryLabels: Record<HealthDataSummaryTypeRow["category"], string> = {
 
 export function summarizeStoreData(store: HealthStoreData): HealthDataSummary {
   const measurementTypes = new Map(store.measurementTypes.map((item) => [item.code, item]));
-  const panelCollectionById = new Map(store.labPanels.map((panel) => [panel.id, panel.collectedAt]));
   const rows = new Map<string, HealthDataSummaryTypeRow>();
 
   for (const observation of store.observations) {
@@ -36,13 +36,6 @@ export function summarizeStoreData(store: HealthStoreData): HealthDataSummary {
     row.counts.samples += 1;
     row.counts.total += 1;
     row.lastMeasuredAt = latestTimestamp(row.lastMeasuredAt, sample.endAt);
-  }
-
-  for (const marker of store.labMarkers) {
-    const row = ensureRow(rows, measurementTypes, marker.measurementCode);
-    row.counts.labMarkers += 1;
-    row.counts.total += 1;
-    row.lastMeasuredAt = latestTimestamp(row.lastMeasuredAt, panelCollectionById.get(marker.panelId));
   }
 
   const grouped = new Map<HealthDataSummaryTypeRow["category"], HealthDataSummaryTypeRow[]>();
@@ -97,7 +90,7 @@ export function listHealthDataDetailEntries(store: HealthStoreData, measurementC
   const measurementTypes = new Map(store.measurementTypes.map((item) => [item.code, item]));
   const dataSources = new Map(store.dataSources.map((item) => [item.id, item]));
   const sourceImports = new Map(store.sourceImports.map((item) => [item.id, item]));
-  const panels = new Map(store.labPanels.map((item) => [item.id, item]));
+  const observationGroups = new Map(store.observationGroups.map((item) => [item.id, item]));
   const displayName = measurementTypes.get(measurementCode)?.display ?? humanizeCode(measurementCode);
 
   const observationEntries = store.observations
@@ -105,6 +98,9 @@ export function listHealthDataDetailEntries(store: HealthStoreData, measurementC
     .map<HealthDataDetailEntry>((entry) => {
       const source = dataSources.get(entry.sourceId);
       const imported = source?.importId ? sourceImports.get(source.importId) : undefined;
+      const type = measurementTypes.get(entry.measurementCode);
+      const group = entry.observationGroupId ? observationGroups.get(entry.observationGroupId) : undefined;
+      const referenceRange = type?.referenceRanges?.find((range) => range.unit === entry.unit);
       return {
         kind: "observation",
         id: entry.id,
@@ -118,6 +114,11 @@ export function listHealthDataDetailEntries(store: HealthStoreData, measurementC
         importFileName: imported?.fileName,
         importedAt: imported?.importedAt,
         note: entry.note,
+        observationGroup: group
+          ? { id: group.id, kind: group.kind, label: group.label, collectedAt: group.collectedAt }
+          : undefined,
+        referenceRange,
+        status: type ? classifyValue(entry.value, type, entry.unit) : "unknown",
         canDelete: true,
         deleteLabel: "Delete"
       };
@@ -144,30 +145,7 @@ export function listHealthDataDetailEntries(store: HealthStoreData, measurementC
       };
     });
 
-  const labEntries = store.labMarkers
-    .filter((entry) => entry.measurementCode === measurementCode)
-    .map<HealthDataDetailEntry>((entry) => {
-      const panel = panels.get(entry.panelId);
-      const source = panel ? dataSources.get(panel.sourceId) : undefined;
-      const imported = source?.importId ? sourceImports.get(source.importId) : undefined;
-      const panelNote = [panel?.panelName, panel?.labName].filter(Boolean).join(" • ");
-      return {
-        kind: "lab-marker",
-        id: entry.id,
-        measurementCode: entry.measurementCode,
-        displayName: entry.displayName || displayName,
-        timestamp: panel?.collectedAt ?? "",
-        value: entry.value,
-        unit: entry.unit,
-        sourceLabel: source?.label,
-        sourceKind: source?.sourceKind,
-        importFileName: imported?.fileName,
-        importedAt: imported?.importedAt,
-        note: panelNote || undefined
-      };
-    });
-
-  return [...observationEntries, ...sampleEntries, ...labEntries].sort((a, b) => {
+  return [...observationEntries, ...sampleEntries].sort((a, b) => {
     const timestampCompare = b.timestamp.localeCompare(a.timestamp);
     if (timestampCompare !== 0) {
       return timestampCompare;

@@ -48,8 +48,7 @@ const maxObservations = 250_000;
 const maxTimeSeriesSamples = 10_000;
 const minPerMeasurementCode = 500;
 const maxActivitySessions = 75_000;
-const maxLabPanels = 20_000;
-const maxLabMarkers = 200_000;
+const maxObservationGroups = 20_000;
 
 export class HealthStore {
   private data: HealthStoreData;
@@ -73,11 +72,12 @@ export class HealthStore {
       this.securityMode = security.securityMode;
     }
     this.data = existsSync(this.dataPath) ? this.readEncryptedStore() : createEmptyStore(this.profileId);
+    const migrated = normalizeStore(this.data);
     const registryChanged = reconcileDefaultMeasurementTypes(this.data);
     if (!existsSync(this.dataPath)) {
       this.audit("store-created", "Encrypted local health store created.");
       this.persist();
-    } else if (registryChanged) {
+    } else if (registryChanged || migrated) {
       this.persist();
     }
   }
@@ -100,6 +100,7 @@ export class HealthStore {
     sourceImport: SourceImport;
     dataSource: HealthStoreData["dataSources"][number];
     observations: HealthStoreData["observations"];
+    observationGroups: HealthStoreData["observationGroups"];
     timeSeriesSamples: HealthStoreData["timeSeriesSamples"];
     activitySessions: HealthStoreData["activitySessions"];
     labPanels: HealthStoreData["labPanels"];
@@ -126,6 +127,11 @@ export class HealthStore {
       (item) => item.measurementCode,
       minPerMeasurementCode
     );
+    this.data.observationGroups = limitByNewest(
+      appendUniqueById(this.data.observationGroups, parsed.observationGroups),
+      maxObservationGroups,
+      (item) => item.collectedAt ?? item.endAt ?? item.startAt ?? item.id
+    );
     this.data.timeSeriesSamples = limitByNewest(
       appendUniqueById(this.data.timeSeriesSamples, parsed.timeSeriesSamples),
       maxTimeSeriesSamples,
@@ -137,16 +143,6 @@ export class HealthStore {
       appendUniqueById(this.data.activitySessions, parsed.activitySessions),
       maxActivitySessions,
       (item) => item.startAt
-    );
-    this.data.labPanels = limitByNewest(
-      appendUniqueById(this.data.labPanels, parsed.labPanels),
-      maxLabPanels,
-      (item) => item.collectedAt
-    );
-    this.data.labMarkers = limitByNewest(
-      appendUniqueById(this.data.labMarkers, parsed.labMarkers),
-      maxLabMarkers,
-      (item) => item.id
     );
     this.audit(
       "import-processed",
@@ -436,6 +432,7 @@ export class ProfileStoreManager {
 
 function createEmptyStore(profileId = "self"): HealthStoreData {
   return {
+    schemaVersion: 2,
     profile: {
       id: normalizeProfileId(profileId),
       displayName: "Local user",
@@ -447,6 +444,7 @@ function createEmptyStore(profileId = "self"): HealthStoreData {
     devices: [],
     measurementTypes: defaultMeasurementTypes,
     observations: [],
+    observationGroups: [],
     timeSeriesSamples: [],
     activitySessions: [],
     sleepSessions: [],
@@ -456,6 +454,58 @@ function createEmptyStore(profileId = "self"): HealthStoreData {
     insights: [],
     auditEvents: []
   };
+}
+
+function normalizeStore(data: HealthStoreData): boolean {
+  let changed = false;
+  if (data.schemaVersion !== 2) {
+    data.schemaVersion = 2;
+    changed = true;
+  }
+  data.observationGroups ??= [];
+  for (const panel of data.labPanels ?? []) {
+    const groupId = `group_legacy_${panel.id}`;
+    if (!data.observationGroups.some((group) => group.id === groupId)) {
+      data.observationGroups.push({
+        id: groupId,
+        kind: "lab_panel",
+        label: panel.panelName,
+        sourceId: panel.sourceId,
+        collectedAt: panel.collectedAt,
+        metadata: { labName: panel.labName, legacyPanelId: panel.id }
+      });
+      changed = true;
+    }
+    for (const marker of (data.labMarkers ?? []).filter((item) => item.panelId === panel.id)) {
+      const matching = data.observations.find(
+        (observation) =>
+          observation.sourceId === panel.sourceId &&
+          observation.measurementCode === marker.measurementCode &&
+          observation.observedAt === panel.collectedAt &&
+          observation.value === marker.value &&
+          observation.unit === marker.unit
+      );
+      if (matching) {
+        if (!matching.observationGroupId) {
+          matching.observationGroupId = groupId;
+          changed = true;
+        }
+      } else {
+        data.observations.push({
+          id: `obs_legacy_${marker.id}`,
+          measurementCode: marker.measurementCode,
+          observedAt: panel.collectedAt,
+          value: marker.value,
+          unit: marker.unit,
+          sourceId: panel.sourceId,
+          observationGroupId: groupId,
+          note: `Lab marker from ${panel.panelName}`
+        });
+        changed = true;
+      }
+    }
+  }
+  return changed;
 }
 
 function reconcileDefaultMeasurementTypes(data: HealthStoreData): boolean {

@@ -76,6 +76,17 @@ describe("HealthStore — mergeImport deduplication", () => {
 
     expect(store.snapshot().sourceImports).toHaveLength(1);
   });
+
+  it("deduplicates independently parsed grouped lab imports", () => {
+    const store = makeStore();
+    store.mergeImport(makeManualImport());
+    store.mergeImport(makeManualImport());
+
+    const snapshot = store.snapshot();
+    expect(snapshot.observationGroups).toHaveLength(1);
+    expect(snapshot.observations).toHaveLength(2);
+    expect(snapshot.observations.every((item) => item.observationGroupId === snapshot.observationGroups[0].id)).toBe(true);
+  });
 });
 
 describe("HealthStore — deleteObservation", () => {
@@ -99,6 +110,7 @@ describe("HealthStore — deleteObservation", () => {
     expect(result!.deletedCount).toBe(1);
     expect(result!.deletedObservation?.id).toBe(observationId);
     expect(store.snapshot().observations.find((o) => o.id === observationId)).toBeUndefined();
+    expect(store.snapshot().observationGroups).toHaveLength(1);
   });
 });
 

@@ -1,4 +1,4 @@
-import type { AnalyticsSummary, HealthStoreData, LabResultMarker, MeasurementType, Observation } from "./types.js";
+import type { AnalyticsSummary, HealthStoreData, MeasurementType, Observation } from "./types.js";
 import { classifyValue } from "./registry.js";
 
 export function computeAnalytics(store: HealthStoreData): AnalyticsSummary {
@@ -15,9 +15,13 @@ export function computeAnalytics(store: HealthStoreData): AnalyticsSummary {
     .filter((card): card is NonNullable<typeof card> => card !== undefined)
     .slice(0, 8);
 
-  const labAlerts = store.labMarkers
-    .filter((marker) => marker.flag && marker.flag !== "normal")
-    .map((marker) => labAlert(marker))
+  const labAlerts = store.observations
+    .filter((observation) => {
+      const category = registry.get(observation.measurementCode)?.category;
+      return category === "lab" || category === "metabolic";
+    })
+    .map((observation) => labAlert(observation, registry.get(observation.measurementCode)))
+    .filter((alert): alert is NonNullable<typeof alert> => alert !== undefined)
     .slice(0, 12);
 
   const evidenceDigest = [
@@ -36,7 +40,7 @@ export function computeAnalytics(store: HealthStoreData): AnalyticsSummary {
       observations: store.observations.length,
       samples: store.timeSeriesSamples.length,
       activities: store.activitySessions.length,
-      labMarkers: store.labMarkers.length,
+      labMarkers: 0,
       insights: store.insights.length
     },
     latestMetrics,
@@ -55,7 +59,7 @@ function latestMetric(code: string, observations: Observation[], type?: Measurem
     value: latest.value,
     unit: latest.unit,
     observedAt: latest.observedAt,
-    status: classifyValue(latest.value, type)
+    status: classifyValue(latest.value, type, latest.unit)
   };
 }
 
@@ -80,17 +84,17 @@ function trendCard(code: string, observations: Observation[], type?: Measurement
   };
 }
 
-function labAlert(marker: LabResultMarker) {
-  const reference =
-    marker.referenceLow !== undefined || marker.referenceHigh !== undefined
-      ? `${marker.referenceLow ?? "-"}-${marker.referenceHigh ?? "-"}`
-      : undefined;
+function labAlert(observation: Observation, type?: MeasurementType) {
+  if (!type) return undefined;
+  const range = type.referenceRanges?.find((candidate) => candidate.unit === observation.unit);
+  const status = classifyValue(observation.value, type, observation.unit);
+  if (!range || status === "normal") return undefined;
   return {
-    marker: marker.displayName,
-    value: marker.value,
-    unit: marker.unit,
-    reference,
-    flag: marker.flag === "normal" || !marker.flag ? "unknown" : marker.flag
+    marker: type.display,
+    value: observation.value,
+    unit: observation.unit,
+    reference: `${range.low ?? "-"}-${range.high ?? "-"}`,
+    flag: status
   };
 }
 

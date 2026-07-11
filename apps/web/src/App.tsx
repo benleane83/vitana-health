@@ -14,11 +14,9 @@ import type {
   Profile,
   ProfileListEntry
 } from "@local-fitness-advisor/shared";
-import { safetyNotice } from "@local-fitness-advisor/shared";
+import { manualLabMarkerCatalog, safetyNotice } from "@local-fitness-advisor/shared";
 import { api } from "./api.js";
 import type { AiQueryResult, AiQueryChartSeries, PairedDevice, PendingPairing } from "./api.js";
-import { LAB_MARKER_CATALOG } from "./labMarkerCatalog.js";
-import type { LabMarkerCatalogEntry } from "./labMarkerCatalog.js";
 
 type AppRoute = "dashboard" | "summary" | "import" | "query";
 type SummarySort = "name" | "count" | "recency";
@@ -1355,7 +1353,7 @@ function LabsPage({
                     }}
                   >
                     <option value="">Custom marker</option>
-                    {LAB_MARKER_CATALOG.map((entry) => (
+                    {manualLabMarkerCatalog.map((entry) => (
                       <option value={entry.marker} key={entry.marker}>
                         {entry.marker}
                       </option>
@@ -2292,12 +2290,12 @@ function getCatalogMarkerOrEmpty(marker: string): string {
   return findKnownCatalogMarker(marker)?.marker ?? "";
 }
 
-function findKnownCatalogMarker(input: string): LabMarkerCatalogEntry | undefined {
+function findKnownCatalogMarker(input: string): (typeof manualLabMarkerCatalog)[number] | undefined {
   const normalized = input.trim().toLowerCase();
   if (!normalized) {
     return undefined;
   }
-  return LAB_MARKER_CATALOG.find((entry) => entry.marker.toLowerCase() === normalized);
+  return manualLabMarkerCatalog.find((entry) => entry.marker.toLowerCase() === normalized);
 }
 
 function createEmptyRow(marker = "", value = "", unit = ""): ManualMarkerRow {
