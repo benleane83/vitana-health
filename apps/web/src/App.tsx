@@ -107,7 +107,6 @@ export function App() {
       if (!cancelled) {
         setMessage(error instanceof Error ? error.message : "Unable to load local health data.");
       }
-
     });
     return () => { cancelled = true; };
   }, []);
