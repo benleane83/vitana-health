@@ -65,7 +65,36 @@ export interface MeasurementType {
   openMHealthSchema?: string;
   normalLow?: number;
   normalHigh?: number;
+  referenceRanges?: ReferenceRange[];
   aggregation: "sum" | "average" | "min" | "max" | "latest" | "none";
+}
+
+export interface ReferenceRange {
+  low?: number;
+  high?: number;
+  unit: string;
+  label?: string;
+  source?: string;
+}
+
+export type ObservationGroupKind =
+  | "lab_panel"
+  | "body_composition_report"
+  | "activity_session"
+  | "sleep_session"
+  | "import_batch"
+  | "custom";
+
+export interface ObservationGroup {
+  id: string;
+  kind: ObservationGroupKind;
+  label: string;
+  sourceId?: string;
+  importId?: string;
+  startAt?: string;
+  endAt?: string;
+  collectedAt?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface Observation {
@@ -77,6 +106,7 @@ export interface Observation {
   value: number;
   unit: string;
   sourceId: string;
+  observationGroupId?: string;
   deviceId?: string;
   note?: string;
   sourceJson?: unknown;
@@ -170,12 +200,14 @@ export interface AuditEvent {
 }
 
 export interface HealthStoreData {
+  schemaVersion: 2;
   profile: Profile;
   sourceImports: SourceImport[];
   dataSources: DataSource[];
   devices: Device[];
   measurementTypes: MeasurementType[];
   observations: Observation[];
+  observationGroups: ObservationGroup[];
   timeSeriesSamples: TimeSeriesSample[];
   activitySessions: ActivitySession[];
   sleepSessions: SleepSession[];
@@ -271,6 +303,9 @@ export interface HealthDataDetailEntry {
   importFileName?: string;
   importedAt?: string;
   note?: string;
+  observationGroup?: Pick<ObservationGroup, "id" | "kind" | "label" | "collectedAt">;
+  referenceRange?: ReferenceRange;
+  status?: "low" | "normal" | "high" | "unknown";
   canDelete?: boolean;
   deleteLabel?: string;
 }

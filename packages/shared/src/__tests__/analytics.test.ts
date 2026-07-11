@@ -1,16 +1,18 @@
 import { describe, it, expect } from "vitest";
 import { computeAnalytics } from "../analytics.js";
-import type { HealthStoreData, Observation, LabResultMarker, MeasurementType } from "../types.js";
+import type { HealthStoreData, Observation, MeasurementType } from "../types.js";
 import { defaultMeasurementTypes } from "../registry.js";
 
 function makeEmptyStore(): HealthStoreData {
   return {
+    schemaVersion: 2,
     profile: { id: "self", displayName: "Test", units: "metric", updatedAt: "2026-01-01T00:00:00.000Z" },
     sourceImports: [],
     dataSources: [],
     devices: [],
     measurementTypes: defaultMeasurementTypes,
     observations: [],
+    observationGroups: [],
     timeSeriesSamples: [],
     activitySessions: [],
     sleepSessions: [],
@@ -115,24 +117,24 @@ describe("computeAnalytics — trendCards", () => {
 });
 
 describe("computeAnalytics — labAlerts", () => {
-  it("includes only markers with non-normal flags", () => {
+  it("includes only observations outside matching metadata ranges", () => {
     const store = makeEmptyStore();
-    store.labMarkers = [
-      { id: "m1", panelId: "p1", measurementCode: "glucose", displayName: "Glucose", value: 120, unit: "mg/dL", flag: "high" },
-      { id: "m2", panelId: "p1", measurementCode: "total_cholesterol", displayName: "Total Cholesterol", value: 185, unit: "mg/dL", flag: "normal" },
-      { id: "m3", panelId: "p1", measurementCode: "hdl_cholesterol", displayName: "HDL", value: 30, unit: "mg/dL", flag: "low" }
-    ] as LabResultMarker[];
+    store.observations = [
+      makeObservation({ id: "m1", measurementCode: "glucose", observedAt: "2026-01-01T00:00:00.000Z", value: 120, unit: "mg/dL", sourceId: "source" }),
+      makeObservation({ id: "m2", measurementCode: "total_cholesterol", observedAt: "2026-01-01T00:00:00.000Z", value: 185, unit: "mg/dL", sourceId: "source" }),
+      makeObservation({ id: "m3", measurementCode: "hdl_cholesterol", observedAt: "2026-01-01T00:00:00.000Z", value: 30, unit: "mg/dL", sourceId: "source" })
+    ];
     const result = computeAnalytics(store);
     expect(result.labAlerts).toHaveLength(2);
     expect(result.labAlerts.map((a) => a.flag)).toContain("high");
     expect(result.labAlerts.map((a) => a.flag)).toContain("low");
   });
 
-  it("excludes markers with 'normal' flag", () => {
+  it("does not classify mismatched units", () => {
     const store = makeEmptyStore();
-    store.labMarkers = [
-      { id: "m1", panelId: "p1", measurementCode: "glucose", displayName: "Glucose", value: 85, unit: "mg/dL", flag: "normal" }
-    ] as LabResultMarker[];
+    store.observations = [
+      makeObservation({ id: "m1", measurementCode: "glucose", observedAt: "2026-01-01T00:00:00.000Z", value: 85, unit: "mmol/L", sourceId: "source" })
+    ];
     const result = computeAnalytics(store);
     expect(result.labAlerts).toHaveLength(0);
   });
