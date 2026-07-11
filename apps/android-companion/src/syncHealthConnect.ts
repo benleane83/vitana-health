@@ -166,19 +166,31 @@ export async function syncHealthConnectLast30Days(
     }))
   };
 
-  const response = await pinnedFetch(
-    `${endpointUrl.replace(/\/+$/, "")}/api/import/health-connect`,
-    publicKeyHash ?? null,
-    {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      ...(companionToken ? { "x-companion-token": companionToken } : {})
-    },
-    body: JSON.stringify(payload)
+  const importUrl = `${endpointUrl.replace(/\/+$/, "")}/api/import/health-connect`;
+  let response;
+  try {
+    response = await pinnedFetch(
+      importUrl,
+      publicKeyHash ?? null,
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          ...(companionToken ? { "x-companion-token": companionToken } : {})
+        },
+        body: JSON.stringify(payload)
+      }
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown network error";
+    if (/timed out|timeout/i.test(message)) {
+      throw new Error(
+        `Sync request timed out waiting for the local API response. This usually means the server is still processing the import or is temporarily unreachable. URL: ${importUrl}`
+      );
     }
-  );
+    throw new Error(`Sync request failed before the API could respond: ${message}`);
+  }
 
   const responseBody = (await response.json().catch(() => ({}))) as {
     error?: unknown;
