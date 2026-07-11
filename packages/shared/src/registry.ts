@@ -16,7 +16,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     display: "Heart rate",
     category: "cardio",
     kind: "point",
-    canonicalUnit: "bpm",
+    canonicalUnit: "beats/min",
     aliases: ["heart_rate", "heart rate", "pulse"],
     fhirCode: "8867-4",
     loincCode: "8867-4",
@@ -38,12 +38,23 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     aggregation: "latest"
   },
   {
+    code: "height",
+    display: "Height",
+    category: "body",
+    kind: "point",
+    canonicalUnit: "cm",
+    aliases: ["height", "body height", "stature"],
+    openMHealthSchema: "body-height",
+    aggregation: "latest"
+  },
+  {
     code: "body_fat_pct",
     display: "Body fat percentage",
     category: "body",
     kind: "point",
     canonicalUnit: "%",
     aliases: ["body fat", "body fat percentage", "body fat %", "fat %", "fat pct", "fat percent", "fat percentage", "pbf", "percent body fat"],
+    openMHealthSchema: "body-fat-percentage",
     aggregation: "latest"
   },
   {
@@ -70,7 +81,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     category: "body",
     kind: "point",
     canonicalUnit: "kg",
-    aliases: ["lean body mass", "lean mass", "fat free mass", "ffm"],
+    aliases: ["lean body mass", "lean mass", "fat free mass", "fat-free mass", "ffm"],
     aggregation: "latest"
   },
   {
@@ -80,6 +91,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "kg/m2",
     aliases: ["bmi", "body mass index"],
+    openMHealthSchema: "body-mass-index",
     aggregation: "latest"
   },
   {
@@ -114,7 +126,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     display: "Basal metabolic rate",
     category: "body",
     kind: "point",
-    canonicalUnit: "kcal",
+    canonicalUnit: "kcal/day",
     aliases: ["basal metabolic rate", "bmr", "basal metabolism", "resting metabolic rate"],
     aggregation: "latest"
   },
@@ -125,6 +137,105 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "kg",
     aliases: ["bone mineral content", "bone mass", "mineral", "minerals", "bone mineral"],
+    aggregation: "latest"
+  },
+  {
+    code: "bone_mineral_density",
+    display: "Bone mineral density",
+    category: "body",
+    kind: "point",
+    canonicalUnit: "g/cm2",
+    aliases: ["bone mineral density", "bmd"],
+    aggregation: "latest"
+  },
+  {
+    code: "body_cell_mass",
+    display: "Body cell mass",
+    category: "body",
+    kind: "point",
+    canonicalUnit: "kg",
+    aliases: ["body cell mass", "bcm"],
+    aggregation: "latest"
+  },
+  {
+    code: "intracellular_water",
+    display: "Intracellular water",
+    category: "body",
+    kind: "point",
+    canonicalUnit: "L",
+    aliases: ["intracellular water", "icw"],
+    aggregation: "latest"
+  },
+  {
+    code: "extracellular_water",
+    display: "Extracellular water",
+    category: "body",
+    kind: "point",
+    canonicalUnit: "L",
+    aliases: ["extracellular water", "ecw"],
+    aggregation: "latest"
+  },
+  {
+    code: "extracellular_water_ratio",
+    display: "Extracellular water ratio",
+    category: "body",
+    kind: "point",
+    canonicalUnit: "dimensionless",
+    aliases: ["extracellular water ratio", "ecw tbw ratio", "ecw/tbw"],
+    aggregation: "latest"
+  },
+  {
+    code: "visceral_fat_area",
+    display: "Visceral fat area",
+    category: "body",
+    kind: "point",
+    canonicalUnit: "cm2",
+    aliases: ["visceral fat area", "vfa"],
+    aggregation: "latest"
+  },
+  {
+    code: "subcutaneous_fat_mass",
+    display: "Subcutaneous fat mass",
+    category: "body",
+    kind: "point",
+    canonicalUnit: "kg",
+    aliases: ["subcutaneous fat mass", "subcutaneous fat"],
+    aggregation: "latest"
+  },
+  {
+    code: "waist_circumference",
+    display: "Waist circumference",
+    category: "body",
+    kind: "point",
+    canonicalUnit: "cm",
+    aliases: ["waist circumference", "waist"],
+    aggregation: "latest"
+  },
+  {
+    code: "hip_circumference",
+    display: "Hip circumference",
+    category: "body",
+    kind: "point",
+    canonicalUnit: "cm",
+    aliases: ["hip circumference", "hips"],
+    aggregation: "latest"
+  },
+  {
+    code: "waist_hip_ratio",
+    display: "Waist-to-hip ratio",
+    category: "body",
+    kind: "point",
+    canonicalUnit: "dimensionless",
+    aliases: ["waist hip ratio", "waist-to-hip ratio", "whr"],
+    aggregation: "latest"
+  },
+  {
+    code: "metabolic_age",
+    display: "Metabolic age",
+    category: "body",
+    kind: "point",
+    canonicalUnit: "years",
+    aliases: ["metabolic age", "body age"],
     aggregation: "latest"
   },
   {
@@ -143,7 +254,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     kind: "interval",
     canonicalUnit: "min",
     aliases: ["sleep", "sleep_duration", "sleep duration"],
-    openMHealthSchema: "sleep-duration",
+    openMHealthSchema: "total-sleep-time",
     normalLow: 420,
     normalHigh: 540,
     aggregation: "sum"
@@ -158,6 +269,45 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     normalLow: 92,
     normalHigh: 100,
     aggregation: "average"
+  },
+  {
+    code: "respiratory_rate",
+    display: "Respiratory rate",
+    category: "cardio",
+    kind: "point",
+    canonicalUnit: "breaths/min",
+    aliases: ["respiratory rate", "breathing rate", "respiration rate"],
+    openMHealthSchema: "respiratory-rate",
+    aggregation: "average"
+  },
+  {
+    code: "body_temperature",
+    display: "Body temperature",
+    category: "cardio",
+    kind: "point",
+    canonicalUnit: "°C",
+    aliases: ["body temperature", "temperature"],
+    aggregation: "average"
+  },
+  {
+    code: "blood_pressure_systolic",
+    display: "Systolic blood pressure",
+    category: "cardio",
+    kind: "point",
+    canonicalUnit: "mmHg",
+    aliases: ["systolic blood pressure", "systolic", "sbp"],
+    openMHealthSchema: "systolic-blood-pressure",
+    aggregation: "latest"
+  },
+  {
+    code: "blood_pressure_diastolic",
+    display: "Diastolic blood pressure",
+    category: "cardio",
+    kind: "point",
+    canonicalUnit: "mmHg",
+    aliases: ["diastolic blood pressure", "diastolic", "dbp"],
+    openMHealthSchema: "diastolic-blood-pressure",
+    aggregation: "latest"
   },
   {
     code: "hrv_sdnn",
@@ -187,6 +337,35 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     aggregation: "average"
   },
   {
+    code: "active_energy_burned",
+    display: "Active energy burned",
+    category: "activity",
+    kind: "interval",
+    canonicalUnit: "kcal",
+    aliases: ["active energy", "active calories", "calories burned", "calorie burned"],
+    openMHealthSchema: "calorie-burned",
+    aggregation: "sum"
+  },
+  {
+    code: "distance",
+    display: "Distance",
+    category: "activity",
+    kind: "interval",
+    canonicalUnit: "m",
+    aliases: ["distance", "distance travelled", "distance traveled"],
+    aggregation: "sum"
+  },
+  {
+    code: "physical_activity_duration",
+    display: "Physical activity duration",
+    category: "activity",
+    kind: "interval",
+    canonicalUnit: "min",
+    aliases: ["physical activity", "activity duration", "exercise duration"],
+    openMHealthSchema: "physical-activity",
+    aggregation: "sum"
+  },
+  {
     code: "exercise_speed",
     display: "Exercise speed",
     category: "activity",
@@ -200,11 +379,11 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     display: "HbA1c",
     category: "lab",
     kind: "panel-component",
-    canonicalUnit: "%",
-    aliases: ["hba1c", "hemoglobin a1c", "a1c"],
-    fhirCode: "4548-4",
-    loincCode: "4548-4",
-    normalHigh: 5.7,
+    canonicalUnit: "mmol/mol",
+    aliases: ["hba1c", "hemoglobin a1c", "haemoglobin a1c", "a1c"],
+    fhirCode: "59261-8",
+    loincCode: "59261-8",
+    normalHigh: 41,
     aggregation: "latest"
   },
   {
@@ -212,12 +391,13 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     display: "Glucose",
     category: "metabolic",
     kind: "panel-component",
-    canonicalUnit: "mg/dL",
+    canonicalUnit: "mmol/L",
     aliases: ["glucose", "blood glucose", "fasting glucose"],
     fhirCode: "2345-7",
     loincCode: "2345-7",
-    normalLow: 70,
-    normalHigh: 99,
+    openMHealthSchema: "blood-glucose",
+    normalLow: 3.9,
+    normalHigh: 5.5,
     aggregation: "latest"
   },
   {
@@ -225,11 +405,11 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     display: "Total cholesterol",
     category: "lab",
     kind: "panel-component",
-    canonicalUnit: "mg/dL",
+    canonicalUnit: "mmol/L",
     aliases: ["total cholesterol", "cholesterol total", "cholesterol"],
     fhirCode: "2093-3",
     loincCode: "2093-3",
-    normalHigh: 200,
+    normalHigh: 5.2,
     aggregation: "latest"
   },
   {
@@ -237,11 +417,11 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     display: "HDL cholesterol",
     category: "lab",
     kind: "panel-component",
-    canonicalUnit: "mg/dL",
+    canonicalUnit: "mmol/L",
     aliases: ["hdl", "hdl cholesterol"],
     fhirCode: "2085-9",
     loincCode: "2085-9",
-    normalLow: 40,
+    normalLow: 1,
     aggregation: "latest"
   },
   {
@@ -249,11 +429,11 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     display: "LDL cholesterol",
     category: "lab",
     kind: "panel-component",
-    canonicalUnit: "mg/dL",
+    canonicalUnit: "mmol/L",
     aliases: ["ldl", "ldl cholesterol"],
     fhirCode: "13457-7",
     loincCode: "13457-7",
-    normalHigh: 100,
+    normalHigh: 3,
     aggregation: "latest"
   },
   {
@@ -261,11 +441,593 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     display: "Triglycerides",
     category: "lab",
     kind: "panel-component",
-    canonicalUnit: "mg/dL",
+    canonicalUnit: "mmol/L",
     aliases: ["triglycerides", "tg"],
     fhirCode: "2571-8",
     loincCode: "2571-8",
-    normalHigh: 150,
+    normalHigh: 1.7,
+    aggregation: "latest"
+  },
+  {
+    code: "albumin",
+    display: "Albumin",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "g/L",
+    aliases: ["albumin", "serum albumin"],
+    loincCode: "1751-7",
+    aggregation: "latest"
+  },
+  {
+    code: "alkaline_phosphatase",
+    display: "Alkaline phosphatase",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "U/L",
+    aliases: ["alkaline phosphatase", "alp", "alk phos"],
+    loincCode: "6768-6",
+    aggregation: "latest"
+  },
+  {
+    code: "alanine_aminotransferase",
+    display: "Alanine aminotransferase",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "U/L",
+    aliases: ["alanine aminotransferase", "alt", "sgpt"],
+    loincCode: "1742-6",
+    aggregation: "latest"
+  },
+  {
+    code: "aspartate_aminotransferase",
+    display: "Aspartate aminotransferase",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "U/L",
+    aliases: ["aspartate aminotransferase", "ast", "sgot"],
+    loincCode: "1920-8",
+    aggregation: "latest"
+  },
+  {
+    code: "bilirubin_total",
+    display: "Total bilirubin",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "µmol/L",
+    aliases: ["total bilirubin", "bilirubin"],
+    loincCode: "1975-2",
+    aggregation: "latest"
+  },
+  {
+    code: "calcium",
+    display: "Calcium",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "mmol/L",
+    aliases: ["calcium", "serum calcium"],
+    loincCode: "17861-6",
+    aggregation: "latest"
+  },
+  {
+    code: "chloride",
+    display: "Chloride",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "mmol/L",
+    aliases: ["chloride", "serum chloride"],
+    loincCode: "2075-0",
+    aggregation: "latest"
+  },
+  {
+    code: "creatinine",
+    display: "Creatinine",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "µmol/L",
+    aliases: ["creatinine", "serum creatinine"],
+    loincCode: "2160-0",
+    aggregation: "latest"
+  },
+  {
+    code: "urea",
+    display: "Urea",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "mmol/L",
+    aliases: ["urea", "blood urea nitrogen", "bun"],
+    loincCode: "3094-0",
+    aggregation: "latest"
+  },
+  {
+    code: "ferritin",
+    display: "Ferritin",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "µg/L",
+    aliases: ["ferritin", "serum ferritin"],
+    loincCode: "2276-4",
+    aggregation: "latest"
+  },
+  {
+    code: "gamma_glutamyl_transferase",
+    display: "Gamma-glutamyl transferase",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "U/L",
+    aliases: ["gamma glutamyl transferase", "ggt", "gamma gt"],
+    loincCode: "2324-2",
+    aggregation: "latest"
+  },
+  {
+    code: "iron",
+    display: "Iron",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "µmol/L",
+    aliases: ["iron", "serum iron"],
+    loincCode: "2498-4",
+    aggregation: "latest"
+  },
+  {
+    code: "potassium",
+    display: "Potassium",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "mmol/L",
+    aliases: ["potassium", "serum potassium"],
+    loincCode: "2823-3",
+    aggregation: "latest"
+  },
+  {
+    code: "sodium",
+    display: "Sodium",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "mmol/L",
+    aliases: ["sodium", "serum sodium"],
+    loincCode: "2951-2",
+    aggregation: "latest"
+  },
+  {
+    code: "total_protein",
+    display: "Total protein",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "g/L",
+    aliases: ["total protein", "serum total protein"],
+    loincCode: "2885-2",
+    aggregation: "latest"
+  },
+  {
+    code: "thyroid_stimulating_hormone",
+    display: "Thyroid-stimulating hormone",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "mIU/L",
+    aliases: ["thyroid stimulating hormone", "tsh"],
+    loincCode: "3016-3",
+    aggregation: "latest"
+  },
+  {
+    code: "uric_acid",
+    display: "Uric acid",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "µmol/L",
+    aliases: ["uric acid", "urate"],
+    loincCode: "3084-1",
+    aggregation: "latest"
+  },
+  {
+    code: "vitamin_b12",
+    display: "Vitamin B12",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "pmol/L",
+    aliases: ["vitamin b12", "b12", "cobalamin"],
+    loincCode: "2132-9",
+    aggregation: "latest"
+  },
+  {
+    code: "vitamin_d",
+    display: "Vitamin D",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "nmol/L",
+    aliases: ["vitamin d", "25 hydroxy vitamin d", "25-oh vitamin d", "25(oh)d"],
+    loincCode: "1989-3",
+    aggregation: "latest"
+  },
+  {
+    code: "high_sensitivity_c_reactive_protein",
+    display: "High-sensitivity C-reactive protein",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "mg/L",
+    aliases: ["high sensitivity c reactive protein", "hs crp", "hs-crp", "crp"],
+    loincCode: "30522-7",
+    aggregation: "latest"
+  },
+  {
+    code: "white_blood_cell_count",
+    display: "White blood cell count",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "×10⁹/L",
+    aliases: ["white blood cell count", "white blood cells", "wbc"],
+    loincCode: "6690-2",
+    aggregation: "latest"
+  },
+  {
+    code: "red_blood_cell_count",
+    display: "Red blood cell count",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "×10¹²/L",
+    aliases: ["red blood cell count", "red blood cells", "rbc"],
+    loincCode: "789-8",
+    aggregation: "latest"
+  },
+  {
+    code: "haemoglobin",
+    display: "Haemoglobin",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "g/L",
+    aliases: ["haemoglobin", "hemoglobin", "hgb", "hb"],
+    loincCode: "718-7",
+    aggregation: "latest"
+  },
+  {
+    code: "haematocrit",
+    display: "Haematocrit",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "L/L",
+    aliases: ["haematocrit", "hematocrit", "hct"],
+    loincCode: "4544-3",
+    aggregation: "latest"
+  },
+  {
+    code: "mean_corpuscular_volume",
+    display: "Mean corpuscular volume",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "fL",
+    aliases: ["mean corpuscular volume", "mcv"],
+    loincCode: "787-2",
+    aggregation: "latest"
+  },
+  {
+    code: "mean_corpuscular_haemoglobin",
+    display: "Mean corpuscular haemoglobin",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "pg",
+    aliases: ["mean corpuscular haemoglobin", "mean corpuscular hemoglobin", "mch"],
+    loincCode: "785-6",
+    aggregation: "latest"
+  },
+  {
+    code: "mean_corpuscular_haemoglobin_concentration",
+    display: "Mean corpuscular haemoglobin concentration",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "g/L",
+    aliases: ["mean corpuscular haemoglobin concentration", "mean corpuscular hemoglobin concentration", "mchc"],
+    loincCode: "786-4",
+    aggregation: "latest"
+  },
+  {
+    code: "red_cell_distribution_width",
+    display: "Red cell distribution width",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "%",
+    aliases: ["red cell distribution width", "rdw"],
+    loincCode: "788-0",
+    aggregation: "latest"
+  },
+  {
+    code: "platelet_count",
+    display: "Platelet count",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "×10⁹/L",
+    aliases: ["platelet count", "platelets", "plt"],
+    loincCode: "777-3",
+    aggregation: "latest"
+  },
+  {
+    code: "lymphocyte_percentage",
+    display: "Lymphocytes",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "%",
+    aliases: ["lymphocytes", "lymphocyte percentage", "lymphocyte %", "lymph %"],
+    loincCode: "736-9",
+    aggregation: "latest"
+  },
+  {
+    code: "apolipoprotein_b",
+    display: "Apolipoprotein B",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "g/L",
+    aliases: ["apolipoprotein b", "apob", "apo b"],
+    loincCode: "1884-6",
+    aggregation: "latest"
+  },
+  {
+    code: "lipoprotein_a",
+    display: "Lipoprotein(a)",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "nmol/L",
+    aliases: ["lipoprotein(a)", "lipoprotein a", "lp(a)", "lpa"],
+    loincCode: "43583-4",
+    aggregation: "latest"
+  },
+  {
+    code: "insulin",
+    display: "Insulin",
+    category: "metabolic",
+    kind: "panel-component",
+    canonicalUnit: "pmol/L",
+    aliases: ["insulin", "fasting insulin"],
+    loincCode: "20448-7",
+    aggregation: "latest"
+  },
+  {
+    code: "estimated_glomerular_filtration_rate",
+    display: "Estimated glomerular filtration rate",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "mL/min/1.73m2",
+    aliases: ["estimated glomerular filtration rate", "egfr"],
+    loincCode: "62238-1",
+    aggregation: "latest"
+  },
+  {
+    code: "total_iron_binding_capacity",
+    display: "Total iron-binding capacity",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "µmol/L",
+    aliases: ["total iron binding capacity", "tibc"],
+    loincCode: "2500-7",
+    aggregation: "latest"
+  },
+  {
+    code: "transferrin_saturation",
+    display: "Transferrin saturation",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "%",
+    aliases: ["transferrin saturation", "iron saturation", "tsat"],
+    loincCode: "2502-3",
+    aggregation: "latest"
+  },
+  {
+    code: "neutrophil_percentage",
+    display: "Neutrophils",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "%",
+    aliases: ["neutrophils", "neutrophil percentage", "neutrophil %", "neut %"],
+    loincCode: "770-8",
+    aggregation: "latest"
+  },
+  {
+    code: "folate",
+    display: "Folate",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "nmol/L",
+    aliases: ["folate", "folic acid"],
+    loincCode: "2284-8",
+    aggregation: "latest"
+  },
+  {
+    code: "magnesium",
+    display: "Magnesium",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "mmol/L",
+    aliases: ["magnesium", "serum magnesium"],
+    loincCode: "19123-9",
+    aggregation: "latest"
+  },
+  {
+    code: "phosphate",
+    display: "Phosphate",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "mmol/L",
+    aliases: ["phosphate", "phosphorus", "serum phosphate"],
+    loincCode: "2777-1",
+    aggregation: "latest"
+  },
+  {
+    code: "testosterone_total",
+    display: "Total testosterone",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "nmol/L",
+    aliases: ["total testosterone", "testosterone"],
+    loincCode: "2986-8",
+    aggregation: "latest"
+  },
+  {
+    code: "sex_hormone_binding_globulin",
+    display: "Sex hormone-binding globulin",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "nmol/L",
+    aliases: ["sex hormone binding globulin", "shbg"],
+    loincCode: "13967-5",
+    aggregation: "latest"
+  },
+  {
+    code: "free_testosterone",
+    display: "Free testosterone",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "pmol/L",
+    aliases: ["free testosterone"],
+    loincCode: "2990-0",
+    aggregation: "latest"
+  },
+  {
+    code: "dehydroepiandrosterone_sulfate",
+    display: "Dehydroepiandrosterone sulfate",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "µmol/L",
+    aliases: ["dehydroepiandrosterone sulfate", "dheas", "dhea-s"],
+    loincCode: "2191-5",
+    aggregation: "latest"
+  },
+  {
+    code: "cortisol",
+    display: "Cortisol",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "nmol/L",
+    aliases: ["cortisol"],
+    loincCode: "2143-6",
+    aggregation: "latest"
+  },
+  {
+    code: "free_thyroxine",
+    display: "Free thyroxine",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "pmol/L",
+    aliases: ["free thyroxine", "free t4", "ft4"],
+    loincCode: "3024-7",
+    aggregation: "latest"
+  },
+  {
+    code: "free_triiodothyronine",
+    display: "Free triiodothyronine",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "pmol/L",
+    aliases: ["free triiodothyronine", "free t3", "ft3"],
+    loincCode: "3053-6",
+    aggregation: "latest"
+  },
+  {
+    code: "insulin_like_growth_factor_1",
+    display: "Insulin-like growth factor 1",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "nmol/L",
+    aliases: ["insulin like growth factor 1", "igf 1", "igf-1"],
+    loincCode: "10334-1",
+    aggregation: "latest"
+  },
+  {
+    code: "homocysteine",
+    display: "Homocysteine",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "µmol/L",
+    aliases: ["homocysteine"],
+    loincCode: "13965-9",
+    aggregation: "latest"
+  },
+  {
+    code: "omega_3_index",
+    display: "Omega-3 index",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "%",
+    aliases: ["omega 3 index", "omega-3 index", "epa dha index"],
+    aggregation: "latest"
+  },
+  {
+    code: "rr_interval",
+    display: "RR interval",
+    category: "cardio",
+    kind: "point",
+    canonicalUnit: "ms",
+    aliases: ["rr interval", "r-r interval"],
+    openMHealthSchema: "rr-interval",
+    aggregation: "average"
+  },
+  {
+    code: "expiratory_time",
+    display: "Expiratory time",
+    category: "cardio",
+    kind: "point",
+    canonicalUnit: "sec",
+    aliases: ["expiratory time"],
+    openMHealthSchema: "expiratory-time",
+    aggregation: "average"
+  },
+  {
+    code: "forced_expiratory_volume_1",
+    display: "Forced expiratory volume in one second",
+    category: "cardio",
+    kind: "point",
+    canonicalUnit: "L",
+    aliases: ["forced expiratory volume 1", "fev1", "fev 1"],
+    aggregation: "latest"
+  },
+  {
+    code: "forced_vital_capacity",
+    display: "Forced vital capacity",
+    category: "cardio",
+    kind: "point",
+    canonicalUnit: "L",
+    aliases: ["forced vital capacity", "fvc"],
+    aggregation: "latest"
+  },
+  {
+    code: "fev1_fvc_ratio",
+    display: "FEV1/FVC ratio",
+    category: "cardio",
+    kind: "point",
+    canonicalUnit: "dimensionless",
+    aliases: ["fev1 fvc ratio", "fev1/fvc"],
+    aggregation: "latest"
+  },
+  {
+    code: "grip_strength",
+    display: "Grip strength",
+    category: "body",
+    kind: "point",
+    canonicalUnit: "kg",
+    aliases: ["grip strength", "hand grip strength"],
+    aggregation: "latest"
+  },
+  {
+    code: "vo2_max",
+    display: "VO2 max",
+    category: "cardio",
+    kind: "point",
+    canonicalUnit: "mL/kg/min",
+    aliases: ["vo2 max", "vo2max", "vo2 peak"],
+    aggregation: "latest"
+  },
+  {
+    code: "gait_speed",
+    display: "Gait speed",
+    category: "activity",
+    kind: "point",
+    canonicalUnit: "m/s",
+    aliases: ["gait speed", "walking speed"],
+    aggregation: "latest"
+  },
+  {
+    code: "reaction_time",
+    display: "Reaction time",
+    category: "derived",
+    kind: "point",
+    canonicalUnit: "ms",
+    aliases: ["reaction time"],
     aggregation: "latest"
   }
 ];

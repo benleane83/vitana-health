@@ -10,17 +10,17 @@ describe("classifyValue", () => {
 
   it("returns 'low' when value is below normalLow", () => {
     expect(classifyValue(45, heartRate)).toBe("low");
-    expect(classifyValue(60, glucose)).toBe("low");
+    expect(classifyValue(3.5, glucose)).toBe("low");
   });
 
   it("returns 'high' when value is above normalHigh", () => {
     expect(classifyValue(110, heartRate)).toBe("high");
-    expect(classifyValue(105, glucose)).toBe("high");
+    expect(classifyValue(6, glucose)).toBe("high");
   });
 
   it("returns 'normal' when value is within bounds", () => {
     expect(classifyValue(70, heartRate)).toBe("normal");
-    expect(classifyValue(85, glucose)).toBe("normal");
+    expect(classifyValue(4.7, glucose)).toBe("normal");
   });
 
   it("returns 'normal' when only normalHigh is set and value is within bounds (hdl)", () => {
@@ -87,5 +87,31 @@ describe("findMeasurementType", () => {
 
   it("finds glucose by LOINC-style alias", () => {
     expect(findMeasurementType("blood glucose")?.code).toBe("glucose");
+  });
+});
+
+describe("defaultMeasurementTypes", () => {
+  it("uses EU/UK canonical units for common blood biomarkers", () => {
+    expect(defaultMeasurementTypes.find((type) => type.code === "glucose")?.canonicalUnit).toBe("mmol/L");
+    expect(defaultMeasurementTypes.find((type) => type.code === "hba1c")?.canonicalUnit).toBe("mmol/mol");
+    expect(defaultMeasurementTypes.find((type) => type.code === "creatinine")?.canonicalUnit).toBe("µmol/L");
+    expect(defaultMeasurementTypes.find((type) => type.code === "total_cholesterol")?.canonicalUnit).toBe("mmol/L");
+  });
+
+  it("includes Open mHealth, body composition, and biological-age measurements", () => {
+    for (const code of [
+      "height",
+      "blood_pressure_systolic",
+      "rr_interval",
+      "intracellular_water",
+      "bone_mineral_density",
+      "albumin",
+      "lymphocyte_percentage",
+      "estimated_glomerular_filtration_rate",
+      "forced_expiratory_volume_1",
+      "grip_strength"
+    ]) {
+      expect(defaultMeasurementTypes.some((type) => type.code === code)).toBe(true);
+    }
   });
 });
