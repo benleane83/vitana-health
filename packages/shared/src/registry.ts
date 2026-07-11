@@ -383,12 +383,12 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     aliases: ["hba1c", "hemoglobin a1c", "haemoglobin a1c", "a1c"],
     fhirCode: "59261-8",
     loincCode: "59261-8",
-    normalHigh: 39,
+    normalHigh: 41,
     aggregation: "latest"
   },
   {
     code: "glucose",
-    display: "Glucose",
+    display: "Fasting glucose",
     category: "metabolic",
     kind: "panel-component",
     canonicalUnit: "mmol/L",
@@ -409,7 +409,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     aliases: ["total cholesterol", "cholesterol total", "cholesterol"],
     fhirCode: "2093-3",
     loincCode: "2093-3",
-    normalHigh: 5,
+    normalHigh: 5.2,
     aggregation: "latest"
   },
   {
