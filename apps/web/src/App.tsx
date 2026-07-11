@@ -74,6 +74,7 @@ export function App() {
     confirmLabel: string;
     destructive: boolean;
     onConfirm: () => void;
+    onCancel: () => void;
   } | null>(null);
 
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -264,6 +265,10 @@ export function App() {
         onConfirm: () => {
           setConfirmState(null);
           resolve(true);
+        },
+        onCancel: () => {
+          setConfirmState(null);
+          resolve(false);
         }
       });
     });
@@ -763,7 +768,7 @@ export function App() {
           confirmLabel={confirmState.confirmLabel}
           destructive={confirmState.destructive}
           onConfirm={confirmState.onConfirm}
-          onCancel={() => setConfirmState(null)}
+          onCancel={confirmState.onCancel}
         />
       ) : null}
     </main>
