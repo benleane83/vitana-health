@@ -25,6 +25,7 @@ interface HealthConnectProvenance {
   clientRecordId?: string;
   lastModifiedTime?: string;
   recordingMethod?: string;
+  device?: Record<string, unknown>;
 }
 
 interface HealthConnectPointValue {
@@ -245,7 +246,8 @@ function extractProvenance(record: unknown): HealthConnectProvenance | undefined
     dataOrigin: origin,
     clientRecordId: stringValue(metadata.clientRecordId),
     lastModifiedTime: stringValue(metadata.lastModifiedTime),
-    recordingMethod: stringValue(metadata.recordingMethod)
+    recordingMethod: metadata.recordingMethod === undefined ? undefined : String(metadata.recordingMethod),
+    device: objectValue(metadata.device)
   };
   return Object.values(provenance).some(Boolean) ? provenance : undefined;
 }
@@ -261,6 +263,10 @@ function stringValue(value: unknown): string | undefined {
 
 function numberValue(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function objectValue(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
 
 function countRows(payload: HealthConnectImportPayload): number {

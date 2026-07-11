@@ -13,7 +13,7 @@ const stepSchema = z.object({
 const pointSampleSchema = z.object({
   time: isoDateString,
   value: z.number().finite(),
-  provenance: z.record(z.string()).optional()
+  provenance: z.record(z.unknown()).optional()
 });
 
 const densePointSampleLimit = 250_000;
@@ -27,7 +27,7 @@ const exerciseSchema = z.object({
   title: z.string().max(500).optional(),
   notes: z.string().max(4000).optional(),
   details: z.record(z.unknown()).optional(),
-  provenance: z.record(z.string()).optional()
+  provenance: z.record(z.unknown()).optional()
 });
 
 export const healthConnectImportRequestSchema = z.object({
@@ -37,7 +37,7 @@ export const healthConnectImportRequestSchema = z.object({
   rangeEnd: isoDateString,
   deviceLabel: z.string().min(1).max(120).optional(),
   batchId: z.string().min(1).max(160).optional(),
-  steps: z.array(stepSchema.extend({ provenance: z.record(z.string()).optional() })).max(20_000).default([]),
+  steps: z.array(stepSchema.extend({ provenance: z.record(z.unknown()).optional() })).max(20_000).default([]),
   heartRate: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
   oxygenSaturation: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
   hrvRmssd: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
@@ -60,7 +60,8 @@ export function parseHealthConnectImport(payload: HealthConnectImportRequest): P
     .map((item) => ({
       startAt: normalizeIso(item.startTime),
       endAt: normalizeIso(item.endTime),
-      value: item.count
+      value: item.count,
+      provenance: item.provenance
     }))
     .filter((item) => item.startAt && item.endAt && item.value >= 0)
     .map((item) => ({
@@ -158,7 +159,7 @@ function normalizeIso(value: string): string | undefined {
 }
 
 function toObservationSamples(
-  rows: Array<{ time: string; value: number; provenance?: Record<string, string> }>,
+  rows: Array<{ time: string; value: number; provenance?: Record<string, unknown> }>,
   measurementCode: string,
   unit: string,
   sourceId: string
