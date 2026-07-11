@@ -235,7 +235,7 @@ export interface BiologicalAgeInput {
 }
 
 export interface BiologicalAgeModelResult {
-  id: "phenoage-levine-2018" | "bortz-age-2023";
+  id: "phenoage-levine-2018";
   name: string;
   version: string;
   status: BiologicalAgeModelStatus;

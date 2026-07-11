@@ -3,8 +3,7 @@ import type {
   BiologicalAgeModelResult,
   BiologicalAgeReport,
   HealthStoreData,
-  Observation,
-  ObservationGroup
+  Observation
 } from "./types.js";
 
 const phenoAgeInputs = [
@@ -31,7 +30,7 @@ export function calculateBiologicalAge(store: HealthStoreData, generatedAt = new
   return {
     generatedAt,
     disclaimer,
-    models: [calculatePhenoAge(store, generatedAt), unavailableBortzAge()]
+    models: [calculatePhenoAge(store, generatedAt)]
   };
 }
 
@@ -96,30 +95,6 @@ function calculatePhenoAge(store: HealthStoreData, generatedAt: string): Biologi
     ageAcceleration: biologicalAge - chronologicalAge,
     calculatedAt: generatedAt
   };
-}
-
-function unavailableBortzAge(): BiologicalAgeModelResult {
-  return {
-    id: "bortz-age-2023",
-    name: "Bortz Age",
-    version: "Bortz et al. 2023",
-    status: "not-implemented",
-    methodology: "Not calculated until the published 22-feature mapping and implementation inputs are fully validated.",
-    citation: "Bortz DM et al. 2023 biological-age model.",
-    inputs: [],
-    limitations: ["This model is intentionally unavailable in this release to avoid reporting an unvalidated implementation."]
-  };
-}
-
-function panelInputs(group: ObservationGroup, observations: Observation[]) {
-  const panelObservations = observations.filter((observation) => observation.observationGroupId === group.id);
-  const inputs = phenoAgeInputs.map(([code, label, normalizedUnit]) => {
-    const observation = [...panelObservations]
-      .filter((entry) => entry.measurementCode === code)
-      .sort((a, b) => b.observedAt.localeCompare(a.observedAt))[0];
-    return inputFromObservation(code, label, normalizedUnit, observation);
-  });
-  return { collectedAt: groupDate(group, observations), inputs };
 }
 
 function latestInputs(observations: Observation[], labPanelIds: Set<string>) {
@@ -190,14 +165,6 @@ function normalizeValue(code: PhenoAgeCode, value: number, unit: string): number
   if (code === "glucose" && normalized === "mg/dl") return value / 18.0182;
   if (code === "high_sensitivity_c_reactive_protein" && normalized === "mg/l") return value / 10;
   return undefined;
-}
-
-function groupDate(group: ObservationGroup, observations: Observation[]): string {
-  return group.collectedAt ?? observations
-    .filter((observation) => observation.observationGroupId === group.id)
-    .map((observation) => observation.observedAt)
-    .sort()
-    .at(-1) ?? "";
 }
 
 function ageForDate(birthYear: number | undefined, date: string): number | undefined {

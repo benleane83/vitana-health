@@ -66,11 +66,4 @@ describe("calculateBiologicalAge", () => {
     expect(result.chronologicalAge).toBeUndefined();
     expect(result.inputs.find((input) => input.code === "creatinine")?.status).toBe("invalid");
   });
-
-  it("reports Bortz Age as intentionally unavailable", () => {
-    expect(calculateBiologicalAge(makeStore()).models[1]).toMatchObject({
-      id: "bortz-age-2023",
-      status: "not-implemented"
-    });
-  });
 });

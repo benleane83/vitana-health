@@ -63,10 +63,7 @@ describe("GET /api/health", () => {
       const response = await request(app).get("/api/biological-age").set("authorization", ownerAuthorization);
       expect(response.status).toBe(200);
       expect(response.body.models).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ id: "phenoage-levine-2018", status: "incomplete" }),
-          expect.objectContaining({ id: "bortz-age-2023", status: "not-implemented" })
-        ])
+        expect.arrayContaining([expect.objectContaining({ id: "phenoage-levine-2018", status: "incomplete" })])
       );
     });
   });
