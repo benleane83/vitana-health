@@ -1,3 +1,5 @@
+import { sha256 } from "@noble/hashes/sha2";
+import { bytesToHex } from "@noble/hashes/utils";
 import type {
   ActivitySession,
   DataSource,
@@ -80,12 +82,7 @@ export interface BodyCompositionDraftCommitPayload {
 }
 
 export function checksum(content: string): string {
-  let hash = 2166136261;
-  for (let index = 0; index < content.length; index += 1) {
-    hash ^= content.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return `fnv1a-${(hash >>> 0).toString(16).padStart(8, "0")}`;
+  return `sha256-${bytesToHex(sha256(content))}`;
 }
 
 export function parseCsv(content: string): Array<Record<string, string>> {
@@ -803,7 +800,7 @@ function toDisplayName(value: string): string {
 }
 
 function stableId(prefix: string, parts: string[]): string {
-  return `${prefix}_${checksum(parts.join("|")).replace(/^fnv1a-/, "")}`;
+  return `${prefix}_${checksum(parts.join("|")).replace(/^sha256-/, "")}`;
 }
 
 function normalizeKeys(row: Record<string, string>): Record<string, string> {
