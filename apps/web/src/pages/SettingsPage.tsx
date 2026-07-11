@@ -66,7 +66,7 @@ export function SettingsPage() {
     <section className="panel settings-panel">
       <p className="eyebrow">Settings</p>
       <h2>AI setup</h2>
-      <p className="empty">Configure the model connection used for AI queries and insights. Your API key is stored locally and is never displayed.</p>
+      <p className="empty">Configure the model connection used for AI queries and insights. Your API key is stored on this device and is never displayed.</p>
       <form className="settings-form" onSubmit={save}>
         <label htmlFor="ai-provider">Provider</label>
         <select id="ai-provider" value={settings.provider} disabled={busy} onChange={(event) => setSettings({ ...settings, provider: event.target.value as AiSettings["provider"] })}>

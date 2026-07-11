@@ -621,6 +621,7 @@ export function App() {
                 className={route === r ? "active" : ""}
                 tabIndex={route === r ? 0 : -1}
                 onClick={() => navigate(r)}
+                aria-label={r === "settings" ? "Settings" : undefined}
               >
                 {labels[r]}
               </button>
