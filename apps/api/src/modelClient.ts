@@ -44,10 +44,6 @@ export function currentModelConfig(): { provider: "ollama" | "openai"; endpoint:
   };
 }
 
-export function resolvedModelProvider(override?: "ollama" | "openai"): "ollama" | "openai" {
-  return resolveProvider(override);
-}
-
 async function callOllama(prompt: string, settings: AiSettings, overrideModel: string | undefined, timeoutMs: number): Promise<ModelCallResult> {
   const endpoint = settings.endpoint;
   const model = overrideModel ?? settings.model;
