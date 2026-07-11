@@ -20,12 +20,6 @@ const observationIdParamSchema = z
   .max(160)
   .regex(/^[A-Za-z0-9._:-]+$/, "Observation id contains unsupported characters.");
 
-type DeleteObservationResult = {
-  deleted: unknown;
-  store: unknown;
-  deletedCount?: number;
-};
-
 function buildDeleteObservationResponse(
   deleted: DeleteObservationResponse,
   warehouse: unknown

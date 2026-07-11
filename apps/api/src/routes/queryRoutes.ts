@@ -308,6 +308,10 @@ export function makeLlmRoutes(): express.Router {
   return router;
 }
 
+/**
+ * Converts supported query result rows into the chart series consumed by the
+ * web client, or returns null when the requested query has no chart.
+ */
 function buildChartSeries(
   dsl: QueryDSL,
   rows: Array<Record<string, unknown>>
@@ -341,6 +345,10 @@ function buildChartSeries(
   return null;
 }
 
+/**
+ * Produces a deterministic summary when a model-generated query answer is
+ * unavailable, using only the validated query plan and returned rows.
+ */
 function buildFallbackAnswer(
   dsl: QueryDSL,
   rows: Array<Record<string, unknown>>,
