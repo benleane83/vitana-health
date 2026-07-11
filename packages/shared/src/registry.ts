@@ -180,7 +180,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     display: "Extracellular water ratio",
     category: "body",
     kind: "point",
-    canonicalUnit: "%",
+    canonicalUnit: "dimensionless",
     aliases: ["extracellular water ratio", "ecw tbw ratio", "ecw/tbw"],
     aggregation: "latest"
   },
@@ -225,7 +225,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     display: "Waist-to-hip ratio",
     category: "body",
     kind: "point",
-    canonicalUnit: "ratio",
+    canonicalUnit: "dimensionless",
     aliases: ["waist hip ratio", "waist-to-hip ratio", "whr"],
     aggregation: "latest"
   },
@@ -388,7 +388,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
   },
   {
     code: "glucose",
-    display: "Fasting glucose",
+    display: "Glucose",
     category: "metabolic",
     kind: "panel-component",
     canonicalUnit: "mmol/L",
@@ -653,7 +653,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     display: "White blood cell count",
     category: "lab",
     kind: "panel-component",
-    canonicalUnit: "10^9/L",
+    canonicalUnit: "×10⁹/L",
     aliases: ["white blood cell count", "white blood cells", "wbc"],
     loincCode: "6690-2",
     aggregation: "latest"
@@ -663,7 +663,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     display: "Red blood cell count",
     category: "lab",
     kind: "panel-component",
-    canonicalUnit: "10^12/L",
+    canonicalUnit: "×10¹²/L",
     aliases: ["red blood cell count", "red blood cells", "rbc"],
     loincCode: "789-8",
     aggregation: "latest"
@@ -733,7 +733,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     display: "Platelet count",
     category: "lab",
     kind: "panel-component",
-    canonicalUnit: "10^9/L",
+    canonicalUnit: "×10⁹/L",
     aliases: ["platelet count", "platelets", "plt"],
     loincCode: "777-3",
     aggregation: "latest"
@@ -990,7 +990,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     display: "FEV1/FVC ratio",
     category: "cardio",
     kind: "point",
-    canonicalUnit: "ratio",
+    canonicalUnit: "dimensionless",
     aliases: ["fev1 fvc ratio", "fev1/fvc"],
     aggregation: "latest"
   },
