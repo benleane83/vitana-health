@@ -1,5 +1,5 @@
 import { sha256 } from "@noble/hashes/sha2";
-import { bytesToHex } from "@noble/hashes/utils";
+import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils";
 import type {
   ActivitySession,
   DataSource,
@@ -82,7 +82,7 @@ export interface BodyCompositionDraftCommitPayload {
 }
 
 export function checksum(content: string): string {
-  return `sha256-${bytesToHex(sha256(content))}`;
+  return `sha256-${bytesToHex(sha256(utf8ToBytes(content)))}`;
 }
 
 export function parseCsv(content: string): Array<Record<string, string>> {
