@@ -6,6 +6,18 @@ const DEVICE_ID_KEY = "local-fitness-advisor.deviceId";
 const TOKEN_KEY = "local-fitness-advisor.companionToken";
 const SELECTED_PROFILE_ID_KEY = "local-fitness-advisor.selectedProfileId";
 
+export const HEALTH_CONNECT_CATEGORIES = [
+  "Steps",
+  "HeartRate",
+  "OxygenSaturation",
+  "HeartRateVariabilityRmssd",
+  "Weight",
+  "ExerciseSession"
+] as const;
+
+export type HealthConnectCategory = (typeof HEALTH_CONNECT_CATEGORIES)[number];
+export const DEFAULT_HEALTH_CONNECT_SYNC_WINDOW_DAYS = 365;
+
 export interface ConnectionDetails {
   url: string;
   deviceId: string;
@@ -14,6 +26,9 @@ export interface ConnectionDetails {
   name: string | null;
   pairedAt: string | null;
   lastSyncAt: string | null;
+  healthConnectSyncCursor: string | null;
+  healthConnectSyncWindowDays: number;
+  healthConnectCategories: HealthConnectCategory[];
 }
 
 interface StoredConnection extends Omit<ConnectionDetails, "token" | "deviceId"> {}
@@ -36,7 +51,14 @@ export async function loadConnection(): Promise<ConnectionDetails | null> {
   try {
     const stored = JSON.parse(raw) as StoredConnection;
     const [deviceId, token] = await Promise.all([getDeviceId(), SecureStore.getItemAsync(TOKEN_KEY)]);
-    return { ...stored, deviceId, token };
+    return {
+      ...stored,
+      deviceId,
+      token,
+      healthConnectSyncCursor: stored.healthConnectSyncCursor ?? null,
+      healthConnectSyncWindowDays: normalizeSyncWindowDays(stored.healthConnectSyncWindowDays),
+      healthConnectCategories: normalizeHealthConnectCategories(stored.healthConnectCategories)
+    };
   } catch {
     return null;
   }
@@ -53,7 +75,15 @@ export async function saveConnection(patch: Partial<ConnectionDetails> & { url: 
     publicKeyHash: patch.publicKeyHash !== undefined ? patch.publicKeyHash : (existing?.publicKeyHash ?? null),
     name: patch.name !== undefined ? patch.name : (existing?.name ?? null),
     pairedAt: patch.pairedAt !== undefined ? patch.pairedAt : (existing?.pairedAt ?? null),
-    lastSyncAt: patch.lastSyncAt !== undefined ? patch.lastSyncAt : (existing?.lastSyncAt ?? null)
+    lastSyncAt: patch.lastSyncAt !== undefined ? patch.lastSyncAt : (existing?.lastSyncAt ?? null),
+    healthConnectSyncCursor:
+      patch.healthConnectSyncCursor !== undefined ? patch.healthConnectSyncCursor : (existing?.healthConnectSyncCursor ?? null),
+    healthConnectSyncWindowDays: normalizeSyncWindowDays(
+      patch.healthConnectSyncWindowDays ?? existing?.healthConnectSyncWindowDays
+    ),
+    healthConnectCategories: normalizeHealthConnectCategories(
+      patch.healthConnectCategories ?? existing?.healthConnectCategories
+    )
   };
   const { token: _token, deviceId: _deviceId, ...stored } = updated;
   await AsyncStorage.setItem(CONNECTION_KEY, JSON.stringify(stored));
@@ -66,6 +96,12 @@ export async function updateLastSyncAt(url: string): Promise<void> {
   const existing = await loadConnection();
   if (!existing || existing.url !== url) return;
   await saveConnection({ ...existing, lastSyncAt: new Date().toISOString() });
+}
+
+export async function updateHealthConnectSyncCursor(url: string, cursor: string): Promise<void> {
+  const existing = await loadConnection();
+  if (!existing || existing.url !== url) return;
+  await saveConnection({ ...existing, healthConnectSyncCursor: cursor, lastSyncAt: new Date().toISOString() });
 }
 
 export async function clearConnection(): Promise<void> {
@@ -82,4 +118,16 @@ export async function saveSelectedProfileId(profileId: string): Promise<void> {
 
 export async function clearSelectedProfileId(): Promise<void> {
   await AsyncStorage.removeItem(SELECTED_PROFILE_ID_KEY);
+}
+
+function normalizeSyncWindowDays(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > 3650) {
+    return DEFAULT_HEALTH_CONNECT_SYNC_WINDOW_DAYS;
+  }
+  return value;
+}
+
+function normalizeHealthConnectCategories(value: HealthConnectCategory[] | undefined): HealthConnectCategory[] {
+  if (!value) return [...HEALTH_CONNECT_CATEGORIES];
+  return HEALTH_CONNECT_CATEGORIES.filter((category) => value.includes(category));
 }

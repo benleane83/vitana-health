@@ -121,6 +121,7 @@ export interface TimeSeriesSample {
   unit: string;
   sourceId: string;
   deviceId?: string;
+  sourceJson?: unknown;
 }
 
 export interface ActivitySession {
@@ -132,6 +133,7 @@ export interface ActivitySession {
   energyKcal?: number;
   distanceMeters?: number;
   sourceId: string;
+  sourceJson?: unknown;
 }
 
 export interface SleepSession {

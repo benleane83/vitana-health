@@ -121,3 +121,35 @@ describe("parseHealthConnectImport — rowCount", () => {
     expect(result.sourceImport.rowCount).toBe(3);
   });
 });
+
+describe("parseHealthConnectImport — provenance and batches", () => {
+  it("preserves Health Connect provenance and keeps upload batches distinct", () => {
+    const payload: HealthConnectImportRequest = {
+      ...baseRequest,
+      batchId: "2026-06-01T12:00:00.000Z:1/2",
+      steps: [{
+        startTime: "2026-05-01T08:00:00.000Z",
+        endTime: "2026-05-01T08:30:00.000Z",
+        count: 500,
+        provenance: { recordId: "hc-record-1", dataOrigin: "com.example.wearable" }
+      }],
+      exerciseSessions: [{
+        startTime: "2026-05-01T07:00:00.000Z",
+        endTime: "2026-05-01T08:00:00.000Z",
+        activityType: "Running",
+        title: "Morning run",
+        details: { exerciseType: 56, route: { hasRoute: true } },
+        provenance: { recordId: "hc-session-1", dataOrigin: "com.example.wearable" }
+      }]
+    };
+    const result = parseHealthConnectImport(payload);
+
+    expect(result.timeSeriesSamples[0].sourceJson).toEqual(payload.steps[0].provenance);
+    expect(result.activitySessions[0].sourceJson).toMatchObject({
+      title: "Morning run",
+      provenance: payload.exerciseSessions[0].provenance,
+      exerciseType: 56
+    });
+    expect(result.sourceImport.id).not.toBe(parseHealthConnectImport({ ...payload, batchId: "2026-06-01T12:00:00.000Z:2/2" }).sourceImport.id);
+  });
+});
