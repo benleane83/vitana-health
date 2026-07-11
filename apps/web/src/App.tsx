@@ -13,7 +13,7 @@ import type {
   Profile,
   ProfileListEntry
 } from "@local-fitness-advisor/shared";
-import { MANUAL_LAB_MARKER_CATALOG, safetyNotice } from "@local-fitness-advisor/shared";
+import { safetyNotice } from "@local-fitness-advisor/shared";
 import { api } from "./api.js";
 import type { AiQueryResult, LlmConfig, PairedDevice, PendingPairing } from "./api.js";
 import type { AppRoute, BodyCompositionEditableRow, ImportMode, ManualMarkerRow, ScanKind } from "./types.js";
@@ -56,7 +56,7 @@ export function App() {
 
   const [scanKind, setScanKind] = useState<ScanKind>("body-composition");
   const [manualCollectedAt, setManualCollectedAt] = useState(todayIsoDate());
-  const [manualPanelName, setManualPanelName] = useState("Lipid panel");
+  const [manualObservationGroup, setManualObservationGroup] = useState("General observations");
   const [manualLabName, setManualLabName] = useState("");
   const [manualRows, setManualRows] = useState<ManualMarkerRow[]>(() => createStarterRows());
   const [uploadFile, setUploadFile] = useState<File>();
@@ -87,13 +87,21 @@ export function App() {
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const bodyCompInputRef = useRef<HTMLInputElement>(null);
 
-  const labMeasurementTypes = useMemo(
-    () =>
-      (store?.measurementTypes ?? []).filter(
-        (type) => type.kind === "panel-component" || type.category === "lab" || type.category === "metabolic"
-      ),
+  const recordedMeasurementTypes = useMemo(
+    () => [...(store?.measurementTypes ?? [])].sort((left, right) => left.display.localeCompare(right.display)),
     [store?.measurementTypes]
   );
+  const observationGroupOptions = useMemo(() => {
+    const labels = new Set<string>();
+    for (const group of store?.observationGroups ?? []) {
+      const label = group.label?.trim();
+      if (label) labels.add(label);
+    }
+    if (labels.size === 0) {
+      ["General observations", "Lab panel", "Body composition report"].forEach((label) => labels.add(label));
+    }
+    return [...labels].sort((left, right) => left.localeCompare(right));
+  }, [store?.observationGroups]);
 
   const profile = store?.profile;
   const activeProfile = profiles.find((entry) => entry.id === activeProfileId) ?? profile;
@@ -366,10 +374,10 @@ export function App() {
     event.preventDefault();
     const payload = toManualPayload({
       collectedAt: manualCollectedAt,
-      panelName: manualPanelName,
+      observationGroup: manualObservationGroup,
       labName: manualLabName,
       rows: manualRows,
-      knownMeasurements: labMeasurementTypes
+      knownMeasurements: recordedMeasurementTypes
     });
     await run("Manual observations imported.", async () => {
       await api.importManualObservations(payload);
@@ -598,9 +606,7 @@ export function App() {
         if (row.id !== id) return row;
         const next = { ...row, ...patch };
         if (patch.marker !== undefined && patch.unit === undefined && !next.unit.trim()) {
-          const resolvedUnit =
-            findKnownCatalogMarker(patch.marker)?.unit ??
-            findKnownMeasurement(patch.marker, labMeasurementTypes)?.canonicalUnit;
+          const resolvedUnit = findKnownMeasurement(patch.marker, recordedMeasurementTypes)?.canonicalUnit;
           if (resolvedUnit) next.unit = resolvedUnit;
         }
         return next;
@@ -614,7 +620,7 @@ export function App() {
 
   function resetManualForm() {
     setManualCollectedAt(todayIsoDate());
-    setManualPanelName("Lipid panel");
+    setManualObservationGroup("General observations");
     setManualLabName("");
     setManualRows(createStarterRows());
   }
@@ -718,11 +724,12 @@ export function App() {
             onModeChange={(mode) => navigate("import", mode)}
             scanKind={scanKind}
             onScanKindChange={setScanKind}
-            panelName={manualPanelName}
+            observationGroup={manualObservationGroup}
+            observationGroupOptions={observationGroupOptions}
             labName={manualLabName}
             collectedAt={manualCollectedAt}
             rows={manualRows}
-            onPanelNameChange={setManualPanelName}
+            onObservationGroupChange={setManualObservationGroup}
             onLabNameChange={setManualLabName}
             onCollectedAtChange={setManualCollectedAt}
             onRowChange={updateManualRow}
@@ -739,6 +746,7 @@ export function App() {
             onBodyCompFileChange={setBodyCompFile}
             onBodyCompReportDateChange={setBodyCompReportDate}
             onBodyCompRowChange={updateBodyCompRow}
+            measurementTypes={recordedMeasurementTypes}
             onPreviewBodyComp={previewBodyCompositionReport}
             onCommitBodyComp={commitBodyCompositionReport}
             bodyCompInputRef={bodyCompInputRef}
@@ -917,12 +925,6 @@ function summaryPath(measurementCode?: string): string {
 
 // ─── Manual lab helpers ───────────────────────────────────────────────────────
 
-function findKnownCatalogMarker(input: string): (typeof MANUAL_LAB_MARKER_CATALOG)[number] | undefined {
-  const normalized = input.trim().toLowerCase();
-  if (!normalized) return undefined;
-  return MANUAL_LAB_MARKER_CATALOG.find((entry) => entry.marker.toLowerCase() === normalized);
-}
-
 function findKnownMeasurement(input: string, knownMeasurements: MeasurementType[]): MeasurementType | undefined {
   const normalized = input.trim().toLowerCase();
   if (!normalized) return undefined;
@@ -934,19 +936,19 @@ function findKnownMeasurement(input: string, knownMeasurements: MeasurementType[
 
 function toManualPayload({
   collectedAt,
-  panelName,
+  observationGroup,
   labName,
   rows,
   knownMeasurements
 }: {
   collectedAt: string;
-  panelName: string;
+  observationGroup: string;
   labName: string;
   rows: ManualMarkerRow[];
   knownMeasurements: MeasurementType[];
 }): ManualObservationPayload {
   if (!collectedAt) throw new Error("Collection date is required.");
-  if (!panelName.trim()) throw new Error("Panel name is required.");
+  if (!observationGroup.trim()) throw new Error("Observation group is required.");
   const observations = rows
     .map((row) => {
       const markerName = row.marker.trim();
@@ -954,17 +956,19 @@ function toManualPayload({
       if (!hasRowData) return undefined;
       const value = Number.parseFloat(row.value);
       if (!Number.isFinite(value)) throw new Error(`Enter a numeric value for ${markerName || "all rows"}.`);
-      const known = findKnownMeasurement(markerName, knownMeasurements);
+      const known =
+        findKnownMeasurement(row.measurementCode?.trim() || "", knownMeasurements) ??
+        findKnownMeasurement(markerName, knownMeasurements);
       return {
         measurementName: markerName || known?.display,
-        measurementCode: known?.code,
+        measurementCode: row.measurementCode?.trim() || known?.code,
         value,
         unit: row.unit.trim() || known?.canonicalUnit
       };
     })
     .filter((row): row is NonNullable<typeof row> => Boolean(row));
   if (observations.length === 0) throw new Error("Enter at least one observation row before import.");
-  return { observedAt: collectedAt, label: panelName.trim(), sourceName: labName.trim() || undefined, observations };
+  return { observedAt: collectedAt, label: observationGroup.trim(), sourceName: labName.trim() || undefined, observations };
 }
 
 function toEditableBodyCompRow(row: BodyCompositionDraftRow): BodyCompositionEditableRow {
@@ -987,13 +991,13 @@ function toBodyCompositionDraftRow(row: BodyCompositionEditableRow): BodyComposi
 
 function createStarterRows(): ManualMarkerRow[] {
   return [
-    createEmptyRow("HDL cholesterol", "", "mg/dL"),
-    createEmptyRow("LDL cholesterol", "", "mg/dL"),
-    createEmptyRow("Triglycerides", "", "mg/dL"),
-    createEmptyRow("Glucose", "", "mg/dL")
+    createEmptyRow("HDL cholesterol", "hdl_cholesterol", "", "mg/dL"),
+    createEmptyRow("LDL cholesterol", "ldl_cholesterol", "", "mg/dL"),
+    createEmptyRow("Triglycerides", "triglycerides", "", "mg/dL"),
+    createEmptyRow("Glucose", "glucose", "", "mg/dL")
   ];
 }
 
-function createEmptyRow(marker = "", value = "", unit = ""): ManualMarkerRow {
-  return { id: globalThis.crypto.randomUUID(), marker, value, unit };
+function createEmptyRow(marker = "", measurementCode = "", value = "", unit = ""): ManualMarkerRow {
+  return { id: globalThis.crypto.randomUUID(), marker, measurementCode, value, unit };
 }

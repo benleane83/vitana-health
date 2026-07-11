@@ -21,12 +21,17 @@ export interface ModelCallResult {
 }
 
 export async function callConfiguredModel(prompt: string, options?: ModelRequestOptions): Promise<ModelCallResult> {
+  const settings = getAiSettings();
   const provider = resolveProvider(options?.provider);
   const timeoutMs = options?.timeoutMs ?? parseTimeoutMs(process.env.MODEL_TIMEOUT_MS ?? process.env.OLLAMA_TIMEOUT_MS, 30000);
   if (provider === "openai") {
     return callOpenAiResponses(prompt, settings, options?.model, timeoutMs);
   }
   return callOllama(prompt, settings, options?.model, timeoutMs);
+}
+
+export function resolvedModelProvider(override?: "ollama" | "openai"): "ollama" | "openai" {
+  return resolveProvider(override);
 }
 
 export function currentModelConfig(): { provider: "ollama" | "openai"; endpoint: string; model: string; timeoutMs: number } {

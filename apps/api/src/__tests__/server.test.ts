@@ -354,6 +354,14 @@ describe("DELETE /api/observations/:id", () => {
 // ─── Schema validation ─────────────────────────────────────────────────────────
 
 describe("POST /api/import/blood-test — schema validation", () => {
+  it("mounts blood-test preview route", async () => {
+    const res = await request(app)
+      .post("/api/import/blood-test/preview")
+      .set("authorization", ownerAuthorization)
+      .send({});
+    expect(res.status).not.toBe(404);
+  });
+
   it("returns 400 when 'content' field is missing", async () => {
     const res = await request(app)
       .post("/api/import/blood-test")

@@ -718,11 +718,39 @@ function normalizeBodyCompositionUnit(unit: string): string {
 }
 
 const maxDateWhitespaceGap = 20;
+const monthNameToIndex: Record<string, number> = {
+  jan: 1,
+  january: 1,
+  feb: 2,
+  february: 2,
+  mar: 3,
+  march: 3,
+  apr: 4,
+  april: 4,
+  may: 5,
+  jun: 6,
+  june: 6,
+  jul: 7,
+  july: 7,
+  aug: 8,
+  august: 8,
+  sep: 9,
+  sept: 9,
+  september: 9,
+  oct: 10,
+  october: 10,
+  nov: 11,
+  november: 11,
+  dec: 12,
+  december: 12
+};
 
 function readBodyCompositionDate(text: string): string | undefined {
   const datePatterns = [
+    new RegExp(`(?:test|scan|report|measurement|measured|date)\\s{0,${maxDateWhitespaceGap}}(?:date)?\\s{0,${maxDateWhitespaceGap}}[:\\-]?\\s{0,${maxDateWhitespaceGap}}(\\d{1,2}[\\/\\-.][A-Za-z]{3,9}[\\/\\-.]\\d{2,4}(?:\\s+\\d{1,2}:\\d{2}(?::\\d{2})?)?)`, "i"),
     new RegExp(`(?:test|scan|report|measurement|measured|date)\\s{0,${maxDateWhitespaceGap}}(?:date)?\\s{0,${maxDateWhitespaceGap}}[:\\-]?\\s{0,${maxDateWhitespaceGap}}(\\d{1,2}[\\/\\-.]\\d{1,2}[\\/\\-.]\\d{2,4})`, "i"),
     new RegExp(`(?:test|scan|report|measurement|measured|date)\\s{0,${maxDateWhitespaceGap}}(?:date)?\\s{0,${maxDateWhitespaceGap}}[:\\-]?\\s{0,${maxDateWhitespaceGap}}([A-Za-z]{3,9}\\s{1,${maxDateWhitespaceGap}}\\d{1,2},?\\s{1,${maxDateWhitespaceGap}}\\d{4})`, "i"),
+    /\b(\d{1,2}[\/\-.][A-Za-z]{3,9}[\/\-.]\d{2,4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?)\b/,
     /\b(\d{4}[\/\-.]\d{1,2}[\/\-.]\d{1,2})\b/,
     /\b(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})\b/
   ];
@@ -801,8 +829,99 @@ function readNumber(value: string | undefined): number | undefined {
 
 function readDate(value: string | undefined): string | undefined {
   if (!value) return undefined;
-  const parsed = new Date(value);
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const structured = parseStructuredDate(trimmed);
+  if (structured) {
+    const parsed = new Date(Date.UTC(structured.year, structured.month - 1, structured.day, structured.hour, structured.minute, structured.second));
+    return parsed.toISOString();
+  }
+  const parsed = new Date(trimmed);
   return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+}
+
+interface StructuredDate {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+}
+
+function parseStructuredDate(value: string): StructuredDate | undefined {
+  const dateTimeMatch = value.match(/^(.*?)(?:\s+(\d{1,2})(?::(\d{2}))(?::(\d{2}))?)?$/);
+  if (!dateTimeMatch) {
+    return undefined;
+  }
+
+  const datePart = dateTimeMatch[1]?.trim();
+  if (!datePart) {
+    return undefined;
+  }
+
+  const hour = Number.parseInt(dateTimeMatch[2] ?? "0", 10);
+  const minute = Number.parseInt(dateTimeMatch[3] ?? "0", 10);
+  const second = Number.parseInt(dateTimeMatch[4] ?? "0", 10);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) {
+    return undefined;
+  }
+
+  const ymd = datePart.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/);
+  if (ymd) {
+    return normalizeStructuredDate(Number.parseInt(ymd[1], 10), Number.parseInt(ymd[2], 10), Number.parseInt(ymd[3], 10), hour, minute, second);
+  }
+
+  const dayMonthNameYear = datePart.match(/^(\d{1,2})[\/\-.]([A-Za-z]{3,9})[\/\-.](\d{2,4})$/);
+  if (dayMonthNameYear) {
+    const month = monthNameToIndex[dayMonthNameYear[2].toLowerCase()];
+    if (!month) {
+      return undefined;
+    }
+    return normalizeStructuredDate(Number.parseInt(dayMonthNameYear[3], 10), month, Number.parseInt(dayMonthNameYear[1], 10), hour, minute, second);
+  }
+
+  const monthNameDayYear = datePart.match(/^([A-Za-z]{3,9})\s+(\d{1,2}),?\s+(\d{2,4})$/);
+  if (monthNameDayYear) {
+    const month = monthNameToIndex[monthNameDayYear[1].toLowerCase()];
+    if (!month) {
+      return undefined;
+    }
+    return normalizeStructuredDate(Number.parseInt(monthNameDayYear[3], 10), month, Number.parseInt(monthNameDayYear[2], 10), hour, minute, second);
+  }
+
+  const ambiguousNumeric = datePart.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+  if (ambiguousNumeric) {
+    const first = Number.parseInt(ambiguousNumeric[1], 10);
+    const secondPart = Number.parseInt(ambiguousNumeric[2], 10);
+    const year = Number.parseInt(ambiguousNumeric[3], 10);
+    if (first > 12) {
+      return normalizeStructuredDate(year, secondPart, first, hour, minute, second);
+    }
+    if (secondPart > 12) {
+      return normalizeStructuredDate(year, first, secondPart, hour, minute, second);
+    }
+    // Preserve prior behavior for ambiguous values where both month/day are <= 12.
+    return normalizeStructuredDate(year, first, secondPart, hour, minute, second);
+  }
+
+  return undefined;
+}
+
+function normalizeStructuredDate(year: number, month: number, day: number, hour: number, minute: number, second: number): StructuredDate | undefined {
+  const normalizedYear = year < 100 ? 2000 + year : year;
+  if (month < 1 || month > 12 || day < 1 || day > 31) {
+    return undefined;
+  }
+  const normalized = new Date(Date.UTC(normalizedYear, month - 1, day, hour, minute, second));
+  if (
+    normalized.getUTCFullYear() !== normalizedYear ||
+    normalized.getUTCMonth() !== month - 1 ||
+    normalized.getUTCDate() !== day
+  ) {
+    return undefined;
+  }
+  return { year: normalizedYear, month, day, hour, minute, second };
 }
 
 function fallbackMeasurementCode(value: string): string {

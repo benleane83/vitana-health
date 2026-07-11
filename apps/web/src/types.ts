@@ -10,6 +10,7 @@ export type ScanKind = "body-composition" | "blood-test";
 export interface ManualMarkerRow {
   id: string;
   marker: string;
+  measurementCode?: string;
   value: string;
   unit: string;
 }

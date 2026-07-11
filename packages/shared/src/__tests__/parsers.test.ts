@@ -4,6 +4,7 @@ import {
   buildManualLabEntryImport,
   buildManualObservationImport,
   checksum,
+  parseBodyCompositionText,
   parseBloodTestCsv,
   parseBloodTestScanText,
   parseObservationCsv
@@ -154,6 +155,24 @@ describe("parseBloodTestScanText", () => {
     const result = parseBloodTestScanText("cbc-2026-06-15.pdf", "Report date: 2026-06-15\nGlucose: 95 mg/dL");
     expect(result.rows).toEqual([expect.objectContaining({ measurementCode: "glucose", included: true, confidence: "high" })]);
     expect(result.reportDate).toContain("2026-06-15");
+  });
+
+  it("parses day/month-name report dates from OCR text", () => {
+    const result = parseBloodTestScanText(
+      "tanita-report.jpg",
+      "TANITA BODY COMPOSITION ANALYZER\n06/JUN/2026 12:36\nWEIGHT 74.8kg"
+    );
+    expect(result.reportDate).toContain("2026-06-06T12:36:00.000Z");
+  });
+});
+
+describe("parseBodyCompositionText", () => {
+  it("parses day/month-name report dates from OCR text", () => {
+    const result = parseBodyCompositionText(
+      "tanita-report.jpg",
+      "TANITA BODY COMPOSITION ANALYZER\n06/JUN/2026 12:36\nWEIGHT 74.8kg"
+    );
+    expect(result.reportDate).toContain("2026-06-06T12:36:00.000Z");
   });
 });
 

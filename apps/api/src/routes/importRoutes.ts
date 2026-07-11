@@ -126,39 +126,39 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
       store: store.mergeImport(imported),
       import: { ...imported.sourceImport, rawContent: undefined }
     });
+  });
 
-    router.post("/blood-test/preview", async (request, response, next) => {
-      try {
-        const parsed = bodyCompositionPreviewSchema.parse(request.body ?? {});
-        const buffer = Buffer.from(parsed.contentBase64, "base64");
-        if (buffer.length === 0) {
-          response.status(400).json({ error: "Uploaded report was empty.", code: "EMPTY_PAYLOAD" });
-          return;
-        }
-        if (buffer.length > 15_000_000) {
-          response.status(413).json({ error: "Uploaded report is too large for local preview.", code: "PAYLOAD_TOO_LARGE" });
-          return;
-        }
-        const extracted = await extractBodyCompositionText(buffer, parsed.mimeType);
-        const draft = parseBloodTestScanText(parsed.fileName, extracted.text);
-        response.json({ ...draft, diagnostics: [...extracted.diagnostics, ...draft.diagnostics].slice(0, 75) });
-      } catch (error) {
-        next(error);
+  router.post("/blood-test/preview", async (request, response, next) => {
+    try {
+      const parsed = bodyCompositionPreviewSchema.parse(request.body ?? {});
+      const buffer = Buffer.from(parsed.contentBase64, "base64");
+      if (buffer.length === 0) {
+        response.status(400).json({ error: "Uploaded report was empty.", code: "EMPTY_PAYLOAD" });
+        return;
       }
-    });
+      if (buffer.length > 15_000_000) {
+        response.status(413).json({ error: "Uploaded report is too large for local preview.", code: "PAYLOAD_TOO_LARGE" });
+        return;
+      }
+      const extracted = await extractBodyCompositionText(buffer, parsed.mimeType);
+      const draft = parseBloodTestScanText(parsed.fileName, extracted.text);
+      response.json({ ...draft, diagnostics: [...extracted.diagnostics, ...draft.diagnostics].slice(0, 75) });
+    } catch (error) {
+      next(error);
+    }
+  });
 
-    router.post("/blood-test/commit", async (request, response, next) => {
-      try {
-        const parsed = bodyCompositionCommitSchema.parse(request.body ?? {});
-        const imported = buildBloodTestImportFromDraft({ ...parsed, rows: parsed.rows as BodyCompositionDraftRow[] });
-        const store = activeStore();
-        const merged = store.mergeImport(imported);
-        const warehouse = await rebuildWarehouseFromStore(merged);
-        response.status(201).json({ store: merged, import: { ...imported.sourceImport, rawContent: undefined }, warehouse });
-      } catch (error) {
-        next(error);
-      }
-    });
+  router.post("/blood-test/commit", async (request, response, next) => {
+    try {
+      const parsed = bodyCompositionCommitSchema.parse(request.body ?? {});
+      const imported = buildBloodTestImportFromDraft({ ...parsed, rows: parsed.rows as BodyCompositionDraftRow[] });
+      const store = activeStore();
+      const merged = store.mergeImport(imported);
+      const warehouse = await rebuildWarehouseFromStore(merged);
+      response.status(201).json({ store: merged, import: { ...imported.sourceImport, rawContent: undefined }, warehouse });
+    } catch (error) {
+      next(error);
+    }
   });
 
   router.post("/body-composition/preview", async (request, response, next) => {

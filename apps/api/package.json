@@ -12,6 +12,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "pretest": "npm run build -w @local-fitness-advisor/shared",
     "test": "vitest run",
     "start": "node dist/server.js"
   },
