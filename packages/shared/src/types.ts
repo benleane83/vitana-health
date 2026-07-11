@@ -136,44 +136,6 @@ export interface ActivitySession {
   sourceJson?: unknown;
 }
 
-export interface SleepSession {
-  id: string;
-  startAt: string;
-  endAt: string;
-  durationMinutes: number;
-  efficiencyPercent?: number;
-  sourceId: string;
-}
-
-export interface SleepStageInterval {
-  id: string;
-  sleepSessionId: string;
-  stage: "awake" | "light" | "deep" | "rem" | "unknown";
-  startAt: string;
-  endAt: string;
-}
-
-export interface LabResultPanel {
-  id: string;
-  collectedAt: string;
-  labName?: string;
-  panelName: string;
-  sourceId: string;
-  notes?: string;
-}
-
-export interface LabResultMarker {
-  id: string;
-  panelId: string;
-  measurementCode: string;
-  displayName: string;
-  value: number;
-  unit: string;
-  referenceLow?: number;
-  referenceHigh?: number;
-  flag?: "low" | "normal" | "high" | "critical" | "unknown";
-}
-
 export type InsightModel = "deterministic" | "local-llm" | `${"ollama" | "openai"}:${string}`;
 
 export interface Insight {
@@ -212,10 +174,6 @@ export interface HealthStoreData {
   observationGroups: ObservationGroup[];
   timeSeriesSamples: TimeSeriesSample[];
   activitySessions: ActivitySession[];
-  sleepSessions: SleepSession[];
-  sleepStageIntervals: SleepStageInterval[];
-  labPanels: LabResultPanel[];
-  labMarkers: LabResultMarker[];
   insights: Insight[];
   auditEvents: AuditEvent[];
 }
@@ -226,7 +184,6 @@ export interface AnalyticsSummary {
     observations: number;
     samples: number;
     activities: number;
-    labMarkers: number;
     insights: number;
   };
   latestMetrics: Array<{
@@ -258,7 +215,7 @@ export interface AnalyticsSummary {
 export interface HealthDataSummarySourceCounts {
   observations: number;
   samples: number;
-  labMarkers: number;
+  activities: number;
 }
 
 export interface HealthDataSummaryTypeRow {
@@ -290,7 +247,7 @@ export interface HealthDataSummary {
   categories: HealthDataSummaryCategoryGroup[];
 }
 
-export type HealthDataDetailEntryKind = "observation" | "sample" | "lab-marker";
+export type HealthDataDetailEntryKind = "observation" | "sample" | "activity";
 
 export interface HealthDataDetailEntry {
   kind: HealthDataDetailEntryKind;
@@ -341,8 +298,6 @@ export interface ClinicianReport {
     observations: number;
     samples: number;
     activities: number;
-    sleepSessions: number;
-    labMarkers: number;
   };
   latestMeasurements: Array<{
     displayName: string;

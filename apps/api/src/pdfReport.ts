@@ -38,7 +38,7 @@ export async function createClinicianReportPdf(report: ClinicianReport): Promise
 
   section(document, "Data included");
   document.text(
-    `Observations: ${report.totals.observations}  |  Samples: ${report.totals.samples}  |  Activities: ${report.totals.activities}  |  Sleep sessions: ${report.totals.sleepSessions}  |  Lab markers: ${report.totals.labMarkers}`
+    `Observations: ${report.totals.observations}  |  Samples: ${report.totals.samples}  |  Activities: ${report.totals.activities}`
   );
 
   section(document, "Latest measurements");

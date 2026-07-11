@@ -38,6 +38,17 @@ export function summarizeStoreData(store: HealthStoreData): HealthDataSummary {
     row.lastMeasuredAt = latestTimestamp(row.lastMeasuredAt, sample.endAt);
   }
 
+  if (store.activitySessions.length > 0) {
+    const row = ensureRow(rows, measurementTypes, "activity_sessions");
+    row.displayName = "Activity sessions";
+    row.category = "activity";
+    for (const session of store.activitySessions) {
+      row.counts.activities += 1;
+      row.counts.total += 1;
+      row.lastMeasuredAt = latestTimestamp(row.lastMeasuredAt, session.endAt ?? session.startAt);
+    }
+  }
+
   const grouped = new Map<HealthDataSummaryTypeRow["category"], HealthDataSummaryTypeRow[]>();
   for (const row of rows.values()) {
     const existing = grouped.get(row.category);
@@ -57,12 +68,12 @@ export function summarizeStoreData(store: HealthStoreData): HealthDataSummary {
         (acc, row) => {
           acc.observations += row.counts.observations;
           acc.samples += row.counts.samples;
-          acc.labMarkers += row.counts.labMarkers;
+          acc.activities += row.counts.activities;
           acc.total += row.counts.total;
           acc.types += 1;
           return acc;
         },
-        { observations: 0, samples: 0, labMarkers: 0, total: 0, types: 0 }
+        { observations: 0, samples: 0, activities: 0, total: 0, types: 0 }
       ),
       rows: categoryRows
     }));
@@ -71,12 +82,12 @@ export function summarizeStoreData(store: HealthStoreData): HealthDataSummary {
     (acc, category) => {
       acc.observations += category.counts.observations;
       acc.samples += category.counts.samples;
-      acc.labMarkers += category.counts.labMarkers;
+      acc.activities += category.counts.activities;
       acc.total += category.counts.total;
       acc.types += category.counts.types;
       return acc;
     },
-    { observations: 0, samples: 0, labMarkers: 0, total: 0, types: 0 }
+    { observations: 0, samples: 0, activities: 0, total: 0, types: 0 }
   );
 
   return {
@@ -145,7 +156,37 @@ export function listHealthDataDetailEntries(store: HealthStoreData, measurementC
       };
     });
 
-  return [...observationEntries, ...sampleEntries].sort((a, b) => {
+  const activityEntries =
+    measurementCode === "activity_sessions"
+      ? store.activitySessions.map<HealthDataDetailEntry>((entry) => {
+          const source = dataSources.get(entry.sourceId);
+          const imported = source?.importId ? sourceImports.get(source.importId) : undefined;
+          const endTimestamp = entry.endAt ?? entry.startAt;
+          const durationMinutes =
+            entry.durationMinutes ?? Math.max(0, Math.round((new Date(endTimestamp).getTime() - new Date(entry.startAt).getTime()) / 60_000));
+          const detailNotes = [
+            `Type: ${entry.activityType}`,
+            entry.energyKcal !== undefined ? `Energy: ${entry.energyKcal.toFixed(1)} kcal` : undefined,
+            entry.distanceMeters !== undefined ? `Distance: ${entry.distanceMeters.toFixed(1)} m` : undefined
+          ].filter(Boolean);
+          return {
+            kind: "activity",
+            id: entry.id,
+            measurementCode,
+            displayName,
+            timestamp: endTimestamp,
+            value: durationMinutes,
+            unit: "min",
+            sourceLabel: source?.label,
+            sourceKind: source?.sourceKind,
+            importFileName: imported?.fileName,
+            importedAt: imported?.importedAt,
+            note: detailNotes.join(" • ")
+          };
+        })
+      : [];
+
+  return [...observationEntries, ...sampleEntries, ...activityEntries].sort((a, b) => {
     const timestampCompare = b.timestamp.localeCompare(a.timestamp);
     if (timestampCompare !== 0) {
       return timestampCompare;
@@ -165,12 +206,12 @@ export function summarizeMeasurementDetail(store: HealthStoreData, measurementCo
       } else if (entry.kind === "sample") {
         acc.samples += 1;
       } else {
-        acc.labMarkers += 1;
+        acc.activities += 1;
       }
       acc.total += 1;
       return acc;
     },
-    { observations: 0, samples: 0, labMarkers: 0, total: 0 }
+    { observations: 0, samples: 0, activities: 0, total: 0 }
   );
 
   const latestTimestamp = entries[0]?.timestamp;
@@ -223,7 +264,7 @@ function ensureRow(
     counts: {
       observations: 0,
       samples: 0,
-      labMarkers: 0,
+      activities: 0,
       total: 0
     }
   };

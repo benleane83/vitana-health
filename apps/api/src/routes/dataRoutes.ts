@@ -53,8 +53,7 @@ function storeCounts(snapshot: ReturnType<HealthStore["snapshot"]>) {
     sourceImports: snapshot.sourceImports.length,
     observations: snapshot.observations.length,
     timeSeriesSamples: snapshot.timeSeriesSamples.length,
-    activitySessions: snapshot.activitySessions.length,
-    labMarkers: snapshot.labMarkers.length
+    activitySessions: snapshot.activitySessions.length
   };
 }
 

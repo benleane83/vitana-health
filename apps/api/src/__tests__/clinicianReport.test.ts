@@ -8,10 +8,11 @@ function store(): HealthStoreData {
     profile: { id: "self", displayName: "Alex", units: "metric", updatedAt: "2026-01-01T00:00:00.000Z" },
     sourceImports: [{ id: "import-1", sourceKind: "blood-test-csv", fileName: "labs.csv", importedAt: "2026-01-02T00:00:00.000Z", parserVersion: "1", checksum: "private", rowCount: 1, status: "processed", diagnostics: [], rawContent: "private" }],
     dataSources: [], devices: [],
-    measurementTypes: [{ code: "cholesterol", display: "Cholesterol", category: "lab", kind: "panel-component", canonicalUnit: "mmol/L", aliases: [], aggregation: "latest" }],
-    observations: [], observationGroups: [], timeSeriesSamples: [], activitySessions: [], sleepSessions: [], sleepStageIntervals: [],
-    labPanels: [{ id: "panel-1", collectedAt: "2026-01-01T00:00:00.000Z", panelName: "Lipids", sourceId: "source-1" }],
-    labMarkers: [{ id: "marker-1", panelId: "panel-1", measurementCode: "cholesterol", displayName: "Cholesterol", value: 7, unit: "mmol/L", referenceLow: 3, referenceHigh: 5, flag: "high" }],
+    measurementTypes: [{ code: "cholesterol", display: "Cholesterol", category: "lab", kind: "panel-component", canonicalUnit: "mmol/L", aliases: [], aggregation: "latest", normalLow: 3, normalHigh: 5, referenceRanges: [{ low: 3, high: 5, unit: "mmol/L" }] }],
+    observations: [{ id: "obs-1", measurementCode: "cholesterol", observedAt: "2026-01-01T00:00:00.000Z", value: 7, unit: "mmol/L", sourceId: "source-1" }],
+    observationGroups: [],
+    timeSeriesSamples: [],
+    activitySessions: [],
     insights: [], auditEvents: []
   };
 }
@@ -23,8 +24,8 @@ describe("buildClinicianReport", () => {
     expect(report).toMatchObject({
       generatedAt: "2026-01-03T00:00:00.000Z",
       patient: { displayName: "Alex" },
-      totals: { labMarkers: 1 },
-      flaggedLabs: [{ displayName: "Cholesterol", flag: "high", referenceRange: "3–5 mmol/L" }],
+      totals: { observations: 1, samples: 0, activities: 0 },
+      flaggedLabs: [{ displayName: "Cholesterol", flag: "high" }],
       sources: [{ fileName: "labs.csv", rowCount: 1 }]
     });
     expect(JSON.stringify(report)).not.toContain("private");

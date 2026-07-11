@@ -3,7 +3,15 @@ import { DetailTrendChart } from "../components/Charts.js";
 import { formatTimestamp, formatShortTimestamp, formatDetailValue } from "../utils.js";
 import type { SummarySort } from "../types.js";
 
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({ label, value, onClick }: { label: string; value: number; onClick?: () => void }) {
+  if (onClick) {
+    return (
+      <button type="button" className="stat" onClick={onClick}>
+        <strong aria-label={`${label}: ${value}`}>{value}</strong>
+        <span>{label}</span>
+      </button>
+    );
+  }
   return (
     <div className="stat">
       <strong aria-label={`${label}: ${value}`}>{value}</strong>
@@ -22,11 +30,21 @@ function compareSummaryRows(a: HealthDataSummaryTypeRow, b: HealthDataSummaryTyp
 }
 
 function detailKindLabel(kind: HealthDataDetailEntry["kind"]): string {
-  return { observation: "Observation", sample: "Sample", "lab-marker": "Lab marker" }[kind];
+  return { observation: "Observation", sample: "Sample", activity: "Activity" }[kind];
 }
 
 function renderEntryContext(entry: HealthDataDetailEntry): string {
   return [entry.sourceLabel, entry.importFileName, entry.note].filter(Boolean).join(" • ") || "—";
+}
+
+function primaryCountTile(counts: { observations: number; samples: number; activities: number; total: number }): {
+  label: string;
+  value: number;
+} {
+  if (counts.observations > 0) return { label: "Observations", value: counts.observations };
+  if (counts.samples > 0) return { label: "Samples", value: counts.samples };
+  if (counts.activities > 0) return { label: "Activities", value: counts.activities };
+  return { label: "Entries", value: counts.total };
 }
 
 export function SummaryPage({
@@ -87,7 +105,7 @@ export function SummaryPage({
             <Stat label="Entries" value={summary.totals.total} />
             <Stat label="Observations" value={summary.totals.observations} />
             <Stat label="Samples" value={summary.totals.samples} />
-            <Stat label="Labs" value={summary.totals.labMarkers} />
+            <Stat label="Activities" value={summary.totals.activities} onClick={() => onSelectRow("activity_sessions")} />
           </div>
 
           <div className="summary-generated" aria-label={`Summary generated ${formatTimestamp(summary.generatedAt)}`}>
@@ -173,6 +191,7 @@ export function ObservationTypeDetailPage({
   onDeleteAll: () => void | Promise<void>;
 }) {
   const deleteAllCount = detail?.deletion.observationEntries ?? 0;
+  const primaryTile = detail ? primaryCountTile(detail.counts) : { label: "Entries", value: 0 };
 
   return (
     <section className="panel summary-panel">
@@ -209,17 +228,14 @@ export function ObservationTypeDetailPage({
       {detail ? (
         <>
           <div className="summary-totals summary-detail-stats">
-            <Stat label="Entries" value={detail.counts.total} />
-            <Stat label="Observations" value={detail.counts.observations} />
-            <Stat label="Samples" value={detail.counts.samples} />
-            <Stat label="Labs" value={detail.counts.labMarkers} />
-            <div className="stat-card">
-              <span>Latest</span>
+            <Stat label={primaryTile.label} value={primaryTile.value} />
+            <div className="stat" aria-label={`Latest: ${detail.measurement.lastMeasuredAt ? formatShortTimestamp(detail.measurement.lastMeasuredAt) : "—"}`}>
               <strong>
                 {detail.measurement.lastMeasuredAt
                   ? formatShortTimestamp(detail.measurement.lastMeasuredAt)
                   : "—"}
               </strong>
+              <span>Latest</span>
             </div>
           </div>
 

@@ -14,12 +14,9 @@ function makeEmptyStore() {
     devices: [],
     measurementTypes: [],
     observations: [],
+    observationGroups: [],
     timeSeriesSamples: [],
     activitySessions: [],
-    sleepSessions: [],
-    sleepStageIntervals: [],
-    labPanels: [],
-    labMarkers: [],
     insights: [],
     auditEvents: []
   };
@@ -27,7 +24,7 @@ function makeEmptyStore() {
 
 function makeEmptyAnalytics() {
   return {
-    counts: { imports: 0, observations: 0, samples: 0, activities: 0, labMarkers: 0, insights: 0 },
+    counts: { imports: 0, observations: 0, samples: 0, activities: 0, insights: 0 },
     latestMetrics: [],
     trendCards: [],
     labAlerts: [],

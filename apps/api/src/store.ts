@@ -105,8 +105,6 @@ export class HealthStore {
     observationGroups: HealthStoreData["observationGroups"];
     timeSeriesSamples: HealthStoreData["timeSeriesSamples"];
     activitySessions: HealthStoreData["activitySessions"];
-    labPanels: HealthStoreData["labPanels"];
-    labMarkers: HealthStoreData["labMarkers"];
   }): HealthStoreData {
     const safeSourceImport = sanitizeSourceImport(parsed.sourceImport);
     if (
@@ -449,10 +447,6 @@ function createEmptyStore(profileId = "self"): HealthStoreData {
     observationGroups: [],
     timeSeriesSamples: [],
     activitySessions: [],
-    sleepSessions: [],
-    sleepStageIntervals: [],
-    labPanels: [],
-    labMarkers: [],
     insights: [],
     auditEvents: []
   };
@@ -465,7 +459,11 @@ function normalizeStore(data: HealthStoreData): boolean {
     changed = true;
   }
   data.observationGroups ??= [];
-  for (const panel of data.labPanels ?? []) {
+
+  const legacyPanels = (data as HealthStoreData & { labPanels?: Array<{ id: string; collectedAt: string; panelName: string; sourceId: string; labName?: string }> }).labPanels ?? [];
+  const legacyMarkers = (data as HealthStoreData & { labMarkers?: Array<{ id: string; panelId: string; measurementCode: string; value: number; unit: string }> }).labMarkers ?? [];
+
+  for (const panel of legacyPanels) {
     const groupId = `${legacyGroupIdPrefix}${panel.id}`;
     if (!data.observationGroups.some((group) => group.id === groupId)) {
       data.observationGroups.push({
@@ -478,7 +476,7 @@ function normalizeStore(data: HealthStoreData): boolean {
       });
       changed = true;
     }
-    for (const marker of (data.labMarkers ?? []).filter((item) => item.panelId === panel.id)) {
+    for (const marker of legacyMarkers.filter((item) => item.panelId === panel.id)) {
       const matching = data.observations.find(
         (observation) =>
           observation.sourceId === panel.sourceId &&
@@ -506,6 +504,23 @@ function normalizeStore(data: HealthStoreData): boolean {
         changed = true;
       }
     }
+  }
+
+  if ("labPanels" in data) {
+    delete (data as HealthStoreData & { labPanels?: unknown }).labPanels;
+    changed = true;
+  }
+  if ("labMarkers" in data) {
+    delete (data as HealthStoreData & { labMarkers?: unknown }).labMarkers;
+    changed = true;
+  }
+  if ("sleepSessions" in data) {
+    delete (data as HealthStoreData & { sleepSessions?: unknown }).sleepSessions;
+    changed = true;
+  }
+  if ("sleepStageIntervals" in data) {
+    delete (data as HealthStoreData & { sleepStageIntervals?: unknown }).sleepStageIntervals;
+    changed = true;
   }
   return changed;
 }

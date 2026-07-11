@@ -133,8 +133,7 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
           sourceImports: merged.sourceImports.length,
           observations: merged.observations.length,
           timeSeriesSamples: merged.timeSeriesSamples.length,
-          activitySessions: merged.activitySessions.length,
-          labMarkers: merged.labMarkers.length
+          activitySessions: merged.activitySessions.length
         },
         store: merged,
         import: { ...imported.sourceImport, rawContent: undefined },

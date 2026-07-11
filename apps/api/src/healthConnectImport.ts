@@ -204,9 +204,7 @@ export function parseHealthConnectImport(payload: HealthConnectImportRequest): P
     observations,
     observationGroups: [],
     timeSeriesSamples,
-    activitySessions,
-    labPanels: [],
-    labMarkers: []
+    activitySessions
   };
 }
 

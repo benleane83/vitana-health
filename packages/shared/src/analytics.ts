@@ -40,7 +40,6 @@ export function computeAnalytics(store: HealthStoreData): AnalyticsSummary {
       observations: store.observations.length,
       samples: store.timeSeriesSamples.length,
       activities: store.activitySessions.length,
-      labMarkers: 0,
       insights: store.insights.length
     },
     latestMetrics,

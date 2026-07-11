@@ -44,8 +44,6 @@ describe("parseBloodTestCsv — happy path", () => {
     expect(result.observationGroups).toEqual([
       expect.objectContaining({ kind: "lab_panel", label: "Blood test panel" })
     ]);
-    expect(result.labPanels).toHaveLength(0);
-    expect(result.labMarkers).toHaveLength(0);
     expect(result.observations).toHaveLength(3);
     expect(result.observations.every((item) => item.observationGroupId === result.observationGroups[0].id)).toBe(true);
   });
@@ -88,7 +86,6 @@ describe("buildManualLabEntryImport", () => {
     });
     expect(result.sourceImport.sourceKind).toBe("manual-entry");
     expect(result.observationGroups).toEqual([expect.objectContaining({ kind: "lab_panel", label: "Lipid panel" })]);
-    expect(result.labMarkers).toHaveLength(0);
     expect(result.observations).toHaveLength(2);
   });
 

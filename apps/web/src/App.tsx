@@ -97,7 +97,7 @@ export function App() {
   const density = useMemo(() => {
     const counts = analytics?.counts;
     if (!counts) return 0;
-    return Math.min(100, counts.observations + counts.samples / 10 + counts.labMarkers * 8);
+    return Math.min(100, counts.observations + counts.samples / 10 + counts.activities * 4);
   }, [analytics]);
 
   // Initial data load
@@ -749,7 +749,7 @@ export function App() {
             busy={exportBusy}
             error={exportError}
             hasHealthData={Boolean(
-              store && (store.observations.length || store.timeSeriesSamples.length || store.labMarkers.length)
+              store && (store.observations.length || store.timeSeriesSamples.length || store.activitySessions.length)
             )}
             onDownload={() => { void downloadPdfReport(); }}
           />
