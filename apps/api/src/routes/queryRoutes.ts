@@ -4,12 +4,13 @@ import { safetyNotice } from "@local-fitness-advisor/shared";
 import type { ProfileStoreManager } from "../store.js";
 import { runWarehouseQuery } from "../warehouse.js";
 import { planWarehouseQuery } from "../nlQuery.js";
-import { callConfiguredModel } from "../modelClient.js";
+import { callConfiguredModel, currentModelConfig, resolvedModelProvider } from "../modelClient.js";
 import { planDataAnswer } from "../askData.js";
 import { planStoreAnswer } from "../askStore.js";
 import { planAiQuery } from "../aiQueryPlanner.js";
 import type { QueryDSL } from "../aiQueryPlanner.js";
 import { compileQueryDSL, validateCompiledSql } from "../queryCompiler.js";
+import { hasCloudAiConsent, sanitizeQuestionForModel, sanitizeRowsForPrompt } from "../privacy.js";
 
 const nlQuerySchema = z.object({
   question: z.string().min(3).max(500)
@@ -39,6 +40,22 @@ export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Rout
     return storeManager.getActiveStore();
   }
 
+  function ensureCloudConsent(response: express.Response, provider?: "ollama" | "openai"): boolean {
+    const resolved = provider ?? currentModelConfig().provider;
+    if (resolved !== "openai") {
+      return true;
+    }
+    if (hasCloudAiConsent(activeStore().snapshot().profile)) {
+      return true;
+    }
+    response.status(403).json({
+      error: "Cloud model consent is required before sending prompts off-device.",
+      code: "CLOUD_CONSENT_REQUIRED",
+      provider: "openai"
+    });
+    return false;
+  }
+
   // Legacy natural-language warehouse query (deterministic, no model)
   router.post("/nl", async (request, response, next) => {
     try {
@@ -64,6 +81,9 @@ export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Rout
   // Warehouse-backed ask with model narration
   router.post("/ask", async (request, response, next) => {
     try {
+      if (!ensureCloudConsent(response)) {
+        return;
+      }
       const parsed = askSchema.parse(request.body ?? {});
       const plan = planDataAnswer(parsed.question);
       if (!plan) {
@@ -92,11 +112,13 @@ export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Rout
         "You answer health-data questions using only the supplied SQL result.",
         "If the data is present, answer in one short sentence.",
         "Do not diagnose or provide treatment advice.",
-        `Question: ${parsed.question}`,
-        `SQL result JSON: ${JSON.stringify(rows)}`
+        `Question: ${sanitizeQuestionForModel(parsed.question)}`,
+        `SQL result JSON: ${JSON.stringify(sanitizeRowsForPrompt(rows))}`
       ].join("\n");
 
-      const modelResult = await callConfiguredModel(prompt);
+      const modelResult = await callConfiguredModel(prompt, {
+        allowCloud: hasCloudAiConsent(activeStore().snapshot().profile)
+      });
       response.json({
         question: parsed.question,
         plan: plan.answerLead,
@@ -118,6 +140,9 @@ export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Rout
   // Store-backed ask with model narration
   router.post("/ask-store", async (request, response, next) => {
     try {
+      if (!ensureCloudConsent(response)) {
+        return;
+      }
       const parsed = askSchema.parse(request.body ?? {});
       const plan = planStoreAnswer(parsed.question, activeStore().snapshot());
       if (!plan) {
@@ -143,11 +168,13 @@ export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Rout
       const prompt = [
         "Answer the question using only the supplied datastore rows.",
         "Return one concise sentence and do not add medical advice.",
-        `Question: ${parsed.question}`,
-        `Datastore rows JSON: ${JSON.stringify(plan.rows)}`
+        `Question: ${sanitizeQuestionForModel(parsed.question)}`,
+        `Datastore rows JSON: ${JSON.stringify(sanitizeRowsForPrompt(plan.rows))}`
       ].join("\n");
 
-      const modelResult = await callConfiguredModel(prompt);
+      const modelResult = await callConfiguredModel(prompt, {
+        allowCloud: hasCloudAiConsent(activeStore().snapshot().profile)
+      });
       response.json({
         question: parsed.question,
         plan: plan.answerLead,
@@ -168,9 +195,15 @@ export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Rout
   // AI-planned query pipeline (primary query path for the web UI)
   router.post("/ai", async (request, response, next) => {
     try {
+      if (!ensureCloudConsent(response)) {
+        return;
+      }
       const parsed = aiQuerySchema.parse(request.body ?? {});
 
-      const plannerOutcome = await planAiQuery(parsed.question, { timezone: parsed.timezone });
+      const plannerOutcome = await planAiQuery(parsed.question, {
+        timezone: parsed.timezone,
+        allowCloud: hasCloudAiConsent(activeStore().snapshot().profile)
+      });
 
       if (!plannerOutcome.ok) {
         response.status(400).json({
@@ -243,12 +276,14 @@ export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Rout
         "You are a wellness analytics assistant. Answer the question using only the SQL result rows below.",
         "Provide one concise sentence. Do not diagnose or recommend treatments.",
         `Safety notice: ${safetyNotice}`,
-        `Question: ${parsed.question}`,
+        `Question: ${sanitizeQuestionForModel(parsed.question)}`,
         `Time range: ${compileOutcome.resolvedTimeRange.label}`,
-        `SQL result (first 20 rows): ${JSON.stringify(rows.slice(0, 20))}`
+        `SQL result (first 20 rows): ${JSON.stringify(sanitizeRowsForPrompt(rows.slice(0, 20)))}`
       ].join("\n");
 
-      const modelResult = await callConfiguredModel(summaryPrompt);
+      const modelResult = await callConfiguredModel(summaryPrompt, {
+        allowCloud: hasCloudAiConsent(activeStore().snapshot().profile)
+      });
       const answer =
         modelResult.ok && modelResult.text
           ? modelResult.text
@@ -282,16 +317,40 @@ export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Rout
   return router;
 }
 
-export function makeLlmRoutes(): express.Router {
+export function makeLlmRoutes(storeManager: ProfileStoreManager): express.Router {
   const router = express.Router();
+
+  function activeStore() {
+    return storeManager.getActiveStore();
+  }
+
+  router.get("/config", (_request, response) => {
+    response.json(currentModelConfig());
+  });
 
   router.post("/simple", async (request, response, next) => {
     try {
       const parsed = llmSimpleSchema.parse(request.body ?? {});
+      const provider = resolvedModelProvider(parsed.provider);
+      if (provider === "openai" && !hasCloudAiConsent(activeStore().snapshot().profile)) {
+        response.status(403).json({
+          ok: false,
+          provider,
+          endpoint: "",
+          model: parsed.model ?? "",
+          timeoutMs: parsed.timeoutMs ?? 30000,
+          elapsedMs: 0,
+          error: "CLOUD_CONSENT_REQUIRED",
+          code: "CLOUD_CONSENT_REQUIRED",
+          message: "Use /api/profile/cloud-ai-consent to grant explicit cloud prompt consent before using cloud models."
+        });
+        return;
+      }
       const result = await callConfiguredModel(parsed.prompt, {
         model: parsed.model,
         timeoutMs: parsed.timeoutMs,
-        provider: parsed.provider
+        provider: parsed.provider,
+        allowCloud: hasCloudAiConsent(activeStore().snapshot().profile)
       });
       if (!result.ok) {
         response

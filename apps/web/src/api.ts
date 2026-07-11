@@ -2,6 +2,7 @@ import type {
   AnalyticsSummary,
   BodyCompositionDraft,
   BodyCompositionDraftCommitPayload,
+  CloudAiConsent,
   DeleteObservationResponse,
   DeleteObservationsByTypeResponse,
   HealthDataDetail,
@@ -140,6 +141,11 @@ export const api = {
     request<DeleteObservationsByTypeResponse>(`/api/observations/by-type/${encodeURIComponent(measurementCode)}`, { method: "DELETE" }),
   saveProfile: (profile: Omit<Profile, "id" | "updatedAt">) =>
     request<Profile>("/api/profile", { method: "PUT", body: JSON.stringify(profile) }),
+  cloudAiConsent: {
+    get: () => request<CloudAiConsent>("/api/profile/cloud-ai-consent"),
+    set: (payload: { enabled: boolean; providerScopeAccepted: boolean; consentVersion?: string }) =>
+      request<CloudAiConsent>("/api/profile/cloud-ai-consent", { method: "PUT", body: JSON.stringify(payload) })
+  },
   importBloodTest: (fileName: string, content: string) =>
     request<{ store: HealthStoreData }>("/api/import/blood-test", { method: "POST", body: JSON.stringify({ fileName, content }) }),
   importObservationCsv: (fileName: string, content: string) =>
@@ -185,5 +191,8 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ question, ...options })
       })
+  },
+  llm: {
+    config: () => request<LlmConfig>("/api/llm/config")
   }
 };

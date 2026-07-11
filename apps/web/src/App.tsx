@@ -3,6 +3,7 @@ import type {
   AnalyticsSummary,
   BodyCompositionDraft,
   BodyCompositionDraftRow,
+  CloudAiConsent,
   HealthDataDetail,
   HealthDataDetailEntry,
   HealthDataSummary,
@@ -14,7 +15,7 @@ import type {
 } from "@local-fitness-advisor/shared";
 import { MANUAL_LAB_MARKER_CATALOG, safetyNotice } from "@local-fitness-advisor/shared";
 import { api } from "./api.js";
-import type { AiQueryResult, PairedDevice, PendingPairing } from "./api.js";
+import type { AiQueryResult, LlmConfig, PairedDevice, PendingPairing } from "./api.js";
 import type { AppRoute, BodyCompositionEditableRow, ImportMode, ManualMarkerRow, ScanKind } from "./types.js";
 import { todayIsoDate, numberOrUndefined, readFileAsBase64, isSupportedBodyCompMimeType } from "./utils.js";
 import { ConfirmDialog } from "./components/ConfirmDialog.js";
@@ -24,6 +25,7 @@ import { ImportPage } from "./pages/ImportPage.js";
 import { SummaryPage, ObservationTypeDetailPage } from "./pages/SummaryPage.js";
 import { QueryPage } from "./pages/QueryPage.js";
 import { ExportPage } from "./pages/ExportPage.js";
+import { SettingsPage } from "./pages/SettingsPage.js";
 
 export function App() {
   const [store, setStore] = useState<HealthStoreData>();
@@ -67,6 +69,8 @@ export function App() {
   const [aiResult, setAiResult] = useState<AiQueryResult | undefined>();
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState<string | undefined>();
+  const [llmConfig, setLlmConfig] = useState<LlmConfig>();
+  const [cloudConsentBusy, setCloudConsentBusy] = useState(false);
 
   const [pendingPairings, setPendingPairings] = useState<PendingPairing[]>([]);
 
@@ -192,15 +196,17 @@ export function App() {
   }, [route, importMode]);
 
   async function refresh() {
-    const [nextStore, nextAnalytics, nextProfiles] = await Promise.all([
+    const [nextStore, nextAnalytics, nextProfiles, nextLlmConfig] = await Promise.all([
       api.store(),
       api.analytics(),
-      api.profiles.list()
+      api.profiles.list(),
+      api.llm.config().catch(() => undefined)
     ]);
     setStore(nextStore);
     setAnalytics(nextAnalytics);
     setProfiles(nextProfiles.profiles);
     setActiveProfileId(nextProfiles.activeProfileId);
+    setLlmConfig(nextLlmConfig);
   }
 
   async function refreshForCurrentRoute() {
@@ -225,7 +231,8 @@ export function App() {
       import: importModePath(nextImportMode),
       summary: summaryPath(),
       export: "/export",
-      query: "/query"
+      query: "/query",
+      settings: "/settings"
     };
     const nextPath = routePaths[nextRoute] ?? "/";
     if (window.location.pathname !== nextPath) window.history.pushState({}, "", nextPath);
@@ -449,6 +456,11 @@ export function App() {
     event.preventDefault();
     const q = aiQuestion.trim();
     if (!q) return;
+    const cloudEnabled = store?.profile.cloudAiConsent?.enabled === true && store?.profile.cloudAiConsent?.providerScopeAccepted === true;
+    if (llmConfig?.provider === "openai" && !cloudEnabled) {
+      setAiError("Cloud model prompts are disabled. Enable cloud prompts in the consent panel to run this query.");
+      return;
+    }
     setAiBusy(true);
     setAiError(undefined);
     setAiResult(undefined);
@@ -456,9 +468,33 @@ export function App() {
       const result = await api.query.ai(q, { timezone: Intl.DateTimeFormat().resolvedOptions().timeZone });
       setAiResult(result);
     } catch (error) {
-      setAiError(error instanceof Error ? error.message : "Query failed.");
+      const normalized = normalizeApiError(error instanceof Error ? error.message : "Query failed.");
+      if (normalized.code === "CLOUD_CONSENT_REQUIRED") {
+        setAiError("Cloud consent is required before off-device prompt processing. Use the consent panel above to enable cloud prompts.");
+      } else {
+        setAiError(normalized.message || "Query failed.");
+      }
     } finally {
       setAiBusy(false);
+    }
+  }
+
+  async function setCloudConsent(enabled: boolean) {
+    setCloudConsentBusy(true);
+    setAiError(undefined);
+    try {
+      const payload: CloudAiConsent = {
+        enabled,
+        providerScopeAccepted: enabled,
+        consentVersion: "v1"
+      };
+      await api.cloudAiConsent.set(payload);
+      await refresh();
+      setMessage(enabled ? "Cloud prompt consent enabled." : "Cloud prompt consent disabled.");
+    } catch (error) {
+      setAiError(error instanceof Error ? normalizeApiError(error.message).message : "Could not update cloud consent.");
+    } finally {
+      setCloudConsentBusy(false);
     }
   }
 
@@ -590,7 +626,8 @@ export function App() {
     import: "nav-tab-import",
     summary: "nav-tab-summary",
     export: "nav-tab-export",
-    query: "nav-tab-query"
+    query: "nav-tab-query",
+    settings: "nav-tab-settings"
   };
 
   return (
@@ -598,13 +635,14 @@ export function App() {
       {/* Navigation tablist */}
       <nav className="route-nav" aria-label="Page navigation">
         <div role="tablist" aria-label="App sections">
-          {(["dashboard", "import", "summary", "export", "query"] as AppRoute[]).map((r) => {
+          {(["dashboard", "import", "summary", "export", "query", "settings"] as AppRoute[]).map((r) => {
             const labels: Record<AppRoute, string> = {
               dashboard: "Dashboard",
               import: "Import",
               summary: "Health Data Summary",
               export: "Export",
-              query: "AI Query"
+              query: "AI Query",
+              settings: "⚙ Settings"
             };
             const panelId = `route-panel-${r}`;
             return (
@@ -617,6 +655,7 @@ export function App() {
                 className={route === r ? "active" : ""}
                 tabIndex={route === r ? 0 : -1}
                 onClick={() => navigate(r)}
+                aria-label={r === "settings" ? "Settings" : undefined}
               >
                 {labels[r]}
               </button>
@@ -660,6 +699,10 @@ export function App() {
             onGenerateInsight={() => { void generateInsight(); }}
           />
         ) : null}
+      </div>
+
+      <div id="route-panel-settings" role="tabpanel" aria-labelledby={navTabIds.settings} hidden={route !== "settings"}>
+        {route === "settings" ? <SettingsPage /> : null}
       </div>
 
       <div
@@ -768,6 +811,12 @@ export function App() {
             onQuestionChange={setAiQuestion}
             onSubmit={submitAiQuery}
             busy={aiBusy}
+            cloudProvider={llmConfig?.provider}
+            cloudConsent={store?.profile.cloudAiConsent}
+            cloudConsentBusy={cloudConsentBusy}
+            onCloudConsentChange={(enabled) => {
+              void setCloudConsent(enabled);
+            }}
             result={aiResult}
             error={aiError}
           />
@@ -817,6 +866,18 @@ export function App() {
   );
 }
 
+function normalizeApiError(raw: string): { code?: string; message: string } {
+  try {
+    const parsed = JSON.parse(raw) as { code?: string; error?: string };
+    return {
+      code: parsed.code,
+      message: parsed.error ?? raw
+    };
+  } catch {
+    return { message: raw };
+  }
+}
+
 // ─── Routing helpers ──────────────────────────────────────────────────────────
 
 function routeFromPathname(pathname: string): AppRoute {
@@ -824,6 +885,7 @@ function routeFromPathname(pathname: string): AppRoute {
   if (pathname === "/import" || pathname.startsWith("/import/") || pathname === "/labs") return "import";
   if (pathname === "/query") return "query";
   if (pathname === "/export") return "export";
+  if (pathname === "/settings") return "settings";
   return "dashboard";
 }
 
