@@ -274,7 +274,7 @@ export function createApp(
       response.status(403).json({ error: "Local desktop authentication is only available on this computer." });
       return;
     }
-    const secure = process.env.NODE_ENV === "production" && Boolean(process.env.LFA_TLS_CERT);
+    const secure = request.protocol === "https";
     response.setHeader(
       "set-cookie",
       `lfa_owner=${encodeURIComponent(process.env.LFA_OWNER_TOKEN ?? "")}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400${secure ? "; Secure" : ""}`
@@ -877,7 +877,7 @@ export function createApp(
   });
 
   if (options.webRoot && existsSync(options.webRoot)) {
-    app.use(express.static(options.webRoot));
+    app.use(rateLimit(120, 60_000), express.static(options.webRoot));
     app.get("*", rateLimit(120, 60_000), (_request, response) =>
       response.sendFile(path.join(options.webRoot!, "index.html"))
     );
