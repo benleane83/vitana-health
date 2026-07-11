@@ -20,10 +20,10 @@ export function ExportPage({
         flagged laboratory results, trends, and imported-source provenance.
       </p>
       <p className="summary-detail-hint">{safetyNotice}</p>
-      {!hasHealthData ? (
-        <p className="empty" role="status">No health data has been imported yet. The report will show that no records are available.</p>
-      ) : null}
       <div aria-live="polite" aria-atomic="true">
+        {!hasHealthData ? (
+          <p className="empty" role="status">No health data has been imported yet. The report will show that no records are available.</p>
+        ) : null}
         {error ? <p className="empty" role="alert">{error}</p> : null}
       </div>
       <button type="button" onClick={onDownload} disabled={busy}>

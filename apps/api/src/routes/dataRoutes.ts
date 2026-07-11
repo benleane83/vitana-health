@@ -58,6 +58,15 @@ function storeCounts(snapshot: ReturnType<HealthStore["snapshot"]>) {
   };
 }
 
+function reportFilename(displayName: string): string {
+  const safeStem = displayName
+    .replace(/[^A-Za-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80)
+    .toLowerCase();
+  return `${safeStem || "health"}-health-report.pdf`;
+}
+
 export function makeDataRoutes(storeManager: ProfileStoreManager): express.Router {
   const router = express.Router();
 
@@ -138,9 +147,8 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
     try {
       const report = buildClinicianReport(activeStore().snapshot());
       const pdf = await createClinicianReportPdf(report);
-      const safeName = report.patient.displayName.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "health";
       response.setHeader("content-type", "application/pdf");
-      response.setHeader("content-disposition", `attachment; filename="${safeName}-health-report.pdf"`);
+      response.setHeader("content-disposition", `attachment; filename="${reportFilename(report.patient.displayName)}"`);
       response.setHeader("content-length", String(pdf.length));
       response.send(pdf);
     } catch (error) {
