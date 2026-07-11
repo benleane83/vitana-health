@@ -472,7 +472,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     category: "lab",
     kind: "panel-component",
     canonicalUnit: "g/L",
-    aliases: ["albumin", "serum albumin"],
+    aliases: ["albumin", "serum albumin", "alb"],
     loincCode: "1751-7",
     aggregation: "latest"
   },
@@ -482,7 +482,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     category: "lab",
     kind: "panel-component",
     canonicalUnit: "U/L",
-    aliases: ["alkaline phosphatase", "alp", "alk phos"],
+    aliases: ["alkaline phosphatase", "alkaline phosphatase total", "alp", "alk phos"],
     loincCode: "6768-6",
     aggregation: "latest"
   },
@@ -662,7 +662,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     category: "lab",
     kind: "panel-component",
     canonicalUnit: "mg/L",
-    aliases: ["high sensitivity c reactive protein", "hs crp", "hs-crp", "crp"],
+    aliases: ["high sensitivity c reactive protein", "c reactive protein", "c-reactive protein", "hs crp", "hs-crp", "crp"],
     loincCode: "30522-7",
     aggregation: "latest"
   },
@@ -672,7 +672,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     category: "lab",
     kind: "panel-component",
     canonicalUnit: "×10⁹/L",
-    aliases: ["white blood cell count", "white blood cells", "wbc"],
+    aliases: ["white blood cell count", "white blood cells", "white cell count", "wbc"],
     loincCode: "6690-2",
     aggregation: "latest"
   },
@@ -742,7 +742,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     category: "lab",
     kind: "panel-component",
     canonicalUnit: "%",
-    aliases: ["red cell distribution width", "rdw"],
+    aliases: ["red cell distribution width", "red cell distribution width cv", "rdw"],
     loincCode: "788-0",
     aggregation: "latest"
   },

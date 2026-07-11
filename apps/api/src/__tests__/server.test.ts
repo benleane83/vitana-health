@@ -56,6 +56,21 @@ describe("GET /api/health", () => {
     expect(res.body.modelRuntime).toBeUndefined();
   });
 
+  describe("GET /api/biological-age", () => {
+    it("requires authentication and returns an incomplete result without profile data", async () => {
+      expect((await request(app).get("/api/biological-age")).status).toBe(401);
+
+      const response = await request(app).get("/api/biological-age").set("authorization", ownerAuthorization);
+      expect(response.status).toBe(200);
+      expect(response.body.models).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: "phenoage-levine-2018", status: "incomplete" }),
+          expect.objectContaining({ id: "bortz-age-2023", status: "not-implemented" })
+        ])
+      );
+    });
+  });
+
   it("returns ok: true without a credential (public liveness check)", async () => {
     const res = await request(app).get("/api/health");
     expect(res.status).toBe(200);
