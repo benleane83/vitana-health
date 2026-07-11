@@ -57,7 +57,18 @@ export const healthConnectImportRequestSchema = z.object({
   steps: z.array(stepSchema.extend({ provenance: z.record(z.unknown()).optional() })).max(20_000).default([]),
   heartRate: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
   oxygenSaturation: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
+  respiratoryRate: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
   hrvRmssd: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
+  hrvSdnn: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
+  basalBodyTemperatureC: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
+  basalMetabolicRateKcalDay: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
+  bloodGlucoseMgDl: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
+  bloodPressureSystolicMmHg: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
+  bloodPressureDiastolicMmHg: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
+  bodyTemperatureC: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
+  heightCm: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
+  skinTemperatureC: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
+  vo2MaxMlKgMin: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
   weightKg: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
   exerciseSessions: z.array(exerciseSchema).max(5_000).default([]),
   distanceMeters: z.array(intervalSampleSchema).max(20_000).default([]),
@@ -103,7 +114,18 @@ export function parseHealthConnectImport(payload: HealthConnectImportRequest): P
 
   const heartRate = toObservationSamples(payload.heartRate, "heart_rate", "bpm", sourceId);
   const oxygenSaturation = toObservationSamples(payload.oxygenSaturation, "oxygen_saturation", "%", sourceId);
+  const respiratoryRate = toObservationSamples(payload.respiratoryRate, "respiratory_rate", "breaths/min", sourceId);
   const hrvRmssd = toObservationSamples(payload.hrvRmssd, "hrv_rmssd", "ms", sourceId);
+  const hrvSdnn = toObservationSamples(payload.hrvSdnn, "hrv_sdnn", "ms", sourceId);
+  const basalBodyTemperature = toObservationSamples(payload.basalBodyTemperatureC, "basal_body_temperature", "degC", sourceId);
+  const basalMetabolicRate = toObservationSamples(payload.basalMetabolicRateKcalDay, "basal_metabolic_rate", "kcal/day", sourceId);
+  const bloodGlucose = toObservationSamples(payload.bloodGlucoseMgDl, "glucose", "mg/dL", sourceId);
+  const bloodPressureSystolic = toObservationSamples(payload.bloodPressureSystolicMmHg, "blood_pressure_systolic", "mmHg", sourceId);
+  const bloodPressureDiastolic = toObservationSamples(payload.bloodPressureDiastolicMmHg, "blood_pressure_diastolic", "mmHg", sourceId);
+  const bodyTemperature = toObservationSamples(payload.bodyTemperatureC, "body_temperature", "degC", sourceId);
+  const height = toObservationSamples(payload.heightCm, "height", "cm", sourceId);
+  const skinTemperature = toObservationSamples(payload.skinTemperatureC, "skin_temperature", "degC", sourceId);
+  const vo2Max = toObservationSamples(payload.vo2MaxMlKgMin, "vo2_max", "mL/kg/min", sourceId);
   const weight = toObservationSamples(payload.weightKg, "weight", "kg", sourceId);
   const bodyFatPct = toObservationSamples(payload.bodyFatPct, "body_fat_pct", "%", sourceId);
   const leanBodyMass = toObservationSamples(payload.leanBodyMassKg, "lean_body_mass", "kg", sourceId);
@@ -112,8 +134,9 @@ export function parseHealthConnectImport(payload: HealthConnectImportRequest): P
   const activitySessions = toActivitySessions(payload.exerciseSessions, sourceId);
   const distanceMeters = toTimeSeriesSamples(payload.distanceMeters, "distance", "m", sourceId);
   const floorsClimbed = toTimeSeriesSamples(payload.floorsClimbed, "floors_climbed", "count", sourceId);
-  const activeCalories = toTimeSeriesSamples(payload.activeCaloriesKcal, "active_calories_burned", "kcal", sourceId);
+  const activeCalories = toTimeSeriesSamples(payload.activeCaloriesKcal, "active_energy_burned", "kcal", sourceId);
   const totalCalories = toTimeSeriesSamples(payload.totalCaloriesKcal, "total_calories_burned", "kcal", sourceId);
+  const physicalActivityDuration = toPhysicalActivityDurationSamples(payload.exerciseSessions, sourceId);
   const sleepDuration = toSleepDurationSamples(payload.sleepSessions, sourceId);
 
   for (const session of payload.exerciseSessions) {
@@ -131,7 +154,18 @@ export function parseHealthConnectImport(payload: HealthConnectImportRequest): P
   const observations: Observation[] = [
     ...heartRate,
     ...oxygenSaturation,
+    ...respiratoryRate,
     ...hrvRmssd,
+    ...hrvSdnn,
+    ...basalBodyTemperature,
+    ...basalMetabolicRate,
+    ...bloodGlucose,
+    ...bloodPressureSystolic,
+    ...bloodPressureDiastolic,
+    ...bodyTemperature,
+    ...height,
+    ...skinTemperature,
+    ...vo2Max,
     ...weight,
     ...bodyFatPct,
     ...leanBodyMass,
@@ -144,6 +178,7 @@ export function parseHealthConnectImport(payload: HealthConnectImportRequest): P
     ...floorsClimbed,
     ...activeCalories,
     ...totalCalories,
+    ...physicalActivityDuration,
     ...sleepDuration
   ];
   const fingerprint = checksum(
@@ -168,7 +203,18 @@ export function parseHealthConnectImport(payload: HealthConnectImportRequest): P
     payload.steps.length +
     payload.heartRate.length +
     payload.oxygenSaturation.length +
+    payload.respiratoryRate.length +
     payload.hrvRmssd.length +
+    payload.hrvSdnn.length +
+    payload.basalBodyTemperatureC.length +
+    payload.basalMetabolicRateKcalDay.length +
+    payload.bloodGlucoseMgDl.length +
+    payload.bloodPressureSystolicMmHg.length +
+    payload.bloodPressureDiastolicMmHg.length +
+    payload.bodyTemperatureC.length +
+    payload.heightCm.length +
+    payload.skinTemperatureC.length +
+    payload.vo2MaxMlKgMin.length +
     payload.weightKg.length +
     payload.exerciseSessions.length +
     payload.distanceMeters.length +
@@ -297,6 +343,32 @@ function toSleepDurationSamples(
         notes: row.notes,
         stages: row.stages
       }
+    });
+  }
+  return samples;
+}
+
+function toPhysicalActivityDurationSamples(
+  rows: HealthConnectImportRequest["exerciseSessions"],
+  sourceId: string
+): TimeSeriesSample[] {
+  const samples: TimeSeriesSample[] = [];
+  for (const row of rows) {
+    const startAt = normalizeIso(row.startTime);
+    const endAt = normalizeIso(row.endTime);
+    if (!startAt || !endAt || endAt < startAt) {
+      continue;
+    }
+    const durationMinutes = Math.max(0, Math.round((new Date(endAt).getTime() - new Date(startAt).getTime()) / 60_000));
+    samples.push({
+      id: stableId("sample", ["physical_activity_duration", startAt, endAt, String(durationMinutes), sourceId, JSON.stringify(row.provenance ?? {})]),
+      measurementCode: "physical_activity_duration",
+      startAt,
+      endAt,
+      value: durationMinutes,
+      unit: "min",
+      sourceId,
+      sourceJson: row.provenance
     });
   }
   return samples;

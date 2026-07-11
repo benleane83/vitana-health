@@ -24,7 +24,18 @@ const PAYLOAD_COLLECTION_KEYS = [
   "steps",
   "heartRate",
   "oxygenSaturation",
+  "respiratoryRate",
   "hrvRmssd",
+  "hrvSdnn",
+  "basalBodyTemperatureC",
+  "basalMetabolicRateKcalDay",
+  "bloodGlucoseMgDl",
+  "bloodPressureSystolicMmHg",
+  "bloodPressureDiastolicMmHg",
+  "bodyTemperatureC",
+  "heightCm",
+  "skinTemperatureC",
+  "vo2MaxMlKgMin",
   "weightKg",
   "exerciseSessions",
   "distanceMeters",
@@ -65,7 +76,18 @@ interface HealthConnectImportPayload {
   steps: Array<{ startTime: string; endTime: string; count: number; provenance?: HealthConnectProvenance }>;
   heartRate: HealthConnectPointValue[];
   oxygenSaturation: HealthConnectPointValue[];
+  respiratoryRate: HealthConnectPointValue[];
   hrvRmssd: HealthConnectPointValue[];
+  hrvSdnn: HealthConnectPointValue[];
+  basalBodyTemperatureC: HealthConnectPointValue[];
+  basalMetabolicRateKcalDay: HealthConnectPointValue[];
+  bloodGlucoseMgDl: HealthConnectPointValue[];
+  bloodPressureSystolicMmHg: HealthConnectPointValue[];
+  bloodPressureDiastolicMmHg: HealthConnectPointValue[];
+  bodyTemperatureC: HealthConnectPointValue[];
+  heightCm: HealthConnectPointValue[];
+  skinTemperatureC: HealthConnectPointValue[];
+  vo2MaxMlKgMin: HealthConnectPointValue[];
   weightKg: HealthConnectPointValue[];
   exerciseSessions: Array<{
     startTime: string;
@@ -111,11 +133,19 @@ export interface SyncResult {
   canAdvanceCursor: boolean;
 }
 
-const permissionsByCategory: Record<HealthConnectCategory, Permission> = {
+const permissionsByCategory: Partial<Record<HealthConnectCategory, Permission>> = {
   Steps: { accessType: "read", recordType: "Steps" },
   HeartRate: { accessType: "read", recordType: "HeartRate" },
   OxygenSaturation: { accessType: "read", recordType: "OxygenSaturation" },
+  RespiratoryRate: { accessType: "read", recordType: "RespiratoryRate" as RecordType },
   HeartRateVariabilityRmssd: { accessType: "read", recordType: "HeartRateVariabilityRmssd" },
+  BasalBodyTemperature: { accessType: "read", recordType: "BasalBodyTemperature" },
+  BasalMetabolicRate: { accessType: "read", recordType: "BasalMetabolicRate" },
+  BloodGlucose: { accessType: "read", recordType: "BloodGlucose" },
+  BloodPressure: { accessType: "read", recordType: "BloodPressure" },
+  BodyTemperature: { accessType: "read", recordType: "BodyTemperature" },
+  Height: { accessType: "read", recordType: "Height" },
+  Vo2Max: { accessType: "read", recordType: "Vo2Max" },
   Weight: { accessType: "read", recordType: "Weight" },
   ExerciseSession: { accessType: "read", recordType: "ExerciseSession" },
   Distance: { accessType: "read", recordType: "Distance" },
@@ -156,15 +186,27 @@ export async function syncHealthConnect(
 
   const selectedCategories = HEALTH_CONNECT_CATEGORIES.filter((category) => options.categories?.includes(category) ?? true);
   if (selectedCategories.length === 0) throw new Error("Select at least one Health Connect data category to sync.");
-  const requestedPermissions = selectedCategories.map((category) => permissionsByCategory[category]);
+  const unsupportedCategories = selectedCategories.filter((category) => !permissionsByCategory[category]);
+  const requestedPermissions = selectedCategories
+    .map((category) => permissionsByCategory[category])
+    .filter((permission): permission is Permission => Boolean(permission));
+  if (requestedPermissions.length === 0) {
+    throw new Error("Selected categories are not supported by the installed Health Connect SDK version.");
+  }
   const grantedPermissions = await requestPermission(requestedPermissions);
-  const grantedCategories = selectedCategories.filter((category) =>
-    grantedPermissions.some((granted) => granted.accessType === "read" && granted.recordType === permissionsByCategory[category].recordType)
-  );
+  const grantedCategories = selectedCategories.filter((category) => {
+    const permission = permissionsByCategory[category];
+    return permission
+      ? grantedPermissions.some((granted) => granted.accessType === "read" && granted.recordType === permission.recordType)
+      : false;
+  });
   if (grantedCategories.length === 0) {
     throw new Error("No selected Health Connect permissions were granted. Choose at least one category in Health Connect to sync.");
   }
-  const omittedCategories = selectedCategories.filter((category) => !grantedCategories.includes(category));
+  const omittedCategories = [
+    ...selectedCategories.filter((category) => !grantedCategories.includes(category)),
+    ...unsupportedCategories
+  ];
 
   const rangeEnd = new Date();
   const windowDays = normalizeSyncWindowDays(options.syncWindowDays);
@@ -197,9 +239,62 @@ export async function syncHealthConnect(
     oxygenSaturation: records.oxygenSaturation.map((record) => ({
       time: record.time, value: record.percentage * 100, provenance: extractProvenance(record)
     })).filter((record) => Number.isFinite(record.value)),
+    respiratoryRate: (records.respiratoryRate as unknown[]).flatMap((record) => {
+      const time = stringValue((record as Record<string, unknown>).time);
+      const value = extractRespiratoryRateBreathsPerMinute(record);
+      if (!time || value === undefined || !Number.isFinite(value)) return [];
+      return [{ time, value, provenance: extractProvenance(record) }];
+    }),
     hrvRmssd: records.hrvRmssd.map((record) => ({
       time: record.time, value: record.heartRateVariabilityMillis, provenance: extractProvenance(record)
     })).filter((record) => Number.isFinite(record.value)),
+    hrvSdnn: toPointSamples(records.hrvRmssd, (record) => ({
+      time: record.time,
+      value: extractHrvSdnnMillis(record),
+      provenance: extractProvenance(record)
+    })),
+    basalBodyTemperatureC: toPointSamples(records.basalBodyTemperature, (record) => ({
+      time: record.time,
+      value: extractTemperatureInCelsius(record),
+      provenance: extractProvenance(record)
+    })),
+    basalMetabolicRateKcalDay: toPointSamples(records.basalMetabolicRate, (record) => ({
+      time: record.time,
+      value: extractBasalMetabolicRateKcalDay(record),
+      provenance: extractProvenance(record)
+    })),
+    bloodGlucoseMgDl: toPointSamples(records.bloodGlucose, (record) => ({
+      time: record.time,
+      value: extractBloodGlucoseMgDl(record),
+      provenance: extractProvenance(record)
+    })),
+    bloodPressureSystolicMmHg: toPointSamples(records.bloodPressure, (record) => ({
+      time: record.time,
+      value: extractBloodPressureSystolicMmHg(record),
+      provenance: extractProvenance(record)
+    })),
+    bloodPressureDiastolicMmHg: toPointSamples(records.bloodPressure, (record) => ({
+      time: record.time,
+      value: extractBloodPressureDiastolicMmHg(record),
+      provenance: extractProvenance(record)
+    })),
+    bodyTemperatureC: toPointSamples(records.bodyTemperature, (record) => ({
+      time: record.time,
+      value: extractTemperatureInCelsius(record),
+      provenance: extractProvenance(record)
+    })),
+    heightCm: toPointSamples(records.height, (record) => ({
+      time: record.time,
+      value: extractHeightInCm(record),
+      provenance: extractProvenance(record)
+    })),
+    // Skin temperature reads are not yet exposed by this react-native-health-connect version.
+    skinTemperatureC: [],
+    vo2MaxMlKgMin: toPointSamples(records.vo2Max, (record) => ({
+      time: record.time,
+      value: extractVo2MaxMlKgMin(record),
+      provenance: extractProvenance(record)
+    })),
     weightKg: records.weight.map((record) => ({
       time: record.time, value: record.weight.inKilograms, provenance: extractProvenance(record)
     })).filter((record) => Number.isFinite(record.value)),
@@ -296,7 +391,15 @@ async function readGrantedRecords(categories: HealthConnectCategory[], options: 
     steps: categories.includes("Steps") ? await readAllRecords("Steps", options) : [],
     heartRate: categories.includes("HeartRate") ? await readAllRecords("HeartRate", options) : [],
     oxygenSaturation: categories.includes("OxygenSaturation") ? await readAllRecords("OxygenSaturation", options) : [],
+    respiratoryRate: categories.includes("RespiratoryRate") ? await readAllRecords("RespiratoryRate" as RecordType, options) : [],
     hrvRmssd: categories.includes("HeartRateVariabilityRmssd") ? await readAllRecords("HeartRateVariabilityRmssd", options) : [],
+    basalBodyTemperature: categories.includes("BasalBodyTemperature") ? await readAllRecords("BasalBodyTemperature", options) : [],
+    basalMetabolicRate: categories.includes("BasalMetabolicRate") ? await readAllRecords("BasalMetabolicRate", options) : [],
+    bloodGlucose: categories.includes("BloodGlucose") ? await readAllRecords("BloodGlucose", options) : [],
+    bloodPressure: categories.includes("BloodPressure") ? await readAllRecords("BloodPressure", options) : [],
+    bodyTemperature: categories.includes("BodyTemperature") ? await readAllRecords("BodyTemperature", options) : [],
+    height: categories.includes("Height") ? await readAllRecords("Height", options) : [],
+    vo2Max: categories.includes("Vo2Max") ? await readAllRecords("Vo2Max", options) : [],
     weight: categories.includes("Weight") ? await readAllRecords("Weight", options) : [],
     exerciseSessions: categories.includes("ExerciseSession") ? await readAllRecords("ExerciseSession", options) : [],
     distance: categories.includes("Distance") ? await readAllRecords("Distance", options) : [],
@@ -316,7 +419,18 @@ function chunkPayload(payload: HealthConnectImportPayload): HealthConnectImportP
     ...payload.steps.map((value) => ["steps", value] as const),
     ...payload.heartRate.map((value) => ["heartRate", value] as const),
     ...payload.oxygenSaturation.map((value) => ["oxygenSaturation", value] as const),
+    ...payload.respiratoryRate.map((value) => ["respiratoryRate", value] as const),
     ...payload.hrvRmssd.map((value) => ["hrvRmssd", value] as const),
+    ...payload.hrvSdnn.map((value) => ["hrvSdnn", value] as const),
+    ...payload.basalBodyTemperatureC.map((value) => ["basalBodyTemperatureC", value] as const),
+    ...payload.basalMetabolicRateKcalDay.map((value) => ["basalMetabolicRateKcalDay", value] as const),
+    ...payload.bloodGlucoseMgDl.map((value) => ["bloodGlucoseMgDl", value] as const),
+    ...payload.bloodPressureSystolicMmHg.map((value) => ["bloodPressureSystolicMmHg", value] as const),
+    ...payload.bloodPressureDiastolicMmHg.map((value) => ["bloodPressureDiastolicMmHg", value] as const),
+    ...payload.bodyTemperatureC.map((value) => ["bodyTemperatureC", value] as const),
+    ...payload.heightCm.map((value) => ["heightCm", value] as const),
+    ...payload.skinTemperatureC.map((value) => ["skinTemperatureC", value] as const),
+    ...payload.vo2MaxMlKgMin.map((value) => ["vo2MaxMlKgMin", value] as const),
     ...payload.weightKg.map((value) => ["weightKg", value] as const),
     ...payload.exerciseSessions.map((value) => ["exerciseSessions", value] as const),
     ...payload.distanceMeters.map((value) => ["distanceMeters", value] as const),
@@ -405,7 +519,18 @@ function makeChunkSkeleton(payload: HealthConnectImportPayload): HealthConnectIm
     steps: [],
     heartRate: [],
     oxygenSaturation: [],
+    respiratoryRate: [],
     hrvRmssd: [],
+    hrvSdnn: [],
+    basalBodyTemperatureC: [],
+    basalMetabolicRateKcalDay: [],
+    bloodGlucoseMgDl: [],
+    bloodPressureSystolicMmHg: [],
+    bloodPressureDiastolicMmHg: [],
+    bodyTemperatureC: [],
+    heightCm: [],
+    skinTemperatureC: [],
+    vo2MaxMlKgMin: [],
     weightKg: [],
     exerciseSessions: [],
     distanceMeters: [],
@@ -464,6 +589,70 @@ function numberValue(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+function hasFinitePointValue(
+  point: Omit<HealthConnectPointValue, "value"> & { value: number | undefined }
+): point is HealthConnectPointValue {
+  return Number.isFinite(point.value);
+}
+
+function toPointSamples<T>(
+  rows: T[],
+  mapper: (row: T) => Omit<HealthConnectPointValue, "value"> & { value: number | undefined }
+): HealthConnectPointValue[] {
+  return rows.map(mapper).filter(hasFinitePointValue);
+}
+
+function nestedNumber(source: unknown, ...paths: string[]): number | undefined {
+  for (const path of paths) {
+    const value = path.split(".").reduce<unknown>((current, key) => {
+      if (typeof current !== "object" || current === null) return undefined;
+      return (current as Record<string, unknown>)[key];
+    }, source);
+    const numeric = numberValue(value);
+    if (numeric !== undefined) return numeric;
+  }
+  return undefined;
+}
+
+function extractTemperatureInCelsius(record: unknown): number | undefined {
+  return nestedNumber(record, "temperature.inCelsius", "temperature.inDegreesCelsius", "value.inCelsius");
+}
+
+function extractBasalMetabolicRateKcalDay(record: unknown): number | undefined {
+  return nestedNumber(record, "basalMetabolicRate.inKilocaloriesPerDay", "power.inKilocaloriesPerDay", "value.inKilocaloriesPerDay");
+}
+
+function extractBloodGlucoseMgDl(record: unknown): number | undefined {
+  return nestedNumber(record, "level.inMilligramsPerDeciliter", "bloodGlucose.inMilligramsPerDeciliter", "value.inMilligramsPerDeciliter");
+}
+
+function extractBloodPressureSystolicMmHg(record: unknown): number | undefined {
+  return nestedNumber(record, "systolic.inMillimetersOfMercury", "systolic.inMmHg");
+}
+
+function extractBloodPressureDiastolicMmHg(record: unknown): number | undefined {
+  return nestedNumber(record, "diastolic.inMillimetersOfMercury", "diastolic.inMmHg");
+}
+
+function extractHeightInCm(record: unknown): number | undefined {
+  const centimeters = nestedNumber(record, "height.inCentimeters", "value.inCentimeters");
+  if (centimeters !== undefined) return centimeters;
+  const meters = nestedNumber(record, "height.inMeters", "value.inMeters");
+  return meters !== undefined ? meters * 100 : undefined;
+}
+
+function extractVo2MaxMlKgMin(record: unknown): number | undefined {
+  return nestedNumber(record, "vo2MillilitersPerMinuteKilogram", "vo2.inMillilitersPerMinuteKilogram", "value.inMillilitersPerMinuteKilogram");
+}
+
+function extractHrvSdnnMillis(record: unknown): number | undefined {
+  return nestedNumber(record, "heartRateVariabilitySdnnMillis", "sdnn.inMilliseconds", "sdnnMillis");
+}
+
+function extractRespiratoryRateBreathsPerMinute(record: unknown): number | undefined {
+  return nestedNumber(record, "rate", "respiratoryRate", "value.inBreathsPerMinute", "respiratoryRate.inBreathsPerMinute");
+}
+
 function objectValue(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
@@ -472,7 +661,18 @@ function countRows(payload: HealthConnectImportPayload): number {
   return payload.steps.length +
     payload.heartRate.length +
     payload.oxygenSaturation.length +
+    payload.respiratoryRate.length +
     payload.hrvRmssd.length +
+    payload.hrvSdnn.length +
+    payload.basalBodyTemperatureC.length +
+    payload.basalMetabolicRateKcalDay.length +
+    payload.bloodGlucoseMgDl.length +
+    payload.bloodPressureSystolicMmHg.length +
+    payload.bloodPressureDiastolicMmHg.length +
+    payload.bodyTemperatureC.length +
+    payload.heightCm.length +
+    payload.skinTemperatureC.length +
+    payload.vo2MaxMlKgMin.length +
     payload.weightKg.length +
     payload.exerciseSessions.length +
     payload.distanceMeters.length +

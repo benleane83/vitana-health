@@ -290,6 +290,24 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     aggregation: "average"
   },
   {
+    code: "basal_body_temperature",
+    display: "Basal body temperature",
+    category: "cardio",
+    kind: "point",
+    canonicalUnit: "°C",
+    aliases: ["basal body temperature", "basal temperature", "bbt"],
+    aggregation: "average"
+  },
+  {
+    code: "skin_temperature",
+    display: "Skin temperature",
+    category: "cardio",
+    kind: "point",
+    canonicalUnit: "°C",
+    aliases: ["skin temperature", "skin temp", "temperature skin"],
+    aggregation: "average"
+  },
+  {
     code: "blood_pressure_systolic",
     display: "Systolic blood pressure",
     category: "cardio",
