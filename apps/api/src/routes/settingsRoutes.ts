@@ -14,6 +14,7 @@ const settingsSchema = z.object({
 
 const pendingOpenRouterStates = new Map<string, number>();
 const openRouterEndpoint = "https://openrouter.ai/api/v1/chat/completions";
+const openRouterStateExpiryMs = 10 * 60_000;
 
 export function makeSettingsRoutes(): express.Router {
   const router = express.Router();
@@ -39,7 +40,7 @@ export function makeSettingsRoutes(): express.Router {
 
   router.get("/ai/openrouter/connect", (request, response) => {
     const state = randomBytes(24).toString("base64url");
-    pendingOpenRouterStates.set(state, Date.now() + 10 * 60_000);
+    pendingOpenRouterStates.set(state, Date.now() + openRouterStateExpiryMs);
     const callbackUrl = `${request.protocol}://${request.get("host")}/api/settings/ai/openrouter/callback`;
     const authUrl = new URL("https://openrouter.ai/auth");
     authUrl.searchParams.set("callback_url", callbackUrl);
