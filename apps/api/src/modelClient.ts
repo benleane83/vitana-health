@@ -21,6 +21,7 @@ export interface ModelCallResult {
 }
 
 export async function callConfiguredModel(prompt: string, options?: ModelRequestOptions): Promise<ModelCallResult> {
+  const settings = getAiSettings();
   const provider = resolveProvider(options?.provider);
   const timeoutMs = options?.timeoutMs ?? parseTimeoutMs(process.env.MODEL_TIMEOUT_MS ?? process.env.OLLAMA_TIMEOUT_MS, 30000);
   if (provider === "openai") {
@@ -30,22 +31,17 @@ export async function callConfiguredModel(prompt: string, options?: ModelRequest
 }
 
 export function currentModelConfig(): { provider: "ollama" | "openai"; endpoint: string; model: string; timeoutMs: number } {
-  const provider = resolveProvider();
-  const timeoutMs = parseTimeoutMs(process.env.MODEL_TIMEOUT_MS ?? process.env.OLLAMA_TIMEOUT_MS, 30000);
-  if (provider === "openai") {
-    return {
-      provider,
-      endpoint: process.env.OPENAI_RESPONSES_ENDPOINT ?? "",
-      model: process.env.OPENAI_MODEL ?? "gpt-5.4-mini",
-      timeoutMs
-    };
-  }
+  const settings = getAiSettings();
   return {
-    provider,
-    endpoint: process.env.OLLAMA_ENDPOINT ?? "http://127.0.0.1:11434/api/generate",
-    model: process.env.OLLAMA_MODEL ?? "llama3.2",
-    timeoutMs
+    provider: settings.provider,
+    endpoint: settings.endpoint,
+    model: settings.model,
+    timeoutMs: settings.timeoutMs
   };
+}
+
+export function resolvedModelProvider(override?: "ollama" | "openai"): "ollama" | "openai" {
+  return resolveProvider(override);
 }
 
 async function callOllama(prompt: string, settings: AiSettings, overrideModel: string | undefined, timeoutMs: number): Promise<ModelCallResult> {

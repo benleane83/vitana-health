@@ -36,12 +36,15 @@ export function calculateBiologicalAge(store: HealthStoreData, generatedAt = new
 }
 
 function calculatePhenoAge(store: HealthStoreData, generatedAt: string): BiologicalAgeModelResult {
-  const groups = store.observationGroups
-    .filter((group) => group.kind === "lab_panel")
-    .sort((a, b) => groupDate(b, store.observations).localeCompare(groupDate(a, store.observations)));
-  const candidates = groups.map((group) => panelInputs(group, store.observations));
-  const candidate = candidates.find((item) => item.inputs.every((input) => input.status === "used")) ?? candidates[0];
-  const chronologicalAge = ageForDate(store.profile.birthYear, candidate?.collectedAt ?? generatedAt);
+  const observations = Array.isArray(store.observations) ? store.observations : [];
+  const labPanelIds = new Set(
+    (Array.isArray(store.observationGroups) ? store.observationGroups : [])
+      .filter((group) => group.kind === "lab_panel")
+      .map((group) => group.id)
+  );
+  const candidate = latestInputs(observations, labPanelIds);
+  const birthYear = typeof store.profile?.birthYear === "number" ? store.profile.birthYear : undefined;
+  const chronologicalAge = ageForDate(birthYear, candidate?.collectedAt ?? generatedAt);
 
   const base: Omit<BiologicalAgeModelResult, "status" | "biologicalAge" | "ageAcceleration" | "calculatedAt"> = {
     id: "phenoage-levine-2018",
@@ -56,7 +59,8 @@ function calculatePhenoAge(store: HealthStoreData, generatedAt: string): Biologi
     panelCollectedAt: candidate?.collectedAt,
     inputs: candidate?.inputs ?? emptyInputs(),
     limitations: [
-      "Only a complete single lab panel is scored; values from separate panels are not combined.",
+      "Each biomarker uses the most recent valid value found in local lab observations.",
+      "Inputs can originate from different collection dates and panels.",
       "No missing biomarkers are imputed.",
       "The published model was developed with the units shown for each input."
     ]
@@ -116,6 +120,24 @@ function panelInputs(group: ObservationGroup, observations: Observation[]) {
     return inputFromObservation(code, label, normalizedUnit, observation);
   });
   return { collectedAt: groupDate(group, observations), inputs };
+}
+
+function latestInputs(observations: Observation[], labPanelIds: Set<string>) {
+  const eligible = observations.filter(
+    (observation) => !observation.observationGroupId || labPanelIds.has(observation.observationGroupId)
+  );
+  const inputs = phenoAgeInputs.map(([code, label, normalizedUnit]) => {
+    const observation = [...eligible]
+      .filter((entry) => entry.measurementCode === code)
+      .sort((a, b) => b.observedAt.localeCompare(a.observedAt))[0];
+    return inputFromObservation(code, label, normalizedUnit, observation);
+  });
+  const collectedAt = inputs
+    .filter((input) => input.status === "used" && input.observedAt)
+    .map((input) => input.observedAt as string)
+    .sort()
+    .at(-1);
+  return { collectedAt, inputs };
 }
 
 function emptyInputs(): BiologicalAgeInput[] {

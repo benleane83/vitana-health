@@ -47,14 +47,14 @@ describe("calculateBiologicalAge", () => {
     expect(result.inputs.find((input) => input.code === "glucose")?.normalizedValue).toBeCloseTo(5.55, 3);
   });
 
-  it("does not combine biomarkers from separate panels", () => {
+  it("uses the most recent present biomarker values even across separate panels", () => {
     const store = makeStore();
     store.observations[0].observationGroupId = "other-panel";
     store.observationGroups.push({ id: "other-panel", kind: "lab_panel", label: "Other", collectedAt: "2026-06-02T00:00:00Z" });
     const result = calculateBiologicalAge(store).models[0];
-    expect(result.status).toBe("incomplete");
+    expect(result.status).toBe("available");
     expect(result.inputs.find((input) => input.code === "albumin")?.status).toBe("used");
-    expect(result.inputs.find((input) => input.code === "glucose")?.status).toBe("missing");
+    expect(result.inputs.find((input) => input.code === "glucose")?.status).toBe("used");
   });
 
   it("calls unsupported units invalid and requires a plausible adult chronological age", () => {
