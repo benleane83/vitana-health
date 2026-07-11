@@ -75,7 +75,7 @@ describe("computeAnalytics — latestMetrics", () => {
   it("classifies status correctly for heart_rate", () => {
     const store = makeEmptyStore();
     store.observations = [
-      makeObservation({ id: "o1", measurementCode: "heart_rate", observedAt: "2026-01-01T00:00:00.000Z", value: 110, unit: "bpm", sourceId: "src1" })
+      makeObservation({ id: "o1", measurementCode: "heart_rate", observedAt: "2026-01-01T00:00:00.000Z", value: 110, unit: "beats/min", sourceId: "src1" })
     ];
     const result = computeAnalytics(store);
     const hrMetric = result.latestMetrics.find((m) => m.code === "heart_rate");
@@ -120,9 +120,9 @@ describe("computeAnalytics — labAlerts", () => {
   it("includes only observations outside matching metadata ranges", () => {
     const store = makeEmptyStore();
     store.observations = [
-      makeObservation({ id: "m1", measurementCode: "glucose", observedAt: "2026-01-01T00:00:00.000Z", value: 120, unit: "mg/dL", sourceId: "source" }),
-      makeObservation({ id: "m2", measurementCode: "total_cholesterol", observedAt: "2026-01-01T00:00:00.000Z", value: 185, unit: "mg/dL", sourceId: "source" }),
-      makeObservation({ id: "m3", measurementCode: "hdl_cholesterol", observedAt: "2026-01-01T00:00:00.000Z", value: 30, unit: "mg/dL", sourceId: "source" })
+      makeObservation({ id: "m1", measurementCode: "glucose", observedAt: "2026-01-01T00:00:00.000Z", value: 6.2, unit: "mmol/L", sourceId: "source" }),
+      makeObservation({ id: "m2", measurementCode: "total_cholesterol", observedAt: "2026-01-01T00:00:00.000Z", value: 4.8, unit: "mmol/L", sourceId: "source" }),
+      makeObservation({ id: "m3", measurementCode: "hdl_cholesterol", observedAt: "2026-01-01T00:00:00.000Z", value: 0.8, unit: "mmol/L", sourceId: "source" })
     ];
     const result = computeAnalytics(store);
     expect(result.labAlerts).toHaveLength(2);
@@ -133,7 +133,7 @@ describe("computeAnalytics — labAlerts", () => {
   it("does not classify mismatched units", () => {
     const store = makeEmptyStore();
     store.observations = [
-      makeObservation({ id: "m1", measurementCode: "glucose", observedAt: "2026-01-01T00:00:00.000Z", value: 85, unit: "mmol/L", sourceId: "source" })
+      makeObservation({ id: "m1", measurementCode: "glucose", observedAt: "2026-01-01T00:00:00.000Z", value: 85, unit: "mg/dL", sourceId: "source" })
     ];
     const result = computeAnalytics(store);
     expect(result.labAlerts).toHaveLength(0);

@@ -29,7 +29,7 @@ describe("classifyValue", () => {
   });
 
   it("returns 'low' when only normalLow is set and value is below it", () => {
-    expect(classifyValue(30, hdl)).toBe("low");
+    expect(classifyValue(0.8, hdl)).toBe("low");
   });
 
   it("returns 'unknown' when neither normalLow nor normalHigh is set", () => {
