@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { Bonjour } from "bonjour-service";
 import { PairingStore } from "./pairing.js";
-import { HealthStore } from "./store.js";
+import { ProfileStoreManager } from "./store.js";
 import { createApp } from "./createApp.js";
 
 loadEnvironmentFiles();
@@ -38,9 +38,9 @@ if (!isLoopback && !tlsEnabled && !insecureLanDevelopment) {
   );
 }
 
-const store = new HealthStore();
+const storeManager = new ProfileStoreManager();
 const pairingStore = new PairingStore();
-const app = createApp(store, pairingStore);
+const app = createApp(storeManager, pairingStore);
 
 function getLanIp(): string | null {
   const interfaces = os.networkInterfaces();

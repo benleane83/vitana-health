@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { HealthStore } from "../store.js";
-import { parseSamsungHealthCsv } from "@local-fitness-advisor/shared";
+import { HealthStore, ProfileStoreManager } from "../store.js";
+import { buildManualLabEntryImport } from "@local-fitness-advisor/shared";
 
 let tempDir: string;
 
@@ -23,10 +23,19 @@ afterEach(() => {
   rmSync(tempDir, { recursive: true, force: true });
 });
 
-const samsungCsv = `date,type,value,unit
-2026-01-01,heart_rate,72,bpm
-2026-01-02,heart_rate,68,bpm
-2026-01-03,weight,82,kg`;
+function makeManualImport(importedAt = "2026-01-01T00:00:00.000Z") {
+  return buildManualLabEntryImport(
+    {
+      collectedAt: "2026-01-01T00:00:00.000Z",
+      panelName: "Test panel",
+      markers: [
+        { markerName: "Weight", value: 82, unit: "kg" },
+        { markerName: "Glucose", value: 90, unit: "mg/dL" }
+      ]
+    },
+    importedAt
+  );
+}
 
 describe("HealthStore — initialisation", () => {
   it("creates an empty store with default measurement types", () => {
@@ -46,7 +55,7 @@ describe("HealthStore — initialisation", () => {
 describe("HealthStore — mergeImport deduplication", () => {
   it("importing the same data twice does not duplicate observations", () => {
     const store = makeStore();
-    const parsed = parseSamsungHealthCsv("test.csv", samsungCsv, "2026-01-01T00:00:00.000Z");
+    const parsed = makeManualImport();
 
     store.mergeImport(parsed);
     const afterFirst = store.snapshot();
@@ -60,7 +69,7 @@ describe("HealthStore — mergeImport deduplication", () => {
 
   it("importing the same file twice does not duplicate sourceImports", () => {
     const store = makeStore();
-    const parsed = parseSamsungHealthCsv("test.csv", samsungCsv, "2026-01-01T00:00:00.000Z");
+    const parsed = makeManualImport();
 
     store.mergeImport(parsed);
     store.mergeImport(parsed);
@@ -78,7 +87,7 @@ describe("HealthStore — deleteObservation", () => {
 
   it("removes the observation and returns the deleted record", () => {
     const store = makeStore();
-    const parsed = parseSamsungHealthCsv("test.csv", samsungCsv, "2026-01-01T00:00:00.000Z");
+    const parsed = makeManualImport();
     store.mergeImport(parsed);
 
     const observations = store.snapshot().observations;
@@ -103,7 +112,7 @@ describe("HealthStore — deleteObservationsByMeasurementCode", () => {
 
   it("deletes all observations matching the measurement code", () => {
     const store = makeStore();
-    const parsed = parseSamsungHealthCsv("test.csv", samsungCsv, "2026-01-01T00:00:00.000Z");
+    const parsed = makeManualImport();
     store.mergeImport(parsed);
 
     const before = store.snapshot().observations.filter((o) => o.measurementCode === "weight").length;
@@ -119,7 +128,7 @@ describe("HealthStore — persistence", () => {
   it("survives a reload from disk (data is re-readable after persist)", () => {
     // First instance: create and write data
     const store1 = makeStore();
-    const parsed = parseSamsungHealthCsv("test.csv", samsungCsv, "2026-01-01T00:00:00.000Z");
+    const parsed = makeManualImport();
     store1.mergeImport(parsed);
     const countAfterWrite = store1.snapshot().observations.length;
 
@@ -130,7 +139,7 @@ describe("HealthStore — persistence", () => {
 
   it("keeps a recoverable backup and restores from it if the primary file is corrupted", () => {
     const store = makeStore();
-    const parsed = parseSamsungHealthCsv("test.csv", samsungCsv, "2026-01-01T00:00:00.000Z");
+    const parsed = makeManualImport();
     store.mergeImport(parsed);
     store.addInsight({
       id: "insight_test_1",
@@ -143,7 +152,7 @@ describe("HealthStore — persistence", () => {
       safetyNotice: "test"
     });
 
-    const dataPath = join(tempDir, "health-store.enc");
+    const dataPath = join(tempDir, "health-store-self.enc");
     const backupPath = `${dataPath}.bak`;
     expect(existsSync(dataPath)).toBe(true);
     expect(existsSync(backupPath)).toBe(true);
@@ -154,5 +163,50 @@ describe("HealthStore — persistence", () => {
     expect(recovered.snapshot().observations.length).toBeGreaterThan(0);
     expect(recovered.snapshot().profile.id).toBe("self");
     expect(existsSync(dataPath)).toBe(true);
+  });
+});
+
+describe("ProfileStoreManager", () => {
+  it("migrates a legacy single-store file into the self profile", () => {
+    const legacy = makeStore();
+    legacy.addInsight({
+      id: "legacy-test",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      title: "legacy",
+      body: "legacy",
+      evidence: [],
+      confidence: "medium",
+      model: "deterministic",
+      safetyNotice: "test"
+    });
+
+    copyFileSync(join(tempDir, "health-store-self.enc"), join(tempDir, "health-store.enc"));
+    if (existsSync(join(tempDir, "health-store-self.enc"))) {
+      rmSync(join(tempDir, "health-store-self.enc"), { force: true });
+    }
+
+    const manager = new ProfileStoreManager();
+    expect(manager.getActiveProfileId()).toBe("self");
+    expect(manager.listProfiles().map((entry) => entry.id)).toContain("self");
+    expect(manager.getStore("self").snapshot().insights).toHaveLength(1);
+  });
+
+  it("keeps profile stores isolated and tracks the active profile", () => {
+    const manager = new ProfileStoreManager();
+    const created = manager.createProfile("Shabnam Sarjami");
+    expect(created.id).toBe("shabnam-sarjami");
+
+    manager.setActiveProfile(created.id);
+    manager.getActiveStore().replaceProfile({
+      ...manager.getActiveStore().snapshot().profile,
+      id: created.id,
+      displayName: "Shabnam"
+    });
+    manager.syncProfileEntry(manager.getActiveStore().snapshot().profile);
+
+    expect(manager.getActiveProfileId()).toBe("shabnam-sarjami");
+    expect(manager.listProfiles()).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "shabnam-sarjami", displayName: "Shabnam" })])
+    );
   });
 });

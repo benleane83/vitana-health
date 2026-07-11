@@ -1,8 +1,8 @@
-@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,650;9..144,800&display=swap");
-
 :root {
   color-scheme: dark;
-  font-family: Aptos, "Segoe UI", system-ui, sans-serif;
+  --font-sans: Aptos, "Segoe UI", "Helvetica Neue", Arial, system-ui, sans-serif;
+  --font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", "URW Palladio L", Palatino, Georgia, Cambria, "Times New Roman", serif;
+  font-family: var(--font-sans);
   font-kerning: normal;
   background: var(--bg);
   color: var(--text);
@@ -168,6 +168,29 @@ textarea {
   color: var(--ink-on-accent);
 }
 
+.active-profile-pill {
+  color: var(--text-strong);
+  background: oklch(24% 0.04 178 / 0.88);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: 0.55rem 0.9rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.manage-profiles-button {
+  min-height: 38px;
+  background: transparent;
+  border-color: var(--line);
+  color: var(--muted);
+  padding: 0.45rem 0.82rem;
+}
+
+.manage-profiles-button:hover,
+.manage-profiles-button:focus-visible {
+  color: var(--text-strong);
+}
+
 .hero {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
@@ -196,7 +219,7 @@ h3 {
 
 h1,
 .privacy-card strong {
-  font-family: "Fraunces", Georgia, serif;
+  font-family: var(--font-display);
 }
 
 h1 {
@@ -423,7 +446,7 @@ h3 {
 
 .summary-detail-chart-panel h3,
 .summary-detail-table h3 {
-  font-family: Aptos, "Segoe UI", system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.82rem;
   font-weight: 800;
   text-transform: uppercase;
@@ -757,6 +780,38 @@ h3 {
   padding: 0.52rem 0.82rem;
 }
 
+.profile-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.profile-active-label {
+  color: var(--muted);
+  margin: var(--space-2) 0 0;
+}
+
+.profile-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.profile-chip {
+  min-height: 38px;
+  padding: 0.45rem 0.85rem;
+  border-color: var(--line);
+  background: transparent;
+  color: var(--muted);
+}
+
+.profile-chip.active {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  color: var(--text-strong);
+}
+
 .profile-summary {
   display: grid;
   gap: var(--space-3);
@@ -861,6 +916,69 @@ label {
   box-shadow: 0 24px 90px oklch(5% 0.015 160 / 0.65);
 }
 
+.profile-dialog-active {
+  margin: 0 0 var(--space-4);
+  color: var(--muted);
+}
+
+.profile-dialog-active strong {
+  color: var(--text-strong);
+}
+
+.profile-dialog-actions {
+  margin-top: var(--space-4);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.profile-dialog-actions button {
+  background: transparent;
+  border-color: oklch(72% 0.13 32 / 0.45);
+  color: oklch(86% 0.08 34);
+}
+
+.profile-dialog-actions button:hover:not(:disabled) {
+  background: oklch(48% 0.16 35 / 0.22);
+}
+
+.profile-manager-list {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.profile-manager-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: oklch(18% 0.028 160 / 0.72);
+}
+
+.profile-manager-row strong {
+  display: block;
+  color: var(--text-strong);
+}
+
+.profile-manager-row span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.profile-manager-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.profile-create-row {
+  display: grid;
+  gap: var(--space-3);
+}
+
 .import-page {
   display: grid;
   gap: var(--space-5);
@@ -951,7 +1069,7 @@ label {
 
 .stat strong {
   display: block;
-  font-family: Aptos, "Segoe UI", system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 1.65rem;
   font-weight: 800;
   line-height: 1.05;
@@ -1133,7 +1251,7 @@ label {
 }
 
 .query-answer h3 {
-  font-family: Aptos, "Segoe UI", system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.82rem;
   font-weight: 800;
   text-transform: uppercase;
@@ -1171,7 +1289,7 @@ label {
 }
 
 .query-chart h3 {
-  font-family: Aptos, "Segoe UI", system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.82rem;
   font-weight: 800;
   text-transform: uppercase;
@@ -1241,7 +1359,7 @@ label {
 }
 
 .query-table h3 {
-  font-family: Aptos, "Segoe UI", system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.82rem;
   font-weight: 800;
   text-transform: uppercase;

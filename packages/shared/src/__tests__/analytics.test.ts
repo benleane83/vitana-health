@@ -42,7 +42,7 @@ describe("computeAnalytics — counts", () => {
   it("counts source imports and observations", () => {
     const store = makeEmptyStore();
     store.sourceImports = [
-      { id: "s1", sourceKind: "samsung-health", fileName: "f.csv", importedAt: "2026-01-01T00:00:00.000Z", parserVersion: "v1", checksum: "abc", rowCount: 2, status: "processed", diagnostics: [] }
+      { id: "s1", sourceKind: "manual-entry", fileName: "f.csv", importedAt: "2026-01-01T00:00:00.000Z", parserVersion: "v1", checksum: "abc", rowCount: 2, status: "processed", diagnostics: [] }
     ];
     store.observations = [
       makeObservation({ id: "o1", measurementCode: "heart_rate", observedAt: "2026-01-01T00:00:00.000Z", value: 72, unit: "bpm", sourceId: "src1" }),
@@ -142,7 +142,7 @@ describe("computeAnalytics — evidenceDigest", () => {
   it("mentions import and observation counts", () => {
     const store = makeEmptyStore();
     store.sourceImports = [
-      { id: "s1", sourceKind: "samsung-health", fileName: "f.csv", importedAt: "2026-01-01T00:00:00.000Z", parserVersion: "v1", checksum: "abc", rowCount: 1, status: "processed", diagnostics: [] }
+      { id: "s1", sourceKind: "manual-entry", fileName: "f.csv", importedAt: "2026-01-01T00:00:00.000Z", parserVersion: "v1", checksum: "abc", rowCount: 1, status: "processed", diagnostics: [] }
     ];
     store.observations = [
       makeObservation({ id: "o1", measurementCode: "heart_rate", observedAt: "2026-01-01T00:00:00.000Z", value: 72, unit: "bpm", sourceId: "src1" })

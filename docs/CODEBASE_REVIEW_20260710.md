@@ -116,7 +116,6 @@ Every mutation serializes, encrypts, and synchronously writes the whole store. `
 - `insights` and `auditEvents` grow without bounds (`store.ts:133-138,179-186`);
 - lab-marker eviction sorts on hashed ID rather than collection time (`store.ts:120-124`);
 - large fixed record caps silently discard data;
-- generated Samsung import IDs include the current timestamp, weakening stable provenance (`samsungJsonImport.ts:34`).
 
 **Recommendation:** Define an explicit retention policy, never silently discard health records, fix chronological lab-marker retention, cap non-clinical history separately, and surface retention/import diagnostics.
 
@@ -164,7 +163,7 @@ The endpoint is accepted if merely non-empty and stored in AsyncStorage (`apps/a
 
 **Recommendation:** Replace free-form endpoint configuration with pairing, validate scheme/host, show the server identity, add bounded timeout/retry behavior, and provide an explicit unpair/delete action.
 
-#### P2 — Dependency setup needs cleanup
+#### [DONE] P2 — Dependency setup needs cleanup
 
 `eas-cli` is a runtime dependency and brings a large vulnerable build-tool tree into production dependency audits (`apps/android-companion/package.json:5-14`). Both `expo-health-connect` and `react-native-health-connect` are installed while source imports only the latter. `npm audit --omit=dev` reported 30 advisories (10 high, 19 moderate, 1 low), heavily concentrated in Expo/EAS tooling; the DuckDB finding is transitive through `node-gyp` and requires advisory-level triage rather than blindly downgrading.
 

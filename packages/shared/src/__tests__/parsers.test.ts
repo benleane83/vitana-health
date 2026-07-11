@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { checksum, parseSamsungHealthCsv, parseBloodTestCsv, buildManualLabEntryImport } from "../parsers.js";
+import { checksum, parseBloodTestCsv, buildManualLabEntryImport } from "../parsers.js";
 
 // ─── checksum ──────────────────────────────────────────────────────────────────
 
@@ -17,73 +17,6 @@ describe("checksum", () => {
 
   it("starts with the expected prefix", () => {
     expect(checksum("test")).toMatch(/^fnv1a-[0-9a-f]{8}$/);
-  });
-});
-
-// ─── parseSamsungHealthCsv ─────────────────────────────────────────────────────
-
-const samsungHappyCsv = `date,type,value,unit
-2026-06-01,heart_rate,65,bpm
-2026-06-02,heart_rate,68,bpm
-2026-06-03,weight,82.4,kg`;
-
-describe("parseSamsungHealthCsv — happy path", () => {
-  it("returns a processed import", () => {
-    const result = parseSamsungHealthCsv("test.csv", samsungHappyCsv);
-    expect(result.sourceImport.status).toBe("processed");
-    expect(result.sourceImport.sourceKind).toBe("samsung-health");
-    expect(result.sourceImport.rowCount).toBe(3);
-  });
-
-  it("stores the file content as rawContent", () => {
-    const result = parseSamsungHealthCsv("test.csv", samsungHappyCsv);
-    expect(result.sourceImport.rawContent).toBe(samsungHappyCsv);
-  });
-
-  it("assigns the correct checksum", () => {
-    const result = parseSamsungHealthCsv("test.csv", samsungHappyCsv);
-    expect(result.sourceImport.checksum).toBe(checksum(samsungHappyCsv));
-  });
-
-  it("parses heart_rate rows into timeSeriesSamples", () => {
-    const result = parseSamsungHealthCsv("test.csv", samsungHappyCsv);
-    const hrSamples = result.timeSeriesSamples.filter((s) => s.measurementCode === "heart_rate");
-    expect(hrSamples).toHaveLength(2);
-    expect(hrSamples[0].value).toBe(65);
-    expect(hrSamples[0].unit).toBe("bpm");
-  });
-
-  it("parses weight rows into observations", () => {
-    const result = parseSamsungHealthCsv("test.csv", samsungHappyCsv);
-    const weightObs = result.observations.filter((o) => o.measurementCode === "weight");
-    expect(weightObs).toHaveLength(1);
-    expect(weightObs[0].value).toBe(82.4);
-  });
-});
-
-describe("parseSamsungHealthCsv — deduplication", () => {
-  it("same file imported twice produces the same checksum", () => {
-    const r1 = parseSamsungHealthCsv("test.csv", samsungHappyCsv, "2026-01-01T00:00:00.000Z");
-    const r2 = parseSamsungHealthCsv("test.csv", samsungHappyCsv, "2026-01-02T00:00:00.000Z");
-    // checksum is based on file content, not import time
-    expect(r1.sourceImport.checksum).toBe(r2.sourceImport.checksum);
-  });
-});
-
-describe("parseSamsungHealthCsv — malformed rows", () => {
-  it("skips rows with unrecognized type and records a diagnostic", () => {
-    const csv = `date,type,value,unit
-2026-06-01,unknown_metric,99,xyz`;
-    const result = parseSamsungHealthCsv("bad.csv", csv);
-    expect(result.observations).toHaveLength(0);
-    expect(result.timeSeriesSamples).toHaveLength(0);
-    expect(result.sourceImport.diagnostics.length).toBeGreaterThan(0);
-  });
-
-  it("returns empty arrays for an empty CSV", () => {
-    const result = parseSamsungHealthCsv("empty.csv", "");
-    expect(result.observations).toHaveLength(0);
-    expect(result.timeSeriesSamples).toHaveLength(0);
   });
 });
 

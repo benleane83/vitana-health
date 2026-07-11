@@ -111,12 +111,11 @@ describe("App — import tab", () => {
     expect(screen.getByRole("tablist", { name: /import source/i })).toBeInTheDocument();
   });
 
-  it("shows Labs, Fitness Tracker, and Samsung CSV tabs in the import view", () => {
+  it("shows Labs and Fitness Tracker tabs in the import view", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: /^import$/i }));
     expect(screen.getByRole("button", { name: /labs/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /fitness tracker/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /samsung csv/i })).toBeInTheDocument();
   });
 });
 
