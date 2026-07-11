@@ -519,6 +519,7 @@ export function buildBodyCompositionImportFromDraft(
   };
 }
 
+// Both scan types use the same editable review-row lifecycle.
 export type BloodTestDraft = BodyCompositionDraft;
 export type BloodTestDraftCommitPayload = BodyCompositionDraftCommitPayload;
 
@@ -718,8 +719,8 @@ function normalizeBodyCompositionUnit(unit: string): string {
 
 function readBodyCompositionDate(text: string): string | undefined {
   const datePatterns = [
-    /(?:test|scan|report|measurement|measured|date)\s*(?:date)?\s*[:\-]?\s*(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})/i,
-    /(?:test|scan|report|measurement|measured|date)\s*(?:date)?\s*[:\-]?\s*([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})/i,
+    /(?:test|scan|report|measurement|measured|date)\s{0,20}(?:date)?\s{0,20}[:\-]?\s{0,20}(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})/i,
+    /(?:test|scan|report|measurement|measured|date)\s{0,20}(?:date)?\s{0,20}[:\-]?\s{0,20}([A-Za-z]{3,9}\s{1,20}\d{1,2},?\s{1,20}\d{4})/i,
     /\b(\d{4}[\/\-.]\d{1,2}[\/\-.]\d{1,2})\b/,
     /\b(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})\b/
   ];

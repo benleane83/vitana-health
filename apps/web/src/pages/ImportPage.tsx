@@ -165,8 +165,8 @@ export function ImportPage({
         <div id={uploadPanelId} role="tabpanel" aria-labelledby={uploadTabId}>
           <form className="labs-upload-form" onSubmit={onSubmitUpload}>
             <label htmlFor="csv-upload">Select observation CSV</label>
-            <input id="csv-upload" ref={uploadInputRef} type="file" accept=".csv,text/csv" onChange={(event) => onUploadFileChange(event.target.files?.[0])} />
-            <p className="empty">Use columns: observedAt, measurement, value, unit, label, sourceName.</p>
+            <input id="csv-upload" ref={uploadInputRef} type="file" accept=".csv,text/csv" aria-describedby="csv-upload-help" onChange={(event) => onUploadFileChange(event.target.files?.[0])} />
+            <p id="csv-upload-help" className="empty">Use columns: observedAt, measurement, value, unit, label, sourceName.</p>
             <button disabled={busy} type="submit">Upload CSV</button>
           </form>
         </div>
