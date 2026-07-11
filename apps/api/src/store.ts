@@ -49,6 +49,8 @@ const maxTimeSeriesSamples = 10_000;
 const minPerMeasurementCode = 500;
 const maxActivitySessions = 75_000;
 const maxObservationGroups = 20_000;
+const legacyGroupIdPrefix = "group_legacy_";
+const legacyObservationIdPrefix = "obs_legacy_";
 
 export class HealthStore {
   private data: HealthStoreData;
@@ -464,7 +466,7 @@ function normalizeStore(data: HealthStoreData): boolean {
   }
   data.observationGroups ??= [];
   for (const panel of data.labPanels ?? []) {
-    const groupId = `group_legacy_${panel.id}`;
+    const groupId = `${legacyGroupIdPrefix}${panel.id}`;
     if (!data.observationGroups.some((group) => group.id === groupId)) {
       data.observationGroups.push({
         id: groupId,
@@ -492,7 +494,7 @@ function normalizeStore(data: HealthStoreData): boolean {
         }
       } else {
         data.observations.push({
-          id: `obs_legacy_${marker.id}`,
+          id: `${legacyObservationIdPrefix}${marker.id}`,
           measurementCode: marker.measurementCode,
           observedAt: panel.collectedAt,
           value: marker.value,

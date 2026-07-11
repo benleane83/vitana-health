@@ -14,7 +14,7 @@ import type {
   Profile,
   ProfileListEntry
 } from "@local-fitness-advisor/shared";
-import { manualLabMarkerCatalog, safetyNotice } from "@local-fitness-advisor/shared";
+import { MANUAL_LAB_MARKER_CATALOG, safetyNotice } from "@local-fitness-advisor/shared";
 import { api } from "./api.js";
 import type { AiQueryResult, AiQueryChartSeries, PairedDevice, PendingPairing } from "./api.js";
 
@@ -1353,7 +1353,7 @@ function LabsPage({
                     }}
                   >
                     <option value="">Custom marker</option>
-                    {manualLabMarkerCatalog.map((entry) => (
+                    {MANUAL_LAB_MARKER_CATALOG.map((entry) => (
                       <option value={entry.marker} key={entry.marker}>
                         {entry.marker}
                       </option>
@@ -2290,12 +2290,12 @@ function getCatalogMarkerOrEmpty(marker: string): string {
   return findKnownCatalogMarker(marker)?.marker ?? "";
 }
 
-function findKnownCatalogMarker(input: string): (typeof manualLabMarkerCatalog)[number] | undefined {
+function findKnownCatalogMarker(input: string): (typeof MANUAL_LAB_MARKER_CATALOG)[number] | undefined {
   const normalized = input.trim().toLowerCase();
   if (!normalized) {
     return undefined;
   }
-  return manualLabMarkerCatalog.find((entry) => entry.marker.toLowerCase() === normalized);
+  return MANUAL_LAB_MARKER_CATALOG.find((entry) => entry.marker.toLowerCase() === normalized);
 }
 
 function createEmptyRow(marker = "", value = "", unit = ""): ManualMarkerRow {

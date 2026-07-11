@@ -142,6 +142,9 @@ export function parseBloodTestCsv(fileName: string, content: string, importedAt 
       continue;
     }
     const unit = normalized.unit || measurementType.canonicalUnit;
+    if (!normalized.unit) {
+      diagnostics.push(`Used canonical unit for lab row with no unit: ${measurementType.display}.`);
+    }
     observations.push({
       id: stableId("obs", ["blood-test-csv", sourceChecksum, measurementType.code, String(value), unit]),
       measurementCode: measurementType.code,

@@ -276,7 +276,7 @@ for (const type of defaultMeasurementTypes) {
   }
 }
 
-export const manualLabMarkerCatalog = defaultMeasurementTypes
+export const MANUAL_LAB_MARKER_CATALOG = defaultMeasurementTypes
   .filter((type) => type.category === "lab" || type.category === "metabolic")
   .map((type) => ({ marker: type.display, unit: type.canonicalUnit, measurementCode: type.code }));
 
