@@ -10,6 +10,23 @@ const stepSchema = z.object({
   count: z.number().int().nonnegative()
 });
 
+const intervalSampleSchema = z.object({
+  startTime: isoDateString,
+  endTime: isoDateString,
+  value: z.number().finite().nonnegative(),
+  provenance: z.record(z.unknown()).optional()
+});
+
+const sleepSessionSchema = z.object({
+  startTime: isoDateString,
+  endTime: isoDateString,
+  durationMinutes: z.number().finite().nonnegative(),
+  stages: z.array(z.unknown()).optional(),
+  title: z.string().max(500).optional(),
+  notes: z.string().max(4000).optional(),
+  provenance: z.record(z.unknown()).optional()
+});
+
 const pointSampleSchema = z.object({
   time: isoDateString,
   value: z.number().finite(),
@@ -42,7 +59,16 @@ export const healthConnectImportRequestSchema = z.object({
   oxygenSaturation: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
   hrvRmssd: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
   weightKg: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
-  exerciseSessions: z.array(exerciseSchema).max(5_000).default([])
+  exerciseSessions: z.array(exerciseSchema).max(5_000).default([]),
+  distanceMeters: z.array(intervalSampleSchema).max(20_000).default([]),
+  floorsClimbed: z.array(intervalSampleSchema).max(20_000).default([]),
+  activeCaloriesKcal: z.array(intervalSampleSchema).max(20_000).default([]),
+  totalCaloriesKcal: z.array(intervalSampleSchema).max(20_000).default([]),
+  sleepSessions: z.array(sleepSessionSchema).max(20_000).default([]),
+  bodyFatPct: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
+  leanBodyMassKg: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
+  bodyWaterMassKg: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
+  boneMassKg: z.array(pointSampleSchema).max(densePointSampleLimit).default([])
 });
 
 export type HealthConnectImportRequest = z.infer<typeof healthConnectImportRequestSchema>;
@@ -79,7 +105,16 @@ export function parseHealthConnectImport(payload: HealthConnectImportRequest): P
   const oxygenSaturation = toObservationSamples(payload.oxygenSaturation, "oxygen_saturation", "%", sourceId);
   const hrvRmssd = toObservationSamples(payload.hrvRmssd, "hrv_rmssd", "ms", sourceId);
   const weight = toObservationSamples(payload.weightKg, "weight", "kg", sourceId);
+  const bodyFatPct = toObservationSamples(payload.bodyFatPct, "body_fat_pct", "%", sourceId);
+  const leanBodyMass = toObservationSamples(payload.leanBodyMassKg, "lean_body_mass", "kg", sourceId);
+  const bodyWaterMass = toObservationSamples(payload.bodyWaterMassKg, "total_body_water", "L", sourceId);
+  const boneMass = toObservationSamples(payload.boneMassKg, "bone_mineral_content", "kg", sourceId);
   const activitySessions = toActivitySessions(payload.exerciseSessions, sourceId);
+  const distanceMeters = toTimeSeriesSamples(payload.distanceMeters, "distance", "m", sourceId);
+  const floorsClimbed = toTimeSeriesSamples(payload.floorsClimbed, "floors_climbed", "count", sourceId);
+  const activeCalories = toTimeSeriesSamples(payload.activeCaloriesKcal, "active_calories_burned", "kcal", sourceId);
+  const totalCalories = toTimeSeriesSamples(payload.totalCaloriesKcal, "total_calories_burned", "kcal", sourceId);
+  const sleepDuration = toSleepDurationSamples(payload.sleepSessions, sourceId);
 
   for (const session of payload.exerciseSessions) {
     const startAt = normalizeIso(session.startTime);
@@ -93,8 +128,24 @@ export function parseHealthConnectImport(payload: HealthConnectImportRequest): P
     }
   }
 
-  const observations: Observation[] = [...heartRate, ...oxygenSaturation, ...hrvRmssd, ...weight];
-  const timeSeriesSamples: TimeSeriesSample[] = steps;
+  const observations: Observation[] = [
+    ...heartRate,
+    ...oxygenSaturation,
+    ...hrvRmssd,
+    ...weight,
+    ...bodyFatPct,
+    ...leanBodyMass,
+    ...bodyWaterMass,
+    ...boneMass
+  ];
+  const timeSeriesSamples: TimeSeriesSample[] = [
+    ...steps,
+    ...distanceMeters,
+    ...floorsClimbed,
+    ...activeCalories,
+    ...totalCalories,
+    ...sleepDuration
+  ];
   const fingerprint = checksum(
     JSON.stringify({
       rangeStart,
@@ -119,7 +170,16 @@ export function parseHealthConnectImport(payload: HealthConnectImportRequest): P
     payload.oxygenSaturation.length +
     payload.hrvRmssd.length +
     payload.weightKg.length +
-    payload.exerciseSessions.length;
+    payload.exerciseSessions.length +
+    payload.distanceMeters.length +
+    payload.floorsClimbed.length +
+    payload.activeCaloriesKcal.length +
+    payload.totalCaloriesKcal.length +
+    payload.sleepSessions.length +
+    payload.bodyFatPct.length +
+    payload.leanBodyMassKg.length +
+    payload.bodyWaterMassKg.length +
+    payload.boneMassKg.length;
 
   return {
     sourceImport: {
@@ -183,6 +243,63 @@ function toObservationSamples(
     });
   }
   return observations;
+}
+
+function toTimeSeriesSamples(
+  rows: Array<{ startTime: string; endTime: string; value: number; provenance?: Record<string, unknown> }>,
+  measurementCode: string,
+  unit: string,
+  sourceId: string
+): TimeSeriesSample[] {
+  const samples: TimeSeriesSample[] = [];
+  for (const row of rows) {
+    const startAt = normalizeIso(row.startTime);
+    const endAt = normalizeIso(row.endTime);
+    if (!startAt || !endAt || endAt < startAt || !Number.isFinite(row.value)) {
+      continue;
+    }
+    samples.push({
+      id: stableId("sample", [measurementCode, startAt, endAt, String(row.value), sourceId, JSON.stringify(row.provenance ?? {})]),
+      measurementCode,
+      startAt,
+      endAt,
+      value: row.value,
+      unit,
+      sourceId,
+      sourceJson: row.provenance
+    });
+  }
+  return samples;
+}
+
+function toSleepDurationSamples(
+  rows: HealthConnectImportRequest["sleepSessions"],
+  sourceId: string
+): TimeSeriesSample[] {
+  const samples: TimeSeriesSample[] = [];
+  for (const row of rows) {
+    const startAt = normalizeIso(row.startTime);
+    const endAt = normalizeIso(row.endTime);
+    if (!startAt || !endAt || endAt < startAt || !Number.isFinite(row.durationMinutes)) {
+      continue;
+    }
+    samples.push({
+      id: stableId("sample", ["sleep_duration", startAt, endAt, String(row.durationMinutes), sourceId, JSON.stringify(row.provenance ?? {})]),
+      measurementCode: "sleep_duration",
+      startAt,
+      endAt,
+      value: row.durationMinutes,
+      unit: "min",
+      sourceId,
+      sourceJson: {
+        provenance: row.provenance,
+        title: row.title,
+        notes: row.notes,
+        stages: row.stages
+      }
+    });
+  }
+  return samples;
 }
 
 function toActivitySessions(rows: HealthConnectImportRequest["exerciseSessions"], sourceId: string): ActivitySession[] {

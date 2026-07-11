@@ -12,7 +12,16 @@ export const HEALTH_CONNECT_CATEGORIES = [
   "OxygenSaturation",
   "HeartRateVariabilityRmssd",
   "Weight",
-  "ExerciseSession"
+  "ExerciseSession",
+  "Distance",
+  "FloorsClimbed",
+  "ActiveCaloriesBurned",
+  "TotalCaloriesBurned",
+  "SleepSession",
+  "BodyFat",
+  "LeanBodyMass",
+  "BodyWaterMass",
+  "BoneMass"
 ] as const;
 
 export type HealthConnectCategory = (typeof HEALTH_CONNECT_CATEGORIES)[number];

@@ -12,7 +12,16 @@ const baseRequest: HealthConnectImportRequest = {
   oxygenSaturation: [],
   hrvRmssd: [],
   weightKg: [],
-  exerciseSessions: []
+  exerciseSessions: [],
+  distanceMeters: [],
+  floorsClimbed: [],
+  activeCaloriesKcal: [],
+  totalCaloriesKcal: [],
+  sleepSessions: [],
+  bodyFatPct: [],
+  leanBodyMassKg: [],
+  bodyWaterMassKg: [],
+  boneMassKg: []
 };
 
 describe("parseHealthConnectImport — minimal valid payload", () => {
@@ -70,6 +79,19 @@ describe("parseHealthConnectImport — heart rate → observations", () => {
     const r1 = parseHealthConnectImport(payload);
     const r2 = parseHealthConnectImport(payload);
     expect(r1.observations[0].id).toBe(r2.observations[0].id);
+  });
+});
+
+describe("parseHealthConnectImport — additional supported categories", () => {
+  it("maps body fat percentages to body_fat_pct observations", () => {
+    const result = parseHealthConnectImport({
+      ...baseRequest,
+      bodyFatPct: [{ time: "2026-05-01T08:00:00.000Z", value: 21.5 }]
+    });
+    expect(result.observations).toHaveLength(1);
+    expect(result.observations[0].measurementCode).toBe("body_fat_pct");
+    expect(result.observations[0].unit).toBe("%");
+    expect(result.observations[0].value).toBe(21.5);
   });
 });
 

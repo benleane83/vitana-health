@@ -57,6 +57,23 @@ interface HealthConnectImportPayload {
     details?: Record<string, unknown>;
     provenance?: HealthConnectProvenance;
   }>;
+  distanceMeters: Array<{ startTime: string; endTime: string; value: number; provenance?: HealthConnectProvenance }>;
+  floorsClimbed: Array<{ startTime: string; endTime: string; value: number; provenance?: HealthConnectProvenance }>;
+  activeCaloriesKcal: Array<{ startTime: string; endTime: string; value: number; provenance?: HealthConnectProvenance }>;
+  totalCaloriesKcal: Array<{ startTime: string; endTime: string; value: number; provenance?: HealthConnectProvenance }>;
+  sleepSessions: Array<{
+    startTime: string;
+    endTime: string;
+    durationMinutes: number;
+    stages?: unknown[];
+    title?: string;
+    notes?: string;
+    provenance?: HealthConnectProvenance;
+  }>;
+  bodyFatPct: HealthConnectPointValue[];
+  leanBodyMassKg: HealthConnectPointValue[];
+  bodyWaterMassKg: HealthConnectPointValue[];
+  boneMassKg: HealthConnectPointValue[];
 }
 
 export interface SyncOptions {
@@ -79,7 +96,16 @@ const permissionsByCategory: Record<HealthConnectCategory, Permission> = {
   OxygenSaturation: { accessType: "read", recordType: "OxygenSaturation" },
   HeartRateVariabilityRmssd: { accessType: "read", recordType: "HeartRateVariabilityRmssd" },
   Weight: { accessType: "read", recordType: "Weight" },
-  ExerciseSession: { accessType: "read", recordType: "ExerciseSession" }
+  ExerciseSession: { accessType: "read", recordType: "ExerciseSession" },
+  Distance: { accessType: "read", recordType: "Distance" },
+  FloorsClimbed: { accessType: "read", recordType: "FloorsClimbed" },
+  ActiveCaloriesBurned: { accessType: "read", recordType: "ActiveCaloriesBurned" },
+  TotalCaloriesBurned: { accessType: "read", recordType: "TotalCaloriesBurned" },
+  SleepSession: { accessType: "read", recordType: "SleepSession" },
+  BodyFat: { accessType: "read", recordType: "BodyFat" },
+  LeanBodyMass: { accessType: "read", recordType: "LeanBodyMass" },
+  BodyWaterMass: { accessType: "read", recordType: "BodyWaterMass" },
+  BoneMass: { accessType: "read", recordType: "BoneMass" }
 };
 
 export async function syncHealthConnect(
@@ -169,7 +195,60 @@ export async function syncHealthConnect(
         details,
         provenance: extractProvenance(record)
       };
-    })
+    }),
+    distanceMeters: records.distance.map((record) => ({
+      startTime: record.startTime,
+      endTime: record.endTime,
+      value: record.distance.inMeters,
+      provenance: extractProvenance(record)
+    })).filter((record) => Number.isFinite(record.value)),
+    floorsClimbed: records.floorsClimbed.map((record) => ({
+      startTime: record.startTime,
+      endTime: record.endTime,
+      value: record.floors,
+      provenance: extractProvenance(record)
+    })).filter((record) => Number.isFinite(record.value)),
+    activeCaloriesKcal: records.activeCaloriesBurned.map((record) => ({
+      startTime: record.startTime,
+      endTime: record.endTime,
+      value: record.energy.inCalories,
+      provenance: extractProvenance(record)
+    })).filter((record) => Number.isFinite(record.value)),
+    totalCaloriesKcal: records.totalCaloriesBurned.map((record) => ({
+      startTime: record.startTime,
+      endTime: record.endTime,
+      value: record.energy.inCalories,
+      provenance: extractProvenance(record)
+    })).filter((record) => Number.isFinite(record.value)),
+    sleepSessions: records.sleepSessions.map((record) => ({
+      startTime: record.startTime,
+      endTime: record.endTime,
+      durationMinutes: Math.max(0, Math.round((new Date(record.endTime).getTime() - new Date(record.startTime).getTime()) / 60_000)),
+      stages: record.stages,
+      title: record.title,
+      notes: record.notes,
+      provenance: extractProvenance(record)
+    })),
+    bodyFatPct: records.bodyFat.map((record) => ({
+      time: record.time,
+      value: record.percentage * 100,
+      provenance: extractProvenance(record)
+    })).filter((record) => Number.isFinite(record.value)),
+    leanBodyMassKg: records.leanBodyMass.map((record) => ({
+      time: record.time,
+      value: record.mass.inKilograms,
+      provenance: extractProvenance(record)
+    })).filter((record) => Number.isFinite(record.value)),
+    bodyWaterMassKg: records.bodyWaterMass.map((record) => ({
+      time: record.time,
+      value: record.mass.inKilograms,
+      provenance: extractProvenance(record)
+    })).filter((record) => Number.isFinite(record.value)),
+    boneMassKg: records.boneMass.map((record) => ({
+      time: record.time,
+      value: record.mass.inKilograms,
+      provenance: extractProvenance(record)
+    })).filter((record) => Number.isFinite(record.value))
   };
 
   const uploadResults = [];
@@ -198,7 +277,16 @@ async function readGrantedRecords(categories: HealthConnectCategory[], options: 
     oxygenSaturation: categories.includes("OxygenSaturation") ? await readAllRecords("OxygenSaturation", options) : [],
     hrvRmssd: categories.includes("HeartRateVariabilityRmssd") ? await readAllRecords("HeartRateVariabilityRmssd", options) : [],
     weight: categories.includes("Weight") ? await readAllRecords("Weight", options) : [],
-    exerciseSessions: categories.includes("ExerciseSession") ? await readAllRecords("ExerciseSession", options) : []
+    exerciseSessions: categories.includes("ExerciseSession") ? await readAllRecords("ExerciseSession", options) : [],
+    distance: categories.includes("Distance") ? await readAllRecords("Distance", options) : [],
+    floorsClimbed: categories.includes("FloorsClimbed") ? await readAllRecords("FloorsClimbed", options) : [],
+    activeCaloriesBurned: categories.includes("ActiveCaloriesBurned") ? await readAllRecords("ActiveCaloriesBurned", options) : [],
+    totalCaloriesBurned: categories.includes("TotalCaloriesBurned") ? await readAllRecords("TotalCaloriesBurned", options) : [],
+    sleepSessions: categories.includes("SleepSession") ? await readAllRecords("SleepSession", options) : [],
+    bodyFat: categories.includes("BodyFat") ? await readAllRecords("BodyFat", options) : [],
+    leanBodyMass: categories.includes("LeanBodyMass") ? await readAllRecords("LeanBodyMass", options) : [],
+    bodyWaterMass: categories.includes("BodyWaterMass") ? await readAllRecords("BodyWaterMass", options) : [],
+    boneMass: categories.includes("BoneMass") ? await readAllRecords("BoneMass", options) : []
   };
 }
 
@@ -209,11 +297,38 @@ function chunkPayload(payload: HealthConnectImportPayload): HealthConnectImportP
     ...payload.oxygenSaturation.map((value) => ["oxygenSaturation", value] as const),
     ...payload.hrvRmssd.map((value) => ["hrvRmssd", value] as const),
     ...payload.weightKg.map((value) => ["weightKg", value] as const),
-    ...payload.exerciseSessions.map((value) => ["exerciseSessions", value] as const)
+    ...payload.exerciseSessions.map((value) => ["exerciseSessions", value] as const),
+    ...payload.distanceMeters.map((value) => ["distanceMeters", value] as const),
+    ...payload.floorsClimbed.map((value) => ["floorsClimbed", value] as const),
+    ...payload.activeCaloriesKcal.map((value) => ["activeCaloriesKcal", value] as const),
+    ...payload.totalCaloriesKcal.map((value) => ["totalCaloriesKcal", value] as const),
+    ...payload.sleepSessions.map((value) => ["sleepSessions", value] as const),
+    ...payload.bodyFatPct.map((value) => ["bodyFatPct", value] as const),
+    ...payload.leanBodyMassKg.map((value) => ["leanBodyMassKg", value] as const),
+    ...payload.bodyWaterMassKg.map((value) => ["bodyWaterMassKg", value] as const),
+    ...payload.boneMassKg.map((value) => ["boneMassKg", value] as const)
   ];
   const chunks = rows.length ? Array.from({ length: Math.ceil(rows.length / MAX_ROWS_PER_UPLOAD) }, (_, index) => rows.slice(index * MAX_ROWS_PER_UPLOAD, (index + 1) * MAX_ROWS_PER_UPLOAD)) : [[]];
   return chunks.map((rowsForChunk, index) => {
-    const chunk: HealthConnectImportPayload = { ...payload, batchId: `${payload.rangeEnd}:${index + 1}/${chunks.length}`, steps: [], heartRate: [], oxygenSaturation: [], hrvRmssd: [], weightKg: [], exerciseSessions: [] };
+    const chunk: HealthConnectImportPayload = {
+      ...payload,
+      batchId: `${payload.rangeEnd}:${index + 1}/${chunks.length}`,
+      steps: [],
+      heartRate: [],
+      oxygenSaturation: [],
+      hrvRmssd: [],
+      weightKg: [],
+      exerciseSessions: [],
+      distanceMeters: [],
+      floorsClimbed: [],
+      activeCaloriesKcal: [],
+      totalCaloriesKcal: [],
+      sleepSessions: [],
+      bodyFatPct: [],
+      leanBodyMassKg: [],
+      bodyWaterMassKg: [],
+      boneMassKg: []
+    };
     for (const [category, value] of rowsForChunk) chunk[category].push(value as never);
     return chunk;
   });
@@ -270,7 +385,21 @@ function objectValue(value: unknown): Record<string, unknown> | undefined {
 }
 
 function countRows(payload: HealthConnectImportPayload): number {
-  return payload.steps.length + payload.heartRate.length + payload.oxygenSaturation.length + payload.hrvRmssd.length + payload.weightKg.length + payload.exerciseSessions.length;
+  return payload.steps.length +
+    payload.heartRate.length +
+    payload.oxygenSaturation.length +
+    payload.hrvRmssd.length +
+    payload.weightKg.length +
+    payload.exerciseSessions.length +
+    payload.distanceMeters.length +
+    payload.floorsClimbed.length +
+    payload.activeCaloriesKcal.length +
+    payload.totalCaloriesKcal.length +
+    payload.sleepSessions.length +
+    payload.bodyFatPct.length +
+    payload.leanBodyMassKg.length +
+    payload.bodyWaterMassKg.length +
+    payload.boneMassKg.length;
 }
 
 function parseCursor(value: string | null | undefined): Date | undefined {
