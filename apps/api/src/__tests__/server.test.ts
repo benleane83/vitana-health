@@ -98,6 +98,31 @@ describe("POST /api/import/health-connect — auth middleware", () => {
     expect(res.status).toBe(401);
   });
 
+  describe("generic import routes", () => {
+    it("imports manual observations and generic CSV data", async () => {
+      const manual = await request(app)
+        .post("/api/import/observations/manual")
+        .set("authorization", ownerAuthorization)
+        .send({
+          observedAt: "2026-06-15",
+          label: "Home scale",
+          observations: [{ measurementName: "Weight", value: 82, unit: "kg" }]
+        });
+      expect(manual.status).toBe(201);
+      expect(manual.body.store.observations).toEqual(expect.arrayContaining([
+        expect.objectContaining({ measurementCode: "weight", value: 82 })
+      ]));
+
+      const csv = await request(app)
+        .post("/api/import/observations/csv")
+        .set("authorization", ownerAuthorization)
+        .send({ fileName: "observations.csv", content: "observedAt,measurement,value,unit\n2026-06-16,Body fat,21,%" });
+      expect(csv.status).toBe(201);
+      expect(csv.body.import).toMatchObject({ sourceKind: "observation-csv" });
+      expect(csv.body.import.rawContent).toBeUndefined();
+    });
+  });
+
   it("allows the owner credential", async () => {
     const res = await request(app)
       .post("/api/import/health-connect")
@@ -341,6 +366,14 @@ describe("DELETE /api/observations/:id", () => {
 // ─── Schema validation ─────────────────────────────────────────────────────────
 
 describe("POST /api/import/blood-test — schema validation", () => {
+  it("mounts blood-test preview route", async () => {
+    const res = await request(app)
+      .post("/api/import/blood-test/preview")
+      .set("authorization", ownerAuthorization)
+      .send({});
+    expect(res.status).not.toBe(404);
+  });
+
   it("returns 400 when 'content' field is missing", async () => {
     const res = await request(app)
       .post("/api/import/blood-test")

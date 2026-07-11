@@ -30,6 +30,10 @@ export async function callConfiguredModel(prompt: string, options?: ModelRequest
   return callOllama(prompt, settings, options?.model, timeoutMs);
 }
 
+export function resolvedModelProvider(override?: "ollama" | "openai"): "ollama" | "openai" {
+  return resolveProvider(override);
+}
+
 export function currentModelConfig(): { provider: "ollama" | "openai"; endpoint: string; model: string; timeoutMs: number } {
   const settings = getAiSettings();
   return {

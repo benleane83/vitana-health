@@ -539,6 +539,12 @@ h3 {
   gap: var(--space-3);
 }
 
+.labs-upload-actions {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+}
+
 .labs-manual-meta {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -552,12 +558,12 @@ h3 {
 
 .labs-row {
   grid-template-columns: minmax(0, 1.45fr) minmax(100px, 0.75fr) minmax(100px, 0.75fr) auto;
-  align-items: center;
+  align-items: start;
 }
 
 .labs-marker-cell {
   display: grid;
-  gap: var(--space-2);
+  gap: var(--space-1);
 }
 
 .labs-row-actions {
@@ -635,7 +641,7 @@ h3 {
   display: grid;
   grid-template-columns: 64px minmax(220px, 1.25fr) minmax(100px, 0.5fr) minmax(90px, 0.45fr) minmax(120px, 0.5fr);
   gap: var(--space-3);
-  align-items: center;
+  align-items: start;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: oklch(15% 0.024 158 / 0.76);
@@ -651,6 +657,7 @@ h3 {
   color: var(--muted);
   font-weight: 800;
   padding-block: var(--space-2);
+  align-items: center;
 }
 
 .bodycomp-include-cell {
@@ -666,7 +673,7 @@ h3 {
 
 .bodycomp-measurement-cell {
   display: grid;
-  gap: var(--space-2);
+  gap: var(--space-1);
 }
 
 .bodycomp-measurement-cell em {
@@ -674,6 +681,7 @@ h3 {
   font-size: 0.82rem;
   font-style: normal;
   line-height: 1.35;
+  margin-top: 2px;
 }
 
 .bodycomp-confidence-cell {
