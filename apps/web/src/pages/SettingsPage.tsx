@@ -28,16 +28,10 @@ export function SettingsPage() {
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!settings) return;
     setBusy(true);
     setMessage(undefined);
     try {
-      const saved = await fetchSettings("/api/settings/ai", {
-        method: "PUT",
-        body: JSON.stringify({ ...settings, apiKey: apiKey || undefined })
-      });
-      setSettings(saved);
-      setApiKey("");
+      await persistSettings();
       setMessage("AI settings saved.");
     } catch {
       setMessage("Unable to save AI settings.");
@@ -47,9 +41,11 @@ export function SettingsPage() {
   }
 
   async function validate() {
+    if (!settings) return;
     setBusy(true);
     setMessage(undefined);
     try {
+      await persistSettings();
       const response = await fetch("/api/settings/ai/validate", { method: "POST", credentials: "include" });
       const result = (await response.json()) as ModelValidation;
       setMessage(result.ok ? `Connection validated in ${result.elapsedMs} ms.` : result.error ?? "Validation failed.");
@@ -58,6 +54,16 @@ export function SettingsPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function persistSettings() {
+    if (!settings) throw new Error("AI settings are unavailable");
+    const saved = await fetchSettings("/api/settings/ai", {
+      method: "PUT",
+      body: JSON.stringify({ ...settings, apiKey: apiKey || undefined })
+    });
+    setSettings(saved);
+    setApiKey("");
   }
 
   if (!settings) return <section className="panel"><p className="empty">Loading AI settings…</p></section>;
