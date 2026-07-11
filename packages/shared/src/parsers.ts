@@ -194,7 +194,12 @@ export function buildManualLabEntryImport(payload: ManualLabEntryPayload, import
   const sourceId = stableId("source", ["manual-entry", sourceChecksum]);
   const groupId = stableId("group", ["lab_panel", sourceChecksum]);
   const group: ObservationGroup = {
-    id: groupId, kind: "lab_panel", label: panelName, sourceId, importId, collectedAt,
+    id: groupId,
+    kind: "lab_panel",
+    label: panelName,
+    sourceId,
+    importId,
+    collectedAt,
     metadata: { labName: payload.labName?.trim() || undefined }
   };
   const observations: Observation[] = [];
@@ -345,7 +350,11 @@ export function buildBodyCompositionImportFromDraft(
   const observedAt = readDate(payload.reportDate) ?? importedAt;
   const groupId = stableId("group", ["body_composition_report", sourceChecksum]);
   const group: ObservationGroup = {
-    id: groupId, kind: "body_composition_report", label: payload.fileName, sourceId, importId,
+    id: groupId,
+    kind: "body_composition_report",
+    label: payload.fileName,
+    sourceId,
+    importId,
     collectedAt: observedAt
   };
 
