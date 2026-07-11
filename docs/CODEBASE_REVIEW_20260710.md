@@ -10,7 +10,7 @@
 
 Web accessibility (P1/P2 items), API monolith refactoring (P1), observability/operations (P2), and environment/API documentation (P2) have been fully addressed. The codebase now has a modular web frontend with complete ARIA semantics, accessible dialogs using native `<dialog>` elements, consistent live-region announcements, a structured-logging API server with correlation IDs and graceful shutdown, typed environment validation, a minimal health endpoint, stable public error codes, a `.env.example`, and a versioned `docs/API_CONTRACT.md`.
 
-Remaining P0 blockers are cloud-model consent/privacy, Android Health Connect and Play Store disclosures, a complete Android production release process, and an open-source license. P1 items around Android sync resilience and data durability/scale also remain open.
+Remaining P0 blockers are cloud-model consent/privacy, Android Health Connect and Play Store disclosures, and a complete Android production release process. P1 items around Android sync resilience and data durability/scale also remain open.
 
 ### Status legend
 
@@ -80,12 +80,6 @@ The app requests all supported Health Connect permissions together and has no fi
 
 **Recommendation:** Add just-in-time rationale, a privacy-policy link, data inventory and retention/deletion language, least-privilege permission selection, and complete Play Console declarations before submission.
 
-#### [OPEN] P1 — Denying one optional permission prevents all sync
-
-Any missing requested permission aborts the complete sync (`apps/android-companion/src/syncHealthConnect.ts`).
-
-**Recommendation:** Sync granted categories, clearly report omissions, and let users select and change categories later.
-
 #### [IN PROGRESS] P1 — Sync is inefficient and loses useful provenance
 
 A persistent device identifier exists, but every sync still rereads and accumulates the previous 30 days, the upload label remains static, and incremental cursors/chunking/provider provenance are absent (`apps/android-companion/src/endpointStore.ts`, `src/syncHealthConnect.ts`).
@@ -106,18 +100,6 @@ Automated axe and manual WCAG AA validation at desktop and narrow breakpoints ar
 
 ### Open-source and product readiness
 
-#### [OPEN] P0 — The repository has no open-source license
-
-No root `LICENSE` exists. Publishing source without one does not grant permission to use, modify, or redistribute it.
-
-**Recommendation:** Choose a license intentionally, add SPDX/package metadata where appropriate, and complete a third-party license review.
-
-#### [OPEN] P1 — Community and security documentation are missing
-
-There is no `SECURITY.md`, `CONTRIBUTING.md`, code of conduct, support policy, release policy, or vulnerability-reporting process.
-
-**Recommendation:** Add these before publicizing the repository, including supported versions, responsible disclosure, privacy threat model, backup/recovery guidance, and non-medical-use boundaries.
-
 #### [OPEN] P2 — Product boundaries and deprecations need explicit decisions
 
 Four overlapping query endpoints remain without lifecycle/deprecation annotations (`apps/api/src/createApp.ts`).
@@ -131,13 +113,11 @@ Four overlapping query endpoints remain without lifecycle/deprecation annotation
 1. **Cloud-model privacy and consent:** Correct the privacy claim; add explicit cloud opt-in, provider/data-scope disclosure, and prompt minimization.
 2. **Health Connect and Play privacy readiness:** Add category rationale and selection, privacy-policy flow, data inventory/retention/deletion language, and Play declarations.
 3. **Android production release process:** Document and validate AAB, signing, versioning, production environment, and submission/release checklist.
-4. **Open-source license:** Choose and add a license plus applicable metadata/notices.
 
 ### P1 — Stable public release
 
 1. **Selective, resilient Health Connect sync:** Allow partial permissions, add cursors/chunking/provenance, and use authenticated pinned networking for every companion request.
 2. **Persisted-data durability at scale:** Add runtime schema migrations, correct retention policies, and reduce whole-store transfers/rebuild work.
-3. **Project stewardship documentation:** Add security, contribution, support, and release documentation.
 
 ### P2 — Hardening and sustainable development
 
@@ -194,6 +174,12 @@ Stack traces no longer appear in responses. `/api/health` now returns only liven
 The encrypted store is atomically persisted with a recoverable backup (`apps/api/src/store.ts`). DuckDB is rebuilt into a temporary database, validated, swapped atomically, and restored from backup if the swap fails (`apps/api/src/warehouse.ts`).
 
 ### Android companion and Play Store readiness
+
+#### [DONE] P1 — Denying one optional permission prevents all sync
+
+Any missing requested permission aborts the complete sync (`apps/android-companion/src/syncHealthConnect.ts`).
+
+**Recommendation:** Sync granted categories, clearly report omissions, and let users select and change categories later.
 
 #### [DONE] P2 — Dependency setup needs cleanup
 
@@ -261,8 +247,20 @@ Centralized auth, rate limiting, error handling, and correlation-ID middleware r
 
 `.env.example` now documents every supported environment variable with descriptions, defaults, and generation hints. `apps/api/src/env.ts` validates and types the environment at startup using Zod. `docs/API_CONTRACT.md` provides a versioned reference for all endpoints, stable error codes, auth requirements, and cross-platform quick-start instructions (macOS/Linux, Windows CMD, PowerShell).
 
+### Open-source and product readiness
+
+#### [DONE] P0 — The repository has no open-source license
+
+GNU Affero General Public License v3.0 only (`AGPL-3.0-only`) was selected to support transparency, community copyleft, and protection against closed commercial forks. A root `LICENSE` file now contains the full AGPL-3.0 text, and `"license": "AGPL-3.0-only"` has been added to all workspace `package.json` files. A third-party license review is still advisable before a stable public release.
+
+#### [DONE] P1 — Community and security documentation are missing
+
+`SECURITY.md` now documents supported versions, coordinated responsible disclosure (90-day window), the local-account threat model, in-scope and out-of-scope attack surfaces, health-data privacy notes, non-medical-use boundaries, and backup/recovery guidance. `CONTRIBUTING.md` covers the AGPL-3.0-only license (no CLA required), code of conduct, accepted contribution types, non-medical-use boundaries, development setup, PR process, and the support/release policy.
+
 ### Pending-order items already completed
 
+- [DONE] Open-source license: `AGPL-3.0-only` selected; root `LICENSE` and SPDX metadata in all `package.json` files.
+- [DONE] Project stewardship documentation: `SECURITY.md` (threat model, responsible disclosure, backup guidance, non-medical-use) and `CONTRIBUTING.md` (AGPL-3.0-only, no CLA, code of conduct, PR process, safety boundaries) added.
 - [DONE] Web accessibility core flows: interaction semantics, accessible dialogs/destructive confirmations, and comprehensive live announcements.
 - [DONE] Safe operations and diagnostics: minimized public errors/health output plus redacted structured observability with correlation IDs.
 - [DONE] Environment and lifecycle documentation: `.env.example` and `docs/API_CONTRACT.md` now in place.
