@@ -25,6 +25,7 @@ import { makeProfileRoutes, makeProfilesRoutes } from "./routes/profileRoutes.js
 import { makeImportRoutes } from "./routes/importRoutes.js";
 import { makeQueryRoutes, makeLlmRoutes } from "./routes/queryRoutes.js";
 import { makeDataRoutes } from "./routes/dataRoutes.js";
+import { makeSettingsRoutes } from "./routes/settingsRoutes.js";
 import { z } from "zod";
 
 export interface AppOptions {
@@ -134,6 +135,7 @@ export function createApp(
   app.use(rateLimit(300, 60_000));
   app.use("/api/pairing", rateLimit(30, 60_000));
   app.use("/api/llm", rateLimit(10, 60_000));
+  app.use("/api/settings", rateLimit(30, 60_000));
   app.use("/api/query", rateLimit(30, 60_000));
 
   function ownerTokenIsValid(request: express.Request): boolean {
@@ -265,6 +267,7 @@ export function createApp(
   app.use("/api/import", makeImportRoutes(storeManager));
   app.use("/api/query", makeQueryRoutes(storeManager));
   app.use("/api/llm", makeLlmRoutes(storeManager));
+  app.use("/api/settings", makeSettingsRoutes());
   app.use("/api", makeDataRoutes(storeManager));
 
   // Static web serving
