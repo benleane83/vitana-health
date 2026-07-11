@@ -33,8 +33,56 @@ function detailKindLabel(kind: HealthDataDetailEntry["kind"]): string {
   return { observation: "Observation", sample: "Sample", activity: "Activity" }[kind];
 }
 
+function normalizeContextToken(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function compactSourceLabel(entry: HealthDataDetailEntry): string | undefined {
+  const label = entry.sourceLabel?.trim();
+  if (!label) {
+    return undefined;
+  }
+  if (entry.sourceKind !== "health-connect") {
+    return label;
+  }
+
+  const match = label.match(/^Health Connect:\s*([^:]+)(?::.+)?$/i);
+  if (!match) {
+    return "Health Connect";
+  }
+  const appLabel = match[1].trim();
+  return appLabel ? `Health Connect (${appLabel})` : "Health Connect";
+}
+
 function renderEntryContext(entry: HealthDataDetailEntry): string {
-  return [entry.sourceLabel, entry.importFileName, entry.note].filter(Boolean).join(" • ") || "—";
+  const sourceLabel = compactSourceLabel(entry);
+  const importFileName = entry.importFileName?.trim();
+  const note = entry.note?.trim();
+  const parts: string[] = [];
+
+  if (sourceLabel) {
+    parts.push(sourceLabel);
+  }
+
+  if (importFileName) {
+    const normalizedImport = normalizeContextToken(importFileName);
+    const normalizedSource = sourceLabel ? normalizeContextToken(sourceLabel) : "";
+    const duplicatesSource =
+      !!sourceLabel && (normalizedImport.includes(normalizedSource) || normalizedSource.includes(normalizedImport));
+    if (!duplicatesSource) {
+      parts.push(importFileName);
+    }
+  }
+
+  if (note) {
+    const normalizedNote = normalizeContextToken(note);
+    const duplicatesExisting = parts.some((part) => normalizeContextToken(part) === normalizedNote);
+    if (!duplicatesExisting) {
+      parts.push(note);
+    }
+  }
+
+  return parts.join(" • ") || "—";
 }
 
 function primaryCountTile(counts: { observations: number; samples: number; activities: number; total: number }): {
