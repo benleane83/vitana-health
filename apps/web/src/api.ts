@@ -28,9 +28,18 @@ function ownerHeaders(options?: RequestInit): HeadersInit {
 async function fetchAsOwner(path: string, options?: RequestInit, retry = true): Promise<Response> {
   const response = await fetch(path, {
     ...options,
+    credentials: "include",
     headers: ownerHeaders(options)
   });
   if (response.status === 401 && retry) {
+    const authenticated = await fetch("/api/auth/local", {
+      method: "POST",
+      credentials: "include",
+      headers: { accept: "application/json" }
+    });
+    if (authenticated.ok) {
+      return fetchAsOwner(path, options, false);
+    }
     const token = await promptForOwnerToken();
     if (token) {
       window.sessionStorage.setItem(ownerTokenKey, token);

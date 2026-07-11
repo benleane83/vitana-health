@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+.env.local
+data/
+*.log
+.DS_Store
+.playwright-mcp/
+
+# Keep the local Expo native module in remote EAS uploads.
+!apps/android-companion/modules/
+!apps/android-companion/modules/**

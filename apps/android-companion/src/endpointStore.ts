@@ -10,6 +10,7 @@ export interface ConnectionDetails {
   url: string;
   deviceId: string;
   token: string | null;
+  publicKeyHash: string | null;
   name: string | null;
   pairedAt: string | null;
   lastSyncAt: string | null;
@@ -49,6 +50,7 @@ export async function saveConnection(patch: Partial<ConnectionDetails> & { url: 
     url: patch.url,
     deviceId,
     token,
+    publicKeyHash: patch.publicKeyHash !== undefined ? patch.publicKeyHash : (existing?.publicKeyHash ?? null),
     name: patch.name !== undefined ? patch.name : (existing?.name ?? null),
     pairedAt: patch.pairedAt !== undefined ? patch.pairedAt : (existing?.pairedAt ?? null),
     lastSyncAt: patch.lastSyncAt !== undefined ? patch.lastSyncAt : (existing?.lastSyncAt ?? null)

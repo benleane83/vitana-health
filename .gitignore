@@ -6,4 +6,3 @@ data/
 *.log
 .DS_Store
 .playwright-mcp/
-MARKET_ANALYSIS.md

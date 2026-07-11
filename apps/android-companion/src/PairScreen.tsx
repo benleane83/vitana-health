@@ -1,22 +1,15 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
-import Zeroconf from "react-native-zeroconf";
 import { getDeviceId, saveConnection } from "./endpointStore";
+import { pinnedFetch } from "./pinnedFetch";
 
-type PairMode = "qr" | "network";
 type PairStatus = "idle" | "detected" | "requesting" | "waiting" | "approved" | "denied" | "error";
-
-interface DiscoveredService {
-  name: string;
-  host: string;
-  port: number;
-  addresses: string[];
-}
 
 export interface PairResult {
   url: string;
   token: string | null;
+  publicKeyHash: string | null;
 }
 
 export function PairScreen({
@@ -26,13 +19,11 @@ export function PairScreen({
   onComplete: (result: PairResult) => void;
   onCancel: () => void;
 }) {
-  const [mode, setMode] = useState<PairMode>("qr");
   const [status, setStatus] = useState<PairStatus>("idle");
   const [message, setMessage] = useState("");
   const [detectedUrl, setDetectedUrl] = useState("");
   const [pairingCode, setPairingCode] = useState("");
-  const [discoveredServices, setDiscoveredServices] = useState<DiscoveredService[]>([]);
-  const [discovering, setDiscovering] = useState(false);
+  const [publicKeyHash, setPublicKeyHash] = useState<string | null>(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const scannedRef = useRef(false);
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -57,8 +48,12 @@ export function PairScreen({
         if (!__DEV__ && !url.startsWith("https://")) {
           throw new Error("Production pairing requires HTTPS.");
         }
+        if (url.startsWith("https://") && typeof payload.publicKeyHash !== "string") {
+          throw new Error("This pairing code does not include a server identity.");
+        }
         setDetectedUrl(url);
         setPairingCode(payload.pairingCode);
+        setPublicKeyHash(typeof payload.publicKeyHash === "string" ? payload.publicKeyHash : null);
         setStatus("detected");
         setMessage(`Found server: ${url}`);
       } else {
@@ -71,14 +66,6 @@ export function PairScreen({
     }
   }
 
-  function handleServiceSelected(service: DiscoveredService) {
-    const ip = service.addresses[0] ?? service.host;
-    const url = `http://${ip}:${service.port}`;
-    setDetectedUrl(url);
-    setStatus("detected");
-    setMessage(`Found server: ${url}`);
-  }
-
   async function handleConnect() {
     if (!detectedUrl || !pairingCode) {
       setStatus("error");
@@ -89,7 +76,7 @@ export function PairScreen({
     setMessage("Sending pairing request…");
     try {
       const deviceId = await getDeviceId();
-      const response = await fetch(`${detectedUrl}/api/pairing/request`, {
+      const response = await pinnedFetch(`${detectedUrl}/api/pairing/request`, publicKeyHash, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ deviceId, deviceName: "Android Companion", pairingCode })
@@ -97,10 +84,10 @@ export function PairScreen({
       const body = (await response.json()) as Record<string, unknown>;
 
       if (body.status === "approved" && typeof body.token === "string") {
-        await saveConnection({ url: detectedUrl, token: body.token, pairedAt: new Date().toISOString() });
+        await saveConnection({ url: detectedUrl, token: body.token, publicKeyHash, pairedAt: new Date().toISOString() });
         setStatus("approved");
         setMessage("Paired successfully! Returning to sync screen…");
-        setTimeout(() => onComplete({ url: detectedUrl, token: body.token as string }), 1500);
+        setTimeout(() => onComplete({ url: detectedUrl, token: body.token as string, publicKeyHash }), 1500);
         return;
       }
 
@@ -108,7 +95,7 @@ export function PairScreen({
         setStatus("waiting");
         setMessage("Waiting for approval in the web app on your PC…");
         if (typeof body.pollingSecret !== "string") throw new Error("Pairing response did not include a polling secret.");
-        pollForApproval(detectedUrl, body.pairingId, body.pollingSecret);
+        pollForApproval(detectedUrl, body.pairingId, body.pollingSecret, publicKeyHash);
       } else {
         setStatus("error");
         setMessage(typeof body.error === "string" ? body.error : "Pairing request failed.");
@@ -119,7 +106,7 @@ export function PairScreen({
     }
   }
 
-  function pollForApproval(url: string, pairingId: string, pollingSecret: string) {
+  function pollForApproval(url: string, pairingId: string, pollingSecret: string, pinnedHash: string | null) {
     let cancelled = false;
     let attempts = 0;
     const maxAttempts = 60;
@@ -139,17 +126,17 @@ export function PairScreen({
       }
       attempts++;
       try {
-        const response = await fetch(`${url}/api/pairing/status/${pairingId}`, {
+        const response = await pinnedFetch(`${url}/api/pairing/status/${pairingId}`, pinnedHash, {
           headers: { Accept: "application/json", "x-pairing-secret": pollingSecret }
         });
         const body = (await response.json()) as Record<string, unknown>;
         if (body.status === "approved" && typeof body.token === "string") {
           cancelled = true;
           if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
-          await saveConnection({ url, token: body.token, pairedAt: new Date().toISOString() });
+          await saveConnection({ url, token: body.token, publicKeyHash: pinnedHash, pairedAt: new Date().toISOString() });
           setStatus("approved");
           setMessage("Paired successfully! Returning to sync screen…");
-          pollTimeoutRef.current = setTimeout(() => onComplete({ url, token: body.token as string }), 1500);
+          pollTimeoutRef.current = setTimeout(() => onComplete({ url, token: body.token as string, publicKeyHash: pinnedHash }), 1500);
         } else if (body.status === "denied") {
           cancelled = true;
           if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
@@ -166,46 +153,13 @@ export function PairScreen({
     void poll();
   }
 
-  function startNetworkDiscovery() {
-    setDiscovering(true);
-    setDiscoveredServices([]);
-
-    const zeroconf = new Zeroconf();
-    const found = new Map<string, DiscoveredService>();
-
-    zeroconf.on("resolved", (service: DiscoveredService) => {
-      found.set(service.name, service);
-      setDiscoveredServices([...found.values()]);
-    });
-
-    zeroconf.on("removed", (service: { name: string }) => {
-      found.delete(service.name);
-      setDiscoveredServices([...found.values()]);
-    });
-
-    zeroconf.scan("local-fitness-advisor", "tcp", "local.");
-
-    setTimeout(() => {
-      zeroconf.stop();
-      setDiscovering(false);
-    }, 10000);
-  }
-
-  function resetAndSwitchMode(newMode: PairMode) {
-    scannedRef.current = false;
-    setStatus("idle");
-    setMessage("");
-    setDetectedUrl("");
-    setPairingCode("");
-    setMode(newMode);
-  }
-
   function retryCurrentMode() {
     scannedRef.current = false;
     setStatus("idle");
     setMessage("");
     setDetectedUrl("");
     setPairingCode("");
+    setPublicKeyHash(null);
   }
 
   const isError = status === "error" || status === "denied";
@@ -222,23 +176,7 @@ export function PairScreen({
 
         <Text style={styles.subtitle}>Connect to a Local Fitness Advisor instance running on your network.</Text>
 
-        <View style={styles.tabs}>
-          <Pressable
-            style={[styles.tab, mode === "qr" && styles.tabActive]}
-            onPress={() => resetAndSwitchMode("qr")}
-          >
-            <Text style={[styles.tabText, mode === "qr" && styles.tabTextActive]}>Scan QR Code</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.tab, mode === "network" && styles.tabActive]}
-            onPress={() => resetAndSwitchMode("network")}
-          >
-            <Text style={[styles.tabText, mode === "network" && styles.tabTextActive]}>Find on Network</Text>
-          </Pressable>
-        </View>
-
-        {mode === "qr" ? (
-          <View style={styles.section}>
+        <View style={styles.section}>
             <Text style={styles.instructions}>
               Open the web app, go to Import → Fitness Tracker, and scan the QR code shown there.
             </Text>
@@ -261,45 +199,7 @@ export function PairScreen({
                 </View>
               )
             ) : null}
-          </View>
-        ) : (
-          <View style={styles.section}>
-            <Text style={styles.instructions}>
-              Searches for a Local Fitness Advisor instance advertising on your local network via mDNS.
-            </Text>
-            {status === "idle" && !discovering ? (
-              <Pressable style={styles.button} onPress={startNetworkDiscovery}>
-                <Text style={styles.buttonText}>Search Network</Text>
-              </Pressable>
-            ) : null}
-            {discovering ? (
-              <View style={styles.discoveringRow}>
-                <ActivityIndicator color="#2563eb" />
-                <Text style={styles.discoveringText}>Scanning for 10 seconds…</Text>
-              </View>
-            ) : null}
-            {discoveredServices.length > 0 ? (
-              <View style={styles.serviceList}>
-                <Text style={styles.serviceListLabel}>Tap a server to connect:</Text>
-                {discoveredServices.map((service) => (
-                  <Pressable
-                    key={service.name}
-                    style={styles.serviceItem}
-                    onPress={() => handleServiceSelected(service)}
-                  >
-                    <Text style={styles.serviceName}>{service.name}</Text>
-                    <Text style={styles.serviceAddr}>
-                      {service.addresses[0] ?? service.host}:{service.port}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            ) : null}
-            {!discovering && discoveredServices.length === 0 && status === "idle" ? (
-              <Text style={styles.hint}>No servers found yet. Tap Search to scan the network.</Text>
-            ) : null}
-          </View>
-        )}
+        </View>
 
         {message ? (
           <View style={[styles.messageCard, isError ? styles.messageCardError : undefined]}>

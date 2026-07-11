@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { randomBytes } from "node:crypto";
+import { createServer as createHttpServer, type Server } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
 import os from "node:os";
 import path from "node:path";
@@ -7,40 +7,9 @@ import { Bonjour } from "bonjour-service";
 import { PairingStore } from "./pairing.js";
 import { ProfileStoreManager } from "./store.js";
 import { createApp } from "./createApp.js";
+import { configureRuntimeSecurity } from "./security.js";
 
 loadEnvironmentFiles();
-
-const port = Number.parseInt(process.env.PORT ?? "4317", 10);
-const host = process.env.HOST ?? "127.0.0.1";
-const isLoopback = host === "127.0.0.1" || host === "::1" || host === "localhost";
-if (!process.env.LFA_OWNER_TOKEN) {
-  if (!isLoopback) {
-    throw new Error("LFA_OWNER_TOKEN (at least 24 characters) is required when the API is exposed beyond loopback.");
-  }
-  process.env.LFA_OWNER_TOKEN = randomBytes(24).toString("base64url");
-  console.log(`Development owner token: ${process.env.LFA_OWNER_TOKEN}`);
-}
-if (process.env.LFA_OWNER_TOKEN.length < 24) {
-  throw new Error("LFA_OWNER_TOKEN must be at least 24 characters.");
-}
-
-const tlsCertPath = process.env.LFA_TLS_CERT;
-const tlsKeyPath = process.env.LFA_TLS_KEY;
-if (Boolean(tlsCertPath) !== Boolean(tlsKeyPath)) {
-  throw new Error("LFA_TLS_CERT and LFA_TLS_KEY must be configured together.");
-}
-const tlsEnabled = Boolean(tlsCertPath && tlsKeyPath);
-const insecureLanDevelopment =
-  process.env.LFA_ALLOW_INSECURE_HTTP === "1" && process.env.NODE_ENV !== "production";
-if (!isLoopback && !tlsEnabled && !insecureLanDevelopment) {
-  throw new Error(
-    "Non-loopback API access requires HTTPS. Configure LFA_TLS_CERT and LFA_TLS_KEY, or set LFA_ALLOW_INSECURE_HTTP=1 for development only."
-  );
-}
-
-const storeManager = new ProfileStoreManager();
-const pairingStore = new PairingStore();
-const app = createApp(storeManager, pairingStore);
 
 function getLanIp(): string | null {
   const interfaces = os.networkInterfaces();
@@ -54,27 +23,57 @@ function getLanIp(): string | null {
   return null;
 }
 
-const scheme = tlsEnabled ? "https" : "http";
-const server = tlsEnabled
-  ? createHttpsServer(
-      {
-        cert: readFileSync(tlsCertPath!),
-        key: readFileSync(tlsKeyPath!)
-      },
-      app
-    )
-  : app;
-
-server.listen(port, host, () => {
-  console.log(`Local Fitness Advisor API listening at ${scheme}://${host}:${port}`);
-  const lanIp = getLanIp();
-  if (lanIp) {
-    console.log(`LAN address for companion pairing: ${scheme}://${lanIp}:${port}`);
+export async function startServer(): Promise<Server> {
+  const port = Number.parseInt(process.env.PORT ?? "4317", 10);
+  const host = process.env.HOST ?? "127.0.0.1";
+  const security = await configureRuntimeSecurity(host);
+  const tlsEnabled = Boolean(security.tlsCertPath && security.tlsKeyPath);
+  const isLoopback = host === "127.0.0.1" || host === "::1" || host === "localhost";
+  const insecureLanDevelopment =
+    process.env.LFA_ALLOW_INSECURE_HTTP === "1" && process.env.NODE_ENV !== "production";
+  if (!isLoopback && !tlsEnabled && !insecureLanDevelopment) {
+    throw new Error("Could not configure HTTPS for non-loopback API access.");
   }
-  const bonjour = new Bonjour();
-  bonjour.publish({ name: "Local Fitness Advisor", type: "local-fitness-advisor", port });
-  process.on("exit", () => bonjour.destroy());
-});
+
+  const storeManager = new ProfileStoreManager();
+  const pairingStore = new PairingStore();
+  const app = createApp(storeManager, pairingStore, {
+    publicKeyHash: security.publicKeyHash,
+    webRoot: process.env.LFA_WEB_ROOT
+  });
+  const scheme = tlsEnabled ? "https" : "http";
+  const server = tlsEnabled
+    ? createHttpsServer(
+        {
+          cert: readFileSync(security.tlsCertPath!),
+          key: readFileSync(security.tlsKeyPath!)
+        },
+        app
+      )
+    : createHttpServer(app);
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, host, () => {
+      server.off("error", reject);
+      console.log(`Local Fitness Advisor API listening at ${scheme}://${host}:${port}`);
+      const lanIp = getLanIp();
+      if (lanIp) console.log(`LAN address for companion pairing: ${scheme}://${lanIp}:${port}`);
+      const bonjour = new Bonjour();
+      bonjour.publish({ name: "Local Fitness Advisor", type: "local-fitness-advisor", port });
+      process.on("exit", () => bonjour.destroy());
+      resolve();
+    });
+  });
+  return server;
+}
+
+const isMainModule = process.argv[1] && import.meta.url === new URL(`file://${path.resolve(process.argv[1])}`).href;
+if (isMainModule) {
+  startServer().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
 
 function loadEnvironmentFiles(): void {
   const candidates = [

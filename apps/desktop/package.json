@@ -1,0 +1,48 @@
+{
+  "name": "@local-fitness-advisor/desktop",
+  "version": "0.1.0",
+  "description": "Packaged Local Fitness Advisor desktop application",
+  "main": "main.cjs",
+  "private": true,
+  "dependencies": {
+    "@local-fitness-advisor/api": "file:../api"
+  },
+  "devDependencies": {
+    "electron": "43.1.0",
+    "electron-builder": "26.15.3"
+  },
+  "scripts": {
+    "start": "electron .",
+    "package": "electron-builder"
+  },
+  "license": "MIT",
+  "type": "commonjs",
+  "build": {
+    "appId": "com.localfitnessadvisor.desktop",
+    "productName": "Local Fitness Advisor",
+    "asar": true,
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "files": [
+      "main.cjs",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../web/dist",
+        "to": "web"
+      }
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": false,
+      "deleteAppDataOnUninstall": false,
+      "include": "build/installer.nsh"
+    }
+  }
+}

@@ -8,6 +8,7 @@ import {
   type ReadRecordsOptions,
   type RecordType
 } from "react-native-health-connect";
+import { pinnedFetch } from "./pinnedFetch";
 import { Platform } from "react-native";
 
 interface HealthConnectPointValue {
@@ -52,7 +53,8 @@ const readPermissions: Permission[] = [
 export async function syncHealthConnectLast30Days(
   endpointUrl: string,
   companionToken?: string | null,
-  profileId?: string | null
+  profileId?: string | null,
+  publicKeyHash?: string | null
 ): Promise<SyncResult> {
   if (Platform.OS !== "android") {
     throw new Error("This app only supports Android Health Connect.");
@@ -164,17 +166,38 @@ export async function syncHealthConnectLast30Days(
     }))
   };
 
-  const response = await fetch(`${endpointUrl.replace(/\/+$/, "")}/api/import/health-connect`, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      ...(companionToken ? { "x-companion-token": companionToken } : {})
-    },
-    body: JSON.stringify(payload)
-  });
+  const importUrl = `${endpointUrl.replace(/\/+$/, "")}/api/import/health-connect`;
+  let response;
+  try {
+    response = await pinnedFetch(
+      importUrl,
+      publicKeyHash ?? null,
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          ...(companionToken ? { "x-companion-token": companionToken } : {})
+        },
+        body: JSON.stringify(payload)
+      }
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown network error";
+    if (/timed out|timeout/i.test(message)) {
+      throw new Error(
+        `Sync request timed out waiting for the local API response. This usually means the server is still processing the import or is temporarily unreachable. URL: ${importUrl}`
+      );
+    }
+    throw new Error(`Sync request failed before the API could respond: ${message}`);
+  }
 
-  const responseBody = await response.json().catch(() => ({}));
+  const responseBody = (await response.json().catch(() => ({}))) as {
+    error?: unknown;
+    issues?: Array<{ path?: string[]; message?: string }>;
+    counts?: { observations?: number; timeSeriesSamples?: number; activitySessions?: number };
+    import?: { status?: string };
+  };
   if (!response.ok) {
     const issueDetails = Array.isArray(responseBody.issues)
       ? responseBody.issues

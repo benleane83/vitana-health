@@ -11,8 +11,7 @@
     "expo-status-bar": "~57.0.0",
     "react": "19.2.7",
     "react-native": "0.86.0",
-    "react-native-health-connect": "^3.5.3",
-    "react-native-zeroconf": "^0.14.0"
+    "react-native-health-connect": "^3.5.3"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",

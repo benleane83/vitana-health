@@ -3,6 +3,8 @@ import express from "express";
 import { z } from "zod";
 import os from "node:os";
 import { timingSafeEqual } from "node:crypto";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import QRCode from "qrcode";
 import { PairingStore } from "./pairing.js";
 import {
@@ -164,7 +166,38 @@ const observationIdParamSchema = z
   .max(160)
   .regex(/^[A-Za-z0-9._:-]+$/, "Observation id contains unsupported characters.");
 
-export function createApp(storeManager: ProfileStoreManager, pairingStore: PairingStore): express.Application {
+function isLoopbackAddress(address: string): boolean {
+  return address === "::1" || address.startsWith("127.") || address.startsWith("::ffff:127.") || address === "::ffff:7f00:1";
+}
+
+function isOwnerOnlyPath(requestPath: string): boolean {
+  return (
+    requestPath === "/pair/qr" ||
+    requestPath === "/pairing/pending" ||
+    requestPath === "/pairing/devices" ||
+    /^\/pairing\/(approve|deny|revoke)\//.test(requestPath)
+  );
+}
+
+function decodeCookieToken(value: string | undefined): string {
+  if (!value) return "";
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return "";
+  }
+}
+
+export interface AppOptions {
+  publicKeyHash?: string | null;
+  webRoot?: string;
+}
+
+export function createApp(
+  storeManager: ProfileStoreManager,
+  pairingStore: PairingStore,
+  options: AppOptions = {}
+): express.Application {
   const app = express();
 
   function activeStore(): HealthStore {
@@ -177,8 +210,9 @@ export function createApp(storeManager: ProfileStoreManager, pairingStore: Pairi
   app.use(express.json({ limit: "1mb" }));
   app.use(
     cors({
+      credentials: true,
       origin(origin, callback) {
-        if (!origin || /^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(origin)) {
+        if (!origin || /^https?:\/\/(127\.0\.0\.1|localhost):\d+$/.test(origin)) {
           callback(null, true);
           return;
         }
@@ -215,7 +249,12 @@ export function createApp(storeManager: ProfileStoreManager, pairingStore: Pairi
 
   function ownerTokenIsValid(request: express.Request): boolean {
     const configured = process.env.LFA_OWNER_TOKEN ?? "";
-    const supplied = request.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "";
+    const encodedCookieToken = request.headers.cookie
+      ?.split(";")
+      .map((part) => part.trim())
+      .find((part) => part.startsWith("lfa_owner="))
+      ?.slice("lfa_owner=".length);
+    const supplied = request.headers.authorization?.replace(/^Bearer\s+/i, "") ?? decodeCookieToken(encodedCookieToken);
     const configuredBuffer = Buffer.from(configured);
     const suppliedBuffer = Buffer.from(supplied);
     return configuredBuffer.length >= 24 && configuredBuffer.length === suppliedBuffer.length && timingSafeEqual(configuredBuffer, suppliedBuffer);
@@ -225,6 +264,23 @@ export function createApp(storeManager: ProfileStoreManager, pairingStore: Pairi
   app.use("/api/pairing", rateLimit(30, 60_000));
   app.use("/api/llm", rateLimit(10, 60_000));
   app.use("/api/query", rateLimit(30, 60_000));
+
+  app.post("/api/auth/local", (request, response) => {
+    const address = request.socket.remoteAddress ?? "";
+    const loopback = isLoopbackAddress(address);
+    const origin = request.headers.origin;
+    const localOrigin = !origin || /^https?:\/\/(127\.0\.0\.1|localhost):\d+$/.test(origin);
+    if (!loopback || !localOrigin) {
+      response.status(403).json({ error: "Local desktop authentication is only available on this computer." });
+      return;
+    }
+    const secure = request.protocol === "https";
+    response.setHeader(
+      "set-cookie",
+      `lfa_owner=${encodeURIComponent(process.env.LFA_OWNER_TOKEN ?? "")}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400${secure ? "; Secure" : ""}`
+    );
+    response.status(204).end();
+  });
 
   app.post("/api/pairing/request", (request, response) => {
     const parsed = pairingRequestSchema.parse(request.body ?? {});
@@ -252,20 +308,17 @@ export function createApp(storeManager: ProfileStoreManager, pairingStore: Pairi
 
   app.use("/api", (request, response, next) => {
     const companionToken = request.headers["x-companion-token"];
-    if (
-      request.path === "/import/health-connect" &&
-      typeof companionToken === "string" &&
-      pairingStore.validateToken(companionToken)
-    ) {
+    if (ownerTokenIsValid(request)) {
       next();
       return;
     }
-    if (!ownerTokenIsValid(request)) {
-      response.setHeader("www-authenticate", ["Bearer", 'realm="Local Fitness Advisor"'].join(" "));
-      response.status(401).json({ error: "Valid owner credential required." });
+    const ownerOnly = isOwnerOnlyPath(request.path);
+    if (!ownerOnly && typeof companionToken === "string" && pairingStore.validateToken(companionToken)) {
+      next();
       return;
     }
-    next();
+    response.setHeader("www-authenticate", ["Bearer", 'realm="Local Fitness Advisor"'].join(" "));
+    response.status(401).json({ error: ownerOnly ? "Owner credential required." : "Valid owner or companion credential required." });
   });
 
   app.get("/api/health", (_request, response) => {
@@ -291,7 +344,13 @@ export function createApp(storeManager: ProfileStoreManager, pairingStore: Pairi
       const scheme = process.env.LFA_TLS_CERT && process.env.LFA_TLS_KEY ? "https" : "http";
       const url = `${scheme}://${lanIp}:${port}`;
       const challenge = pairingStore.createChallenge();
-      const payload = JSON.stringify({ url, app: "local-fitness-advisor", pairingCode: challenge.code, expiresAt: challenge.expiresAt });
+      const payload = JSON.stringify({
+        url,
+        app: "local-fitness-advisor",
+        pairingCode: challenge.code,
+        expiresAt: challenge.expiresAt,
+        publicKeyHash: options.publicKeyHash
+      });
       response.setHeader("cache-control", "no-store");
       const buffer = await QRCode.toBuffer(payload, { type: "png", width: 300, margin: 2 });
       response.setHeader("content-type", "image/png");
@@ -816,6 +875,13 @@ export function createApp(storeManager: ProfileStoreManager, pairingStore: Pairi
     response.setHeader("content-disposition", "attachment; filename=local-fitness-advisor-export.json");
     response.json(activeStore().exportData());
   });
+
+  if (options.webRoot && existsSync(options.webRoot)) {
+    app.use(rateLimit(120, 60_000), express.static(options.webRoot));
+    app.get("*", rateLimit(120, 60_000), (_request, response) =>
+      response.sendFile(path.join(options.webRoot!, "index.html"))
+    );
+  }
 
   app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
     if (error instanceof z.ZodError) {
