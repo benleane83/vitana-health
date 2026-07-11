@@ -1,324 +1,249 @@
 # Codebase and Release-Readiness Review
 
-**Reviewed:** 2026-07-10  
-**Scope:** Web app, API, shared package, Android companion, repository/release setup  
+**Originally reviewed:** 2026-07-10
+**Revalidated against current `main`:** 2026-07-11
+**Scope:** Web app, API, shared package, Android companion, repository/release setup
 **Goal:** Prepare an open-source web app and paid Play Store companion for use beyond the current single-user prototype
 
-## Executive summary
+## Current summary
 
-The prototype has a sound product direction: local-first storage, deterministic identifiers, runtime validation with Zod, authenticated encryption at rest, a constrained AI-to-SQL pipeline, and clear wellness rather than diagnosis boundaries. The code is understandable and the feature set is already coherent.
+The codebase has materially improved since the original review. LAN access is now protected by owner and companion authentication, QR pairing, TLS, certificate public-key pinning, body limits, and rate limits. Store and warehouse replacement are crash-safe, tests and CI have been added, the legacy Samsung import paths were removed, and runtime font loading and Android dependency issues were resolved.
 
-It is **not ready to ship to other users yet**. The primary blocker is the trust boundary created when the API is bound to `0.0.0.0` for phone sync: the API has no authentication and the Android app sends sensitive Health Connect data over unrestricted cleartext HTTP. Any client on the same network can read, alter, export, or delete health data. The next largest risks are the absence of tests and CI, non-atomic persistence/rebuild operations, incomplete Play Store privacy/release setup, and large monolithic frontend/API files.
+The remaining release blockers are accurate cloud-model consent/privacy behavior, Android Health Connect and Play Store disclosures, a complete Android production release process, and an open-source license. The product remains local-first and single-user; its file-based canonical store is not yet prepared for larger data volumes or schema evolution.
 
-### Recommended release gates
+### Status legend
 
-1. Authenticate every non-loopback API request and provide a secure pairing flow for the companion.
-2. Do not ship a production Android build with global cleartext traffic enabled.
-3. Add automated tests around parsers, storage, Health Connect mapping, and SQL safety, then enforce them in CI.
-4. Make encrypted-store writes and DuckDB rebuilds atomic and add a store schema/migration strategy.
-5. Complete Health Connect disclosure, privacy policy, Play data-safety, AAB, signing, and versioning work.
-6. Add an open-source license and align privacy documentation with the optional cloud-model behavior.
-
-## Architecture assessment
-
-The monorepo separation into `apps/api`, `apps/web`, `apps/android-companion`, and `packages/shared` is appropriate. Shared types and deterministic import transforms are good foundations. The API, however, currently combines transport, validation, orchestration, persistence, warehouse lifecycle, model calls, and response shaping in a single process without explicit service boundaries.
-
-The encrypted JSON store is suitable for a single-user prototype, but its whole-file, synchronous rewrite model will become slow and fragile as data grows. DuckDB is a good read-optimized companion, but rebuilding it from scratch after each import makes it a derived cache and should be treated as such with atomic replacement and recovery behavior.
-
-The product is currently **local-first, not multi-user**. That is a valid architecture, but “local” must not be treated as authentication. A phone-accessible LAN service creates a remote trust boundary even if no internet deployment is planned.
-
-## Findings
+- **[DONE]** Verified as addressed in the current codebase.
+- **[IN PROGRESS]** Some required work is complete, but important parts remain.
+- **[OPEN]** Not yet addressed.
 
 Priorities:
 
-- **P0:** Release blocker; address before external testing.
+- **P0:** Release blocker; address before external testing or release.
 - **P1:** Address before a stable public release.
 - **P2:** Important hardening or maintainability work.
-- **P3:** Lower-risk cleanup or product decision.
+
+## Findings
 
 ### Security and privacy
 
-#### [IN PROGRESS] P0 — LAN API has no authentication or authorization
+#### [DONE] P0 — LAN API authentication and authorization
 
-The README instructs users to bind the API to all interfaces for companion sync (`README.md:21-26`), but the API has no authentication middleware (`apps/api/src/server.ts:36-52`). CORS is not access control and does not restrict non-browser clients. Once exposed, any LAN client can:
+All `/api` requests now pass through centralized authentication in `apps/api/src/createApp.ts`. Owner credentials protect browser and administration routes; scoped, revocable companion tokens protect Health Connect imports. Pairing uses short-lived codes and polling secrets (`apps/api/src/pairing.ts`), while request body limits and route rate limits are applied centrally.
 
-- read the full store and profile (`server.ts:174-179`);
-- export raw import content (`server.ts:709-712`);
-- inject Health Connect, lab, body-composition, or Samsung data;
-- delete observations (`server.ts:350-373`);
-- invoke model-backed endpoints using the owner's configured quota.
+#### [DONE] P0 — Health Connect transport protection
 
-**Recommendation:** Require authentication on all routes, refuse non-loopback startup without a configured credential, and pair the companion using a short-lived code or QR flow that provisions a revocable device token. Apply authorization and rate/body limits centrally.
+Production and preview builds disable cleartext traffic (`apps/android-companion/eas.json`), production sync requires HTTPS and a paired token (`src/syncHealthConnect.ts`), and QR pairing pins the server public-key fingerprint (`src/PairScreen.tsx`, `src/pinnedFetch.ts`). The development profile intentionally retains cleartext only for local development.
 
-#### [IN PROGRESS] P0 — Health Connect data is transmitted over unrestricted cleartext HTTP
+#### [IN PROGRESS] P0 — Privacy claims and cloud-model consent
 
-The Android manifest enables cleartext globally (`apps/android-companion/app.json:9-12`). The `withDevNetworkSecurity` plugin applies `cleartextTrafficPermitted="true"` to every destination and every build (`plugins/withDevNetworkSecurity.js:5-30`). The sync sends 30 days of steps, heart rate, oxygen saturation, HRV, weight, and exercise data without authentication (`src/syncHealthConnect.ts:110-162`).
+The README now acknowledges the cloud-model exception, but it still claims transmitted data is “always anonymized.” Model prompts can contain health-derived query rows, and there is no explicit, informed opt-in gate before cloud processing (`apps/api/src/createApp.ts`).
 
-**Recommendation:** Separate development and production configuration. Production should require an authenticated encrypted channel. If local certificates are used, build a deliberate pairing/trust mechanism rather than silently accepting arbitrary endpoints.
-
-#### [DONE] P0 — Privacy claims do not match optional cloud-model behavior
-
-The README says no remote AI/vendor upload paths are implemented (`README.md:28-33`) while also documenting an OpenAI-compatible cloud provider (`README.md:52-62`). When configured, query evidence and health-derived summaries are included in model prompts (`apps/api/src/server.ts:431-439,481-488,581-591`).
-
-**Recommendation:** Correct the privacy model, make provider state and data scope explicit in-product, require informed opt-in before cloud processing, minimize prompt data, and document retention/provider responsibilities. Default to local processing.
+**Remaining work:** Correct the claim, explicitly show provider/data scope in-product, require informed opt-in for cloud processing, minimize prompt data, and document provider retention and responsibilities. Default to local processing.
 
 #### [DONE] P1 — Samsung JSON endpoint can traverse arbitrary local directories
 
-`uploadPath` is caller controlled (`server.ts:118-120,287-291`). It is resolved and recursively scanned without enforcing containment beneath `data/uploads` (`samsungJsonImport.ts:325-368`). Errors and diagnostics can also expose absolute paths.
-
-**Recommendation:** Retire this endpoint as Health Connect replaces it.
+The Samsung JSON upload-path implementation and legacy Samsung import routes have been removed from `apps/api/src`.
 
 #### [DONE] P1 — External font request conflicts with the local-only trust message
 
-The web app imports Google Fonts at runtime (`apps/web/src/styles.css:1`). This makes a third-party request that reveals network metadata whenever the UI loads.
+`apps/web/src/styles.css` now uses local/system font stacks and no longer imports fonts at runtime.
 
-**Recommendation:** Self-host the required font files or use system fonts, and document any remaining external requests.
+#### [IN PROGRESS] P2 — At-rest protections and raw-payload handling
 
-#### P2 — At-rest protections need clearer limits and safer file handling
+Encrypted-store writes now use temporary files, validation, backup/recovery, `fsync`, atomic rename, and restrictive file permissions (`apps/api/src/store.ts`). The key and encrypted store remain colocated, however, and raw imports are silently truncated above the configured size.
 
-AES-256-GCM with random IVs and scrypt is implemented correctly (`apps/api/src/store.ts:188-214`). However:
+**Remaining work:** Document the local-account threat model, make raw-payload retention configurable, and expose truncation/import diagnostics to users.
 
-- the generated key and encrypted store live beside each other, so encryption mainly protects copied store files, not compromise of the same user account;
-- `health-store.enc` is not explicitly created with mode `0600` (`store.ts:213`);
-- writes replace the live file directly rather than using write/fsync/rename;
-- health payloads are stored both normalized and as `rawContent`, with silent truncation above one million characters (`healthConnectImport.ts:115-127`, `store.ts:296-306`).
+#### [OPEN] P2 — Error and health responses expose unnecessary internals
 
-**Recommendation:** Document the threat model, set restrictive permissions, use atomic writes/backups, and make raw-payload retention configurable with visible truncation diagnostics.
+Development error responses still include stack traces, `/api/health` exposes model runtime information, and errors lack stable public codes and correlation IDs (`apps/api/src/createApp.ts`).
 
-#### P2 — Error and health responses expose unnecessary internals
-
-The default non-production error response returns stack traces (`server.ts:714-727`) and import errors may contain absolute paths. `/api/health` returns the configured model endpoint (`server.ts:157-170`).
-
-**Recommendation:** Use stable public error codes, log details locally with correlation IDs, and return only minimal health information.
+**Recommendation:** Return minimal public errors, log sanitized diagnostic details locally with correlation IDs, and limit health responses to liveness/readiness data.
 
 ### Data integrity, reliability, and performance
 
-#### [DONE] P0 — Persistence and warehouse replacement are not crash-safe
+#### [DONE] P0 — Persistence and warehouse replacement are crash-safe
 
-The encrypted store is written directly to its final path (`store.ts:200-214`). A crash, power loss, or disk-full condition can leave it truncated. The warehouse rebuild deletes the active database before creating its replacement (`apps/api/src/warehouse.ts:27-32`), so a failed rebuild can remove the last usable warehouse.
+The encrypted store is atomically persisted with a recoverable backup (`apps/api/src/store.ts`). DuckDB is rebuilt into a temporary database, validated, swapped atomically, and restored from backup if the swap fails (`apps/api/src/warehouse.ts`).
 
-**Recommendation:** Write both artifacts to temporary files, validate them, fsync where supported, then atomically rename. Keep a recoverable previous store and treat DuckDB as rebuildable derived state.
+#### [OPEN] P1 — Persisted data has no application schema migration strategy
 
-#### P1 — Persisted data has no application schema migration strategy
+`HealthStoreData` has no application schema version, and decrypted JSON is cast into the current TypeScript shape without runtime validation (`packages/shared/src/types.ts`, `apps/api/src/store.ts`).
 
-The encryption envelope has a version, but `HealthStoreData` does not have an application schema version (`packages/shared/src/types.ts:167-181`). Startup casts decrypted JSON directly to the current TypeScript type (`store.ts:188-197`); TypeScript does not validate persisted data at runtime.
+**Recommendation:** Add a versioned runtime schema, sequential migrations, startup validation, backup-before-migrate, and actionable recovery diagnostics before establishing a public data format.
 
-**Recommendation:** Introduce a versioned runtime schema, explicit sequential migrations, startup validation, backup-before-migrate, and actionable recovery diagnostics. Since compatibility is not currently required, do this before establishing a public v1 format.
+#### [OPEN] P1 — Full-store rewrites and warehouse rebuilds will not scale well
 
-#### P1 — Full store rewrites and warehouse rebuilds will not scale well
+Mutations still serialize and encrypt the full store, key derivation remains synchronous, normal web startup fetches the full store, and imports synchronously rebuild the warehouse (`apps/api/src/store.ts`, `apps/web/src/App.tsx`, `apps/api/src/createApp.ts`).
 
-Every mutation serializes, encrypts, and synchronously writes the whole store. `scryptSync` blocks the event loop on every persistence operation (`store.ts:200-214`). Every import then rebuilds all DuckDB tables. The web app also fetches the full store at startup (`server.ts:174-176`, `apps/web/src/App.tsx:201-204`), potentially returning hundreds of thousands of records.
+**Recommendation:** Cache or asynchronously derive the key, serialize mutations, stop returning the full store to normal UI paths, rebuild DuckDB in the background with atomic swap, and select a transactional canonical store before substantial growth.
 
-**Recommendation:** In the near term, cache/async the key derivation, serialize mutations, stop returning the full store to normal UI paths, and rebuild DuckDB in the background with atomic swap. Before substantial growth, choose a transactional canonical store rather than extending whole-file JSON indefinitely.
+#### [OPEN] P1 — Store retention contains correctness and growth issues
 
-#### P1 — Store retention contains correctness and growth issues
+Insights and audit events remain unbounded, and lab-marker retention still sorts by hashed ID rather than collection time (`apps/api/src/store.ts`).
 
-- `insights` and `auditEvents` grow without bounds (`store.ts:133-138,179-186`);
-- lab-marker eviction sorts on hashed ID rather than collection time (`store.ts:120-124`);
-- large fixed record caps silently discard data;
+**Recommendation:** Define explicit retention policies, retain health data predictably without silent loss, fix chronological lab-marker eviction, cap non-clinical history separately, and surface retention/import diagnostics.
 
-**Recommendation:** Define an explicit retention policy, never silently discard health records, fix chronological lab-marker retention, cap non-clinical history separately, and surface retention/import diagnostics.
+#### [OPEN] P2 — Health and query operations do avoidable work
 
-#### P2 — Health and query operations do avoidable work
+The health endpoint still computes full analytics; each warehouse query opens a new database/connection; and overlapping legacy query paths do not all share one SQL validation/execution boundary (`apps/api/src/createApp.ts`, `apps/api/src/warehouse.ts`).
 
-The health endpoint computes full analytics (`server.ts:157-170`). DuckDB opens a new database/connection for each query. Several overlapping query endpoints use different planners and safety paths (`server.ts:385-620`), and the legacy NL/ask paths bypass `validateCompiledSql`.
+**Recommendation:** Make liveness O(1), consolidate query contracts, explicitly mark experimental paths, and route all executable SQL through one validation and execution boundary.
 
-**Recommendation:** Make liveness O(1), consolidate query contracts, clearly mark experimental endpoints, and route all executable SQL through one validation/execution boundary.
+#### [OPEN] P2 — Import checksums are too weak for canonical deduplication
 
-#### P2 — Import checksums are too weak for canonical deduplication
+Shared CSV import deduplication continues to use 32-bit FNV-1a (`packages/shared/src/parsers.ts`) while other paths use SHA-256.
 
-Shared CSV import deduplication uses 32-bit FNV-1a (`packages/shared/src/parsers.ts:72-79`), while other paths use SHA-256.
-
-**Recommendation:** Standardize on a cryptographic content digest for import identity and retain source/provider record IDs where available.
+**Recommendation:** Standardize import identity on a cryptographic digest and retain source/provider record IDs where available.
 
 ### Android companion and Play Store readiness
 
-#### P0 — Production release configuration is incomplete
+#### [IN PROGRESS] P0 — Production release configuration is incomplete
 
-Only a preview APK profile exists (`apps/android-companion/eas.json:1-12`). There is no explicit production AAB profile, release-specific network policy, or documented signing/submission process. `android.versionCode` is absent (`app.json:9-27`).
+`eas.json` now has a production profile and explicitly disables cleartext traffic. A documented production AAB/signing/submission process and release checklist are still absent.
 
-**Recommendation:** Add a production app-bundle profile, managed signing, monotonic versioning, release environment separation, and a documented release checklist.
+**Remaining work:** Define the production bundle/signing workflow, monotonic versioning ownership, release environment separation, and an end-to-end release checklist.
 
-#### P0 — Health Connect disclosure and Play privacy work are missing
+#### [OPEN] P0 — Health Connect disclosure and Play privacy work are missing
 
-The app immediately requests all supported permissions and has no first-run explanation of why each data type is needed (`syncHealthConnect.ts:42-87`, `App.tsx:60-88`). No privacy-policy flow or Play Data Safety/Health Connect declaration is present in the repository.
+The app requests all supported Health Connect permissions together and has no first-run explanation of why each category is needed (`apps/android-companion/src/syncHealthConnect.ts`). No privacy-policy flow, Play Data Safety declaration, or Health Connect declaration is present in the repository.
 
-**Recommendation:** Add just-in-time rationale, a privacy-policy link, data inventory and retention/deletion language, least-privilege permissions, and complete the Play Console declarations before submission.
+**Recommendation:** Add just-in-time rationale, a privacy-policy link, data inventory and retention/deletion language, least-privilege permission selection, and complete Play Console declarations before submission.
 
-#### P1 — Denying one optional permission prevents all sync
+#### [OPEN] P1 — Denying one optional permission prevents all sync
 
-If any requested Health Connect permission is missing, the app aborts the entire sync (`syncHealthConnect.ts:75-87`). Users cannot choose to share steps but not weight, for example.
+Any missing requested permission aborts the complete sync (`apps/android-companion/src/syncHealthConnect.ts`).
 
-**Recommendation:** Sync only granted types, clearly report omissions, and allow users to change selected categories later.
+**Recommendation:** Sync granted categories, clearly report omissions, and let users select and change categories later.
 
-#### P1 — Sync is inefficient and loses useful provenance
+#### [IN PROGRESS] P1 — Sync is inefficient and loses useful provenance
 
-Every tap reads and resends the full previous 30 days (`syncHealthConnect.ts:89-108`), the device label is hard-coded (`:110-115`), and exercise energy/distance supported by the server are not mapped (`:148-153`). Dense reads can create very large in-memory payloads.
+A persistent device identifier exists, but every sync still rereads and accumulates the previous 30 days, the upload label remains static, and incremental cursors/chunking/provider provenance are absent (`apps/android-companion/src/endpointStore.ts`, `src/syncHealthConnect.ts`).
 
-**Recommendation:** Persist a per-device identifier and incremental sync cursor with overlap, chunk uploads, preserve provider record/origin metadata, and map all supported exercise fields.
+**Remaining work:** Persist a per-device sync cursor with overlap, chunk uploads, preserve provider record/origin metadata, and map all supported exercise fields.
 
-#### P1 — Endpoint handling is unsafe and difficult to support
+#### [IN PROGRESS] P1 — Endpoint pairing and resilient networking are incomplete
 
-The endpoint is accepted if merely non-empty and stored in AsyncStorage (`apps/android-companion/App.tsx:16-37`). There is no identity check, pairing confirmation, TLS requirement, timeout, cancellation, or retry policy.
+Free-form endpoint configuration has been replaced with QR pairing, HTTPS enforcement, server identity pinning, and explicit unpairing. Profile refresh still uses an unpinned and unauthenticated fetch, and the app has no consistent timeout, cancellation, or retry policy for all network operations (`apps/android-companion/App.tsx`).
 
-**Recommendation:** Replace free-form endpoint configuration with pairing, validate scheme/host, show the server identity, add bounded timeout/retry behavior, and provide an explicit unpair/delete action.
+**Remaining work:** Route profile requests through the authenticated pinned client and establish bounded timeout, cancellation, and retry behavior.
 
 #### [DONE] P2 — Dependency setup needs cleanup
 
-`eas-cli` is a runtime dependency and brings a large vulnerable build-tool tree into production dependency audits (`apps/android-companion/package.json:5-14`). Both `expo-health-connect` and `react-native-health-connect` are installed while source imports only the latter. `npm audit --omit=dev` reported 30 advisories (10 high, 19 moderate, 1 low), heavily concentrated in Expo/EAS tooling; the DuckDB finding is transitive through `node-gyp` and requires advisory-level triage rather than blindly downgrading.
-
-**Recommendation:** Move build tooling to development dependencies, remove the unused Health Connect wrapper after verification, establish a supported-version upgrade cadence, and review advisories for runtime reachability.
+`eas-cli` is no longer a runtime dependency and is invoked at a pinned version for the preview build. The Health Connect package roles are now separated between the Expo plugin and the runtime library.
 
 ### Web design and accessibility
 
-The visual direction is distinctive and appropriately calm, evidence-focused, and non-clinical. Responsive and reduced-motion rules exist (`styles.css:1309-1427`), and visible focus styling is present (`styles.css:102-107`). The main gap is semantic/accessibility implementation rather than visual concept.
+#### [OPEN] P1 — Core interactive semantics are incomplete
 
-#### P1 — Core interactive semantics are incomplete
+The clickable summary button is still overridden with `role="row"`, tablists lack complete tab semantics, and lab inputs still rely on placeholders rather than programmatic labels (`apps/web/src/App.tsx`).
 
-- A clickable summary `<button>` is overridden with `role="row"`, hiding button semantics (`App.tsx:1726`).
-- `tablist` containers lack `role="tab"`/`aria-selected` children (`App.tsx:863-866,1045-1055`).
-- active navigation, sorting, and disclosure state lack `aria-current`, `aria-pressed`, or `aria-expanded` (`App.tsx:508-518,1685-1689,1714`).
-- lab value/unit inputs rely on placeholders rather than programmatic labels (`App.tsx:1109-1119`).
+**Recommendation:** Complete a semantic HTML/ARIA pass and test with keyboard navigation plus a screen reader.
 
-**Recommendation:** Perform a semantic HTML/ARIA pass and test with keyboard plus at least one screen reader.
+#### [OPEN] P1 — Dialog and destructive-action focus management is insufficient
 
-#### P1 — Dialog and destructive-action focus management is insufficient
+The profile dialogs do not fully move, trap, and restore focus or handle Escape consistently; destructive actions still use `window.confirm` (`apps/web/src/App.tsx`).
 
-The profile dialog declares `aria-modal` but does not move/trap/restore focus or handle Escape (`App.tsx:727-778`). Health-data deletions use `window.confirm` (`App.tsx:411-416,441-446`) instead of an accessible in-app confirmation workflow.
+**Recommendation:** Implement shared accessible dialog/alert-dialog primitives with focus management, Escape handling, and explicit destructive scope/count.
 
-**Recommendation:** Create shared accessible dialog/alert-dialog primitives with focus trapping, restoration, Escape handling, and explicit destructive scope/count.
+#### [IN PROGRESS] P1 — Dynamic status and errors are not consistently announced
 
-#### P1 — Dynamic status and errors are not announced
+One status region was added, but global notices/page errors and the Android status card remain without consistent live-region semantics (`apps/web/src/App.tsx`, `apps/android-companion/App.tsx`).
 
-Global notices and page errors lack live-region semantics (`App.tsx:522,1519-1520,1692-1693`); the Android status card has the same issue (`apps/android-companion/App.tsx:84-88`).
+**Remaining work:** Standardize status, alert, loading, and empty-state announcements across both apps.
 
-**Recommendation:** Standardize status, alert, loading, and empty-state components across both apps.
+#### [IN PROGRESS] P2 — Several visual elements lack equivalent context
 
-#### P2 — Several visual elements lack equivalent context
+The detail chart now has a dynamic label, but the density bar lacks progress semantics and sparklines still use generic labels (`apps/web/src/App.tsx`).
 
-The density bar has no progressbar semantics (`App.tsx:538`), sparkline labels are generic (`App.tsx:1883`), route titles remain static, and mobile body-composition headers are removed without per-field labels (`styles.css:1405-1408`). Deselected rows use opacity that may reduce contrast below AA (`styles.css:596-598`).
+**Remaining work:** Add semantic equivalents and complete automated axe/manual WCAG AA checks at desktop and narrow breakpoints.
 
-**Recommendation:** Include these in an automated axe/manual WCAG AA pass at desktop and narrow breakpoints.
+#### [OPEN] P2 — Web architecture makes design changes risky
 
-#### P2 — Web architecture makes design changes risky
+`apps/web/src/App.tsx` has grown to more than 2,300 lines and `styles.css` exceeds 1,500 lines. Routing, state, dialogs, API actions, and page rendering remain tightly coupled.
 
-`apps/web/src/App.tsx` is 2,055 lines and `styles.css` is 1,427 lines. Routing, state, network actions, dialogs, every page, and many domain transforms are coupled in one file. Import pages pass dozens of props through multiple layers.
-
-**Recommendation:** Split by route/feature, introduce shared UI primitives and feature-level state hooks/reducers, and keep API response mapping outside presentation components.
+**Recommendation:** Split by route/feature, add shared UI primitives and feature-level state hooks/reducers, and keep API response mapping outside presentation components.
 
 ### Maintainability and engineering quality
 
-#### [DONE] P0 — No automated tests exist
+#### [DONE] P0 — Automated tests now cover core risk areas
 
-No test files, test framework, or test script exists. The highest-risk untested areas are:
+Vitest coverage now includes store persistence/recovery, parsers, Health Connect mapping, query compilation and validation, security, warehouse rebuilds, and web behavior (`apps/api/src/__tests__`, `packages/shared/src/__tests__`, `apps/web/src/__tests__`).
 
-- encrypted-store load/write/recovery and retention;
-- parsers and import deduplication;
-- Health Connect mapping, partial permissions, pagination, and chunking;
-- query compiler and SQL validator;
-- analytics/reference-range classification;
-- API authorization and destructive endpoints;
-- web accessibility and critical user flows.
+#### [DONE] P0 — CI quality gates exist
 
-**Recommendation:** Start with characterization tests before refactoring. Add unit, API integration, component accessibility, and a small end-to-end smoke suite. Use synthetic fixtures only.
+`.github/workflows/ci.yml` runs workspace typechecking/building, Android typechecking, tests, dependency audit, and pull-request dependency review with pinned Actions.
 
-#### [DONE] P0 — No CI quality gates exist
+#### [IN PROGRESS] P1 — API composition remains monolithic
 
-There are no GitHub Actions workflows. Pull requests can merge without install, typecheck, build, tests, audit review, or secret scanning.
+Startup/runtime concerns were separated into `apps/api/src/server.ts` and an application factory was introduced, but `apps/api/src/createApp.ts` remains a large route, orchestration, policy, and response-shaping module.
 
-**Recommendation:** Add least-privilege, pinned CI for workspace typecheck/build/tests, dependency review, and security scanning. Keep Android cloud builds separate from fast PR checks.
+**Remaining work:** Split route modules, domain services, repositories, and infrastructure adapters while retaining centralized auth, error, and logging policy.
 
-#### P1 — API composition is monolithic
+#### [OPEN] P2 — Observability and operations are minimal
 
-`apps/api/src/server.ts` is 813 lines and contains environment loading, schemas, route definitions, orchestration, query response shaping, chart logic, error handling, and startup. This complicates testing and consistent policy enforcement.
+Startup logging exists, but there are no request IDs, structured/sanitized error logs, operation timing, or graceful shutdown behavior (`apps/api/src/server.ts`).
 
-**Recommendation:** Introduce an app factory and separate route modules, domain services, repositories, and infrastructure adapters. Keep one centralized auth/error/logging boundary.
+**Recommendation:** Add local structured logs with PHI redaction, correlation IDs, operation timing, startup validation, and graceful shutdown. Do not log request bodies or model prompts.
 
-#### P2 — Observability and operations are minimal
+#### [OPEN] P2 — Environment and API documentation are fragile
 
-Only startup is logged. Server errors are returned but not reliably logged, there are no request IDs or structured audit-safe logs, and no graceful shutdown behavior is defined.
+There is no `.env.example`; environment parsing remains hand-written in `apps/api/src/server.ts`; examples are mostly PowerShell-only; and API lifecycle/versioning remains undocumented.
 
-**Recommendation:** Add local structured logs with PHI redaction, correlation IDs, useful operation timing, startup config validation, and graceful shutdown. Do not log request bodies or model prompts.
-
-#### P2 — Environment and API documentation are fragile
-
-There is no `.env.example`; a hand-written environment parser lives in `server.ts:737-767`; examples are mostly PowerShell-only; API stability and endpoint lifecycle are undocumented.
-
-**Recommendation:** Document supported platforms/configuration, validate environment at startup, provide cross-platform examples, and publish a versioned API contract for the companion boundary.
+**Recommendation:** Document supported platforms/configuration, validate environment at startup, provide cross-platform examples, and publish a versioned companion API contract.
 
 ### Open-source and product readiness
 
-#### P0 — The repository has no open-source license
+#### [OPEN] P0 — The repository has no open-source license
 
-There is no root `LICENSE`. Publishing source without one does not grant others permission to use, modify, or redistribute it.
+No root `LICENSE` exists. Publishing source without one does not grant permission to use, modify, or redistribute it.
 
-**Recommendation:** Choose a license intentionally (including how it supports the paid companion strategy), add SPDX/package metadata where appropriate, and complete a third-party license review.
+**Recommendation:** Choose a license intentionally, add SPDX/package metadata where appropriate, and complete a third-party license review.
 
-#### P1 — Community and security documentation are missing
+#### [OPEN] P1 — Community and security documentation are missing
 
-There is no `SECURITY.md`, `CONTRIBUTING.md`, code of conduct, support policy, release policy, or vulnerability-reporting process. Health-data software needs an especially clear security scope and disclaimer.
+There is no `SECURITY.md`, `CONTRIBUTING.md`, code of conduct, support policy, release policy, or vulnerability-reporting process.
 
 **Recommendation:** Add these before publicizing the repository, including supported versions, responsible disclosure, privacy threat model, backup/recovery guidance, and non-medical-use boundaries.
 
-#### P2 — Product boundaries and deprecations need explicit decisions
+#### [OPEN] P2 — Product boundaries and deprecations need explicit decisions
 
-The API exposes four overlapping query endpoints, multiple import routes, and both legacy Samsung and Health Connect ingestion. Keeping all prototype paths multiplies security and maintenance obligations.
+Four overlapping query endpoints remain without lifecycle/deprecation annotations (`apps/api/src/createApp.ts`).
 
-**Recommendation:** Mark endpoints/features as supported, experimental, or deprecated. Given the stated direction, retire Samsung CSV/JSON after confirming Health Connect coverage and providing a simple migration/export story.
+**Recommendation:** Mark endpoints and features as supported, experimental, or deprecated, then consolidate or retire prototype paths with a migration/export story.
 
-## Proposed implementation order
+## Pending implementation order
 
-### Milestone 1 — Safe external testing
+### P0 — Release blockers
 
-1. LAN API authentication, companion pairing, transport protection, and request limits.
-2. Atomic store/warehouse writes plus backup/recovery.
-3. Tests for auth, storage, parsers, Health Connect mapping, and query safety.
-4. CI gates.
-5. Accurate privacy disclosures and cloud-model opt-in.
+1. **Cloud-model privacy and consent:** Correct the privacy claim; add explicit cloud opt-in, provider/data-scope disclosure, and prompt minimization.
+2. **Health Connect and Play privacy readiness:** Add category rationale and selection, privacy-policy flow, data inventory/retention/deletion language, and Play declarations.
+3. **Android production release process:** Document and validate AAB, signing, versioning, production environment, and submission/release checklist.
+4. **Open-source license:** Choose and add a license plus applicable metadata/notices.
 
-### Milestone 2 — Play Store/internal track
+### P1 — Stable public release
 
-1. Production AAB/signing/version configuration.
-2. Health Connect rationale, least-privilege partial sync, privacy policy, and Play declarations.
-3. Incremental/chunked sync with stable device identity and resilient networking.
-4. Android accessibility and release smoke testing.
+1. **Selective, resilient Health Connect sync:** Allow partial permissions, add cursors/chunking/provenance, and use authenticated pinned networking for every companion request.
+2. **Persisted-data durability at scale:** Add runtime schema migrations, correct retention policies, and reduce whole-store transfers/rebuild work.
+3. **Web accessibility core flows:** Fix interaction semantics, accessible dialogs/destructive confirmations, and comprehensive live announcements.
+4. **API and project stewardship:** Split the API route monolith and add security, contribution, support, and release documentation.
 
-### Milestone 3 — Public open-source release
+### P2 — Hardening and sustainable development
 
-1. License and third-party notices.
-2. Security, contribution, support, architecture, configuration, and recovery documentation.
-3. Feature/endpoint lifecycle decision, including Samsung import retirement.
-4. Dependency/secret/code scanning and release automation.
-
-### Milestone 4 — Sustainable development
-
-1. Split frontend and API monoliths behind tested boundaries.
-2. Version and migrate persisted data and the companion API.
-3. Reduce full-store transfers/rebuilds and establish a scalable canonical store.
-4. Complete WCAG AA remediation and regression testing.
-
-## GitHub issue grouping
-
-Priority findings should be tracked as these grouped workstreams:
-
-1. **Secure LAN API access and companion pairing**
-2. **Harden persistence and warehouse recovery**
-3. **Add automated tests and CI quality gates**
-4. **Complete Android production and Health Connect Play readiness**
-5. **Make Health Connect sync selective, incremental, and resilient**
-6. **Align privacy behavior, cloud AI consent, and documentation**
-7. **Fix web and Android accessibility release blockers**
-8. **Establish open-source licensing and project governance**
-9. **Reduce monoliths and consolidate API/query boundaries**
-10. **Retire or sandbox legacy Samsung import paths**
+1. **Safe operations and diagnostics:** Minimize public errors/health data and add redacted structured observability with correlation IDs.
+2. **Data/query efficiency:** Make health checks lightweight, consolidate SQL execution/validation, and use cryptographic import checksums.
+3. **Documentation and lifecycle:** Add environment/API documentation and make endpoint support/deprecation decisions.
+4. **Accessibility and frontend maintainability:** Complete visual WCAG equivalents and reduce the web application's coupling.
 
 ## Positive foundations to preserve
 
-- AES-GCM authenticated encryption and generated local key permissions.
-- Zod validation and bounded request schemas.
-- Deterministic Health Connect record IDs and deduplication intent.
-- Compiler-generated SQL, identifier allowlisting, read-only query connections, and explicit SQL validation.
+- Owner and companion authentication, QR pairing, TLS, and certificate public-key pinning.
+- AES-GCM encrypted storage with atomic persistence, backup, and recovery.
+- Zod validation, bounded request schemas, and centralized rate limits.
+- Deterministic Health Connect identifiers and import deduplication intent.
+- Compiler-generated SQL, identifier allowlisting, read-only query connections, and SQL validation.
+- Automated tests and pinned CI quality gates.
 - No use of `dangerouslySetInnerHTML`; model text is rendered as text.
 - Clear product safety language avoiding diagnosis and treatment advice.
 - Shared domain types/registries and a coherent local-first product direction.
-- Responsive/reduced-motion CSS and an existing visible focus style.
