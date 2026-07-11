@@ -15,6 +15,7 @@ import { dirname, resolve } from "node:path";
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
 import {
   defaultMeasurementTypes,
+  parsePersistedHealthStore,
   type DeleteObservationResponse,
   type DeleteObservationsByTypeResponse,
   type HealthDataDetailEntry,
@@ -49,8 +50,18 @@ const maxTimeSeriesSamples = 10_000;
 const minPerMeasurementCode = 500;
 const maxActivitySessions = 75_000;
 const maxObservationGroups = 20_000;
-const legacyGroupIdPrefix = "group_legacy_";
-const legacyObservationIdPrefix = "obs_legacy_";
+export class StoreLoadError extends Error {
+  constructor(
+    readonly stage: "decryption" | "validation" | "migration",
+    readonly filePath: string,
+    readonly backupAttempted: boolean,
+    cause: unknown
+  ) {
+    super(`Unable to load encrypted health store at ${filePath}: ${stage} failed.${backupAttempted ? " The backup was also unavailable." : " Restore a backup or remove the affected store file to create a new local store."}`);
+    this.name = "StoreLoadError";
+    this.cause = cause;
+  }
+}
 
 export class HealthStore {
   private data: HealthStoreData;
@@ -74,12 +85,11 @@ export class HealthStore {
       this.securityMode = security.securityMode;
     }
     this.data = existsSync(this.dataPath) ? this.readEncryptedStore() : createEmptyStore(this.profileId);
-    const migrated = normalizeStore(this.data);
     const registryChanged = reconcileDefaultMeasurementTypes(this.data);
     if (!existsSync(this.dataPath)) {
       this.audit("store-created", "Encrypted local health store created.");
       this.persist();
-    } else if (registryChanged || migrated) {
+    } else if (registryChanged) {
       this.persist();
     }
   }
@@ -209,14 +219,41 @@ export class HealthStore {
 
   private readEncryptedStore(): HealthStoreData {
     try {
-      return readEncryptedStoreAtPath(this.dataPath, this.passphrase);
+      const parsed = this.readAndValidateStore(this.dataPath);
+      if (parsed.migrated) {
+        writeEncryptedStore(this.dataPath, this.backupPath, this.passphrase, parsed.data);
+      }
+      return parsed.data;
     } catch (primaryError) {
       if (!existsSync(this.backupPath)) {
         throw primaryError;
       }
-      const recovered = readEncryptedStoreAtPath(this.backupPath, this.passphrase);
-      writeFileSync(this.dataPath, readFileSync(this.backupPath), { encoding: "utf8", mode: 0o600 });
-      return recovered;
+      try {
+        const recovered = this.readAndValidateStore(this.backupPath);
+        writeFileSync(this.dataPath, readFileSync(this.backupPath), { encoding: "utf8", mode: 0o600 });
+        if (recovered.migrated) {
+          writeEncryptedStore(this.dataPath, this.backupPath, this.passphrase, recovered.data);
+        }
+        return recovered.data;
+      } catch (backupError) {
+        throw new StoreLoadError(loadFailureStage(backupError), this.dataPath, true, backupError);
+      }
+    }
+  }
+
+  private readAndValidateStore(path: string): { data: HealthStoreData; migrated: boolean } {
+    let raw: unknown;
+    try {
+      raw = readEncryptedStoreAtPath(path, this.passphrase);
+    } catch (error) {
+      throw new StoreLoadError("decryption", path, false, error);
+    }
+    try {
+      const parsed = parsePersistedHealthStore(raw);
+      return parsed;
+    } catch (error) {
+      const stage = error instanceof Error && error.message.startsWith("Unsupported health store schema version") ? "migration" : "validation";
+      throw new StoreLoadError(stage, path, false, error);
     }
   }
 
@@ -268,7 +305,7 @@ export class ProfileStoreManager {
       this.stores.set(normalizedId, created);
       return created;
     } catch (error) {
-      if (!isDecryptFailure(error)) {
+      if (!(error instanceof StoreLoadError)) {
         throw error;
       }
 
@@ -450,79 +487,6 @@ function createEmptyStore(profileId = "self"): HealthStoreData {
     insights: [],
     auditEvents: []
   };
-}
-
-function normalizeStore(data: HealthStoreData): boolean {
-  let changed = false;
-  if (data.schemaVersion !== 2) {
-    data.schemaVersion = 2;
-    changed = true;
-  }
-  data.observationGroups ??= [];
-
-  const legacyPanels = (data as HealthStoreData & { labPanels?: Array<{ id: string; collectedAt: string; panelName: string; sourceId: string; labName?: string }> }).labPanels ?? [];
-  const legacyMarkers = (data as HealthStoreData & { labMarkers?: Array<{ id: string; panelId: string; measurementCode: string; value: number; unit: string }> }).labMarkers ?? [];
-
-  for (const panel of legacyPanels) {
-    const groupId = `${legacyGroupIdPrefix}${panel.id}`;
-    if (!data.observationGroups.some((group) => group.id === groupId)) {
-      data.observationGroups.push({
-        id: groupId,
-        kind: "lab_panel",
-        label: panel.panelName,
-        sourceId: panel.sourceId,
-        collectedAt: panel.collectedAt,
-        metadata: { labName: panel.labName, legacyPanelId: panel.id }
-      });
-      changed = true;
-    }
-    for (const marker of legacyMarkers.filter((item) => item.panelId === panel.id)) {
-      const matching = data.observations.find(
-        (observation) =>
-          observation.sourceId === panel.sourceId &&
-          observation.measurementCode === marker.measurementCode &&
-          observation.observedAt === panel.collectedAt &&
-          observation.value === marker.value &&
-          observation.unit === marker.unit
-      );
-      if (matching) {
-        if (!matching.observationGroupId) {
-          matching.observationGroupId = groupId;
-          changed = true;
-        }
-      } else {
-        data.observations.push({
-          id: `${legacyObservationIdPrefix}${marker.id}`,
-          measurementCode: marker.measurementCode,
-          observedAt: panel.collectedAt,
-          value: marker.value,
-          unit: marker.unit,
-          sourceId: panel.sourceId,
-          observationGroupId: groupId,
-          note: `Lab marker from ${panel.panelName}`
-        });
-        changed = true;
-      }
-    }
-  }
-
-  if ("labPanels" in data) {
-    delete (data as HealthStoreData & { labPanels?: unknown }).labPanels;
-    changed = true;
-  }
-  if ("labMarkers" in data) {
-    delete (data as HealthStoreData & { labMarkers?: unknown }).labMarkers;
-    changed = true;
-  }
-  if ("sleepSessions" in data) {
-    delete (data as HealthStoreData & { sleepSessions?: unknown }).sleepSessions;
-    changed = true;
-  }
-  if ("sleepStageIntervals" in data) {
-    delete (data as HealthStoreData & { sleepStageIntervals?: unknown }).sleepStageIntervals;
-    changed = true;
-  }
-  return changed;
 }
 
 function reconcileDefaultMeasurementTypes(data: HealthStoreData): boolean {
@@ -746,8 +710,8 @@ function localKeyPath(): string {
   return resolve(resolveDataDir(), "local.key");
 }
 
-function isDecryptFailure(error: unknown): boolean {
-  return error instanceof Error && /authenticate data|unsupported state/i.test(error.message);
+function loadFailureStage(error: unknown): "decryption" | "validation" | "migration" {
+  return error instanceof StoreLoadError ? error.stage : "decryption";
 }
 
 function quarantineCorruptedStoreFiles(profileId: string): void {
@@ -767,7 +731,7 @@ function quarantineCorruptedStoreFiles(profileId: string): void {
   }
 }
 
-function readEncryptedStoreAtPath(path: string, passphrase: string): HealthStoreData {
+function readEncryptedStoreAtPath(path: string, passphrase: string): unknown {
   const envelope = JSON.parse(readFileSync(path, "utf8")) as EncryptedEnvelope;
   const key = scryptSync(passphrase, Buffer.from(envelope.salt, "base64"), 32);
   const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(envelope.iv, "base64"));
@@ -776,7 +740,7 @@ function readEncryptedStoreAtPath(path: string, passphrase: string): HealthStore
     decipher.update(Buffer.from(envelope.payload, "base64")),
     decipher.final()
   ]);
-  return JSON.parse(decrypted.toString("utf8")) as HealthStoreData;
+  return JSON.parse(decrypted.toString("utf8"));
 }
 
 function writeEncryptedStore(filePath: string, backupPath: string, passphrase: string, data: HealthStoreData): void {
@@ -797,7 +761,7 @@ function writeEncryptedStore(filePath: string, backupPath: string, passphrase: s
   let oldStoreMoved = false;
   try {
     writeFileSync(tempPath, serialized, { encoding: "utf8", mode: 0o600 });
-    readEncryptedStoreAtPath(tempPath, passphrase);
+    parsePersistedHealthStore(readEncryptedStoreAtPath(tempPath, passphrase));
     fsyncPath(tempPath);
 
     if (existsSync(filePath)) {
