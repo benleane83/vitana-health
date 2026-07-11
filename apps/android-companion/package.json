@@ -9,6 +9,7 @@
     "expo-health-connect": "^0.1.1",
     "expo-secure-store": "^57.0.0",
     "expo-status-bar": "~57.0.0",
+    "expo-updates": "~29.0.0",
     "react": "19.2.7",
     "react-native": "0.86.0",
     "react-native-health-connect": "^3.5.3"
@@ -24,7 +25,11 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "build:android:preview": "npx -y eas-cli@20.5.1 build --platform android --profile preview"
+    "build:android:preview": "npx -y eas-cli@20.5.1 build --platform android --profile preview",
+    "build:android:development": "npx -y eas-cli@20.5.1 build --platform android --profile development",
+    "build:android:production": "npx -y eas-cli@20.5.1 build --platform android --profile production",
+    "update:preview": "npx -y eas-cli@20.5.1 update --channel preview",
+    "update:production": "npx -y eas-cli@20.5.1 update --channel production"
   },
   "expo": {
     "install": {

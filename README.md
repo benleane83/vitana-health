@@ -106,6 +106,27 @@ npx eas login
 npx eas build --platform android --profile preview
 ```
 
+For a direct-to-phone install flow (no manual APK download and no adb), open the build URL/QR on your Android phone and install from Expo's internal distribution page.
+
+Recommended commands from the repo root:
+
+```powershell
+npm run build:android:preview -w apps/android-companion
+```
+
+After the first install on your phone, publish most code changes over-the-air (OTA) without rebuilding the APK:
+
+```powershell
+npm run update:preview -w apps/android-companion -- --message "sync improvements"
+```
+
+This publishes to the `preview` EAS Update channel configured in `apps/android-companion/eas.json`.
+
+When to rebuild instead of OTA:
+
+- Rebuild (`build:android:*`) for native-code, permissions, Expo config, SDK, or dependency changes that affect native binaries.
+- Use OTA (`update:*`) for JavaScript/TypeScript/UI/business-logic changes.
+
 Install the generated APK, scan the short-lived QR code in the web app, approve the request, then tap **Sync now**. QR pairing pins the phone to that desktop server automatically.
 
 Preview and production builds require HTTPS. For a development client that intentionally permits HTTP:

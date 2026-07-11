@@ -18,7 +18,8 @@ module.exports = {
         "android.permission.health.READ_OXYGEN_SATURATION",
         "android.permission.health.READ_HEART_RATE_VARIABILITY",
         "android.permission.health.READ_WEIGHT",
-        "android.permission.health.READ_EXERCISE"
+        "android.permission.health.READ_EXERCISE",
+        "android.permission.health.READ_HEALTH_DATA_HISTORY"
       ],
       adaptiveIcon: {
         backgroundColor: "#E6F4FE",
@@ -43,6 +44,12 @@ module.exports = {
         }
       }]
     ],
+    runtimeVersion: {
+      policy: "appVersion"
+    },
+    updates: {
+      fallbackToCacheTimeout: 0
+    },
     extra: {
       allowCleartext,
       eas: {

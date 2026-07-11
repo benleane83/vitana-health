@@ -12,7 +12,16 @@ const baseRequest: HealthConnectImportRequest = {
   oxygenSaturation: [],
   hrvRmssd: [],
   weightKg: [],
-  exerciseSessions: []
+  exerciseSessions: [],
+  distanceMeters: [],
+  floorsClimbed: [],
+  activeCaloriesKcal: [],
+  totalCaloriesKcal: [],
+  sleepSessions: [],
+  bodyFatPct: [],
+  leanBodyMassKg: [],
+  bodyWaterMassKg: [],
+  boneMassKg: []
 };
 
 describe("parseHealthConnectImport — minimal valid payload", () => {
@@ -73,6 +82,19 @@ describe("parseHealthConnectImport — heart rate → observations", () => {
   });
 });
 
+describe("parseHealthConnectImport — additional supported categories", () => {
+  it("maps body fat percentages to body_fat_pct observations", () => {
+    const result = parseHealthConnectImport({
+      ...baseRequest,
+      bodyFatPct: [{ time: "2026-05-01T08:00:00.000Z", value: 21.5 }]
+    });
+    expect(result.observations).toHaveLength(1);
+    expect(result.observations[0].measurementCode).toBe("body_fat_pct");
+    expect(result.observations[0].unit).toBe("%");
+    expect(result.observations[0].value).toBe(21.5);
+  });
+});
+
 describe("parseHealthConnectImport — exercise sessions", () => {
   it("parses valid exercise sessions into activitySessions", () => {
     const result = parseHealthConnectImport({
@@ -119,5 +141,37 @@ describe("parseHealthConnectImport — rowCount", () => {
       exerciseSessions: [{ startTime: "2026-05-01T07:00:00.000Z", endTime: "2026-05-01T08:00:00.000Z", activityType: "Cycling" }]
     });
     expect(result.sourceImport.rowCount).toBe(3);
+  });
+});
+
+describe("parseHealthConnectImport — provenance and batches", () => {
+  it("preserves Health Connect provenance and keeps upload batches distinct", () => {
+    const payload: HealthConnectImportRequest = {
+      ...baseRequest,
+      batchId: "2026-06-01T12:00:00.000Z:1/2",
+      steps: [{
+        startTime: "2026-05-01T08:00:00.000Z",
+        endTime: "2026-05-01T08:30:00.000Z",
+        count: 500,
+        provenance: { recordId: "hc-record-1", dataOrigin: "com.example.wearable" }
+      }],
+      exerciseSessions: [{
+        startTime: "2026-05-01T07:00:00.000Z",
+        endTime: "2026-05-01T08:00:00.000Z",
+        activityType: "Running",
+        title: "Morning run",
+        details: { exerciseType: 56, route: { hasRoute: true } },
+        provenance: { recordId: "hc-session-1", dataOrigin: "com.example.wearable" }
+      }]
+    };
+    const result = parseHealthConnectImport(payload);
+
+    expect(result.timeSeriesSamples[0].sourceJson).toEqual(payload.steps[0].provenance);
+    expect(result.activitySessions[0].sourceJson).toMatchObject({
+      title: "Morning run",
+      provenance: payload.exerciseSessions[0].provenance,
+      exerciseType: 56
+    });
+    expect(result.sourceImport.id).not.toBe(parseHealthConnectImport({ ...payload, batchId: "2026-06-01T12:00:00.000Z:2/2" }).sourceImport.id);
   });
 });

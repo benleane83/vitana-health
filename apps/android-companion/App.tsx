@@ -1,11 +1,20 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
-import { clearConnection, clearSelectedProfileId, loadConnection, loadSelectedProfileId, saveSelectedProfileId } from "./src/endpointStore";
-import type { ConnectionDetails } from "./src/endpointStore";
+import {
+  clearConnection,
+  clearSelectedProfileId,
+  HEALTH_CONNECT_CATEGORIES,
+  loadConnection,
+  loadSelectedProfileId,
+  saveConnection,
+  saveSelectedProfileId,
+  updateHealthConnectSyncCursor
+} from "./src/endpointStore";
+import type { ConnectionDetails, HealthConnectCategory } from "./src/endpointStore";
 import { PairScreen } from "./src/PairScreen";
 import type { PairResult } from "./src/PairScreen";
-import { syncHealthConnectLast30Days } from "./src/syncHealthConnect";
+import { syncHealthConnect } from "./src/syncHealthConnect";
 
 interface ProfileListEntry {
   id: string;
@@ -43,14 +52,24 @@ export default function App() {
     }
     try {
       setSyncing(true);
-      setStatus("Syncing last 30 days from Health Connect…");
+      setStatus("Syncing Health Connect data…");
       setResult("");
-      const syncResult = await syncHealthConnectLast30Days(
+      const syncResult = await syncHealthConnect(
         connection.url,
         connection.token,
         selectedProfileId,
-        connection.publicKeyHash
+        connection.publicKeyHash,
+        {
+          deviceId: connection.deviceId,
+          syncCursor: connection.healthConnectSyncCursor,
+          syncWindowDays: connection.healthConnectSyncWindowDays,
+          categories: connection.healthConnectCategories
+        }
       );
+      if (syncResult.canAdvanceCursor) {
+        await updateHealthConnectSyncCursor(connection.url, syncResult.syncCursor);
+        setConnection(await loadConnection());
+      }
       setStatus(syncResult.status);
       setResult(syncResult.details);
     } catch (error) {
@@ -112,6 +131,15 @@ export default function App() {
     await saveSelectedProfileId(profileId);
   }
 
+  async function handleToggleHealthConnectCategory(category: HealthConnectCategory): Promise<void> {
+    if (!connection?.url) return;
+    const categories = connection.healthConnectCategories.includes(category)
+      ? connection.healthConnectCategories.filter((entry) => entry !== category)
+      : [...connection.healthConnectCategories, category];
+    const updated = await saveConnection({ ...connection, healthConnectCategories: categories });
+    setConnection(updated);
+  }
+
   if (pairScreenVisible) {
     return (
       <PairScreen
@@ -127,7 +155,7 @@ export default function App() {
     <SafeAreaView style={styles.root}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>Local Fitness Advisor Companion</Text>
-        <Text style={styles.subtitle}>Health Connect → Local API sync (last 30 days)</Text>
+        <Text style={styles.subtitle}>Health Connect → Local API sync (initial window: {connection?.healthConnectSyncWindowDays ?? 365} days)</Text>
 
         <View style={styles.connectionCard}>
           <Text style={styles.connectionLabel}>Server connection</Text>
@@ -184,6 +212,25 @@ export default function App() {
             </View>
           </View>
         ) : null}
+
+        <View style={styles.connectionCard}>
+          <Text style={styles.connectionLabel}>Health data to sync</Text>
+          <View style={styles.profileChips}>
+            {HEALTH_CONNECT_CATEGORIES.map((category) => {
+              const selected = connection?.healthConnectCategories.includes(category) ?? false;
+              return (
+                <Pressable
+                  key={category}
+                  style={[styles.profileChip, selected ? styles.profileChipSelected : undefined]}
+                  onPress={() => { void handleToggleHealthConnectCategory(category); }}
+                >
+                  <Text style={[styles.profileChipText, selected ? styles.profileChipTextSelected : undefined]}>{category}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={styles.connectionMeta}>Permissions can be changed in Health Connect. New selections may need a historical backfill.</Text>
+        </View>
 
         <Pressable
           disabled={syncing || !connection?.url}
