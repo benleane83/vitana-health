@@ -717,10 +717,12 @@ function normalizeBodyCompositionUnit(unit: string): string {
   return unit.trim();
 }
 
+const maxDateWhitespaceGap = 20;
+
 function readBodyCompositionDate(text: string): string | undefined {
   const datePatterns = [
-    /(?:test|scan|report|measurement|measured|date)\s{0,20}(?:date)?\s{0,20}[:\-]?\s{0,20}(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})/i,
-    /(?:test|scan|report|measurement|measured|date)\s{0,20}(?:date)?\s{0,20}[:\-]?\s{0,20}([A-Za-z]{3,9}\s{1,20}\d{1,2},?\s{1,20}\d{4})/i,
+    new RegExp(`(?:test|scan|report|measurement|measured|date)\\s{0,${maxDateWhitespaceGap}}(?:date)?\\s{0,${maxDateWhitespaceGap}}[:\\-]?\\s{0,${maxDateWhitespaceGap}}(\\d{1,2}[\\/\\-.]\\d{1,2}[\\/\\-.]\\d{2,4})`, "i"),
+    new RegExp(`(?:test|scan|report|measurement|measured|date)\\s{0,${maxDateWhitespaceGap}}(?:date)?\\s{0,${maxDateWhitespaceGap}}[:\\-]?\\s{0,${maxDateWhitespaceGap}}([A-Za-z]{3,9}\\s{1,${maxDateWhitespaceGap}}\\d{1,2},?\\s{1,${maxDateWhitespaceGap}}\\d{4})`, "i"),
     /\b(\d{4}[\/\-.]\d{1,2}[\/\-.]\d{1,2})\b/,
     /\b(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})\b/
   ];
