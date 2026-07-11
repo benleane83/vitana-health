@@ -222,6 +222,43 @@ export interface AnalyticsSummary {
   evidenceDigest: string[];
 }
 
+export type BiologicalAgeModelStatus = "available" | "incomplete" | "not-implemented";
+
+export interface BiologicalAgeInput {
+  code: string;
+  label: string;
+  value?: number;
+  unit?: string;
+  normalizedValue?: number;
+  normalizedUnit: string;
+  observedAt?: string;
+  status: "used" | "missing" | "invalid";
+  detail?: string;
+}
+
+export interface BiologicalAgeModelResult {
+  id: "phenoage-levine-2018";
+  name: string;
+  version: string;
+  status: BiologicalAgeModelStatus;
+  methodology: string;
+  citation: string;
+  chronologicalAge?: number;
+  chronologicalAgeDetail?: string;
+  biologicalAge?: number;
+  ageAcceleration?: number;
+  calculatedAt?: string;
+  panelCollectedAt?: string;
+  inputs: BiologicalAgeInput[];
+  limitations: string[];
+}
+
+export interface BiologicalAgeReport {
+  generatedAt: string;
+  disclaimer: string;
+  models: BiologicalAgeModelResult[];
+}
+
 export interface HealthDataSummarySourceCounts {
   observations: number;
   samples: number;

@@ -1,5 +1,6 @@
 import type {
   AnalyticsSummary,
+  BiologicalAgeReport,
   BodyCompositionDraft,
   BodyCompositionDraftCommitPayload,
   CloudAiConsent,
@@ -126,6 +127,7 @@ export const api = {
   health: () => request<{ ok: boolean; storage: string; counts: AnalyticsSummary["counts"] }>("/api/health"),
   store: () => request<HealthStoreData>("/api/store"),
   analytics: () => request<AnalyticsSummary>("/api/analytics"),
+  biologicalAge: () => request<BiologicalAgeReport>("/api/biological-age"),
   exportPdf: async () => {
     const response = await fetchAsOwner("/api/export/pdf", { headers: { accept: "application/pdf" } });
     if (!response.ok) throw new Error(await response.text());

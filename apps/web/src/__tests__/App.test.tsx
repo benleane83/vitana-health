@@ -86,11 +86,32 @@ describe("App — navigation landmarks", () => {
   it("renders the main navigation tabs", () => {
     render(<App />);
     expect(screen.getByRole("tab", { name: /dashboard/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /biological age/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /import/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /health data summary/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /^export$/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /ai query/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /settings/i })).toBeInTheDocument();
+  });
+
+  it("loads the Biological Age page", async () => {
+    global.fetch = mockFetch({
+      "/api/store": makeEmptyStore(),
+      "/api/analytics": makeEmptyAnalytics(),
+      "/api/profiles": { profiles: [], activeProfileId: "self" },
+      "/api/biological-age": {
+        generatedAt: "2026-01-01T00:00:00Z",
+        disclaimer: "Wellness only.",
+        models: [{
+          id: "phenoage-levine-2018", name: "PhenoAge", version: "Levine 2018", status: "incomplete",
+          methodology: "Published model.", citation: "Citation.", inputs: [], limitations: ["No inputs."]
+        }]
+      }
+    });
+    render(<App />);
+    fireEvent.click(screen.getByRole("tab", { name: /biological age/i }));
+    expect(await screen.findByRole("heading", { name: /biological age/i })).toBeInTheDocument();
+    expect(screen.getByText(/incomplete data/i)).toBeInTheDocument();
   });
 
   it("opens the AI setup screen from Settings", async () => {

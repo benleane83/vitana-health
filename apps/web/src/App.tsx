@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   AnalyticsSummary,
+  BiologicalAgeReport,
   BodyCompositionDraft,
   BodyCompositionDraftRow,
   CloudAiConsent,
@@ -26,10 +27,14 @@ import { SummaryPage, ObservationTypeDetailPage } from "./pages/SummaryPage.js";
 import { QueryPage } from "./pages/QueryPage.js";
 import { ExportPage } from "./pages/ExportPage.js";
 import { SettingsPage } from "./pages/SettingsPage.js";
+import { BiologicalAgePage } from "./pages/BiologicalAgePage.js";
 
 export function App() {
   const [store, setStore] = useState<HealthStoreData>();
   const [analytics, setAnalytics] = useState<AnalyticsSummary>();
+  const [biologicalAge, setBiologicalAge] = useState<BiologicalAgeReport>();
+  const [biologicalAgeBusy, setBiologicalAgeBusy] = useState(false);
+  const [biologicalAgeError, setBiologicalAgeError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();
   const [route, setRoute] = useState<AppRoute>(() => routeFromPathname(window.location.pathname));
@@ -156,6 +161,20 @@ export function App() {
     return () => { cancelled = true; };
   }, [route]);
 
+  useEffect(() => {
+    if (route !== "biological-age") return;
+    let cancelled = false;
+    setBiologicalAgeBusy(true);
+    setBiologicalAgeError(undefined);
+    void api.biologicalAge()
+      .then((report) => { if (!cancelled) setBiologicalAge(report); })
+      .catch((error: unknown) => {
+        if (!cancelled) setBiologicalAgeError(error instanceof Error ? error.message : "Unable to calculate biological age.");
+      })
+      .finally(() => { if (!cancelled) setBiologicalAgeBusy(false); });
+    return () => { cancelled = true; };
+  }, [route]);
+
   // Summary detail data
   useEffect(() => {
     if (route !== "summary" || !summaryDetailCode) {
@@ -236,6 +255,7 @@ export function App() {
   function navigate(nextRoute: AppRoute, nextImportMode: ImportMode = importMode) {
     const routePaths: Record<AppRoute, string> = {
       dashboard: "/",
+      "biological-age": "/biological-age",
       import: importModePath(nextImportMode),
       summary: summaryPath(),
       export: "/export",
@@ -629,6 +649,7 @@ export function App() {
 
   const navTabIds: Record<AppRoute, string> = {
     dashboard: "nav-tab-dashboard",
+    "biological-age": "nav-tab-biological-age",
     import: "nav-tab-import",
     summary: "nav-tab-summary",
     export: "nav-tab-export",
@@ -641,9 +662,10 @@ export function App() {
       {/* Navigation tablist */}
       <nav className="route-nav" aria-label="Page navigation">
         <div role="tablist" aria-label="App sections">
-          {(["dashboard", "import", "summary", "export", "query", "settings"] as AppRoute[]).map((r) => {
+          {(["dashboard", "biological-age", "import", "summary", "export", "query", "settings"] as AppRoute[]).map((r) => {
             const labels: Record<AppRoute, string> = {
               dashboard: "Dashboard",
+              "biological-age": "Biological Age",
               import: "Import",
               summary: "Health Data Summary",
               export: "Export",
@@ -705,6 +727,10 @@ export function App() {
             onGenerateInsight={() => { void generateInsight(); }}
           />
         ) : null}
+      </div>
+
+      <div id="route-panel-biological-age" role="tabpanel" aria-labelledby={navTabIds["biological-age"]} hidden={route !== "biological-age"}>
+        {route === "biological-age" ? <BiologicalAgePage report={biologicalAge} loading={biologicalAgeBusy} error={biologicalAgeError} /> : null}
       </div>
 
       <div id="route-panel-settings" role="tabpanel" aria-labelledby={navTabIds.settings} hidden={route !== "settings"}>
@@ -889,6 +915,7 @@ function normalizeApiError(raw: string): { code?: string; message: string } {
 // ─── Routing helpers ──────────────────────────────────────────────────────────
 
 function routeFromPathname(pathname: string): AppRoute {
+  if (pathname === "/biological-age") return "biological-age";
   if (pathname === "/summary" || pathname.startsWith("/summary/")) return "summary";
   if (pathname === "/import" || pathname.startsWith("/import/") || pathname === "/labs") return "import";
   if (pathname === "/query") return "query";

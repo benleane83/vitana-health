@@ -1,6 +1,11 @@
 import express from "express";
 import { z } from "zod";
-import { computeAnalytics, type DeleteObservationResponse, type DeleteObservationsByTypeResponse } from "@local-fitness-advisor/shared";
+import {
+  calculateBiologicalAge,
+  computeAnalytics,
+  type DeleteObservationResponse,
+  type DeleteObservationsByTypeResponse
+} from "@local-fitness-advisor/shared";
 import type { ProfileStoreManager, HealthStore } from "../store.js";
 import { rebuildWarehouseFromStore } from "../warehouse.js";
 import { generateInsight } from "../insights.js";
@@ -79,6 +84,10 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.get("/analytics", (_request, response) => {
     response.json(computeAnalytics(activeStore().snapshot()));
+  });
+
+  router.get("/biological-age", (_request, response) => {
+    response.json(calculateBiologicalAge(activeStore().snapshot()));
   });
 
   router.get("/summary", (_request, response) => {
