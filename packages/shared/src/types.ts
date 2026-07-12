@@ -16,7 +16,6 @@ export interface Profile {
   displayName: string;
   birthYear?: number;
   sex?: "female" | "male" | "intersex" | "unknown" | "not-specified";
-  bloodType?: string;
   heightCm?: number;
   bloodType?: BloodType;
   goalSummary?: string;

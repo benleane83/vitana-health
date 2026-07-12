@@ -3,18 +3,12 @@ import { z } from "zod";
 import { safetyNotice } from "@local-fitness-advisor/shared";
 import type { ProfileStoreManager } from "../store.js";
 import { runWarehouseQuery } from "../warehouse.js";
-import { planWarehouseQuery } from "../nlQuery.js";
 import { callConfiguredModel, currentModelConfig, resolvedModelProvider } from "../modelClient.js";
-import { planDataAnswer } from "../askData.js";
 import { planStoreAnswer } from "../askStore.js";
 import { planAiQuery } from "../aiQueryPlanner.js";
 import type { QueryDSL } from "../aiQueryPlanner.js";
 import { compileQueryDSL, validateCompiledSql } from "../queryCompiler.js";
 import { hasCloudAiConsent, sanitizeQuestionForModel, sanitizeRowsForPrompt } from "../privacy.js";
-
-const nlQuerySchema = z.object({
-  question: z.string().min(3).max(500)
-});
 
 const llmSimpleSchema = z.object({
   prompt: z.string().min(1).max(4000).default("Reply with exactly: local model ok"),
@@ -56,90 +50,10 @@ export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Rout
     return false;
   }
 
-  // Legacy natural-language warehouse query (deterministic, no model)
-  router.post("/nl", async (request, response, next) => {
-    try {
-      const parsed = nlQuerySchema.parse(request.body ?? {});
-      const planned = planWarehouseQuery(parsed.question);
-      if (!planned) {
-        response.status(400).json({ error: "Could not interpret question.", code: "QUERY_UNRECOGNIZED" });
-        return;
-      }
-      const rows = await runWarehouseQuery(planned.sql);
-      response.json({
-        question: parsed.question,
-        plan: planned.answerLead,
-        sql: planned.sql.trim(),
-        rows,
-        rowCount: rows.length
-      });
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  // Warehouse-backed ask with model narration
-  router.post("/ask", async (request, response, next) => {
-    try {
-      if (!ensureCloudConsent(response)) {
-        return;
-      }
-      const parsed = askSchema.parse(request.body ?? {});
-      const plan = planDataAnswer(parsed.question);
-      if (!plan) {
-        response.status(400).json({
-          error: "Question is not yet supported by the ask planner.",
-          code: "QUERY_UNSUPPORTED",
-          supportedExamples: ["What was the last heart rate recorded?"]
-        });
-        return;
-      }
-
-      const rows = await runWarehouseQuery(plan.sql);
-      if (rows.length === 0) {
-        response.json({
-          question: parsed.question,
-          plan: plan.answerLead,
-          sql: plan.sql.trim(),
-          rowCount: 0,
-          rows: [],
-          answer: "I could not find matching data in your warehouse yet."
-        });
-        return;
-      }
-
-      const prompt = [
-        "You answer health-data questions using only the supplied SQL result.",
-        "If the data is present, answer in one short sentence.",
-        "Do not diagnose or provide treatment advice.",
-        `Question: ${sanitizeQuestionForModel(parsed.question)}`,
-        `SQL result JSON: ${JSON.stringify(sanitizeRowsForPrompt(rows))}`
-      ].join("\n");
-
-      const modelResult = await callConfiguredModel(prompt, {
-        allowCloud: hasCloudAiConsent(activeStore().snapshot().profile)
-      });
-      response.json({
-        question: parsed.question,
-        plan: plan.answerLead,
-        sql: plan.sql.trim(),
-        rowCount: rows.length,
-        rows,
-        answer:
-          modelResult.ok && modelResult.text
-            ? modelResult.text
-            : "I found the data, but model wording was unavailable.",
-        model: modelResult.ok ? `${modelResult.provider}:${modelResult.model}` : "deterministic-fallback",
-        modelError: modelResult.ok ? undefined : modelResult.error
-      });
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  // Store-backed ask with model narration
+  // Store-backed ask retained as an experimental warehouse-unavailable fallback.
   router.post("/ask-store", async (request, response, next) => {
     try {
+      response.setHeader("x-lfa-lifecycle", "experimental");
       if (!ensureCloudConsent(response)) {
         return;
       }
@@ -195,6 +109,7 @@ export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Rout
   // AI-planned query pipeline (primary query path for the web UI)
   router.post("/ai", async (request, response, next) => {
     try {
+      response.setHeader("x-lfa-lifecycle", "supported");
       if (!ensureCloudConsent(response)) {
         return;
       }
@@ -330,6 +245,7 @@ export function makeLlmRoutes(storeManager: ProfileStoreManager): express.Router
 
   router.post("/simple", async (request, response, next) => {
     try {
+      response.setHeader("x-lfa-lifecycle", "experimental");
       const parsed = llmSimpleSchema.parse(request.body ?? {});
       const provider = resolvedModelProvider(parsed.provider);
       if (provider === "openai" && !hasCloudAiConsent(activeStore().snapshot().profile)) {

@@ -36,12 +36,6 @@ Encrypted-store writes now use temporary files, validation, backup/recovery, `fs
 
 ### Data integrity, reliability, and performance
 
-#### [OPEN] P1 — Persisted data has no application schema migration strategy
-
-`HealthStoreData` has no application schema version, and decrypted JSON is cast into the current TypeScript shape without runtime validation (`packages/shared/src/types.ts`, `apps/api/src/store.ts`).
-
-**Recommendation:** Add a versioned runtime schema, sequential migrations, startup validation, backup-before-migrate, and actionable recovery diagnostics before establishing a public data format.
-
 #### [OPEN] P1 — Full-store rewrites and warehouse rebuilds will not scale well
 
 Mutations still serialize and encrypt the full store, key derivation remains synchronous, normal web startup fetches the full store, and imports synchronously rebuild the warehouse (`apps/api/src/store.ts`, `apps/web/src/App.tsx`, `apps/api/src/createApp.ts`).
@@ -60,19 +54,13 @@ The health endpoint is now O(1) — it no longer computes analytics. Each wareho
 
 **Remaining work:** Consolidate query contracts, explicitly mark experimental paths, and route all executable SQL through one validation and execution boundary.
 
-#### [OPEN] P2 — Import checksums are too weak for canonical deduplication
-
-Shared CSV import deduplication continues to use 32-bit FNV-1a (`packages/shared/src/parsers.ts`) while other paths use SHA-256.
-
-**Recommendation:** Standardize import identity on a cryptographic digest and retain source/provider record IDs where available.
-
 ### Android companion and Play Store readiness
 
 #### [IN PROGRESS] P0 — Production release configuration is incomplete
 
-`eas.json` now has a production profile and explicitly disables cleartext traffic. A documented production AAB/signing/submission process and release checklist are still absent.
+`eas.json` now has a production profile with EAS-managed Android version-code auto-increment and explicitly disables cleartext traffic. `docs/ANDROID_RELEASE.md` defines the AAB/signing/submission process, version ownership, environment and update-channel separation, validation, staged rollout, and rollback checklist.
 
-**Remaining work:** Define the production bundle/signing workflow, monotonic versioning ownership, release environment separation, and an end-to-end release checklist.
+**Remaining work:** Complete the external Play Console setup and retain evidence from the first internal-test release before promoting to production.
 
 #### [OPEN] P0 — Health Connect disclosure and Play privacy work are missing
 
@@ -97,33 +85,6 @@ Free-form endpoint configuration has been replaced with QR pairing, HTTPS enforc
 #### [OPEN] P2 — Complete accessibility verification audit
 
 Automated axe and manual WCAG AA validation at desktop and narrow breakpoints are still advisable before a public release.
-
-### Open-source and product readiness
-
-#### [OPEN] P2 — Product boundaries and deprecations need explicit decisions
-
-Four overlapping query endpoints remain without lifecycle/deprecation annotations (`apps/api/src/createApp.ts`).
-
-**Recommendation:** Mark endpoints and features as supported, experimental, or deprecated, then consolidate or retire prototype paths with a migration/export story.
-
-## Pending implementation order
-
-### P0 — Release blockers
-
-1. **Cloud-model privacy and consent:** Correct the privacy claim; add explicit cloud opt-in, provider/data-scope disclosure, and prompt minimization.
-2. **Health Connect and Play privacy readiness:** Add category rationale and selection, privacy-policy flow, data inventory/retention/deletion language, and Play declarations.
-3. **Android production release process:** Document and validate AAB, signing, versioning, production environment, and submission/release checklist.
-
-### P1 — Stable public release
-
-1. **Selective, resilient Health Connect sync:** Allow partial permissions, add cursors/chunking/provenance, and use authenticated pinned networking for every companion request.
-2. **Persisted-data durability at scale:** Add runtime schema migrations, correct retention policies, and reduce whole-store transfers/rebuild work.
-
-### P2 — Hardening and sustainable development
-
-1. **Data/query efficiency:** Consolidate SQL execution/validation and use cryptographic import checksums.
-2. **Endpoint lifecycle decisions:** Mark supported/experimental/deprecated endpoints and retire overlapping prototype paths with a migration story.
-3. **Accessibility verification:** Run automated axe plus manual WCAG AA audit and address any findings.
 
 ## Positive foundations to preserve
 
@@ -172,6 +133,18 @@ Stack traces no longer appear in responses. `/api/health` now returns only liven
 #### [DONE] P0 — Persistence and warehouse replacement are crash-safe
 
 The encrypted store is atomically persisted with a recoverable backup (`apps/api/src/store.ts`). DuckDB is rebuilt into a temporary database, validated, swapped atomically, and restored from backup if the swap fails (`apps/api/src/warehouse.ts`).
+
+#### [DONE] P1 — Persisted data has no application schema migration strategy
+
+`HealthStoreData` has no application schema version, and decrypted JSON is cast into the current TypeScript shape without runtime validation (`packages/shared/src/types.ts`, `apps/api/src/store.ts`).
+
+**Recommendation:** Add a versioned runtime schema, sequential migrations, startup validation, backup-before-migrate, and actionable recovery diagnostics before establishing a public data format.
+
+#### [DONE] P2 — Import checksums are too weak for canonical deduplication
+
+Shared CSV import deduplication continues to use 32-bit FNV-1a (`packages/shared/src/parsers.ts`) while other paths use SHA-256.
+
+**Recommendation:** Standardize import identity on a cryptographic digest and retain source/provider record IDs where available.
 
 ### Android companion and Play Store readiness
 
@@ -256,6 +229,12 @@ GNU Affero General Public License v3.0 only (`AGPL-3.0-only`) was selected to su
 #### [DONE] P1 — Community and security documentation are missing
 
 `SECURITY.md` now documents supported versions, coordinated responsible disclosure (90-day window), the local-account threat model, in-scope and out-of-scope attack surfaces, health-data privacy notes, non-medical-use boundaries, and backup/recovery guidance. `CONTRIBUTING.md` covers the AGPL-3.0-only license (no CLA required), code of conduct, accepted contribution types, non-medical-use boundaries, development setup, PR process, and the support/release policy.
+
+#### [DONE] P2 — Product boundaries and deprecations need explicit decisions
+
+Four overlapping query endpoints remain without lifecycle/deprecation annotations (`apps/api/src/createApp.ts`).
+
+**Recommendation:** Mark endpoints and features as supported, experimental, or deprecated, then consolidate or retire prototype paths with a migration/export story.
 
 ### Pending-order items already completed
 

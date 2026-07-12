@@ -24,6 +24,7 @@
     },
     "production": {
       "channel": "production",
+      "autoIncrement": true,
       "env": {
         "LFA_ALLOW_CLEARTEXT": "0"
       }

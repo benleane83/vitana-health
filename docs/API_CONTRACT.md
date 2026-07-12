@@ -202,6 +202,8 @@ POST /api/warehouse/rebuild
 ```
 **Success `200`:** `{ "ok": true, "tookMs": <number> }`
 
+**Lifecycle:** Experimental operator maintenance endpoint. Normal imports and observation deletions rebuild the warehouse automatically; this route is intended for recovery and development.
+
 ### Generate AI health insights
 ```
 POST /api/insights/generate
@@ -257,40 +259,34 @@ POST /api/import/health-connect
 
 ## Query / AI
 
-### Natural language query (structured output)
-```
-POST /api/query/nl
-```
-**Request body:** `{ "query": "<natural language>" }`  
-**Success `200`:** `{ "answer": "<text>", "chart"?: ChartSeries }`
+Endpoints in this section return `x-lfa-lifecycle` to identify their compatibility commitment. Supported endpoints are part of the product API; experimental endpoints are diagnostic or fallback paths and can change without a compatibility guarantee.
 
-### Ask a question (full AI)
-```
-POST /api/query/ask
-```
-**Request body:** `{ "query": "<text>" }`  
-**Success `200`:** `{ "answer": "<text>", "chart"?: ChartSeries, "sql"?: "<string>" }`
-
-### Ask and store the insight
-```
-POST /api/query/ask-store
-```
-**Request body:** `{ "query": "<text>" }`  
-**Success `200`:** `{ "answer": "<text>", "stored": true }`
-
-### Open-ended AI query
+### AI query *(supported)*
 ```
 POST /api/query/ai
 ```
-**Request body:** `{ "query": "<text>" }`  
-**Success `200`:** `{ "response": "<text>" }`
+**Request body:** `{ "question": "<text>", "timezone"?: "<IANA timezone>", "debug"?: false }`
+**Success `200`:** `{ "question", "answer", "limitations", "assumptions", "confidence", "plan", "sql", "resolvedTimeRange", "rowCount", "rows", "chart", "model" }`
 
-### Simple LLM completion
+Runs the product's validated DSL-to-SQL pipeline. See the README for supported query classes and safety limits.
+
+### Store-grounded fallback *(experimental)*
+```
+POST /api/query/ask-store
+```
+**Request body:** `{ "question": "<text>" }`
+**Success `200`:** `{ "question", "plan", "rowCount", "rows", "answer", "model" }`
+
+This narrow fallback reads from the live store when the warehouse is unavailable. It currently supports only the latest heart-rate and oxygen-saturation questions and is not used by the web app.
+
+### Simple LLM completion *(experimental operator diagnostic)*
 ```
 POST /api/llm/simple
 ```
-**Request body:** `{ "prompt": "<text>" }`  
-**Success `200`:** `{ "text": "<response>" }`
+**Request body:** `{ "prompt": "<text>", "model"?: "<model>", "timeoutMs"?: 30000, "provider"?: "ollama"|"openai" }`
+**Success `200`:** model connectivity result with `ok`, `provider`, `model`, `elapsedMs`, and optional `text`.
+
+Use only to validate configured model connectivity. It is not a product workflow.
 
 ---
 

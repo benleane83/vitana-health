@@ -148,6 +148,8 @@ npx eas build --platform android --profile development
 
 The development profile sets `LFA_ALLOW_CLEARTEXT=1`; other profiles explicitly disable cleartext. Device tokens are stored with Android secure storage, and production HTTPS requests verify the server identity scanned from the pairing QR code.
 
+For Play Store AAB signing, versioning, EAS environment separation, testing, staged rollout, and rollback, follow [the Android production release runbook](docs/ANDROID_RELEASE.md).
+
 ### Health Connect import endpoint
 
 The companion app posts structured JSON to:
@@ -254,35 +256,11 @@ Calendar month/week boundaries are resolved server-side before SQL compilation:
 
 - The AI planner requires a running model runtime (Ollama or OpenAI-compatible). If the model is unavailable, a graceful error with suggested rephrases is returned.
 - Compound queries (e.g. "steps AND heart rate together") may be simplified to the first metric.
-- Lab marker queries are not supported via the AI query endpoint; use the warehouse NL endpoint for those.
+- Lab marker questions are not currently supported by the AI query endpoint; review lab results in the Labs and Summary views.
 
+## Experimental Store-Grounded Query Fallback
 
-
-You can ask trend questions using a rule-based NL planner backed by DuckDB:
-
-```powershell
-$body = @{ question = "How have my steps and heart rate trended in the last month?" } | ConvertTo-Json
-Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:4317/api/query/nl" -ContentType "application/json" -Body $body
-```
-
-Response includes the planned SQL, returned rows, and row count so you can render charts or summaries in your app.
-
-## Data-grounded Ask Endpoint
-
-You can ask supported plain-language questions and get a warehouse-grounded answer phrased by the configured model runtime.
-
-```powershell
-$body = @{ question = "What was the last heart rate recorded?" } | ConvertTo-Json
-Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:4317/api/query/ask" -ContentType "application/json" -Body $body
-```
-
-Current supported example:
-
-- Latest heart-rate observation (for example: "What was the last heart rate recorded?")
-
-## Store-grounded Ask Endpoint
-
-If your warehouse is still being refreshed, you can query directly from the live datastore snapshot:
+`POST /api/query/ask-store` is an experimental diagnostic fallback for a warehouse that is unavailable or being refreshed. It is not used by the web app and may change or be removed without a compatibility guarantee.
 
 ```powershell
 $body = @{ question = "What was my latest oxygen saturation?" } | ConvertTo-Json

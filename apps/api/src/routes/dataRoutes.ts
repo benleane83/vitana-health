@@ -129,6 +129,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.post("/warehouse/rebuild", async (_request, response, next) => {
     try {
+      response.setHeader("x-lfa-lifecycle", "experimental");
       const result = await rebuildWarehouseFromStore(activeStore().snapshot());
       response.status(201).json(result);
     } catch (error) {

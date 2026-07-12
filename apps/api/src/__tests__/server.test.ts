@@ -75,6 +75,32 @@ describe("GET /api/health", () => {
   });
 });
 
+describe("query endpoint lifecycle", () => {
+  it("removes unused legacy query routes", async () => {
+    const [nlResponse, askResponse] = await Promise.all([
+      request(app).post("/api/query/nl").set("authorization", ownerAuthorization).send({ question: "latest heart rate" }),
+      request(app).post("/api/query/ask").set("authorization", ownerAuthorization).send({ question: "latest heart rate" })
+    ]);
+
+    expect(nlResponse.status).toBe(404);
+    expect(askResponse.status).toBe(404);
+  });
+
+  it("advertises supported and experimental endpoint lifecycles", async () => {
+    const [aiResponse, storeFallbackResponse, diagnosticResponse, rebuildResponse] = await Promise.all([
+      request(app).post("/api/query/ai").set("authorization", ownerAuthorization).send({ question: "x" }),
+      request(app).post("/api/query/ask-store").set("authorization", ownerAuthorization).send({ question: "x" }),
+      request(app).post("/api/llm/simple").set("authorization", ownerAuthorization).send({ prompt: "" }),
+      request(app).post("/api/warehouse/rebuild").set("authorization", ownerAuthorization).send({})
+    ]);
+
+    expect(aiResponse.headers["x-lfa-lifecycle"]).toBe("supported");
+    expect(storeFallbackResponse.headers["x-lfa-lifecycle"]).toBe("experimental");
+    expect(diagnosticResponse.headers["x-lfa-lifecycle"]).toBe("experimental");
+    expect(rebuildResponse.headers["x-lfa-lifecycle"]).toBe("experimental");
+  });
+});
+
 // ─── Auth middleware ───────────────────────────────────────────────────────────
 
 const minimalHealthConnectPayload = {
