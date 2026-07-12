@@ -1,7 +1,7 @@
 import type { AnalyticsSummary, Insight, Profile } from "@local-fitness-advisor/shared";
 import { safetyNotice } from "@local-fitness-advisor/shared";
 import { MiniChart, DensityBar } from "../components/Charts.js";
-import { formatProfileSex } from "../utils.js";
+import { formatBloodType, formatProfileSex } from "../utils.js";
 
 function Stat({ label, value }: { label: string; value: number }) {
   return (
@@ -52,27 +52,40 @@ export function DashboardPage({
 }) {
   return (
     <>
-      <section className="hero">
-        <div>
-          <p className="eyebrow">Private health intelligence / local only</p>
-          <h1>Your body data, held close.</h1>
-          <p className="hero-copy">
-            A local insights portal for your Android Health exports, activities, profile, and personal AI summaries.
-          </p>
+      <section className="dashboard-hero">
+        <div className="dashboard-hero-copy">
+          <div className="vitara-lockup">
+            <div className="vitara-mark" aria-hidden="true">
+              <span className="vitara-petal vitara-petal-top" />
+              <span className="vitara-petal vitara-petal-left" />
+              <span className="vitara-petal vitara-petal-right" />
+              <span className="vitara-stem" />
+              <span className="vitara-core" />
+            </div>
+            <p className="vitara-wordmark">Vitara</p>
+            <p className="vitara-tagline">All Your Health. In One Place.</p>
+            <div className="vitara-rule" aria-hidden="true"><span>♥</span></div>
+            <h1 className="vitara-promise"><span>Track.</span> <span>Understand.</span> <span>Thrive.</span></h1>
+          </div>
         </div>
-        <div className="privacy-card">
-          <span className="pulse" aria-hidden="true" />
-          <strong>Encrypted local vault</strong>
+        <article className="panel vault-panel" aria-label="Local vault summary">
+          <div className="vault-panel-head">
+            <h2>Encrypted local vault</h2>
+            <span>Offline by default</span>
+          </div>
           <p>{store?.sourceImports.length ?? 0} imports. Raw files stay off cloud services.</p>
           <DensityBar density={density} />
-        </div>
+        </article>
       </section>
 
       <section className="grid">
         <article className="panel profile-panel">
           <div className="panel-heading-row">
             <h2>Profile context</h2>
-            <button type="button" onClick={onEditProfile}>Edit</button>
+            <div className="profile-toolbar">
+              <button type="button" onClick={onEditProfile}>Edit</button>
+              <button type="button" className="manage-profiles-button" onClick={onManageProfiles}>Manage</button>
+            </div>
           </div>
           <dl className="profile-summary">
             <div><dt>Name</dt><dd>{profile?.displayName ?? "Local user"}</dd></div>
@@ -80,6 +93,7 @@ export function DashboardPage({
             <div><dt>Sex</dt><dd>{formatProfileSex(profile?.sex)}</dd></div>
             <div><dt>Height</dt><dd>{profile?.heightCm ? `${profile.heightCm} cm` : "Not set"}</dd></div>
             <div><dt>Units</dt><dd>{profile?.units === "imperial" ? "Imperial" : "Metric"}</dd></div>
+            <div><dt>Blood type</dt><dd>{formatBloodType(profile?.bloodType)}</dd></div>
           </dl>
           <div className="profile-goals">
             <span>Current focus</span>
@@ -98,32 +112,36 @@ export function DashboardPage({
             <Stat label="Samples" value={analytics?.counts.samples ?? 0} />
             <Stat label="Activities" value={analytics?.counts.activities ?? 0} />
           </div>
-          <div className="metric-list" aria-label="Latest metrics">
-            {analytics?.latestMetrics.length
-              ? analytics.latestMetrics.map((metric) => (
-                  <div className="metric" key={metric.code}>
-                    <span>{metric.label}</span>
-                    <strong>{metric.value} {metric.unit}</strong>
-                    <em data-status={metric.status}>{metric.status}</em>
-                  </div>
-                ))
-              : <p className="empty">Import data to populate latest metrics.</p>}
+          <div className="metric-list-scroll" aria-label="Latest metrics">
+            <div className="metric-list">
+              {analytics?.latestMetrics.length
+                ? analytics.latestMetrics.map((metric) => (
+                    <div className="metric" key={metric.code}>
+                      <span>{metric.label}</span>
+                      <strong>{metric.value} {metric.unit}</strong>
+                      <em data-status={metric.status}>{metric.status}</em>
+                    </div>
+                  ))
+                : <p className="empty">Import data to populate latest metrics.</p>}
+            </div>
           </div>
         </article>
 
         <article className="panel trends-panel">
           <h2>Trend traces</h2>
-          {analytics?.trendCards.length
-            ? analytics.trendCards.map((card) => (
-                <div className="trend" key={card.code}>
-                  <div>
-                    <strong>{card.label}</strong>
-                    <span>{card.summary}</span>
+          <div className="trend-grid">
+            {analytics?.trendCards.length
+              ? analytics.trendCards.map((card) => (
+                  <div className="trend" key={card.code}>
+                    <div>
+                      <strong>{card.label}</strong>
+                      <span>{card.summary}</span>
+                    </div>
+                    <MiniChart label={card.label} points={card.points} />
                   </div>
-                  <MiniChart label={card.label} points={card.points} />
-                </div>
-              ))
-            : <p className="empty">Two or more dated readings are needed for trend traces.</p>}
+                ))
+              : <p className="empty">Two or more dated readings are needed for trend traces.</p>}
+          </div>
         </article>
 
         <article className="panel insight-panel">

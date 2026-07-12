@@ -1,5 +1,7 @@
 export type MeasurementKind = "point" | "interval" | "event" | "panel-component";
 
+export type BloodType = "a-positive" | "a-negative" | "b-positive" | "b-negative" | "ab-positive" | "ab-negative" | "o-positive" | "o-negative" | "unknown";
+
 export type SourceKind =
   | "health-connect"
   | "manual-entry"
@@ -16,6 +18,7 @@ export interface Profile {
   sex?: "female" | "male" | "intersex" | "unknown" | "not-specified";
   bloodType?: string;
   heightCm?: number;
+  bloodType?: BloodType;
   goalSummary?: string;
   cloudAiConsent?: CloudAiConsent;
   units: "metric" | "imperial";

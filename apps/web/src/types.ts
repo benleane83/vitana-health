@@ -2,7 +2,8 @@
  * Shared front-end types extracted from App.tsx.
  */
 
-export type AppRoute = "dashboard" | "biological-age" | "summary" | "import" | "export" | "query" | "settings";
+export type AppRoute = "dashboard" | "import" | "track" | "insights" | "export" | "settings";
+export type InsightsTab = "biological-age" | "ai-query";
 export type SummarySort = "name" | "count" | "recency";
 export type ImportMode = "manual" | "upload" | "scan" | "fitness";
 export type ScanKind = "body-composition" | "blood-test";
