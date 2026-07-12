@@ -12,6 +12,7 @@ const stringRecord = z.record(z.unknown());
 const profileSchema = z.object({
   id: z.string(), displayName: z.string(), birthYear: z.number().optional(),
   sex: z.enum(["female", "male", "intersex", "unknown", "not-specified"]).optional(),
+  bloodType: z.string().optional(),
   heightCm: z.number().optional(), goalSummary: z.string().optional(),
   cloudAiConsent: z.object({
     enabled: z.boolean(), providerScopeAccepted: z.boolean(), consentedAt: z.string().optional(), consentVersion: z.string().optional()
@@ -65,7 +66,7 @@ const storeFields = {
   }).strict()),
   auditEvents: z.array(z.object({
     id: z.string(), createdAt: z.string(),
-    eventType: z.enum(["store-created", "profile-updated", "import-processed", "insight-generated", "export-created", "observation-deleted", "observation-type-deleted"]),
+    eventType: z.enum(["store-created", "profile-updated", "migration-applied", "import-processed", "insight-generated", "export-created", "observation-deleted", "observation-type-deleted"]),
     detail: z.string()
   }).strict())
 };

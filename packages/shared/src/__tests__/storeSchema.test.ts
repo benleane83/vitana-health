@@ -17,6 +17,27 @@ describe("persisted health store schema", () => {
     expect(() => parsePersistedHealthStore(store({ observations: {} }))).toThrow();
   });
 
+  it("preserves previously persisted profile metadata and migration audit events", () => {
+    const result = parsePersistedHealthStore(store({
+      profile: {
+        id: "self",
+        displayName: "Test",
+        bloodType: "unknown",
+        units: "metric",
+        updatedAt: "2026-01-01T00:00:00.000Z"
+      },
+      auditEvents: [{
+        id: "audit-1",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        eventType: "migration-applied",
+        detail: "Legacy store migrated."
+      }]
+    }));
+
+    expect(result.data.profile.bloodType).toBe("unknown");
+    expect(result.data.auditEvents[0]?.eventType).toBe("migration-applied");
+  });
+
   it("migrates v1 legacy lab fields once and removes obsolete fields", () => {
     const result = parsePersistedHealthStore(store({
       schemaVersion: 1,

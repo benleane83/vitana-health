@@ -14,6 +14,7 @@ export interface Profile {
   displayName: string;
   birthYear?: number;
   sex?: "female" | "male" | "intersex" | "unknown" | "not-specified";
+  bloodType?: string;
   heightCm?: number;
   goalSummary?: string;
   cloudAiConsent?: CloudAiConsent;
@@ -165,6 +166,7 @@ export interface AuditEvent {
   eventType:
     | "store-created"
     | "profile-updated"
+    | "migration-applied"
     | "import-processed"
     | "insight-generated"
     | "export-created"
