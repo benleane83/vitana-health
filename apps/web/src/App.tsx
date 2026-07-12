@@ -17,7 +17,7 @@ import type {
 import { safetyNotice } from "@local-fitness-advisor/shared";
 import { api } from "./api.js";
 import type { AiQueryResult, LlmConfig, PairedDevice, PendingPairing } from "./api.js";
-import type { AppRoute, BodyCompositionEditableRow, ImportMode, ManualMarkerRow, ScanKind } from "./types.js";
+import type { AppRoute, BodyCompositionEditableRow, ImportMode, InsightsTab, ManualMarkerRow, ScanKind } from "./types.js";
 import { todayIsoDate, numberOrUndefined, readFileAsBase64, isSupportedBodyCompMimeType } from "./utils.js";
 import { ConfirmDialog } from "./components/ConfirmDialog.js";
 import { ProfileEditDialog, ProfileManagerDialog } from "./components/ProfileDialogs.js";
@@ -38,6 +38,7 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();
   const [route, setRoute] = useState<AppRoute>(() => routeFromPathname(window.location.pathname));
+  const [insightsTab, setInsightsTab] = useState<InsightsTab>(() => insightsTabFromPathname(window.location.pathname));
   const [importMode, setImportMode] = useState<ImportMode>(() => importModeFromPathname(window.location.pathname));
   const [summaryDetailCode, setSummaryDetailCode] = useState<string | undefined>(
     () => summaryDetailCodeFromPathname(window.location.pathname)
@@ -78,6 +79,7 @@ export function App() {
   const [cloudConsentBusy, setCloudConsentBusy] = useState(false);
 
   const [pendingPairings, setPendingPairings] = useState<PendingPairing[]>([]);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
 
   // Accessible confirmation dialog state (replaces window.confirm)
   const [confirmState, setConfirmState] = useState<{
@@ -91,6 +93,7 @@ export function App() {
 
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const bodyCompInputRef = useRef<HTMLInputElement>(null);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
 
   const recordedMeasurementTypes = useMemo(
     () => [...(store?.measurementTypes ?? [])].sort((left, right) => left.display.localeCompare(right.display)),
@@ -132,6 +135,7 @@ export function App() {
   useEffect(() => {
     const onPopState = () => {
       setRoute(routeFromPathname(window.location.pathname));
+      setInsightsTab(insightsTabFromPathname(window.location.pathname));
       setImportMode(importModeFromPathname(window.location.pathname));
       setSummaryDetailCode(summaryDetailCodeFromPathname(window.location.pathname));
     };
@@ -139,9 +143,27 @@ export function App() {
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
+  useEffect(() => {
+    if (!profileMenuOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!profileMenuRef.current?.contains(event.target as Node)) {
+        setProfileMenuOpen(false);
+      }
+    };
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setProfileMenuOpen(false);
+    };
+    window.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("keydown", onEscape);
+    return () => {
+      window.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onEscape);
+    };
+  }, [profileMenuOpen]);
+
   // Summary route data
   useEffect(() => {
-    if (route !== "summary") return;
+    if (route !== "track") return;
     let cancelled = false;
     setSummaryBusy(true);
     setSummaryError(undefined);
@@ -162,7 +184,7 @@ export function App() {
   }, [route]);
 
   useEffect(() => {
-    if (route !== "biological-age") return;
+    if (route !== "insights" || insightsTab !== "biological-age") return;
     let cancelled = false;
     setBiologicalAgeBusy(true);
     setBiologicalAgeError(undefined);
@@ -173,11 +195,11 @@ export function App() {
       })
       .finally(() => { if (!cancelled) setBiologicalAgeBusy(false); });
     return () => { cancelled = true; };
-  }, [route]);
+  }, [route, insightsTab]);
 
   // Summary detail data
   useEffect(() => {
-    if (route !== "summary" || !summaryDetailCode) {
+    if (route !== "track" || !summaryDetailCode) {
       setSummaryDetail(undefined);
       setSummaryDetailError(undefined);
       setSummaryDetailBusy(false);
@@ -238,7 +260,7 @@ export function App() {
 
   async function refreshForCurrentRoute() {
     await refresh();
-    if (route === "summary") {
+    if (route === "track") {
       const nextSummary = await api.summary();
       applySummary(nextSummary);
       if (summaryDetailCode) {
@@ -255,24 +277,30 @@ export function App() {
   function navigate(nextRoute: AppRoute, nextImportMode: ImportMode = importMode) {
     const routePaths: Record<AppRoute, string> = {
       dashboard: "/",
-      "biological-age": "/biological-age",
       import: importModePath(nextImportMode),
-      summary: summaryPath(),
+      track: trackPath(),
+      insights: insightsPath(insightsTab),
       export: "/export",
-      query: "/query",
       settings: "/settings"
     };
     const nextPath = routePaths[nextRoute] ?? "/";
     if (window.location.pathname !== nextPath) window.history.pushState({}, "", nextPath);
     if (nextRoute === "import") setImportMode(nextImportMode);
-    if (nextRoute === "summary") setSummaryDetailCode(undefined);
+    if (nextRoute === "track") setSummaryDetailCode(undefined);
     setRoute(nextRoute);
   }
 
-  function navigateSummaryDetail(measurementCode: string) {
-    const nextPath = summaryPath(measurementCode);
+  function navigateInsights(nextTab: InsightsTab) {
+    const nextPath = insightsPath(nextTab);
     if (window.location.pathname !== nextPath) window.history.pushState({}, "", nextPath);
-    setRoute("summary");
+    setInsightsTab(nextTab);
+    setRoute("insights");
+  }
+
+  function navigateSummaryDetail(measurementCode: string) {
+    const nextPath = trackPath(measurementCode);
+    if (window.location.pathname !== nextPath) window.history.pushState({}, "", nextPath);
+    setRoute("track");
     setSummaryDetailCode(measurementCode);
   }
 
@@ -340,6 +368,7 @@ export function App() {
         birthYear: numberOrUndefined(form.get("birthYear")),
         sex: String(form.get("sex") || "not-specified") as Profile["sex"],
         heightCm: numberOrUndefined(form.get("heightCm")),
+        bloodType: String(form.get("bloodType") || "unknown") as Profile["bloodType"],
         goalSummary: String(form.get("goalSummary") || ""),
         units: String(form.get("units") || "metric") as Profile["units"]
       });
@@ -649,11 +678,10 @@ export function App() {
 
   const navTabIds: Record<AppRoute, string> = {
     dashboard: "nav-tab-dashboard",
-    "biological-age": "nav-tab-biological-age",
     import: "nav-tab-import",
-    summary: "nav-tab-summary",
+    track: "nav-tab-track",
+    insights: "nav-tab-insights",
     export: "nav-tab-export",
-    query: "nav-tab-query",
     settings: "nav-tab-settings"
   };
 
@@ -661,16 +689,15 @@ export function App() {
     <main className="shell">
       {/* Navigation tablist */}
       <nav className="route-nav" aria-label="Page navigation">
-        <div role="tablist" aria-label="App sections">
-          {(["dashboard", "biological-age", "import", "summary", "export", "query", "settings"] as AppRoute[]).map((r) => {
+        <div className="route-nav-main" role="tablist" aria-label="App sections">
+          {(["dashboard", "import", "track", "insights", "export"] as AppRoute[]).map((r) => {
             const labels: Record<AppRoute, string> = {
               dashboard: "Dashboard",
-              "biological-age": "Biological Age",
               import: "Import",
-              summary: "Health Data Summary",
+              track: "Track",
+              insights: "Insights",
               export: "Export",
-              query: "AI Query",
-              settings: "⚙ Settings"
+              settings: "Settings"
             };
             const panelId = `route-panel-${r}`;
             return (
@@ -682,20 +709,77 @@ export function App() {
                 aria-controls={panelId}
                 className={route === r ? "active" : ""}
                 tabIndex={route === r ? 0 : -1}
-                onClick={() => navigate(r)}
-                aria-label={r === "settings" ? "Settings" : undefined}
+                onClick={() => {
+                  setProfileMenuOpen(false);
+                  navigate(r);
+                }}
               >
                 {labels[r]}
               </button>
             );
           })}
         </div>
-        {activeProfile ? (
-          <span className="active-profile-pill">Profile: {activeProfile.displayName}</span>
-        ) : null}
-        <button type="button" className="manage-profiles-button" onClick={() => setProfileManagerOpen(true)}>
-          Manage profiles
-        </button>
+        <div className="route-nav-actions">
+          <button
+            type="button"
+            id={navTabIds.settings}
+            className={route === "settings" ? "active settings-button" : "settings-button"}
+            aria-label="Settings"
+            aria-pressed={route === "settings"}
+            onClick={() => {
+              setProfileMenuOpen(false);
+              navigate("settings");
+            }}
+          >
+            <span aria-hidden="true">⚙</span>
+          </button>
+          <div className="profile-menu" ref={profileMenuRef}>
+          <button
+            type="button"
+            className="active-profile-pill profile-menu-trigger"
+            aria-haspopup="menu"
+            aria-expanded={profileMenuOpen}
+            onClick={() => setProfileMenuOpen((open) => !open)}
+          >
+            <span className="profile-menu-label">{activeProfile?.displayName ?? "Profile"}</span>
+            <span className="profile-menu-chevron" aria-hidden="true">▾</span>
+          </button>
+          {profileMenuOpen ? (
+            <div className="profile-menu-popover" role="menu" aria-label="Profile actions">
+              <p className="profile-menu-title">Switch profile</p>
+              {profiles.map((entry) => (
+                <button
+                  key={entry.id}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={entry.id === activeProfileId}
+                  className={`profile-menu-item ${entry.id === activeProfileId ? "active" : ""}`}
+                  onClick={() => {
+                    setProfileMenuOpen(false);
+                    if (entry.id !== activeProfileId) {
+                      void switchProfile(entry.id);
+                    }
+                  }}
+                >
+                  {entry.displayName}
+                </button>
+              ))}
+              <div className="profile-menu-divider" role="separator" />
+              <button
+                type="button"
+                role="menuitem"
+                className="profile-menu-item"
+                onClick={() => {
+                  setProfileMenuOpen(false);
+                  setProfileManagerOpen(true);
+                }}
+              >
+                Manage profiles
+              </button>
+            </div>
+          ) : null}
+          </div>
+        </div>
       </nav>
 
       {/* Global status/notice — live region */}
@@ -723,14 +807,10 @@ export function App() {
             activeProfile={activeProfile}
             onEditProfile={() => setProfileEditorOpen(true)}
             onManageProfiles={() => setProfileManagerOpen(true)}
-            onNavigateSummary={() => navigate("summary")}
+            onNavigateSummary={() => navigate("track")}
             onGenerateInsight={() => { void generateInsight(); }}
           />
         ) : null}
-      </div>
-
-      <div id="route-panel-biological-age" role="tabpanel" aria-labelledby={navTabIds["biological-age"]} hidden={route !== "biological-age"}>
-        {route === "biological-age" ? <BiologicalAgePage report={biologicalAge} loading={biologicalAgeBusy} error={biologicalAgeError} /> : null}
       </div>
 
       <div id="route-panel-settings" role="tabpanel" aria-labelledby={navTabIds.settings} hidden={route !== "settings"}>
@@ -784,19 +864,19 @@ export function App() {
       </div>
 
       <div
-        id="route-panel-summary"
+        id="route-panel-track"
         role="tabpanel"
-        aria-labelledby={navTabIds.summary}
-        hidden={route !== "summary"}
+        aria-labelledby={navTabIds.track}
+        hidden={route !== "track"}
       >
-        {route === "summary" ? (
+        {route === "track" ? (
           summaryDetailCode ? (
             <ObservationTypeDetailPage
               detail={summaryDetail}
               loading={summaryDetailBusy}
               error={summaryDetailError}
               actionBusy={summaryDetailActionBusy}
-              onBack={() => navigate("summary")}
+              onBack={() => navigate("track")}
               onDeleteObservation={deleteObservationEntry}
               onDeleteAll={deleteObservationsByType}
             />
@@ -812,6 +892,28 @@ export function App() {
               onSelectRow={navigateSummaryDetail}
             />
           )
+        ) : null}
+      </div>
+
+      <div id="route-panel-insights" role="tabpanel" aria-labelledby={navTabIds.insights} hidden={route !== "insights"}>
+        {route === "insights" ? (
+          <section className="insights-shell">
+            <div className="insights-header">
+              <div>
+                <p className="eyebrow">Health analysis tools</p>
+                <h1>Insights</h1>
+              </div>
+              <div className="insights-tabs" role="tablist" aria-label="Insight tools">
+                <button type="button" role="tab" aria-selected={insightsTab === "biological-age"} className={insightsTab === "biological-age" ? "active" : ""} onClick={() => navigateInsights("biological-age")}>Biological Age</button>
+                <button type="button" role="tab" aria-selected={insightsTab === "ai-query"} className={insightsTab === "ai-query" ? "active" : ""} onClick={() => navigateInsights("ai-query")}>AI Query</button>
+              </div>
+            </div>
+            {insightsTab === "biological-age" ? (
+              <BiologicalAgePage report={biologicalAge} loading={biologicalAgeBusy} error={biologicalAgeError} />
+            ) : (
+              <QueryPage question={aiQuestion} onQuestionChange={setAiQuestion} onSubmit={submitAiQuery} busy={aiBusy} cloudProvider={llmConfig?.provider} cloudConsent={store?.profile.cloudAiConsent} cloudConsentBusy={cloudConsentBusy} onCloudConsentChange={(enabled) => { void setCloudConsent(enabled); }} result={aiResult} error={aiError} />
+            )}
+          </section>
         ) : null}
       </div>
 
@@ -833,29 +935,6 @@ export function App() {
         ) : null}
       </div>
 
-      <div
-        id="route-panel-query"
-        role="tabpanel"
-        aria-labelledby={navTabIds.query}
-        hidden={route !== "query"}
-      >
-        {route === "query" ? (
-          <QueryPage
-            question={aiQuestion}
-            onQuestionChange={setAiQuestion}
-            onSubmit={submitAiQuery}
-            busy={aiBusy}
-            cloudProvider={llmConfig?.provider}
-            cloudConsent={store?.profile.cloudAiConsent}
-            cloudConsentBusy={cloudConsentBusy}
-            onCloudConsentChange={(enabled) => {
-              void setCloudConsent(enabled);
-            }}
-            result={aiResult}
-            error={aiError}
-          />
-        ) : null}
-      </div>
 
       {/* Profile dialogs */}
       {profileEditorOpen ? (
@@ -915,18 +994,23 @@ function normalizeApiError(raw: string): { code?: string; message: string } {
 // ─── Routing helpers ──────────────────────────────────────────────────────────
 
 function routeFromPathname(pathname: string): AppRoute {
-  if (pathname === "/biological-age") return "biological-age";
-  if (pathname === "/summary" || pathname.startsWith("/summary/")) return "summary";
+  if (pathname === "/insights" || pathname.startsWith("/insights/")) return "insights";
+  if (pathname === "/track" || pathname.startsWith("/track/")) return "track";
   if (pathname === "/import" || pathname.startsWith("/import/") || pathname === "/labs") return "import";
-  if (pathname === "/query") return "query";
   if (pathname === "/export") return "export";
   if (pathname === "/settings") return "settings";
   return "dashboard";
 }
 
+function insightsTabFromPathname(pathname: string): InsightsTab {
+  if (pathname === "/insights/ai-query") return "ai-query";
+  return "biological-age";
+}
+
 function summaryDetailCodeFromPathname(pathname: string): string | undefined {
-  if (!pathname.startsWith("/summary/")) return undefined;
-  const raw = pathname.slice("/summary/".length);
+  const prefix = pathname.startsWith("/track/") ? "/track/" : undefined;
+  if (!prefix) return undefined;
+  const raw = pathname.slice(prefix.length);
   if (!raw) return undefined;
   try {
     return decodeURIComponent(raw);
@@ -946,8 +1030,12 @@ function importModePath(mode: ImportMode): string {
   return `/import/${mode === "fitness" ? "fitness-tracker" : mode}`;
 }
 
-function summaryPath(measurementCode?: string): string {
-  return measurementCode ? `/summary/${encodeURIComponent(measurementCode)}` : "/summary";
+function insightsPath(tab: InsightsTab): string {
+  return `/insights/${tab}`;
+}
+
+function trackPath(measurementCode?: string): string {
+  return measurementCode ? `/track/${encodeURIComponent(measurementCode)}` : "/track";
 }
 
 // ─── Manual lab helpers ───────────────────────────────────────────────────────

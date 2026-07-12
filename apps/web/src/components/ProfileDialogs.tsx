@@ -96,6 +96,19 @@ export function ProfileEditDialog({
           <option value="imperial">Imperial</option>
         </select>
 
+        <label htmlFor="profile-bloodType">Blood type</label>
+        <select id="profile-bloodType" name="bloodType" defaultValue={profile?.bloodType ?? "unknown"}>
+          <option value="unknown">Unknown</option>
+          <option value="a-positive">A+</option>
+          <option value="a-negative">A-</option>
+          <option value="b-positive">B+</option>
+          <option value="b-negative">B-</option>
+          <option value="ab-positive">AB+</option>
+          <option value="ab-negative">AB-</option>
+          <option value="o-positive">O+</option>
+          <option value="o-negative">O-</option>
+        </select>
+
         <label htmlFor="profile-goalSummary" className="wide">Goals</label>
         <textarea
           id="profile-goalSummary"
