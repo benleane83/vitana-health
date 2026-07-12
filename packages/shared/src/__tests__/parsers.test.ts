@@ -24,8 +24,8 @@ describe("checksum", () => {
     expect(checksum("")).not.toBe(checksum(" "));
   });
 
-  it("starts with the expected prefix", () => {
-    expect(checksum("test")).toMatch(/^fnv1a-[0-9a-f]{8}$/);
+  it("returns a SHA-256 digest", () => {
+    expect(checksum("test")).toBe("sha256-9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08");
   });
 });
 

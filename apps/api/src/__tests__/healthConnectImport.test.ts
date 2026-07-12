@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { checksum } from "@local-fitness-advisor/shared";
 import { parseHealthConnectImport } from "../healthConnectImport.js";
 import type { HealthConnectImportRequest } from "../healthConnectImport.js";
 
@@ -41,6 +42,19 @@ describe("parseHealthConnectImport — minimal valid payload", () => {
     expect(result.sourceImport.sourceKind).toBe("health-connect");
     expect(result.sourceImport.status).toBe("processed");
     expect(result.sourceImport.fileName).toContain("health-connect");
+    expect(result.sourceImport.checksum).toMatch(/^sha256-[0-9a-f]{64}$/);
+    expect(result.sourceImport.checksum).toBe(
+      checksum(
+        JSON.stringify({
+          rangeStart: baseRequest.rangeStart,
+          rangeEnd: baseRequest.rangeEnd,
+          sourceId: result.dataSource.id,
+          observations: [],
+          timeSeriesSamples: [],
+          activitySessions: []
+        })
+      )
+    );
   });
 
   it("returns empty collections for empty payload", () => {
