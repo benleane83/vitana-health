@@ -20,6 +20,18 @@ const phenoAgeInputs = [
 
 type PhenoAgeCode = (typeof phenoAgeInputs)[number][0];
 
+const plausibleRanges: Record<PhenoAgeCode, readonly [number, number]> = {
+  albumin: [10, 70],
+  creatinine: [10, 1_500],
+  glucose: [1, 40],
+  high_sensitivity_c_reactive_protein: [0.001, 100],
+  lymphocyte_percentage: [1, 99],
+  mean_corpuscular_volume: [40, 150],
+  red_cell_distribution_width: [5, 40],
+  alkaline_phosphatase: [1, 2_000],
+  white_blood_cell_count: [0.1, 200]
+};
+
 const phenoAgeCitation =
   "Levine ME et al. An epigenetic biomarker of aging for lifespan and healthspan. Aging. 2018;10(4):573-591. doi:10.18632/aging.101414.";
 
@@ -36,12 +48,7 @@ export function calculateBiologicalAge(store: HealthStoreData, generatedAt = new
 
 function calculatePhenoAge(store: HealthStoreData, generatedAt: string): BiologicalAgeModelResult {
   const observations = Array.isArray(store.observations) ? store.observations : [];
-  const labPanelIds = new Set(
-    (Array.isArray(store.observationGroups) ? store.observationGroups : [])
-      .filter((group) => group.kind === "lab_panel")
-      .map((group) => group.id)
-  );
-  const candidate = latestInputs(observations, labPanelIds);
+  const candidate = latestInputs(observations);
   const birthYear = typeof store.profile?.birthYear === "number" ? store.profile.birthYear : undefined;
   const chronologicalAge = ageForDate(birthYear, candidate?.collectedAt ?? generatedAt);
 
@@ -97,12 +104,9 @@ function calculatePhenoAge(store: HealthStoreData, generatedAt: string): Biologi
   };
 }
 
-function latestInputs(observations: Observation[], labPanelIds: Set<string>) {
-  const eligible = observations.filter(
-    (observation) => !observation.observationGroupId || labPanelIds.has(observation.observationGroupId)
-  );
+function latestInputs(observations: Observation[]) {
   const inputs = phenoAgeInputs.map(([code, label, normalizedUnit]) => {
-    const observation = [...eligible]
+    const observation = [...observations]
       .filter((entry) => entry.measurementCode === code)
       .sort((a, b) => b.observedAt.localeCompare(a.observedAt))[0];
     return inputFromObservation(code, label, normalizedUnit, observation);
@@ -131,12 +135,19 @@ function inputFromObservation(
   normalizedUnit: string,
   observation: Observation | undefined
 ): BiologicalAgeInput {
-  if (!observation) return { code, label, normalizedUnit, status: "missing", detail: "Not found in the selected lab panel." };
+  if (!observation) return { code, label, normalizedUnit, status: "missing", detail: "Not found in local observations." };
   const normalizedValue = normalizeValue(code, observation.value, observation.unit);
   if (normalizedValue === undefined) {
     return {
       code, label, value: observation.value, unit: observation.unit, normalizedUnit, observedAt: observation.observedAt,
       status: "invalid", detail: `Unsupported unit "${observation.unit}" or invalid value.`
+    };
+  }
+  const [minimum, maximum] = plausibleRanges[code];
+  if (normalizedValue < minimum || normalizedValue > maximum) {
+    return {
+      code, label, value: observation.value, unit: observation.unit, normalizedUnit, observedAt: observation.observedAt,
+      status: "invalid", detail: `Value is outside the supported ${minimum}-${maximum} ${normalizedUnit} range; check the value and unit.`
     };
   }
   return {

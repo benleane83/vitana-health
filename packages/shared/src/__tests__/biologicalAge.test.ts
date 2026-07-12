@@ -57,6 +57,31 @@ describe("calculateBiologicalAge", () => {
     expect(result.inputs.find((input) => input.code === "glucose")?.status).toBe("used");
   });
 
+  it("uses canonical laboratory measurements from generic observation groups", () => {
+    const store = makeStore({
+      observationGroups: [{ id: "panel-1", kind: "custom", label: "Imported observations", collectedAt: "2026-06-01T00:00:00Z" }]
+    });
+
+    const result = calculateBiologicalAge(store).models[0];
+
+    expect(result.status).toBe("available");
+    expect(result.inputs.every((input) => input.status === "used")).toBe(true);
+  });
+
+  it("rejects implausible values even when the unit is supported", () => {
+    const store = makeStore();
+    const glucose = store.observations.find((observation) => observation.measurementCode === "glucose")!;
+    glucose.value = 95;
+
+    const result = calculateBiologicalAge(store).models[0];
+
+    expect(result.status).toBe("incomplete");
+    expect(result.inputs.find((input) => input.code === "glucose")).toMatchObject({
+      status: "invalid",
+      detail: expect.stringContaining("1-40 mmol/L")
+    });
+  });
+
   it("calls unsupported units invalid and requires a plausible adult chronological age", () => {
     const store = makeStore();
     store.profile.birthYear = 2020;
