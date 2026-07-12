@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
-import { dirname, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 import duckdb from "duckdb";
 
 const markerName = ".lfa-duckdb-poc";
@@ -139,7 +139,9 @@ function escapeSqlLiteral(value: string): string {
 }
 
 function isWithin(parent: string, child: string): boolean {
-  return child === parent || child.startsWith(`${parent}/`);
+  const pathFromParent = relative(parent, child);
+  return pathFromParent.length > 0 && pathFromParent !== ".." && !pathFromParent.startsWith("../") &&
+    !pathFromParent.startsWith("..\\") && !isAbsolute(pathFromParent);
 }
 
 function exec(connection: duckdb.Connection, sql: string): Promise<void> {

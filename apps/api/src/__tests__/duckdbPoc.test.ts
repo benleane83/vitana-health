@@ -23,7 +23,9 @@ describe("encrypted DuckDB PoC boundary", () => {
     const databasePath = join(root, "databases", "profile.duckdb-poc");
     await createPocSchema(root, databasePath, Buffer.alloc(32, 1).toString("base64"));
     expect(existsSync(databasePath)).toBe(true);
-    expect(() => createPocSchema(root, join(tmpdir(), "outside.duckdb"), "key")).toThrow();
+    await expect(createPocSchema(root, join(tmpdir(), "outside.duckdb"), "key")).rejects.toThrow(
+      "must remain beneath"
+    );
   });
 
   it("proves native AES-GCM encryption and wrong-key refusal", async () => {
