@@ -129,9 +129,17 @@ async function attachEncrypted(
   key?: string
 ): Promise<void> {
   const options = key
-    ? ` (ENCRYPTION_KEY '${escapeSqlLiteral(key)}', ENCRYPTION_CIPHER 'AES-GCM')`
+    ? ` (ENCRYPTION_KEY '${assertEncryptionKey(key)}', ENCRYPTION_CIPHER 'AES-GCM')`
     : "";
   await exec(database.connection, `ATTACH '${escapeSqlLiteral(databasePath)}' AS poc${options}; USE poc;`);
+}
+
+function assertEncryptionKey(value: string): string {
+  const key = Buffer.from(value, "base64");
+  if (key.length !== 32 || key.toString("base64") !== value) {
+    throw new Error("DuckDB PoC encryption keys must be canonical base64-encoded 256-bit values.");
+  }
+  return value;
 }
 
 function escapeSqlLiteral(value: string): string {
