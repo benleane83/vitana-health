@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { copyFileSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createCipheriv, randomBytes, scryptSync } from "node:crypto";
 import { HealthStore, ProfileStoreManager } from "../store.js";
 import { buildManualLabEntryImport } from "@local-fitness-advisor/shared";
 
@@ -35,6 +36,17 @@ function makeManualImport(importedAt = "2026-01-01T00:00:00.000Z") {
     },
     importedAt
   );
+}
+
+function writeEncryptedFixture(path: string, data: unknown): void {
+  const salt = randomBytes(16);
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", scryptSync(process.env.LFA_SECRET!, salt, 32), iv);
+  const payload = Buffer.concat([cipher.update(JSON.stringify(data)), cipher.final()]);
+  writeFileSync(path, JSON.stringify({
+    version: 1, salt: salt.toString("base64"), iv: iv.toString("base64"),
+    tag: cipher.getAuthTag().toString("base64"), payload: payload.toString("base64")
+  }));
 }
 
 describe("HealthStore — initialisation", () => {
@@ -175,6 +187,26 @@ describe("HealthStore — persistence", () => {
     expect(recovered.snapshot().observations.length).toBeGreaterThan(0);
     expect(recovered.snapshot().profile.id).toBe("self");
     expect(existsSync(dataPath)).toBe(true);
+  });
+
+  it("backs up and rewrites a validated v1 store through the legacy migration", () => {
+    const initial = makeStore().snapshot({ includeRaw: true });
+    const dataPath = join(tempDir, "health-store-self.enc");
+    writeEncryptedFixture(dataPath, {
+      ...initial,
+      schemaVersion: 1,
+      observationGroups: undefined,
+      labPanels: [{ id: "panel-1", collectedAt: "2026-01-01T00:00:00.000Z", panelName: "Legacy", sourceId: "source-1" }],
+      labMarkers: [{ id: "marker-1", panelId: "panel-1", measurementCode: "glucose", value: 90, unit: "mg/dL" }],
+      sleepSessions: [],
+      sleepStageIntervals: []
+    });
+
+    const migrated = makeStore().snapshot();
+    expect(migrated.schemaVersion).toBe(2);
+    expect(migrated.observationGroups).toEqual(expect.arrayContaining([expect.objectContaining({ id: "group_legacy_panel-1" })]));
+    expect(migrated.observations).toEqual(expect.arrayContaining([expect.objectContaining({ id: "obs_legacy_marker-1" })]));
+    expect(existsSync(`${dataPath}.bak`)).toBe(true);
   });
 });
 
