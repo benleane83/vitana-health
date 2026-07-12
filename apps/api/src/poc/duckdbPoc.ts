@@ -131,19 +131,25 @@ async function attachEncrypted(
   const options = key
     ? ` (ENCRYPTION_KEY '${assertEncryptionKey(key)}', ENCRYPTION_CIPHER 'AES-GCM')`
     : "";
-  await exec(database.connection, `ATTACH '${escapeSqlLiteral(databasePath)}' AS poc${options}; USE poc;`);
+  await exec(database.connection, `ATTACH '${assertDatabasePath(databasePath)}' AS poc${options}; USE poc;`);
 }
 
 function assertEncryptionKey(value: string): string {
-  const key = Buffer.from(value, "base64");
-  if (key.length !== 32 || key.toString("base64") !== value) {
-    throw new Error("DuckDB PoC encryption keys must be canonical base64-encoded 256-bit values.");
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(value)) {
+    throw new Error("DuckDB PoC encryption keys must be base64-encoded values.");
   }
-  return value;
+  const key = Buffer.from(value, "base64");
+  if (key.length !== 32) {
+    throw new Error("DuckDB PoC encryption keys must be 256-bit values.");
+  }
+  return key.toString("base64");
 }
 
-function escapeSqlLiteral(value: string): string {
-  return value.replaceAll("'", "''");
+function assertDatabasePath(value: string): string {
+  if (/['\0\r\n]/.test(value)) {
+    throw new Error("DuckDB PoC database paths contain unsupported characters.");
+  }
+  return value;
 }
 
 function isWithin(parent: string, child: string): boolean {

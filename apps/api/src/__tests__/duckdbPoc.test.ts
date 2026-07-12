@@ -23,7 +23,7 @@ describe("encrypted DuckDB PoC boundary", () => {
     const databasePath = join(root, "databases", "profile.duckdb-poc");
     await createPocSchema(root, databasePath, Buffer.alloc(32, 1).toString("base64"));
     expect(existsSync(databasePath)).toBe(true);
-    await expect(createPocSchema(root, join(tmpdir(), "outside.duckdb"), "key")).rejects.toThrow(
+    await expect(createPocSchema(root, join(tmpdir(), "outside.duckdb"), Buffer.alloc(32, 2).toString("base64"))).rejects.toThrow(
       "must remain beneath"
     );
   });
