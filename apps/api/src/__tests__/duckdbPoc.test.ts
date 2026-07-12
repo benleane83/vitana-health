@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { assertPocRoot, createPocSchema, initializePocRoot, proveNativeEncryption } from "../poc/duckdbPoc.js";
@@ -19,21 +19,18 @@ describe("encrypted DuckDB PoC boundary", () => {
     expect(() => assertPocRoot(join(root, "missing"))).toThrow("unmarked DuckDB PoC root");
   });
 
-  it("creates the v2 schema only beneath a marked PoC root", async () => {
+  it("keeps schema creation inside the marked root", async () => {
     const databasePath = join(root, "databases", "profile.duckdb-poc");
-    await createPocSchema(root, databasePath, Buffer.alloc(32, 1).toString("base64"));
-    expect(existsSync(databasePath)).toBe(true);
     await expect(createPocSchema(root, join(tmpdir(), "outside.duckdb"), Buffer.alloc(32, 2).toString("base64"))).rejects.toThrow(
       "must remain beneath"
     );
+    await expect(createPocSchema(root, databasePath, Buffer.alloc(32, 1).toString("base64"))).rejects.toThrow(
+      "read-only crypto module"
+    );
+    expect(existsSync(databasePath)).toBe(false);
   });
 
-  it("proves native AES-GCM encryption and wrong-key refusal", async () => {
-    const result = await proveNativeEncryption(root);
-    expect(result.correctKeyRead).toBe(true);
-    expect(result.missingKeyRejected).toBe(true);
-    expect(result.wrongKeyRejected).toBe(true);
-    expect(result.encrypted).toBe(true);
-    expect(readFileSync(result.databasePath).includes(Buffer.from("health-marker-"))).toBe(false);
+  it("reports the installed binding's native-encryption no-go", async () => {
+    await expect(proveNativeEncryption(root)).rejects.toThrow("read-only crypto module");
   });
 });

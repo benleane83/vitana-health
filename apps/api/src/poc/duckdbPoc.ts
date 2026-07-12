@@ -108,9 +108,6 @@ async function attachFails(root: string, databasePath: string, key?: string): Pr
 async function openDatabase(root: string): Promise<{ database: duckdb.Database; connection: duckdb.Connection }> {
   const database = await new Promise<duckdb.Database>((resolvePromise, reject) => {
     const opened = new duckdb.Database(":memory:", {
-      enable_external_access: "false",
-      autoinstall_known_extensions: "false",
-      autoload_known_extensions: "false",
       temp_directory: resolve(root, "temp")
     }, (error) => {
       if (error) {
@@ -129,9 +126,13 @@ async function attachEncrypted(
   key?: string
 ): Promise<void> {
   const options = key
-    ? ` (ENCRYPTION_KEY '${assertEncryptionKey(key)}', ENCRYPTION_CIPHER 'AES-GCM')`
+    ? ` (ENCRYPTION_KEY '${assertEncryptionKey(key)}', ENCRYPTION_CIPHER 'GCM')`
     : "";
-  await exec(database.connection, `ATTACH '${assertDatabasePath(databasePath)}' AS poc${options}; USE poc;`);
+  await exec(
+    database.connection,
+    `ATTACH '${assertDatabasePath(databasePath)}' AS poc${options}; USE poc; ` +
+      "SET autoinstall_known_extensions = false; SET autoload_known_extensions = false; SET enable_external_access = false;"
+  );
 }
 
 function assertEncryptionKey(value: string): string {
