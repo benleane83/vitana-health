@@ -1,181 +1,279 @@
 ---
 name: "Local Fitness Advisor"
-description: "A calm local-first health data management and insight interface."
+description: "A light, private, trust-first health workspace inspired by the Vitara visual direction."
 colors:
-  vault-bg: "#09110d"
-  ink: "#f4f1df"
-  muted: "#a8b4a1"
-  line: "#dcebb829"
-  panel: "#0d1e17c7"
-  panel-bright: "#1e4131db"
-  leaf: "#b5f45d"
-  amber: "#ffc857"
-  coral: "#ff6b4a"
-  cyan: "#85ffe1"
-  ink-strong: "#071008"
+  canvas: "oklch(97% 0.008 255)"
+  canvas-alt: "oklch(95% 0.012 262)"
+  surface: "oklch(99% 0.004 260)"
+  surface-soft: "oklch(96% 0.012 254)"
+  text: "oklch(30% 0.07 275)"
+  text-muted: "oklch(48% 0.04 272)"
+  line: "oklch(86% 0.02 260)"
+  primary: "oklch(46% 0.13 278)"
+  primary-strong: "oklch(40% 0.15 278)"
+  lavender: "oklch(72% 0.1 300)"
+  seafoam: "oklch(79% 0.08 190)"
+  blush: "oklch(80% 0.09 355)"
+  success: "oklch(66% 0.12 170)"
+  warning: "oklch(78% 0.13 82)"
+  danger: "oklch(64% 0.19 28)"
+  focus: "oklch(72% 0.12 245)"
+  ink-on-primary: "oklch(99% 0.004 260)"
 typography:
   display:
-    fontFamily: "Fraunces, Georgia, serif"
-    fontWeight: 900
-    lineHeight: 0.9
-    letterSpacing: "-0.03em"
-  headline:
-    fontFamily: "Fraunces, Georgia, serif"
-    fontSize: "1.6rem"
+    fontFamily: "Aptos Display, Aptos, Segoe UI, Helvetica Neue, Arial, sans-serif"
     fontWeight: 700
-    lineHeight: 1.15
-  body:
-    fontFamily: "Alegreya Sans, sans-serif"
-    fontSize: "1rem"
-    fontWeight: 400
-    lineHeight: 1.45
-  label:
-    fontFamily: "Alegreya Sans, sans-serif"
-    fontSize: "0.95rem"
+    lineHeight: 1.05
+    letterSpacing: "-0.02em"
+  headline:
+    fontFamily: "Aptos, Segoe UI, Helvetica Neue, Arial, sans-serif"
+    fontSize: "1.5rem"
     fontWeight: 700
     lineHeight: 1.2
+  body:
+    fontFamily: "Aptos, Segoe UI, Helvetica Neue, Arial, sans-serif"
+    fontSize: "1rem"
+    fontWeight: 400
+    lineHeight: 1.5
+  label:
+    fontFamily: "Aptos, Segoe UI, Helvetica Neue, Arial, sans-serif"
+    fontSize: "0.9rem"
+    fontWeight: 600
+    lineHeight: 1.25
 rounded:
   pill: "999px"
-  input: "18px"
-  item: "22px"
-  panel: "34px"
+  input: "12px"
+  item: "12px"
+  panel: "16px"
 spacing:
-  xs: "8px"
-  sm: "12px"
-  md: "18px"
-  lg: "24px"
-  xl: "40px"
+  xs: "4px"
+  sm: "8px"
+  md: "12px"
+  lg: "16px"
+  xl: "24px"
+  xxl: "32px"
 components:
   button-primary:
-    backgroundColor: "{colors.leaf}"
-    textColor: "{colors.ink-strong}"
+    backgroundColor: "{colors.primary}"
+    textColor: "{colors.ink-on-primary}"
     rounded: "{rounded.pill}"
-    padding: "0.78rem 1.1rem"
+    padding: "0.65rem 1rem"
   panel:
-    backgroundColor: "{colors.panel}"
-    textColor: "{colors.ink}"
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.text}"
     rounded: "{rounded.panel}"
-    padding: "24px"
+    padding: "20px"
   input:
-    backgroundColor: "{colors.vault-bg}"
-    textColor: "{colors.ink}"
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.text}"
     rounded: "{rounded.input}"
-    padding: "0.78rem 0.9rem"
+    padding: "0.7rem 0.85rem"
 ---
 
-# Design System: Local Fitness Advisor
+# Design System: Local Fitness Advisor (Vitara-aligned)
 
 ## 1. Overview
 
-**Creative North Star: "Local Health Data Management and Insights"**
+Creative North Star: "Track, Understand, Thrive - in a private, trusted workspace."
 
-This baseline captures the current app as a dark, local-first health dashboard built around personal data review, private imports, lab entry, and guarded AI query workflows. The system should feel calm, trustworthy, flexible, and data-literate: closer to a private evidence workspace than a medical portal or wellness game.
+This redesign shifts the app from dark botanical dashboards to a light, calming, clinically-neutral product surface inspired by the attached Vitara style guide. The app should feel welcoming and emotionally safe while staying evidence-first and data-literate.
 
-The current visual direction uses organic dark surfaces, high-contrast cream text, Fraunces display headings, Alegreya Sans UI text, and bright leaf/cyan accents. Future work can change any of these choices. Preserve the useful intent: privacy, legibility, and evidence-first review. Improve the weak spots: oversized hero typography, over-rounded panels, decorative glass treatment, and inconsistent query-screen tokens.
+Design serves product tasks first: import review, summary analysis, biological age interpretation, and AI-assisted questioning. Visual polish supports confidence and comprehension, not decoration.
 
-**Key Characteristics:**
-- Local-first and privacy-forward without alarmist copy.
-- Dense enough for repeated review, but not visually noisy.
-- Data and units remain readable before decoration.
-- AI output is visually distinct from deterministic observations.
-- Health-state color must always be backed by text labels.
+### Product tone
+- Calm and reassuring, never alarmist.
+- Modern and friendly, never childish or gamified.
+- Private and credible, never clinical or hospital-like.
+- Soft gradients and iconography are allowed in identity moments, but core workflows stay structured and readable.
 
-## 2. Colors
+### Core visual commitments
+- Light-mode default with high-contrast text.
+- Indigo-led action color system with lavender, seafoam, and blush accents.
+- Medium-radius surfaces (12 to 16px), not oversized rounded cards.
+- Unified sans-serif typography for controls, data, and prose.
+- Motion is minimal and state-based (feedback, loading, focus), not cinematic.
 
-The baseline palette is a dark botanical-neutral scheme with leaf and cyan accents. It supports the current privacy cockpit mood, but future redesign work should feel free to refine the palette toward a quieter, more professional product surface.
+## 2. Color System
 
-### Primary
-- **Leaf Signal** (#b5f45d): Primary action color and selected-state accent. Use sparingly for the next meaningful action, active route, or confirmed positive state.
+Use OKLCH tokens in implementation; hex values below are style-guide anchors for design reviews.
 
-### Secondary
-- **Fresh Cyan** (#85ffe1): Secondary accent for data freshness, local/private cues, and low-status measurements. Avoid using it as generic decoration.
-- **Warm Amber** (#ffc857): Warning or review-needed state. Pair with explicit text because color alone is not enough.
+### Brand anchors (reference)
+- Deep Navy: #1B1D3A
+- Indigo Blue: #2D3A8C
+- Soft Lavender: #887CF6
+- Seafoam: #4ECDBA
+- Blush Pink: #FFB3C1
 
-### Tertiary
-- **Coral Alert** (#ff6b4a): Reserved for destructive, critical, or exception states if those states are added later. It is currently a token more than an established component color.
+### Gradients
+- Calm and Trust: Lavender -> Indigo -> Seafoam
+- Energy and Vitality: Blush -> Warm Peach -> Light Gold
 
-### Neutral
-- **Vault Background** (#09110d): App background and dark input base.
-- **Warm Ink** (#f4f1df): Primary text on dark surfaces.
-- **Muted Moss** (#a8b4a1): Secondary text. Must be checked for contrast when placed on tinted panels.
-- **Panel Green** (#0d1e17c7): Primary panel surface.
-- **Bright Panel Green** (#1e4131db): Elevated or highlighted panel surface.
-- **Soft Divider** (#dcebb829): Borders and separators.
-- **Deep Ink** (#071008): Text on bright accent buttons.
+### Semantic roles
+- Primary action: `primary`
+- Hover/pressed action: `primary-strong`
+- Informational highlight: `seafoam`
+- Supportive accent: `lavender`
+- Positive status: `success`
+- Warning: `warning`
+- Error/destructive: `danger`
 
-### Named Rules
-**The Accent Rarity Rule.** Leaf and cyan should identify action, selection, data freshness, or status. If the whole screen glows, nothing is important.
+### Neutral roles
+- App canvas: `canvas`
+- Secondary canvas (section transitions): `canvas-alt`
+- Content surface: `surface`
+- Alternate surface: `surface-soft`
+- Borders/dividers: `line`
+- Primary text: `text`
+- Secondary text: `text-muted`
+
+### Usage rules
+- Keep accents rare and meaningful: action, selected state, data status.
+- Never use pastel accents for body text.
+- Body text and placeholder text must meet WCAG AA contrast against their background.
+- Do not tint all surfaces differently; use one primary surface and one alternate surface.
 
 ## 3. Typography
 
-**Display Font:** Fraunces (with Georgia, serif fallback)  
-**Body Font:** Alegreya Sans (with sans-serif fallback)  
-**Label/Mono Font:** Alegreya Sans for labels; system monospace only for raw CSV or code-like content.
+Single-family product typography to preserve consistency and speed of scanning.
 
-**Character:** The current type pairing gives the app a warmer, more personal voice than a typical SaaS dashboard. Keep that warmth only where it supports trust; dense controls and data rows should remain simple and highly legible.
+### Font stack
+- Primary: Aptos / Segoe UI / system sans-serif
+- Display moments: Aptos Display (same family lineage), used sparingly
 
-### Hierarchy
-- **Display** (900, currently `clamp(3.6rem, 8vw, 8.8rem)`, tight line-height): Used only on the dashboard hero. Future work should cap this lower and keep letter-spacing no tighter than `-0.04em`.
-- **Headline** (700, `1.6rem`, compact line-height): Panel and page section headings.
-- **Title** (700-900, `1.1rem` to `1.35rem`): Card titles, insight headings, and metric labels.
-- **Body** (400-500, `1rem`, `1.45`): Explanatory copy, safety notes, summaries, and form helper text. Keep prose near 65-75ch where possible.
-- **Label** (700-900, compact): Form labels, route labels, segmented controls, and table headers.
+### Scale
+- h1: 2.25rem max on app pages (no oversized hero text in task views)
+- h2: 1.5rem
+- h3: 1.125rem
+- body: 1rem
+- label/meta: 0.875 to 0.9rem
 
-### Named Rules
-**The Review-First Type Rule.** Product screens should use stable rem sizes. Save expressive type for page identity, not data rows, labels, or buttons.
+### Rules
+- Use `text-wrap: balance` on h1-h3.
+- Keep line length near 65-75ch for explanatory prose.
+- No display serif in controls, tables, labels, or forms.
+- Do not exceed letter-spacing of -0.04em; default heading target is -0.02em.
 
-## 4. Elevation
+## 4. Layout and Structure
 
-The current system uses a hybrid of tonal layering, blurred translucent panels, and large ambient shadows. That creates atmosphere, but it is heavier than a health-data management tool needs. Future components should be layered but restrained: use surface tone and borders first, then small shadows only when they clarify interaction or hierarchy.
+### Grid and spacing
+- Use a 12-column responsive grid at page level where needed.
+- For repeatable card groups, default to `repeat(auto-fit, minmax(280px, 1fr))`.
+- Spacing rhythm: 4, 8, 12, 16, 24, 32.
 
-### Shadow Vocabulary
-- **Ambient Panel** (`box-shadow: 0 24px 80px rgba(0, 0, 0, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.06)`): Current high-drama panel treatment. Treat as legacy baseline; avoid expanding it.
-- **Accent Hover** (`box-shadow: 0 14px 40px rgba(181, 244, 93, 0.18)`): Current button hover glow. Use only for primary actions and consider reducing blur in production polish.
+### Density strategy
+- Dashboard and summary may be medium density.
+- Import and settings forms should remain relaxed and instructional.
+- Tables and metric rows prioritize scan order: label -> value -> unit -> status -> recency.
 
-### Named Rules
-**The Layer Before Glow Rule.** Inactive panels should separate with tone, spacing, and border. Glow belongs to focused or selected state, not every surface.
+### Responsive behavior
+- Navigation collapses cleanly on narrow widths.
+- Metrics and stat blocks stack without truncating labels.
+- No heading overflow at tablet/mobile widths.
 
-## 5. Components
+## 5. Component Standards
 
-### Buttons
-- **Shape:** Pill buttons (`999px`) are established for route navigation, actions, and segmented controls.
-- **Primary:** Leaf-to-green gradient with Deep Ink text and bold weight. It should represent the main action in the current context.
-- **Hover / Focus:** Current hover lifts by 2px with a soft accent shadow. Add explicit `focus-visible` rings during polish.
-- **Secondary / Ghost:** Transparent background with Soft Divider border and Muted Moss text. Active state uses the primary accent treatment.
-
-### Chips
-- **Style:** Query examples currently behave like chips, but use undefined `--surface`, `--border`, and `--text` tokens. Normalize these to the shared palette during redesign.
-- **State:** Chips should be buttons with visible hover, focus, and selected/pressed feedback if they mutate the query.
-
-### Cards / Containers
-- **Corner Style:** Current panels use large radii (`34px` to `36px`), while data items use `22px`. Future product surfaces should generally reduce panel radius to improve density.
-- **Background:** Panel Green over Vault Background, with Soft Divider borders.
-- **Shadow Strategy:** See Elevation; prefer restrained layering over glassy decoration.
-- **Internal Padding:** Main panels use `24px`; compact rows use `10px` to `16px`.
-
-### Inputs / Fields
-- **Style:** Dark translucent field, Soft Divider border, Warm Ink text, `18px` radius.
-- **Focus:** Current fields remove outlines and need a visible accessible focus treatment.
-- **Error / Disabled:** Not yet systematized. Future work should add shared error, disabled, loading, and validation states.
+All interactive components must support: default, hover, focus-visible, active, disabled, and error where relevant.
 
 ### Navigation
-- **Style:** Top route nav with pill buttons, transparent inactive states, and accent active state. It is simple and appropriate for the app, but should be made more responsive and clearer on narrow screens.
+- Top tabs remain for route switching.
+- Active tab uses primary color fill and strong contrast text.
+- Inactive tabs use surface styles with clear hover/focus feedback.
 
-### Health Data Rows
-Metric, trend, summary, and alert rows are the signature components. They should lead with the measurement name, value, unit, status, and recency/source where available. Avoid burying critical context in color alone.
+### Panels
+- Default panel: `surface`, 1px `line` border, radius 16px.
+- Avoid nested panel-in-panel patterns unless hierarchy demands it.
+- Shadow is subtle and optional; border + tone separation is primary.
 
-## 6. Do's and Don'ts
+### Buttons
+- Primary: indigo solid or restrained brand gradient.
+- Secondary: outlined with neutral border.
+- Destructive: danger-tinted, never blended with primary.
+- No oversized glows or decorative shadows.
 
-### Do:
-- **Do** keep data source, recency, units, and safety boundaries visible near relevant actions.
-- **Do** preserve high contrast for body text and labels; muted text must still meet WCAG AA on its actual panel.
-- **Do** distinguish deterministic analytics from AI-generated interpretation.
-- **Do** use restrained layering for dense review screens and reserve bright accents for active or meaningful state.
-- **Do** add reduced-motion alternatives for pulse, hover, reveal, or chart animations.
+### Inputs and forms
+- Input radius 12px, clear label above field.
+- Placeholder contrast meets WCAG AA.
+- Validation messaging appears below fields with semantic color + text.
+- Settings and import flows include inline guidance, not modal-only help.
 
-### Don't:
-- **Don't** imply diagnosis, treatment, medication changes, urgent triage, or clinical certainty.
-- **Don't** use hospital portal aesthetics, alarmist health scores, generic SaaS dashboard polish, or playful gamified wellness patterns.
-- **Don't** expand the current glassy panel treatment or wide glow shadows as default decoration.
-- **Don't** use oversized display type or tight letter-spacing in narrow product layouts.
-- **Don't** use color-only status, undefined CSS variables, or hidden browser focus outlines.
+### Data rows and tables
+- Status always includes text; color is supplemental.
+- Unit formatting is consistent and explicit.
+- Use subtle zebra/section separation only when it improves scan speed.
+
+### Empty/loading/error states
+- Empty states explain what to do next.
+- Prefer skeleton blocks for data-loading regions.
+- Keep error copy actionable and non-alarmist.
+
+## 6. Motion and Interaction
+
+### Timing and easing
+- Standard transitions: 150 to 220ms.
+- Use ease-out curves for hover/focus transitions.
+
+### Allowed motion
+- Hover state transitions.
+- Focus ring transitions.
+- Loading skeleton shimmer at low contrast.
+- Small chart/metric transitions when values update.
+
+### Restricted motion
+- No page-load choreography.
+- No decorative floating elements in task surfaces.
+- No animations that hide essential content by default.
+
+### Accessibility
+- Respect `prefers-reduced-motion: reduce` with instant transitions or cross-fades.
+- Keep keyboard focus always visible.
+
+## 7. Route-level Direction
+
+### Dashboard
+- Welcome and trust framing at top.
+- Quick scan cards for imports, trends, and alerts.
+- Privacy statement remains visible but lightweight.
+
+### Biological Age
+- Clear deterministic model framing.
+- Methodology, inputs, and limitations presented with hierarchy.
+- Emphasis on readability over visual flair.
+
+### Import
+- Guided flow with clear source selection.
+- File status and parse outcomes are explicit and legible.
+- Inline correction paths for incomplete data.
+
+### Health Data Summary
+- High-density, sortable, filterable metrics.
+- Trend and range interpretation should remain concise.
+
+### AI Query
+- Distinguish deterministic plan/SQL/result from AI narrative.
+- Safety and consent status should be visible before submit.
+
+### Settings
+- Configuration first, integrations second.
+- Validation outcomes appear in-context with precise feedback.
+
+## 8. Dos and Donts
+
+### Do
+- Keep privacy and data provenance visible near key interactions.
+- Use pastel accents as support, not as text colors.
+- Standardize component states across all routes.
+- Keep tone reassuring and specific.
+
+### Do not
+- Reintroduce dark heavy glass surfaces as default.
+- Use gradient text, side-stripe card accents, or decorative grid overlays.
+- Over-round cards beyond 16px.
+- Depend on color alone to communicate health status.
+- Use medical-diagnosis language or urgent treatment cues.
+
+## 9. Implementation notes
+
+- Migrate tokens in `apps/web/src/styles.css` to this palette and radius scale first.
+- Then normalize component states route by route (nav, buttons, inputs, table rows).
+- Keep app semantics and safety copy intact while updating visuals.
+- Validate contrast and keyboard flows before shipping each redesigned route.

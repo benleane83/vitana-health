@@ -67,6 +67,12 @@ describe("App — renders without crashing", () => {
     const { container } = render(<App />);
     expect(container).toBeTruthy();
   });
+
+  it("renders the Vitara dashboard brand lockup", () => {
+    render(<App />);
+    expect(screen.getByText(/all your health\. in one place\./i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /track\. understand\. thrive\./i })).toBeInTheDocument();
+  });
 });
 
 // ─── Navigation landmarks ─────────────────────────────────────────────────────
@@ -85,13 +91,14 @@ describe("App — navigation landmarks", () => {
 
   it("renders the main navigation tabs", () => {
     render(<App />);
-    expect(screen.getByRole("tab", { name: /dashboard/i })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /biological age/i })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /import/i })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /health data summary/i })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /^export$/i })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /ai query/i })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /settings/i })).toBeInTheDocument();
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "Dashboard",
+      "Import",
+      "Track",
+      "Insights",
+      "Export"
+    ]);
+    expect(screen.getByRole("button", { name: /settings/i })).toBeInTheDocument();
   });
 
   it("loads the Biological Age page", async () => {
@@ -109,6 +116,7 @@ describe("App — navigation landmarks", () => {
       }
     });
     render(<App />);
+    fireEvent.click(screen.getByRole("tab", { name: /^insights$/i }));
     fireEvent.click(screen.getByRole("tab", { name: /biological age/i }));
     expect(await screen.findByRole("heading", { name: /biological age/i })).toBeInTheDocument();
     expect(screen.getByText(/incomplete data/i)).toBeInTheDocument();
@@ -128,7 +136,7 @@ describe("App — navigation landmarks", () => {
       }
     });
     render(<App />);
-    fireEvent.click(screen.getByRole("tab", { name: /settings/i }));
+    fireEvent.click(screen.getByRole("button", { name: /settings/i }));
     expect(await screen.findByRole("heading", { name: /ai setup/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/endpoint url/i)).toHaveValue("http://127.0.0.1:11434/api/generate");
     expect(screen.getByRole("button", { name: /connect openrouter/i })).toBeInTheDocument();

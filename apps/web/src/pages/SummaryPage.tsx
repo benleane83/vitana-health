@@ -119,7 +119,7 @@ export function SummaryPage({
       <div className="summary-header">
         <div>
           <p className="eyebrow">Loaded health data by type</p>
-          <h2>Health Data Summary</h2>
+          <h2>Track health data</h2>
         </div>
         <div className="summary-controls" role="group" aria-label="Sort summary rows">
           <button

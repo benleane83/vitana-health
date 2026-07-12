@@ -8,6 +8,7 @@ const profileSchema = z.object({
   birthYear: z.number().int().min(1900).max(new Date().getFullYear()).optional(),
   sex: z.enum(["female", "male", "intersex", "unknown", "not-specified"]).optional(),
   heightCm: z.number().positive().max(260).optional(),
+  bloodType: z.enum(["a-positive", "a-negative", "b-positive", "b-negative", "ab-positive", "ab-negative", "o-positive", "o-negative", "unknown"]).optional(),
   goalSummary: z.string().max(500).optional(),
   units: z.enum(["metric", "imperial"])
 });
