@@ -27,7 +27,12 @@ import {
   type ProfileListEntry,
   type SourceImport
 } from "@local-fitness-advisor/shared";
-import { listHealthDataDetailEntries } from "./summary.js";
+import {
+  chartPointsForEntries,
+  type MeasurementDetailPage,
+  summarizeMeasurementDetail,
+  summarizeStoreData
+} from "./summary.js";
 import { log } from "./logger.js";
 import { initializeDuckDbRoot, type DuckDbOptions } from "./storage/duckdbRuntime.js";
 import { DuckDbHealthStore } from "./storage/duckdbHealthStore.js";
@@ -54,6 +59,15 @@ export interface StoreSecurityConfig {
 
 export interface ProfileStoreManagerOptions {
   security?: StoreSecurityConfig;
+}
+
+export interface OpenProfileStoreManagerOptions extends ProfileStoreManagerOptions {
+  storageBackend: "json" | "duckdb";
+  duckdb?: DuckDbActivationOptions;
+}
+
+interface ProfileStoreManagerConstructionOptions extends ProfileStoreManagerOptions {
+  deferInitialization?: boolean;
 }
 
 export interface DuckDbActivationOptions {
@@ -138,6 +152,32 @@ export class HealthStore {
     };
   }
 
+  getProfile(): Promise<Profile> {
+    return Promise.resolve({ ...this.data.profile });
+  }
+
+  getSummary() {
+    return Promise.resolve(summarizeStoreData(this.snapshot()));
+  }
+
+  getMeasurementDetail(measurementCode: string, page?: MeasurementDetailPage) {
+    const detail = summarizeMeasurementDetail(this.snapshot(), measurementCode);
+    const offset = page?.offset ?? 0;
+    const limit = page?.limit ?? detail.entries.length;
+    const entries = detail.entries.slice(offset, offset + limit);
+    return Promise.resolve({
+      ...detail,
+      entries,
+      chartPoints: chartPointsForEntries(entries),
+      pagination: {
+        limit,
+        loaded: offset + entries.length,
+        total: detail.counts.total,
+        hasMore: offset + entries.length < detail.counts.total
+      }
+    });
+  }
+
   replaceProfile(profile: HealthStoreData["profile"]): HealthStoreData["profile"] {
     this.data.profile = { ...profile, id: this.profileId, updatedAt: new Date().toISOString() };
     this.audit("profile-updated", "Profile details updated locally.");
@@ -204,10 +244,6 @@ export class HealthStore {
     this.audit("insight-generated", `${insight.model} insight generated.`);
     this.persist();
     return insight;
-  }
-
-  listDetailEntries(measurementCode: string): HealthDataDetailEntry[] {
-    return listHealthDataDetailEntries(this.snapshot(), measurementCode);
   }
 
   deleteObservation(id: string): DeleteObservationResponse | undefined {
@@ -311,12 +347,29 @@ export class ProfileStoreManager {
   private duckdbRoot: string | undefined;
   private duckdbOptions: DuckDbOptions | undefined;
 
-  constructor(options: ProfileStoreManagerOptions = {}) {
+  constructor(options: ProfileStoreManagerConstructionOptions = {}) {
     mkdirSync(resolveDataDir(), { recursive: true });
     const security = options.security ?? resolveStoreSecurityConfig();
     this.passphrase = security.passphrase;
     this.securityMode = security.securityMode;
-    this.initialize();
+    if (!options.deferInitialization) {
+      this.initialize();
+    }
+  }
+
+  static async open(options: OpenProfileStoreManagerOptions): Promise<ProfileStoreManager> {
+    const manager = new ProfileStoreManager({ ...options, deferInitialization: true });
+    if (options.storageBackend === "duckdb" && hasDuckDbActivationManifest()) {
+      manager.initializeDuckDbBootstrap();
+      await manager.activateDuckDb(manager.requireDuckDbOpenOptions(options));
+      return manager;
+    }
+
+    manager.initialize();
+    if (options.storageBackend === "duckdb") {
+      await manager.activateDuckDb(manager.requireDuckDbOpenOptions(options));
+    }
+    return manager;
   }
 
   listProfiles(): ProfileListEntry[] {
@@ -680,6 +733,13 @@ export class ProfileStoreManager {
     return this.duckdbManifest;
   }
 
+  private requireDuckDbOpenOptions(options: OpenProfileStoreManagerOptions): DuckDbActivationOptions {
+    if (!options.duckdb) {
+      throw new Error("DuckDB startup requires DuckDB activation options.");
+    }
+    return options.duckdb;
+  }
+
   syncProfileEntry(profile: Profile): void {
     const normalizedId = normalizeProfileId(profile.id);
     const next = profileListEntryFromProfile(profile);
@@ -710,6 +770,27 @@ export class ProfileStoreManager {
       this.activeProfileId = this.profiles[0].id;
       this.persistActiveProfile();
     }
+  }
+
+  private initializeDuckDbBootstrap(): void {
+    const manifest = loadStorageBackendManifest();
+    if (!manifest) {
+      throw new Error("DuckDB bootstrap requires an activation manifest.");
+    }
+    const manifestProfileIds = new Set(manifest.profiles.map((profile) => profile.profileId));
+    const registry = loadProfileRegistry().filter((profile) => manifestProfileIds.has(profile.id));
+    this.profiles = registry.length > 0
+      ? registry
+      : manifest.profiles.map((profile) => ({
+          id: profile.profileId,
+          displayName: profile.profileId,
+          updatedAt: manifest.activatedAt
+        }));
+
+    const active = loadActiveProfileId();
+    this.activeProfileId = active && manifestProfileIds.has(active)
+      ? active
+      : this.profiles[0]?.id ?? "self";
   }
 
   private refreshProfileEntriesFromStores(): void {

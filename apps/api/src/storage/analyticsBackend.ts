@@ -1,5 +1,11 @@
 import type { HealthStoreData } from "@local-fitness-advisor/shared";
 import type { ProfileStoreManager } from "../store.js";
+import type { QueryDSL } from "../aiQueryPlanner.js";
+import {
+  duckDbAnalyticsQueryCompiler,
+  type CompileOutcome,
+  type SqlValidationResult
+} from "../queryCompiler.js";
 import {
   rebuildWarehouseFromStore,
   runWarehouseQuery,
@@ -33,4 +39,24 @@ export function runAnalyticsQuery(
   return storeManager.getStorageBackend() === "duckdb"
     ? storeManager.runActiveDuckDbQuery(sql)
     : runWarehouseQuery(sql);
+}
+
+export function compileAnalyticsQuery(
+  storeManager: ProfileStoreManager,
+  dsl: QueryDSL
+): CompileOutcome {
+  return analyticsQueryCompilerFor(storeManager).compile(dsl);
+}
+
+export function validateAnalyticsQuery(
+  storeManager: ProfileStoreManager,
+  sql: string
+): SqlValidationResult {
+  return analyticsQueryCompilerFor(storeManager).validate(sql);
+}
+
+function analyticsQueryCompilerFor(_storeManager: ProfileStoreManager) {
+  // JSON mode still uses the DuckDB warehouse, while active encrypted profiles
+  // use DuckDB directly. A SQLCipher implementation belongs here, not in routes.
+  return duckDbAnalyticsQueryCompiler;
 }

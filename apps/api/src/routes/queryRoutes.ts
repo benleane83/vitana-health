@@ -2,12 +2,15 @@ import express from "express";
 import { z } from "zod";
 import { safetyNotice } from "@local-fitness-advisor/shared";
 import type { ProfileStoreManager } from "../store.js";
-import { runAnalyticsQuery } from "../storage/analyticsBackend.js";
+import {
+  compileAnalyticsQuery,
+  runAnalyticsQuery,
+  validateAnalyticsQuery
+} from "../storage/analyticsBackend.js";
 import { callConfiguredModel, currentModelConfig, resolvedModelProvider } from "../modelClient.js";
 import { planStoreAnswer } from "../askStore.js";
 import { planAiQuery } from "../aiQueryPlanner.js";
 import type { QueryDSL } from "../aiQueryPlanner.js";
-import { compileQueryDSL, validateCompiledSql } from "../queryCompiler.js";
 import { hasCloudAiConsent, sanitizeQuestionForModel, sanitizeRowsForPrompt } from "../privacy.js";
 
 const llmSimpleSchema = z.object({
@@ -34,12 +37,12 @@ export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Rout
     return storeManager.getActiveStore();
   }
 
-  function ensureCloudConsent(response: express.Response, provider?: "ollama" | "openai"): boolean {
+  async function ensureCloudConsent(response: express.Response, provider?: "ollama" | "openai"): Promise<boolean> {
     const resolved = provider ?? currentModelConfig().provider;
     if (resolved !== "openai") {
       return true;
     }
-    if (hasCloudAiConsent(activeStore().snapshot().profile)) {
+    if (hasCloudAiConsent(await activeStore().getProfile())) {
       return true;
     }
     response.status(403).json({
@@ -54,7 +57,7 @@ export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Rout
   router.post("/ask-store", async (request, response, next) => {
     try {
       response.setHeader("x-lfa-lifecycle", "experimental");
-      if (!ensureCloudConsent(response)) {
+      if (!await ensureCloudConsent(response)) {
         return;
       }
       const parsed = askSchema.parse(request.body ?? {});
@@ -87,7 +90,7 @@ export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Rout
       ].join("\n");
 
       const modelResult = await callConfiguredModel(prompt, {
-        allowCloud: hasCloudAiConsent(activeStore().snapshot().profile)
+        allowCloud: hasCloudAiConsent(await activeStore().getProfile())
       });
       response.json({
         question: parsed.question,
@@ -110,14 +113,14 @@ export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Rout
   router.post("/ai", async (request, response, next) => {
     try {
       response.setHeader("x-lfa-lifecycle", "supported");
-      if (!ensureCloudConsent(response)) {
+      if (!await ensureCloudConsent(response)) {
         return;
       }
       const parsed = aiQuerySchema.parse(request.body ?? {});
 
       const plannerOutcome = await planAiQuery(parsed.question, {
         timezone: parsed.timezone,
-        allowCloud: hasCloudAiConsent(activeStore().snapshot().profile)
+        allowCloud: hasCloudAiConsent(await activeStore().getProfile())
       });
 
       if (!plannerOutcome.ok) {
@@ -135,7 +138,7 @@ export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Rout
         return;
       }
 
-      const compileOutcome = compileQueryDSL(plannerOutcome.dsl);
+      const compileOutcome = compileAnalyticsQuery(storeManager, plannerOutcome.dsl);
       if (!compileOutcome.ok) {
         response.status(400).json({
           question: parsed.question,
@@ -150,7 +153,7 @@ export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Rout
         return;
       }
 
-      const validation = validateCompiledSql(compileOutcome.sql);
+      const validation = validateAnalyticsQuery(storeManager, compileOutcome.sql);
       if (!validation.valid) {
         response.status(500).json({
           question: parsed.question,
@@ -197,7 +200,7 @@ export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Rout
       ].join("\n");
 
       const modelResult = await callConfiguredModel(summaryPrompt, {
-        allowCloud: hasCloudAiConsent(activeStore().snapshot().profile)
+        allowCloud: hasCloudAiConsent(await activeStore().getProfile())
       });
       const answer =
         modelResult.ok && modelResult.text
@@ -248,7 +251,7 @@ export function makeLlmRoutes(storeManager: ProfileStoreManager): express.Router
       response.setHeader("x-lfa-lifecycle", "experimental");
       const parsed = llmSimpleSchema.parse(request.body ?? {});
       const provider = resolvedModelProvider(parsed.provider);
-      if (provider === "openai" && !hasCloudAiConsent(activeStore().snapshot().profile)) {
+      if (provider === "openai" && !hasCloudAiConsent(await activeStore().getProfile())) {
         response.status(403).json({
           ok: false,
           provider,
@@ -266,7 +269,7 @@ export function makeLlmRoutes(storeManager: ProfileStoreManager): express.Router
         model: parsed.model,
         timeoutMs: parsed.timeoutMs,
         provider: parsed.provider,
-        allowCloud: hasCloudAiConsent(activeStore().snapshot().profile)
+        allowCloud: hasCloudAiConsent(await activeStore().getProfile())
       });
       if (!result.ok) {
         response

@@ -38,15 +38,19 @@ const setActiveProfileSchema = z.object({
 export function makeProfileRoutes(storeManager: ProfileStoreManager): express.Router {
   const router = express.Router();
 
-  router.get("/", (_request, response) => {
-    response.json(storeManager.getActiveStore().snapshot().profile);
+  router.get("/", async (_request, response, next) => {
+    try {
+      response.json(await storeManager.getActiveStore().getProfile());
+    } catch (error) {
+      next(error);
+    }
   });
 
   router.put("/", async (request, response, next) => {
     try {
       const parsed = profileSchema.parse(request.body);
       const store = storeManager.getActiveStore();
-      const existing = store.snapshot().profile;
+      const existing = await store.getProfile();
       const profile: Profile = {
         ...existing,
         ...parsed,
@@ -61,23 +65,27 @@ export function makeProfileRoutes(storeManager: ProfileStoreManager): express.Ro
     }
   });
 
-  router.get("/cloud-ai-consent", (_request, response) => {
-    const profile = storeManager.getActiveStore().snapshot().profile;
-    response.json(
-      profile.cloudAiConsent ?? {
-        enabled: false,
-        providerScopeAccepted: false,
-        consentedAt: undefined,
-        consentVersion: undefined
-      }
-    );
+  router.get("/cloud-ai-consent", async (_request, response, next) => {
+    try {
+      const profile = await storeManager.getActiveStore().getProfile();
+      response.json(
+        profile.cloudAiConsent ?? {
+          enabled: false,
+          providerScopeAccepted: false,
+          consentedAt: undefined,
+          consentVersion: undefined
+        }
+      );
+    } catch (error) {
+      next(error);
+    }
   });
 
   router.put("/cloud-ai-consent", async (request, response, next) => {
     try {
       const parsed = cloudConsentSchema.parse(request.body ?? {});
       const store = storeManager.getActiveStore();
-      const current = store.snapshot().profile;
+      const current = await store.getProfile();
       const nextConsent = parsed.enabled
         ? {
             enabled: true,

@@ -226,17 +226,21 @@ export function ObservationTypeDetailPage({
   loading,
   error,
   actionBusy,
+  loadMoreBusy,
   onBack,
   onDeleteObservation,
-  onDeleteAll
+  onDeleteAll,
+  onLoadMore
 }: {
   detail?: HealthDataDetail;
   loading: boolean;
   error?: string;
   actionBusy: boolean;
+  loadMoreBusy: boolean;
   onBack: () => void;
   onDeleteObservation: (entry: HealthDataDetailEntry) => void | Promise<void>;
   onDeleteAll: () => void | Promise<void>;
+  onLoadMore: () => void | Promise<void>;
 }) {
   const deleteAllCount = detail?.deletion.observationEntries ?? 0;
   const primaryTile = detail ? primaryCountTile(detail.counts) : { label: "Entries", value: 0 };
@@ -344,6 +348,20 @@ export function ObservationTypeDetailPage({
                       ))}
                     </tbody>
                   </table>
+                </div>
+                <div className="summary-detail-pagination">
+                  <p>
+                    Showing {Math.min(detail.pagination.loaded, detail.pagination.total)} of {detail.pagination.total} entries.
+                  </p>
+                  {detail.pagination.hasMore ? (
+                    <button
+                      type="button"
+                      onClick={() => void onLoadMore()}
+                      disabled={loading || actionBusy || loadMoreBusy}
+                    >
+                      {loadMoreBusy ? "Loading entries…" : "Load more entries"}
+                    </button>
+                  ) : null}
                 </div>
               </div>
             </>

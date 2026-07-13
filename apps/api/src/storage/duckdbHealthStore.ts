@@ -1,17 +1,16 @@
-import { createHash } from "node:crypto";
 import type {
   DeleteObservationResponse,
   DeleteObservationsByTypeResponse,
-  HealthDataDetailEntry,
   HealthStoreData
 } from "@local-fitness-advisor/shared";
-import { listHealthDataDetailEntries } from "../summary.js";
 import type { StoreSecurityMode } from "../store.js";
 import {
-  DuckDbRepository,
-  type DuckDbImport
+  DuckDbRepository
 } from "./duckdbRepository.js";
 import type { DuckDbOptions } from "./duckdbRuntime.js";
+import type { MeasurementDetailPage } from "../summary.js";
+import { deriveProfileStorageKey } from "./profileKey.js";
+import type { ProfileImport, ProfileRepository } from "./profileRepository.js";
 
 export interface DuckDbHealthStoreOptions {
   root: string;
@@ -29,7 +28,7 @@ export class DuckDbHealthStore {
   private mutationTail: Promise<void> = Promise.resolve();
 
   private constructor(
-    private readonly repository: DuckDbRepository,
+    private readonly repository: ProfileRepository,
     private cachedData: HealthStoreData,
     options: DuckDbHealthStoreOptions
   ) {
@@ -72,6 +71,18 @@ export class DuckDbHealthStore {
     return snapshot;
   }
 
+  getProfile() {
+    return this.repository.getProfile();
+  }
+
+  getSummary() {
+    return this.repository.summary();
+  }
+
+  getMeasurementDetail(measurementCode: string, page?: MeasurementDetailPage) {
+    return this.repository.measurementDetail(measurementCode, page ?? { offset: 0, limit: 100 });
+  }
+
   replaceProfile(profile: HealthStoreData["profile"]): Promise<HealthStoreData["profile"]> {
     return this.enqueueMutation(async () => {
       const saved = await this.repository.replaceProfile(profile);
@@ -80,7 +91,7 @@ export class DuckDbHealthStore {
     });
   }
 
-  mergeImport(parsed: DuckDbImport): Promise<HealthStoreData> {
+  mergeImport(parsed: ProfileImport): Promise<HealthStoreData> {
     return this.enqueueMutation(async () => {
       this.cachedData = await this.repository.mergeImport(parsed);
       return this.snapshot();
@@ -93,10 +104,6 @@ export class DuckDbHealthStore {
       await this.refreshCache();
       return saved;
     });
-  }
-
-  listDetailEntries(measurementCode: string): HealthDataDetailEntry[] {
-    return listHealthDataDetailEntries(this.snapshot(), measurementCode);
   }
 
   deleteObservation(id: string): Promise<DeleteObservationResponse | undefined> {
@@ -146,10 +153,5 @@ export class DuckDbHealthStore {
 }
 
 export function deriveProfileDatabaseKey(passphrase: string, profileId: string): string {
-  return createHash("sha256")
-    .update("local-fitness-advisor:duckdb-profile-key:v1\0", "utf8")
-    .update(profileId, "utf8")
-    .update("\0", "utf8")
-    .update(passphrase, "utf8")
-    .digest("base64");
+  return deriveProfileStorageKey(passphrase, profileId, "duckdb-v1");
 }

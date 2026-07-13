@@ -373,3 +373,15 @@ export function validateCompiledSql(sql: string): SqlValidationResult {
 
   return { valid: violations.length === 0, violations };
 }
+
+export interface AnalyticsQueryCompiler {
+  readonly dialect: "duckdb" | "sqlite";
+  compile(dsl: QueryDSL): CompileOutcome;
+  validate(sql: string): SqlValidationResult;
+}
+
+export const duckDbAnalyticsQueryCompiler: AnalyticsQueryCompiler = {
+  dialect: "duckdb",
+  compile: compileQueryDSL,
+  validate: validateCompiledSql
+};

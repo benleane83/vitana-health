@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -20,7 +21,14 @@ afterEach(() => {
 describe("DuckDbHealthStore", () => {
   it("derives stable profile-isolated 256-bit database keys", () => {
     const first = deriveProfileDatabaseKey("desktop-passphrase", "self");
+    const legacyDuckDbKey = createHash("sha256")
+      .update("local-fitness-advisor:duckdb-profile-key:v1\0", "utf8")
+      .update("self", "utf8")
+      .update("\0", "utf8")
+      .update("desktop-passphrase", "utf8")
+      .digest("base64");
     expect(first).toBe(deriveProfileDatabaseKey("desktop-passphrase", "self"));
+    expect(first).toBe(legacyDuckDbKey);
     expect(first).not.toBe(deriveProfileDatabaseKey("desktop-passphrase", "other"));
     expect(Buffer.from(first, "base64")).toHaveLength(32);
   });

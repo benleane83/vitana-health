@@ -2,15 +2,24 @@ import { createHash, randomBytes } from "node:crypto";
 import { existsSync, renameSync, rmSync } from "node:fs";
 import type duckdb from "duckdb";
 import {
+  classifyValue,
   healthStoreDataSchema,
   type DeleteObservationResponse,
   type DeleteObservationsByTypeResponse,
+  type HealthDataDetailEntry,
+  type HealthDataSummaryTypeRow,
   type HealthStoreData,
   type MeasurementType,
   type Observation,
+  type ObservationGroup,
   type Profile,
   type SourceImport
 } from "@local-fitness-advisor/shared";
+import {
+  type MeasurementDetailPage,
+  summarizeMeasurementEntries,
+  summarizeSummaryRows
+} from "../summary.js";
 import {
   closeEncryptedDuckDbDatabase,
   createDuckDbSchema,
@@ -19,8 +28,9 @@ import {
   type DuckDbOptions,
   type EncryptedDuckDbDatabase
 } from "./duckdbRuntime.js";
+import type { ProfileImport, ProfileRepository } from "./profileRepository.js";
 
-export class DuckDbRepository {
+export class DuckDbRepository implements ProfileRepository {
   private closed = false;
 
   private constructor(
@@ -99,20 +109,7 @@ export class DuckDbRepository {
     if (profileRows.length !== 1) {
       throw new Error(`DuckDB expected exactly one profile row, found ${profileRows.length}.`);
     }
-    const profileRow = profileRows[0];
-    const profileProperties = optionalJson<Record<string, unknown>>(profileRow.custom_properties) ?? {};
-    const profile = compact({
-      id: profileRow.id,
-      displayName: profileRow.display_name,
-      birthYear: optionalNumber(profileRow.birth_year),
-      sex: profileRow.sex,
-      heightCm: optionalNumber(profileRow.height_cm),
-      bloodType: profileRow.blood_type,
-      goalSummary: profileRow.goal_summary,
-      ...profileProperties,
-      units: profileRow.units,
-      updatedAt: isoTimestamp(profileRow.updated_at)
-    }) as unknown as Profile;
+    const profile = profileFromRow(profileRows[0]);
 
     const sourceImports = (await orderedRows(this.connection, "imports")).map((row) => compact({
       id: row.id,
@@ -225,6 +222,15 @@ export class DuckDbRepository {
       insights,
       auditEvents
     }) as HealthStoreData;
+  }
+
+  async getProfile(): Promise<Profile> {
+    this.assertOpen();
+    const profileRows = await all(this.connection, "SELECT * FROM profile;");
+    if (profileRows.length !== 1) {
+      throw new Error(`DuckDB expected exactly one profile row, found ${profileRows.length}.`);
+    }
+    return profileFromRow(profileRows[0]);
   }
 
   async replaceProfile(profile: HealthStoreData["profile"]): Promise<HealthStoreData["profile"]> {
@@ -508,6 +514,130 @@ export class DuckDbRepository {
     });
   }
 
+  async summary() {
+    this.assertOpen();
+    const rows = await all(this.connection, `
+      WITH measurement_entries AS (
+        SELECT measurement_code, 'observation' AS entry_kind, observed_at AS measured_at FROM observations
+        UNION ALL
+        SELECT measurement_code, 'sample' AS entry_kind, end_at AS measured_at FROM time_series_samples
+        UNION ALL
+        SELECT 'activity_sessions' AS measurement_code, 'activity' AS entry_kind, COALESCE(end_at, start_at) AS measured_at FROM activities
+      )
+      SELECT
+        measurement_code,
+        MIN(display) AS display_name,
+        MIN(category) AS category,
+        SUM(CASE WHEN entry_kind = 'observation' THEN 1 ELSE 0 END) AS observations,
+        SUM(CASE WHEN entry_kind = 'sample' THEN 1 ELSE 0 END) AS samples,
+        SUM(CASE WHEN entry_kind = 'activity' THEN 1 ELSE 0 END) AS activities,
+        MAX(measured_at) AS last_measured_at
+      FROM measurement_entries
+      LEFT JOIN measurement_types ON measurement_types.code = measurement_entries.measurement_code
+      GROUP BY measurement_code
+      ORDER BY measurement_code;
+    `);
+    const summaryRows = rows.map((row) => {
+      const observations = Number(row.observations);
+      const samples = Number(row.samples);
+      const activities = Number(row.activities);
+      return {
+        code: String(row.measurement_code),
+        displayName: typeof row.display_name === "string" ? row.display_name : humanizeCode(String(row.measurement_code)),
+        category: isSummaryCategory(row.category) ? row.category : "uncategorized",
+        counts: {
+          observations,
+          samples,
+          activities,
+          total: observations + samples + activities
+        },
+        lastMeasuredAt: optionalTimestamp(row.last_measured_at)
+      } satisfies HealthDataSummaryTypeRow;
+    });
+    return summarizeSummaryRows(summaryRows);
+  }
+
+  async measurementDetail(measurementCode: string, page: MeasurementDetailPage = { offset: 0, limit: 100 }) {
+    this.assertOpen();
+    const [typeRows, rows, countRows] = await Promise.all([
+      allWithParams(this.connection, "SELECT * EXCLUDE (ordinal) FROM measurement_types WHERE code = ?;", measurementCode),
+      allWithParams(this.connection, `
+        SELECT * FROM (
+          SELECT
+            'observation' AS kind, o.id, o.measurement_code, o.observed_at AS measured_at, o.value, o.unit,
+            s.label AS source_label, s.source_kind, i.file_name AS import_file_name, i.imported_at,
+            o.note, g.id AS group_id, g.kind AS group_kind, g.label AS group_label, g.collected_at AS group_collected_at,
+            NULL AS sample_start, NULL AS sample_end, NULL AS activity_type, NULL AS activity_start,
+            NULL AS duration_minutes, NULL AS energy_kcal, NULL AS distance_meters
+          FROM observations o
+          LEFT JOIN sources s ON s.id = o.source_id
+          LEFT JOIN imports i ON i.id = s.import_id
+          LEFT JOIN observation_groups g ON g.id = o.observation_group_id
+          WHERE o.measurement_code = ?
+          UNION ALL
+          SELECT
+            'sample' AS kind, t.id, t.measurement_code, t.end_at AS measured_at, t.value, t.unit,
+            s.label AS source_label, s.source_kind, i.file_name AS import_file_name, i.imported_at,
+            NULL AS note, NULL AS group_id, NULL AS group_kind, NULL AS group_label, NULL AS group_collected_at,
+            t.start_at AS sample_start, t.end_at AS sample_end, NULL AS activity_type, NULL AS activity_start,
+            NULL AS duration_minutes, NULL AS energy_kcal, NULL AS distance_meters
+          FROM time_series_samples t
+          LEFT JOIN sources s ON s.id = t.source_id
+          LEFT JOIN imports i ON i.id = s.import_id
+          WHERE t.measurement_code = ?
+          UNION ALL
+          SELECT
+            'activity' AS kind, a.id, 'activity_sessions' AS measurement_code, COALESCE(a.end_at, a.start_at) AS measured_at,
+            COALESCE(a.duration_minutes, DATE_DIFF('minute', a.start_at, COALESCE(a.end_at, a.start_at))) AS value, 'min' AS unit,
+            s.label AS source_label, s.source_kind, i.file_name AS import_file_name, i.imported_at,
+            NULL AS note, NULL AS group_id, NULL AS group_kind, NULL AS group_label, NULL AS group_collected_at,
+            NULL AS sample_start, NULL AS sample_end, a.activity_type, a.start_at AS activity_start,
+            a.duration_minutes, a.energy_kcal, a.distance_meters
+          FROM activities a
+          LEFT JOIN sources s ON s.id = a.source_id
+          LEFT JOIN imports i ON i.id = s.import_id
+          WHERE ? = 'activity_sessions'
+        )
+        ORDER BY measured_at DESC, id
+        LIMIT ? OFFSET ?;
+      `, measurementCode, measurementCode, measurementCode, page.limit, page.offset),
+      allWithParams(this.connection, `
+        SELECT
+          (SELECT COUNT(*) FROM observations WHERE measurement_code = ?) AS observations,
+          (SELECT COUNT(*) FROM time_series_samples WHERE measurement_code = ?) AS samples,
+          (SELECT COUNT(*) FROM activities WHERE ? = 'activity_sessions') AS activities,
+          (SELECT MAX(observed_at) FROM observations WHERE measurement_code = ?) AS observation_latest,
+          (SELECT MAX(end_at) FROM time_series_samples WHERE measurement_code = ?) AS sample_latest,
+          (SELECT MAX(COALESCE(end_at, start_at)) FROM activities WHERE ? = 'activity_sessions') AS activity_latest;
+      `, measurementCode, measurementCode, measurementCode, measurementCode, measurementCode, measurementCode)
+    ]);
+    const type = typeRows[0] ? measurementTypeFromRow(typeRows[0]) : undefined;
+    const displayName = type?.display ?? humanizeCode(measurementCode);
+    const entries = rows.map((row) => measurementDetailEntryFromRow(row, type, displayName));
+    const countRow = countRows[0] ?? {};
+    const counts = {
+      observations: Number(countRow.observations ?? 0),
+      samples: Number(countRow.samples ?? 0),
+      activities: Number(countRow.activities ?? 0)
+    };
+    const total = counts.observations + counts.samples + counts.activities;
+    const latestTimestamp = [
+      optionalTimestamp(countRow.observation_latest),
+      optionalTimestamp(countRow.sample_latest),
+      optionalTimestamp(countRow.activity_latest)
+    ].reduce<string | undefined>((latest, candidate) => !latest || (candidate && candidate > latest) ? candidate : latest, undefined);
+    return summarizeMeasurementEntries(measurementCode, type, entries, {
+      counts: { ...counts, total },
+      latestTimestamp,
+      pagination: {
+        limit: page.limit,
+        loaded: page.offset + entries.length,
+        total,
+        hasMore: page.offset + entries.length < total
+      }
+    });
+  }
+
   async dailyMetrics(measurementCode?: string): Promise<DuckDbDailyMetric[]> {
     this.assertOpen();
     const rows = measurementCode === undefined
@@ -760,6 +890,83 @@ export function digestHealthStoreData(store: HealthStoreData): string {
   return createHash("sha256").update(canonicalJson(store)).digest("hex");
 }
 
+function measurementTypeFromRow(row: Record<string, unknown>): MeasurementType {
+  return {
+    code: String(row.code),
+    display: String(row.display),
+    category: String(row.category) as MeasurementType["category"],
+    kind: String(row.kind) as MeasurementType["kind"],
+    canonicalUnit: String(row.canonical_unit),
+    aliases: requiredJson<string[]>(row.aliases),
+    ...(optionalJson<Record<string, unknown>>(row.custom_properties) ?? {}),
+    aggregation: String(row.aggregation) as MeasurementType["aggregation"]
+  };
+}
+
+function measurementDetailEntryFromRow(
+  row: Record<string, unknown>,
+  type: MeasurementType | undefined,
+  displayName: string
+): HealthDataDetailEntry {
+  const kind = String(row.kind) as HealthDataDetailEntry["kind"];
+  const base = {
+    kind,
+    id: String(row.id),
+    measurementCode: String(row.measurement_code),
+    displayName,
+    timestamp: isoTimestamp(row.measured_at),
+    value: Number(row.value),
+    unit: String(row.unit),
+    sourceLabel: optionalString(row.source_label),
+    sourceKind: optionalString(row.source_kind) as HealthDataDetailEntry["sourceKind"],
+    importFileName: optionalString(row.import_file_name),
+    importedAt: optionalTimestamp(row.imported_at)
+  };
+  if (kind === "observation") {
+    const referenceRange = type?.referenceRanges?.find((range) => range.unit === base.unit);
+    const groupId = optionalString(row.group_id);
+    return {
+      ...base,
+      note: optionalString(row.note),
+      observationGroup: groupId
+        ? {
+            id: groupId,
+            kind: String(row.group_kind) as ObservationGroup["kind"],
+            label: String(row.group_label),
+            collectedAt: optionalTimestamp(row.group_collected_at)
+          }
+        : undefined,
+      referenceRange,
+      status: type ? classifyValue(base.value, type, base.unit) : "unknown",
+      canDelete: true,
+      deleteLabel: "Delete"
+    };
+  }
+  if (kind === "sample") {
+    const startAt = isoTimestamp(row.sample_start);
+    const endAt = isoTimestamp(row.sample_end);
+    return {
+      ...base,
+      note: startAt !== endAt ? `${startAt} → ${endAt}` : undefined
+    };
+  }
+  const detailNotes = [
+    `Type: ${String(row.activity_type)}`,
+    row.energy_kcal === null || row.energy_kcal === undefined ? undefined : `Energy: ${Number(row.energy_kcal).toFixed(1)} kcal`,
+    row.distance_meters === null || row.distance_meters === undefined ? undefined : `Distance: ${Number(row.distance_meters).toFixed(1)} m`
+  ].filter((note): note is string => Boolean(note));
+  return { ...base, note: detailNotes.join(" • ") };
+}
+
+function isSummaryCategory(value: unknown): value is HealthDataSummaryTypeRow["category"] {
+  return value === "activity" || value === "cardio" || value === "sleep" || value === "body" ||
+    value === "lab" || value === "metabolic" || value === "derived" || value === "uncategorized";
+}
+
+function humanizeCode(code: string): string {
+  return code.replaceAll("_", " ").replace(/\b\w/g, (segment) => segment.toUpperCase());
+}
+
 function measurementTypeProperties(entry: MeasurementType): Record<string, unknown> {
   return compact({
     fhirCode: entry.fhirCode,
@@ -796,6 +1003,26 @@ function optionalJson<T = unknown>(value: unknown): T | undefined {
 
 function optionalNumber(value: unknown): number | undefined {
   return value === null || value === undefined ? undefined : Number(value);
+}
+
+function profileFromRow(row: Record<string, unknown>): Profile {
+  const profileProperties = optionalJson<Record<string, unknown>>(row.custom_properties) ?? {};
+  return compact({
+    id: row.id,
+    displayName: row.display_name,
+    birthYear: optionalNumber(row.birth_year),
+    sex: row.sex,
+    heightCm: optionalNumber(row.height_cm),
+    bloodType: row.blood_type,
+    goalSummary: row.goal_summary,
+    ...profileProperties,
+    units: row.units,
+    updatedAt: isoTimestamp(row.updated_at)
+  }) as unknown as Profile;
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 function optionalTimestamp(value: unknown): string | undefined {
@@ -1046,14 +1273,7 @@ export interface DuckDbActivityCount {
   count: number;
 }
 
-export interface DuckDbImport {
-  sourceImport: SourceImport;
-  dataSource: HealthStoreData["dataSources"][number];
-  observations: HealthStoreData["observations"];
-  observationGroups: HealthStoreData["observationGroups"];
-  timeSeriesSamples: HealthStoreData["timeSeriesSamples"];
-  activitySessions: HealthStoreData["activitySessions"];
-}
+export type DuckDbImport = ProfileImport;
 
 const maxRawImportChars = 1_000_000;
 const maxObservations = 250_000;

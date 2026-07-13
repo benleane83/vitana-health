@@ -52,7 +52,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
   if (rollbackRequested) {
     rollbackDuckDbActivation({ security: storeSecurity!, discardDuckDbChanges: true });
   }
-  const storeManager = new ProfileStoreManager({ security: storeSecurity });
   let activationState: "initial-activation" | "reopen" | "not-applicable" = "not-applicable";
   if (env.LFA_STORAGE_BACKEND === "duckdb") {
     if (process.platform !== "win32" || process.arch !== "x64") {
@@ -62,8 +61,14 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
       throw new Error("LFA_DUCKDB_HTTPFS_EXTENSION is required when LFA_STORAGE_BACKEND=duckdb.");
     }
     activationState = hasDuckDbActivationManifest() ? "reopen" : "initial-activation";
-    await storeManager.activateDuckDb({ httpfsExtensionPath: env.LFA_DUCKDB_HTTPFS_EXTENSION });
   }
+  const storeManager = await ProfileStoreManager.open({
+    security: storeSecurity,
+    storageBackend: env.LFA_STORAGE_BACKEND,
+    duckdb: env.LFA_STORAGE_BACKEND === "duckdb"
+      ? { httpfsExtensionPath: env.LFA_DUCKDB_HTTPFS_EXTENSION! }
+      : undefined
+  });
   const profiles = storeManager.listProfiles();
   const activeProfileId = storeManager.getActiveProfileId();
   log.info("Health storage runtime ready.", {

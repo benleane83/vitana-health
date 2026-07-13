@@ -161,7 +161,13 @@ export const api = {
     };
   },
   summary: () => request<HealthDataSummary>("/api/summary"),
-  healthDataDetail: (measurementCode: string) => request<HealthDataDetail>(`/api/summary/${encodeURIComponent(measurementCode)}`),
+  healthDataDetail: (measurementCode: string, page?: { limit?: number; offset?: number }) => {
+    const query = new URLSearchParams();
+    if (page?.limit !== undefined) query.set("limit", String(page.limit));
+    if (page?.offset !== undefined) query.set("offset", String(page.offset));
+    const suffix = query.size > 0 ? `?${query.toString()}` : "";
+    return request<HealthDataDetail>(`/api/summary/${encodeURIComponent(measurementCode)}${suffix}`);
+  },
   deleteObservation: (id: string) => request<DeleteObservationResponse>(`/api/observations/${encodeURIComponent(id)}`, { method: "DELETE" }),
   deleteObservationsByType: (measurementCode: string) =>
     request<DeleteObservationsByTypeResponse>(`/api/observations/by-type/${encodeURIComponent(measurementCode)}`, { method: "DELETE" }),

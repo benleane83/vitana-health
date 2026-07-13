@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   closeEncryptedDuckDbDatabase,
   createDuckDbSchema,
@@ -123,6 +123,53 @@ describe("DuckDbRepository fidelity", () => {
       expect(digestHealthStoreData({ ...snapshot, profile: fixture.profile, auditEvents: [] })).toBe(beforeDigest);
     } finally {
       await reopened.close();
+    }
+  }, 30_000);
+
+  it.skipIf(!httpfsExtensionPath)("serves Track summaries and details without materializing a full snapshot", async () => {
+    const databasePath = join(root, "databases", "health-store-track-reads.duckdb-poc");
+    const repository = await DuckDbRepository.hydrate(
+      root,
+      databasePath,
+      key,
+      createDuckDbHealthStoreFixture(),
+      { httpfsExtensionPath }
+    );
+    const snapshotSpy = vi.spyOn(repository, "snapshot").mockRejectedValue(new Error("Track reads must not snapshot."));
+    try {
+      const summary = await repository.summary();
+      const detail = await repository.measurementDetail("weight");
+      const activities = await repository.measurementDetail("activity_sessions");
+      const firstPage = await repository.measurementDetail("weight", { offset: 0, limit: 2 });
+
+      expect(summary.totals).toMatchObject({ observations: 2, samples: 1, activities: 1, total: 4, types: 2 });
+      expect(detail.measurement).toMatchObject({ code: "weight", displayName: "Weight", counts: { total: 3 } });
+      expect(detail.entries.map((entry) => entry.id)).toEqual(["sample-1", "observation-a", "observation-z"]);
+      expect(detail.entries[2]).toMatchObject({
+        sourceLabel: "Fixture source",
+        importFileName: "fixture.csv",
+        observationGroup: { id: "group-1", label: "Fixture group" },
+        status: "normal"
+      });
+      expect(activities.entries[0]).toMatchObject({ id: "activity-1", note: "Type: walking • Energy: 120.5 kcal • Distance: 2500.0 m" });
+      expect(firstPage.entries.map((entry) => entry.id)).toEqual(["sample-1", "observation-a"]);
+      expect(firstPage.pagination).toEqual({ limit: 2, loaded: 2, total: 3, hasMore: true });
+      expect(snapshotSpy).not.toHaveBeenCalled();
+    } finally {
+      await repository.close();
+    }
+  }, 30_000);
+
+  it.skipIf(!httpfsExtensionPath)("reads profile metadata without materializing a full snapshot", async () => {
+    const databasePath = join(root, "databases", "health-store-profile-read.duckdb-poc");
+    const fixture = createDuckDbHealthStoreFixture();
+    const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
+    const snapshotSpy = vi.spyOn(repository, "snapshot").mockRejectedValue(new Error("Profile reads must not snapshot."));
+    try {
+      await expect(repository.getProfile()).resolves.toEqual(fixture.profile);
+      expect(snapshotSpy).not.toHaveBeenCalled();
+    } finally {
+      await repository.close();
     }
   }, 30_000);
 

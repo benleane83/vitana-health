@@ -9,7 +9,6 @@ import {
 import type { ProfileStoreManager, HealthStore } from "../store.js";
 import { refreshAnalyticsStorage } from "../storage/analyticsBackend.js";
 import { generateInsight } from "../insights.js";
-import { summarizeMeasurementDetail, summarizeStoreData } from "../summary.js";
 import { buildClinicianReport } from "../clinicianReport.js";
 import { createClinicianReportPdf } from "../pdfReport.js";
 
@@ -26,6 +25,11 @@ const observationIdParamSchema = z
   .min(1)
   .max(160)
   .regex(/^[A-Za-z0-9._:-]+$/, "Observation id contains unsupported characters.");
+
+const detailPageQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(250).default(100),
+  offset: z.coerce.number().int().min(0).default(0)
+});
 
 function buildDeleteObservationResponse(
   deleted: DeleteObservationResponse,
@@ -90,13 +94,22 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
     response.json(calculateBiologicalAge(activeStore().snapshot()));
   });
 
-  router.get("/summary", (_request, response) => {
-    response.json(summarizeStoreData(activeStore().snapshot()));
+  router.get("/summary", async (_request, response, next) => {
+    try {
+      response.json(await activeStore().getSummary());
+    } catch (error) {
+      next(error);
+    }
   });
 
-  router.get("/summary/:measurementCode", (request, response) => {
-    const measurementCode = measurementCodeParamSchema.parse(request.params.measurementCode);
-    response.json(summarizeMeasurementDetail(activeStore().snapshot(), measurementCode));
+  router.get("/summary/:measurementCode", async (request, response, next) => {
+    try {
+      const measurementCode = measurementCodeParamSchema.parse(request.params.measurementCode);
+      const page = detailPageQuerySchema.parse(request.query);
+      response.json(await activeStore().getMeasurementDetail(measurementCode, page));
+    } catch (error) {
+      next(error);
+    }
   });
 
   router.delete("/observations/:id", async (request, response, next) => {

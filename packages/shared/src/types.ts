@@ -339,6 +339,12 @@ export interface HealthDataDetail {
     observationEntries: number;
     deletableEntries: number;
   };
+  pagination: {
+    limit: number;
+    loaded: number;
+    total: number;
+    hasMore: boolean;
+  };
 }
 
 export interface ClinicianReport {

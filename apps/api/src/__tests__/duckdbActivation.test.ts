@@ -2,10 +2,10 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildManualLabEntryImport } from "@local-fitness-advisor/shared";
 import { refreshAnalyticsStorage, runAnalyticsQuery } from "../storage/analyticsBackend.js";
-import { ProfileStoreManager, rollbackDuckDbActivation } from "../store.js";
+import { HealthStore, ProfileStoreManager, rollbackDuckDbActivation } from "../store.js";
 
 const httpfsExtensionPath = findPreparedExtension();
 let tempDir: string;
@@ -104,13 +104,18 @@ describe.skipIf(!httpfsExtensionPath)("ProfileStoreManager DuckDB activation", (
     expect(hashFile(sourcePath)).toBe(sourceHash);
     await manager.closeAll();
 
-    const reopened = new ProfileStoreManager();
-    await reopened.activateDuckDb({ httpfsExtensionPath: httpfsExtensionPath!, root: duckdbRoot });
+    const jsonSnapshotSpy = vi.spyOn(HealthStore.prototype, "snapshot");
+    const reopened = await ProfileStoreManager.open({
+      storageBackend: "duckdb",
+      duckdb: { httpfsExtensionPath: httpfsExtensionPath!, root: duckdbRoot }
+    });
     try {
       expect(reopened.getStorageBackend()).toBe("duckdb");
       expect(reopened.getActiveStore().snapshot().insights[0]?.id).toBe("post-activation-insight");
       expect(hashFile(sourcePath)).toBe(sourceHash);
+      expect(jsonSnapshotSpy).not.toHaveBeenCalled();
     } finally {
+      jsonSnapshotSpy.mockRestore();
       await reopened.closeAll();
     }
 
