@@ -47,7 +47,7 @@ export default function App() {
       setSelectedProfileId(null);
       return;
     }
-    void refreshProfiles(connection.url);
+    void refreshProfiles(connection);
   }, [connection?.url]);
 
   async function handleSyncPress(): Promise<void> {
@@ -90,7 +90,7 @@ export default function App() {
     setConnection(fresh);
     setPairScreenVisible(false);
     if (fresh?.url) {
-      await refreshProfiles(fresh.url);
+      await refreshProfiles(fresh);
     }
     setStatus(`Paired with ${pairResult.url}`);
   }
@@ -105,10 +105,10 @@ export default function App() {
     setResult("");
   }
 
-  async function refreshProfiles(url: string): Promise<void> {
+  async function refreshProfiles(connectionDetails: ConnectionDetails): Promise<void> {
     try {
-      const response = await pinnedFetch(`${url.replace(/\/+$/, "")}/api/profiles`, connection?.publicKeyHash ?? null, {
-        headers: connection?.token ? { "x-companion-token": connection.token } : undefined
+      const response = await pinnedFetch(`${connectionDetails.url.replace(/\/+$/, "")}/api/profiles`, connectionDetails.publicKeyHash, {
+        headers: connectionDetails.token ? { "x-companion-token": connectionDetails.token } : undefined
       });
       const payload = (await response.json().catch(() => ({}))) as { profiles?: ProfileListEntry[]; activeProfileId?: string };
       if (!response.ok || !Array.isArray(payload.profiles) || payload.profiles.length === 0) {

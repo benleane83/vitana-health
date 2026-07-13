@@ -75,7 +75,7 @@ This contradicts the scoped-token claims in the prior review and README (`docs/C
 
 This means a user can disable or never grant cloud consent and still transmit health-derived evidence by selecting **Generate insight**. The previous review's cloud-consent item is therefore not complete.
 
-**Required:** Enforce `allowCloud` centrally after resolving the actual provider and endpoint. Keep route checks as defense in depth, add tests for every model-calling route with consent disabled, and record a privacy-safe local audit event for off-device processing.
+**Status (partially addressed 2026-07-13):** `allowCloud: false` is now enforced centrally after provider resolution, with a regression test that confirms no cloud request is made. Route-level disabled-consent coverage and a privacy-safe local audit event remain open.
 
 #### P0 — Overbroad companion access enables SSRF and model-key disclosure
 
@@ -97,7 +97,7 @@ The default is also maximum collection: all supported categories and a 365-day i
 
 Sync and pairing use the native pinned client, but profile refresh uses ordinary unauthenticated `fetch` (`apps/android-companion/App.tsx:107-130`). The API currently returns data only because companion authorization is overbroad; once authorization is corrected, this flow will stop working.
 
-**Required:** Use `pinnedFetch` with the companion token, bounded timeout behavior, and an intentionally minimal companion-safe profile response.
+**Status (partially addressed 2026-07-13):** Profile refresh now uses `pinnedFetch` with the paired companion token. Bounded timeout behavior and an intentionally minimal companion-safe profile response remain open.
 
 #### P1 — AI API keys are stored as plaintext application data
 
@@ -113,7 +113,7 @@ The repository cannot currently demonstrate its own CI contract from a clean ins
 
 This blocks trustworthy typecheck, build, test, packaging, dependency review, and contributor onboarding. It also invalidates a launch decision based only on previously passing tests.
 
-**Required:** Remove the accidental self-dependency, regenerate the lockfile from workspace manifests, verify `npm ci --ignore-scripts` plus the explicit DuckDB rebuild on a clean machine, and make all CI gates pass before any external test build.
+**Status (partially addressed 2026-07-13):** The accidental root self-dependency was removed and workspace lock metadata regenerated. Clean-install and CI-gate verification remain open.
 
 #### P1 — CI does not validate the actual Windows desktop product
 
@@ -191,7 +191,7 @@ The README says the companion uses manual endpoint input and syncs six categorie
 
 The README's privacy claim that companion tokens are import-scoped is also false, and `SECURITY.md` describes the retired JSON backup model as current.
 
-**Required:** Treat privacy, data inventory, storage, recovery, platform support, and pairing documentation as release artifacts with tests or checklist verification.
+**Status (partially addressed 2026-07-13):** README pairing/sync information and the Security backup description were reconciled with the current implementation. A complete release-artifact inventory and verification process remain open.
 
 #### P1 — OpenRouter callback likely cannot complete with the owner cookie policy
 
@@ -209,7 +209,7 @@ The web app has strong semantic foundations: native dialogs, tab roles, labels, 
 
 The web client discards HTTP status and correlation IDs and throws raw response text (`apps/web/src/api.ts:65-70`). Its health response type still expects storage/counts even though the endpoint intentionally returns only `{ ok, uptime }` (`apps/web/src/api.ts:150-152`; `apps/api/src/createApp.ts:180-186`). Several routes still return complete stores, and experimental endpoints remain active.
 
-**Required:** Introduce a typed API error carrying code/status/correlation ID, generate or share response contracts, remove stale types, and document supported/deprecated endpoint lifecycles.
+**Status (partially addressed 2026-07-13):** The stale web health-response type now matches `{ ok, uptime }`. Typed API errors, shared contracts, and lifecycle documentation remain open.
 
 ## Prior-review status
 

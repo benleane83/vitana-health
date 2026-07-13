@@ -61,7 +61,7 @@ The installer packages the API and web UI, configures private-network firewall a
 - If you use a cloud provider, you are responsible for that provider's data retention, logging, and compliance settings.
 - Local model mode (for example Ollama) keeps all processing on-device.
 - Set `LFA_SECRET` to control the encryption passphrase for standalone use. The packaged desktop wraps its generated key with the operating system through Electron `safeStorage`.
-- Owner authentication protects all API data and administration routes. Companion tokens are scoped to Health Connect import and can be revoked.
+- Owner authentication protects all API data and administration routes. Companion tokens can be revoked from the paired-device list.
 - Pairing codes and polling secrets expire and are delivered through the owner-authenticated QR flow.
 
 ## Safety boundaries
@@ -117,9 +117,9 @@ An Android MVP companion app lives at `apps/android-companion`.
 
 It supports:
 
-- Manual endpoint URL input
+- QR-based pairing with the local API
 - Manual "Sync now" action
-- Last-30-days Health Connect read for steps, heart rate, oxygen saturation, HRV RMSSD, weight, and exercise sessions
+- Configurable Health Connect category selection and initial sync window (365 days by default)
 - POST to `POST /api/import/health-connect` on your local API
 
 The API import pipeline uses deterministic IDs so re-running sync keeps existing records deduplicated.
