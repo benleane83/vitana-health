@@ -4,7 +4,13 @@ import { createServer as createHttpsServer } from "node:https";
 import path from "node:path";
 import { Bonjour } from "bonjour-service";
 import { PairingStore } from "./pairing.js";
-import { ProfileStoreManager } from "./store.js";
+import {
+  hasDuckDbActivationManifest,
+  ProfileStoreManager,
+  resolveStoreSecurityConfig,
+  rollbackDuckDbActivation,
+  type StoreSecurityConfig
+} from "./store.js";
 import { createApp } from "./createApp.js";
 import { configureRuntimeSecurity } from "./security.js";
 import { validateEnv } from "./env.js";
@@ -13,7 +19,13 @@ import { log } from "./logger.js";
 
 loadEnvironmentFiles();
 
-export async function startServer(): Promise<Server> {
+export interface StartServerOptions {
+  storeSecurity?: StoreSecurityConfig;
+}
+
+export type RunningServer = Server & { shutdown: () => Promise<void> };
+
+export async function startServer(options: StartServerOptions = {}): Promise<RunningServer> {
   // Fail fast on misconfigured environment before touching any port or file
   const env = validateEnv();
 
@@ -29,7 +41,39 @@ export async function startServer(): Promise<Server> {
     throw new Error("Could not configure HTTPS for non-loopback API access.");
   }
 
-  const storeManager = new ProfileStoreManager();
+  const rollbackRequested = env.LFA_DUCKDB_ROLLBACK === "discard-duckdb-changes";
+  if (rollbackRequested && env.LFA_STORAGE_BACKEND !== "json") {
+    throw new Error("LFA_DUCKDB_ROLLBACK requires LFA_STORAGE_BACKEND=json.");
+  }
+  if (hasDuckDbActivationManifest() && env.LFA_STORAGE_BACKEND !== "duckdb" && !rollbackRequested) {
+    throw new Error("DuckDB storage is activated for this data directory. Set LFA_STORAGE_BACKEND=duckdb or perform an explicit rollback.");
+  }
+  const storeSecurity = options.storeSecurity ?? (rollbackRequested ? resolveStoreSecurityConfig() : undefined);
+  if (rollbackRequested) {
+    rollbackDuckDbActivation({ security: storeSecurity!, discardDuckDbChanges: true });
+  }
+  const storeManager = new ProfileStoreManager({ security: storeSecurity });
+  let activationState: "initial-activation" | "reopen" | "not-applicable" = "not-applicable";
+  if (env.LFA_STORAGE_BACKEND === "duckdb") {
+    if (process.platform !== "win32" || process.arch !== "x64") {
+      throw new Error("DuckDB storage productionization is currently approved only for Windows x64.");
+    }
+    if (!env.LFA_DUCKDB_HTTPFS_EXTENSION) {
+      throw new Error("LFA_DUCKDB_HTTPFS_EXTENSION is required when LFA_STORAGE_BACKEND=duckdb.");
+    }
+    activationState = hasDuckDbActivationManifest() ? "reopen" : "initial-activation";
+    await storeManager.activateDuckDb({ httpfsExtensionPath: env.LFA_DUCKDB_HTTPFS_EXTENSION });
+  }
+  const profiles = storeManager.listProfiles();
+  const activeProfileId = storeManager.getActiveProfileId();
+  log.info("Health storage runtime ready.", {
+    code: "storage-runtime-ready",
+    storageBackend: storeManager.getStorageBackend(),
+    profileCount: profiles.length,
+    activeProfileId,
+    activeProfileDisplayName: profiles.find((profile) => profile.id === activeProfileId)?.displayName,
+    activationState
+  });
   const pairingStore = new PairingStore();
   const app = createApp(storeManager, pairingStore, {
     publicKeyHash: security.publicKeyHash,
@@ -47,6 +91,16 @@ export async function startServer(): Promise<Server> {
       )
     : createHttpServer(app);
 
+  let storageClosePromise: Promise<void> | undefined;
+  const closeStorage = (): Promise<void> => {
+    storageClosePromise ??= storeManager.closeAll().catch((error) => {
+      log.error(`Failed to close health storage: ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
+    });
+    return storageClosePromise;
+  };
+  server.once("close", () => void closeStorage().catch(() => undefined));
+
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(port, host, () => {
@@ -63,29 +117,38 @@ export async function startServer(): Promise<Server> {
     });
   });
 
-  // Graceful shutdown: stop accepting connections and let in-flight requests drain
-  function shutdown(signal: string): void {
-    log.info(`Received ${signal} — shutting down gracefully`);
-    server.close((err) => {
-      if (err) {
-        log.error(`Error during shutdown: ${err.message}`);
-        process.exitCode = 1;
-      } else {
-        log.info("Server closed cleanly");
-      }
-      process.exit(process.exitCode ?? 0);
-    });
-    // Force-exit after 10 s if connections don't drain
-    setTimeout(() => {
-      log.warn("Graceful shutdown timed out — forcing exit");
+  const runningServer = server as RunningServer;
+  runningServer.shutdown = async (): Promise<void> => {
+    if (server.listening) {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => error ? reject(error) : resolve());
+      });
+    }
+    await closeStorage();
+  };
+
+  async function shutdown(signal: string): Promise<void> {
+    log.info(`Received ${signal} - shutting down gracefully`);
+    const forceExit = setTimeout(() => {
+      log.warn("Graceful shutdown timed out - forcing exit");
       process.exit(1);
-    }, 10_000).unref();
+    }, 10_000);
+    forceExit.unref();
+    try {
+      await runningServer.shutdown();
+      clearTimeout(forceExit);
+      log.info("Server closed cleanly");
+      process.exit(process.exitCode ?? 0);
+    } catch (error) {
+      log.error(`Error during shutdown: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    }
   }
 
-  process.once("SIGTERM", () => shutdown("SIGTERM"));
-  process.once("SIGINT", () => shutdown("SIGINT"));
+  process.once("SIGTERM", () => void shutdown("SIGTERM"));
+  process.once("SIGINT", () => void shutdown("SIGINT"));
 
-  return server;
+  return runningServer;
 }
 
 const isMainModule =

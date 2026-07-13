@@ -12,7 +12,9 @@
     "electron-builder": "26.15.3"
   },
   "scripts": {
+    "prepackage": "node ../../scripts/prepare-duckdb-httpfs.mjs --output build/duckdb-extensions --skip-runtime-verification",
     "start": "electron .",
+    "test": "node --test secure-store-key.test.cjs",
     "package": "electron-builder"
   },
   "license": "AGPL-3.0-only",
@@ -24,14 +26,20 @@
     "asarUnpack": [
       "**/*.node"
     ],
+    "npmRebuild": false,
     "files": [
       "main.cjs",
+      "secure-store-key.cjs",
       "package.json"
     ],
     "extraResources": [
       {
         "from": "../web/dist",
         "to": "web"
+      },
+      {
+        "from": "build/duckdb-extensions",
+        "to": "duckdb-extensions"
       }
     ],
     "win": {

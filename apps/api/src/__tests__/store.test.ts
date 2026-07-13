@@ -21,6 +21,7 @@ beforeEach(() => {
 afterEach(() => {
   delete process.env.LFA_DATA_DIR;
   delete process.env.LFA_SECRET;
+  delete process.env.NODE_ENV;
   rmSync(tempDir, { recursive: true, force: true });
 });
 
@@ -211,6 +212,42 @@ describe("HealthStore — persistence", () => {
 });
 
 describe("ProfileStoreManager", () => {
+  it("accepts an OS-secure key injected by the desktop host", () => {
+    delete process.env.LFA_SECRET;
+    process.env.NODE_ENV = "production";
+
+    const manager = new ProfileStoreManager({
+      security: {
+        passphrase: "in-memory-os-secure-store-key-123456",
+        securityMode: "os-secure-storage"
+      }
+    });
+
+    expect(manager.securityMode).toBe("os-secure-storage");
+    expect(existsSync(join(tempDir, "local.key"))).toBe(false);
+  });
+
+  it("refuses generated plaintext key fallback in production", () => {
+    delete process.env.LFA_SECRET;
+    process.env.NODE_ENV = "production";
+
+    expect(() => new ProfileStoreManager()).toThrow(/Production health storage requires/);
+    expect(existsSync(join(tempDir, "local.key"))).toBe(false);
+  });
+
+  it("fails closed without replacing unreadable primary and backup stores", () => {
+    const dataPath = join(tempDir, "health-store-self.enc");
+    const backupPath = `${dataPath}.bak`;
+    const unreadablePrimary = "unreadable-primary";
+    const unreadableBackup = "unreadable-backup";
+    writeFileSync(dataPath, unreadablePrimary, "utf8");
+    writeFileSync(backupPath, unreadableBackup, "utf8");
+
+    expect(() => new ProfileStoreManager()).toThrow(/Unable to load encrypted health store/);
+    expect(existsSync(dataPath)).toBe(true);
+    expect(existsSync(backupPath)).toBe(true);
+  });
+
   it("migrates a legacy single-store file into the self profile", () => {
     const legacy = makeStore();
     legacy.addInsight({
@@ -235,9 +272,9 @@ describe("ProfileStoreManager", () => {
     expect(manager.getStore("self").snapshot().insights).toHaveLength(1);
   });
 
-  it("keeps profile stores isolated and tracks the active profile", () => {
+  it("keeps profile stores isolated and tracks the active profile", async () => {
     const manager = new ProfileStoreManager();
-    const created = manager.createProfile("Shabnam Sarjami");
+    const created = await manager.createProfile("Shabnam Sarjami");
     expect(created.id).toBe("shabnam-sarjami");
 
     manager.setActiveProfile(created.id);
@@ -252,5 +289,5 @@ describe("ProfileStoreManager", () => {
     expect(manager.listProfiles()).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: "shabnam-sarjami", displayName: "Shabnam" })])
     );
-  });
+  }, 10_000);
 });

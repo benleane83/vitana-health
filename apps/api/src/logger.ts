@@ -19,6 +19,11 @@ export interface LogRecord {
   status?: number;
   durationMs?: number;
   code?: string;
+  storageBackend?: "json" | "duckdb";
+  profileCount?: number;
+  activeProfileId?: string;
+  activeProfileDisplayName?: string;
+  activationState?: "initial-activation" | "reopen" | "not-applicable";
 }
 
 function write(record: LogRecord): void {

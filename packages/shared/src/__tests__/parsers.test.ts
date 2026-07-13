@@ -141,12 +141,15 @@ describe("generic observation imports", () => {
       observations: [{ measurementName: "Weight", value: 82, unit: "kg" }]
     });
     expect(result.observations[0]).toMatchObject({ measurementCode: "weight", value: 82 });
+    expect(result.observationGroups[0].metadata).toStrictEqual({});
+    expect(result.observations[0].sourceJson).toStrictEqual({ measurementName: "Weight", value: 82, unit: "kg" });
   });
 
   it("maps generic CSV observations and generates a fallback code", () => {
     const result = parseObservationCsv("observations.csv", "observedAt,measurement,value,unit\n2026-06-15,Custom score,7,points");
     expect(result.sourceImport.sourceKind).toBe("observation-csv");
     expect(result.observations[0].measurementCode).toBe("manual_custom_score");
+    expect(result.observationGroups[0].metadata).toStrictEqual({});
   });
 });
 

@@ -207,6 +207,7 @@ export function parseObservationCsv(fileName: string, content: string, importedA
   const first = normalizeKeys(rows[0] ?? {});
   const observedAt = readDate(first.observed_at ?? first.collected_at ?? first.date) ?? importedAt;
   const label = first.label || first.panel_name || "Observation CSV";
+  const sourceName = first.source_name?.trim();
   const groupId = stableId("group", ["observation-csv", sourceChecksum]);
   const group: ObservationGroup = {
     id: groupId,
@@ -215,7 +216,7 @@ export function parseObservationCsv(fileName: string, content: string, importedA
     sourceId,
     importId,
     collectedAt: observedAt,
-    metadata: { sourceName: first.source_name }
+    metadata: sourceName ? { sourceName } : {}
   };
   const observations: Observation[] = [];
 
@@ -288,6 +289,7 @@ export function buildManualObservationImport(
   const importId = stableId("import", ["manual-entry", sourceChecksum]);
   const sourceId = stableId("source", ["manual-entry", sourceChecksum]);
   const groupId = stableId("group", ["lab_panel", sourceChecksum]);
+  const sourceName = payload.sourceName?.trim();
   const group: ObservationGroup = {
     id: groupId,
     kind: groupKind,
@@ -295,7 +297,7 @@ export function buildManualObservationImport(
     sourceId,
     importId,
     collectedAt,
-    metadata: { sourceName: payload.sourceName?.trim() || undefined }
+    metadata: sourceName ? { sourceName } : {}
   };
   const observations: Observation[] = [];
 
@@ -328,7 +330,12 @@ export function buildManualObservationImport(
       sourceId,
       observationGroupId: groupId,
       note: `Manual observation from ${group.label}`,
-      sourceJson: row
+      sourceJson: {
+        ...(row.measurementName !== undefined ? { measurementName: row.measurementName } : {}),
+        ...(row.measurementCode !== undefined ? { measurementCode: row.measurementCode } : {}),
+        value: row.value,
+        ...(row.unit !== undefined ? { unit: row.unit } : {})
+      }
     });
   }
 
