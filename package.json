@@ -33,8 +33,5 @@
     "typescript": "^5.8.3",
     "vitest": "^4.1.10",
     "wait-on": "^9.0.10"
-  },
-  "dependencies": {
-    "local-fitness-advisor": "file:"
   }
 }

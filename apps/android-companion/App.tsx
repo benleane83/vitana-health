@@ -15,6 +15,7 @@ import {
 import type { ConnectionDetails, HealthConnectCategory } from "./src/endpointStore";
 import { PairScreen } from "./src/PairScreen";
 import type { PairResult } from "./src/PairScreen";
+import { pinnedFetch } from "./src/pinnedFetch";
 import { syncHealthConnect } from "./src/syncHealthConnect";
 
 interface ProfileListEntry {
@@ -106,7 +107,9 @@ export default function App() {
 
   async function refreshProfiles(url: string): Promise<void> {
     try {
-      const response = await fetch(`${url.replace(/\/+$/, "")}/api/profiles`);
+      const response = await pinnedFetch(`${url.replace(/\/+$/, "")}/api/profiles`, connection?.publicKeyHash ?? null, {
+        headers: connection?.token ? { "x-companion-token": connection.token } : undefined
+      });
       const payload = (await response.json().catch(() => ({}))) as { profiles?: ProfileListEntry[]; activeProfileId?: string };
       if (!response.ok || !Array.isArray(payload.profiles) || payload.profiles.length === 0) {
         setProfiles([]);
