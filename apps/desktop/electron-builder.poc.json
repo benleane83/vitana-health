@@ -1,0 +1,28 @@
+{
+  "appId": "com.localfitnessadvisor.desktop.duckdbpoc",
+  "productName": "Local Fitness Advisor DuckDB PoC",
+  "asar": true,
+  "asarUnpack": [
+    "**/*.node"
+  ],
+  "npmRebuild": false,
+  "extraMetadata": {
+    "main": "poc-main.cjs"
+  },
+  "directories": {
+    "output": "dist-poc"
+  },
+  "files": [
+    "poc-main.cjs",
+    "package.json"
+  ],
+  "extraResources": [
+    {
+      "from": "build/duckdb-extensions",
+      "to": "duckdb-extensions"
+    }
+  ],
+  "win": {
+    "target": "dir"
+  }
+}

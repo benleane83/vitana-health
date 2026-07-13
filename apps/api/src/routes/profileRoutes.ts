@@ -42,19 +42,23 @@ export function makeProfileRoutes(storeManager: ProfileStoreManager): express.Ro
     response.json(storeManager.getActiveStore().snapshot().profile);
   });
 
-  router.put("/", (request, response) => {
-    const parsed = profileSchema.parse(request.body);
-    const store = storeManager.getActiveStore();
-    const existing = store.snapshot().profile;
-    const profile: Profile = {
-      ...existing,
-      ...parsed,
-      id: store.profileId,
-      updatedAt: new Date().toISOString()
-    };
-    const saved = store.replaceProfile(profile);
-    storeManager.syncProfileEntry(saved);
-    response.json(saved);
+  router.put("/", async (request, response, next) => {
+    try {
+      const parsed = profileSchema.parse(request.body);
+      const store = storeManager.getActiveStore();
+      const existing = store.snapshot().profile;
+      const profile: Profile = {
+        ...existing,
+        ...parsed,
+        id: store.profileId,
+        updatedAt: new Date().toISOString()
+      };
+      const saved = await store.replaceProfile(profile);
+      storeManager.syncProfileEntry(saved);
+      response.json(saved);
+    } catch (error) {
+      next(error);
+    }
   });
 
   router.get("/cloud-ai-consent", (_request, response) => {
@@ -69,32 +73,36 @@ export function makeProfileRoutes(storeManager: ProfileStoreManager): express.Ro
     );
   });
 
-  router.put("/cloud-ai-consent", (request, response) => {
-    const parsed = cloudConsentSchema.parse(request.body ?? {});
-    const store = storeManager.getActiveStore();
-    const current = store.snapshot().profile;
-    const nextConsent = parsed.enabled
-      ? {
-          enabled: true,
-          providerScopeAccepted: parsed.providerScopeAccepted,
-          consentedAt: new Date().toISOString(),
-          consentVersion: parsed.consentVersion ?? "v1"
-        }
-      : {
-          enabled: false,
-          providerScopeAccepted: false,
-          consentedAt: undefined,
-          consentVersion: parsed.consentVersion ?? current.cloudAiConsent?.consentVersion ?? "v1"
-        };
+  router.put("/cloud-ai-consent", async (request, response, next) => {
+    try {
+      const parsed = cloudConsentSchema.parse(request.body ?? {});
+      const store = storeManager.getActiveStore();
+      const current = store.snapshot().profile;
+      const nextConsent = parsed.enabled
+        ? {
+            enabled: true,
+            providerScopeAccepted: parsed.providerScopeAccepted,
+            consentedAt: new Date().toISOString(),
+            consentVersion: parsed.consentVersion ?? "v1"
+          }
+        : {
+            enabled: false,
+            providerScopeAccepted: false,
+            consentedAt: undefined,
+            consentVersion: parsed.consentVersion ?? current.cloudAiConsent?.consentVersion ?? "v1"
+          };
 
-    const saved = store.replaceProfile({
-      ...current,
-      cloudAiConsent: nextConsent,
-      id: store.profileId,
-      updatedAt: new Date().toISOString()
-    });
-    storeManager.syncProfileEntry(saved);
-    response.json(saved.cloudAiConsent);
+      const saved = await store.replaceProfile({
+        ...current,
+        cloudAiConsent: nextConsent,
+        id: store.profileId,
+        updatedAt: new Date().toISOString()
+      });
+      storeManager.syncProfileEntry(saved);
+      response.json(saved.cloudAiConsent);
+    } catch (error) {
+      next(error);
+    }
   });
 
   return router;

@@ -12,7 +12,7 @@ import {
 } from "@local-fitness-advisor/shared";
 import type { ProfileStoreManager } from "../store.js";
 import { healthConnectImportRequestSchema, parseHealthConnectImport } from "../healthConnectImport.js";
-import { rebuildWarehouseFromStore } from "../warehouse.js";
+import { refreshAnalyticsStorage } from "../storage/analyticsBackend.js";
 import { extractBodyCompositionText } from "../bodyCompositionExtract.js";
 import { parseBodyCompositionText } from "@local-fitness-advisor/shared";
 
@@ -94,38 +94,54 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
     return storeManager.getActiveStore();
   }
 
-  router.post("/blood-test", (request, response) => {
-    const parsed = importSchema.parse(request.body);
-    const imported = parseBloodTestCsv(parsed.fileName, parsed.content);
-    const store = activeStore();
-    response.status(201).json({
-      store: store.mergeImport(imported),
-      import: { ...imported.sourceImport, rawContent: undefined }
-    });
+  router.post("/blood-test", async (request, response, next) => {
+    try {
+      const parsed = importSchema.parse(request.body);
+      const imported = parseBloodTestCsv(parsed.fileName, parsed.content);
+      const store = activeStore();
+      response.status(201).json({
+        store: await store.mergeImport(imported),
+        import: { ...imported.sourceImport, rawContent: undefined }
+      });
+    } catch (error) {
+      next(error);
+    }
   });
 
-  router.post("/observations/csv", (request, response) => {
-    const parsed = importSchema.parse(request.body);
-    const imported = parseObservationCsv(parsed.fileName, parsed.content);
-    const store = activeStore();
-    response.status(201).json({ store: store.mergeImport(imported), import: { ...imported.sourceImport, rawContent: undefined } });
+  router.post("/observations/csv", async (request, response, next) => {
+    try {
+      const parsed = importSchema.parse(request.body);
+      const imported = parseObservationCsv(parsed.fileName, parsed.content);
+      const store = activeStore();
+      response.status(201).json({ store: await store.mergeImport(imported), import: { ...imported.sourceImport, rawContent: undefined } });
+    } catch (error) {
+      next(error);
+    }
   });
 
-  router.post("/observations/manual", (request, response) => {
-    const parsed = manualObservationImportSchema.parse(request.body ?? {});
-    const imported = buildManualObservationImport(parsed);
-    const store = activeStore();
-    response.status(201).json({ store: store.mergeImport(imported), import: { ...imported.sourceImport, rawContent: undefined } });
+  router.post("/observations/manual", async (request, response, next) => {
+    try {
+      const parsed = manualObservationImportSchema.parse(request.body ?? {});
+      const imported = buildManualObservationImport(parsed);
+      const store = activeStore();
+      response.status(201).json({ store: await store.mergeImport(imported), import: { ...imported.sourceImport, rawContent: undefined } });
+    } catch (error) {
+      next(error);
+    }
   });
 
-  router.post("/labs/manual", (request, response) => {
-    const parsed = manualLabImportSchema.parse(request.body ?? {});
-    const imported = buildManualLabEntryImport(parsed);
-    const store = activeStore();
-    response.status(201).json({
-      store: store.mergeImport(imported),
-      import: { ...imported.sourceImport, rawContent: undefined }
-    });
+  router.post("/labs/manual", async (request, response, next) => {
+    try {
+      const parsed = manualLabImportSchema.parse(request.body ?? {});
+      const imported = buildManualLabEntryImport(parsed);
+      const store = activeStore();
+      response.status(201).json({
+        store: await store.mergeImport(imported),
+        import: { ...imported.sourceImport, rawContent: undefined }
+      });
+    } catch (error) {
+      next(error);
+    }
   });
 
   router.post("/blood-test/preview", async (request, response, next) => {
@@ -153,8 +169,8 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
       const parsed = bodyCompositionCommitSchema.parse(request.body ?? {});
       const imported = buildBloodTestImportFromDraft({ ...parsed, rows: parsed.rows as BodyCompositionDraftRow[] });
       const store = activeStore();
-      const merged = store.mergeImport(imported);
-      const warehouse = await rebuildWarehouseFromStore(merged);
+      const merged = await store.mergeImport(imported);
+      const warehouse = await refreshAnalyticsStorage(storeManager, merged);
       response.status(201).json({ store: merged, import: { ...imported.sourceImport, rawContent: undefined }, warehouse });
     } catch (error) {
       next(error);
@@ -192,8 +208,8 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
         rows: parsed.rows as BodyCompositionDraftRow[]
       });
       const store = activeStore();
-      const merged = store.mergeImport(imported);
-      const warehouse = await rebuildWarehouseFromStore(merged);
+      const merged = await store.mergeImport(imported);
+      const warehouse = await refreshAnalyticsStorage(storeManager, merged);
       response.status(201).json({
         counts: {
           sourceImports: merged.sourceImports.length,
@@ -216,8 +232,8 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
       const targetProfileId = parsed.profileId ?? storeManager.getActiveProfileId();
       const targetStore = storeManager.getStore(targetProfileId);
       const imported = parseHealthConnectImport(parsed);
-      const merged = targetStore.mergeImport(imported);
-      const warehouse = await rebuildWarehouseFromStore(merged);
+      const merged = await targetStore.mergeImport(imported);
+      const warehouse = await refreshAnalyticsStorage(storeManager, merged);
       response.status(201).json({
         counts: {
           sourceImports: merged.sourceImports.length,

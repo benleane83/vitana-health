@@ -6,7 +6,7 @@ A local-first health analytics app for Android Health Connect sync, manual blood
 
 - Frontend: React + Vite
 - API: Node.js + TypeScript + Express
-- Storage: encrypted local JSON store with a file-vault style envelope
+- Storage: encrypted local JSON by default; encrypted DuckDB development and packaged runtime on Windows x64
 - AI: optional local Ollama runtime or cloud OpenAI-compatible Responses API endpoint
 
 ## Quick start
@@ -17,6 +17,14 @@ npm run dev
 ```
 
 The API binds to `127.0.0.1:4317` by default, and the Vite UI runs on `127.0.0.1:5173`.
+
+To run the main local profiles against encrypted DuckDB on Windows x64:
+
+```powershell
+npm run dev:duckdb
+```
+
+This command verifies the pinned, signed DuckDB extension before launch and sets the required backend configuration. On first use it parity-checks and activates every registered profile side by side, retaining the encrypted JSON files for explicit rollback. Later launches reopen the encrypted databases. The API startup record reports the active profile and whether the launch performed initial activation or reopen.
 
 The API generates and persists its owner credential automatically. A browser running on the same computer obtains an `HttpOnly` local session, so users never copy or enter a token.
 
@@ -38,13 +46,13 @@ The installer packages the API and web UI, configures private-network firewall a
 
 - Personal health data is stored locally under `data\health-store.enc`.
 - Raw imports are stored inside the encrypted local store and are omitted from normal API responses.
-- No telemetry, cloud sync, or vendor data upload paths are implemented.
+- No external telemetry, cloud sync, or vendor data upload paths are implemented. The opt-in DuckDB pilot writes a local privacy-safe storage lifecycle log for soak review.
 - The only optional off-device path is model prompt text when you configure a cloud model provider yourself.
 - Cloud prompts are blocked until explicit cloud consent is recorded for the active profile.
 - Prompt payloads are minimized to de-identified query evidence. Direct identifiers (for example profile identity, source labels, file names, import metadata, free-form notes, and raw import payloads) are excluded from cloud prompt serialization.
 - If you use a cloud provider, you are responsible for that provider's data retention, logging, and compliance settings.
 - Local model mode (for example Ollama) keeps all processing on-device.
-- Set `LFA_SECRET` to control the encryption passphrase. If omitted, a generated local key is stored under `data\local.key`.
+- Set `LFA_SECRET` to control the encryption passphrase for standalone use. The packaged desktop wraps its generated key with the operating system through Electron `safeStorage`.
 - Owner authentication protects all API data and administration routes. Companion tokens are scoped to Health Connect import and can be revoked.
 - Pairing codes and polling secrets expire and are delivered through the owner-authenticated QR flow.
 
@@ -176,15 +184,15 @@ $body = @{
 Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:4317/api/import/health-connect" -ContentType "application/json" -Body $body
 ```
 
-## Local Warehouse (DuckDB)
+## Local Analytics (DuckDB)
 
-After importing data, build a query-friendly local warehouse:
+In JSON storage mode, build a query-friendly local warehouse after importing data:
 
 ```powershell
 Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:4317/api/warehouse/rebuild" -ContentType "application/json" -Body "{}"
 ```
 
-This creates `data\health-warehouse.duckdb` with normalized tables and daily/weekly metric views.
+This creates `data\health-warehouse.duckdb` with normalized tables and daily/weekly metric views. In encrypted DuckDB mode, the same route refreshes the active encrypted profile in place and reports `encrypted-profile:<profile-id>`; it does not create the shared plaintext warehouse.
 
 ## AI-Powered Natural Language Query (`/api/query/ai`)
 

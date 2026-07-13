@@ -6,3 +6,5 @@ data/
 *.log
 .DS_Store
 .playwright-mcp/
+apps/desktop/build/duckdb-extensions/
+apps/desktop/dist-poc/

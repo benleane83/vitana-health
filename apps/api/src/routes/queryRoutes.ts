@@ -2,7 +2,7 @@ import express from "express";
 import { z } from "zod";
 import { safetyNotice } from "@local-fitness-advisor/shared";
 import type { ProfileStoreManager } from "../store.js";
-import { runWarehouseQuery } from "../warehouse.js";
+import { runAnalyticsQuery } from "../storage/analyticsBackend.js";
 import { callConfiguredModel, currentModelConfig, resolvedModelProvider } from "../modelClient.js";
 import { planStoreAnswer } from "../askStore.js";
 import { planAiQuery } from "../aiQueryPlanner.js";
@@ -165,7 +165,7 @@ export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Rout
         return;
       }
 
-      const rows = await runWarehouseQuery(compileOutcome.sql);
+      const rows = await runAnalyticsQuery(storeManager, compileOutcome.sql);
 
       if (rows.length === 0) {
         response.json({

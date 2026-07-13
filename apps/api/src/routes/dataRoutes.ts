@@ -7,7 +7,7 @@ import {
   type DeleteObservationsByTypeResponse
 } from "@local-fitness-advisor/shared";
 import type { ProfileStoreManager, HealthStore } from "../store.js";
-import { rebuildWarehouseFromStore } from "../warehouse.js";
+import { refreshAnalyticsStorage } from "../storage/analyticsBackend.js";
 import { generateInsight } from "../insights.js";
 import { summarizeMeasurementDetail, summarizeStoreData } from "../summary.js";
 import { buildClinicianReport } from "../clinicianReport.js";
@@ -103,12 +103,12 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
     try {
       const id = observationIdParamSchema.parse(request.params.id);
       const store = activeStore();
-      const deleted = store.deleteObservation(id);
+      const deleted = await store.deleteObservation(id);
       if (!deleted) {
         response.status(404).json({ error: "Observation not found.", code: "OBSERVATION_NOT_FOUND" });
         return;
       }
-      const warehouse = await rebuildWarehouseFromStore(deleted.store);
+      const warehouse = await refreshAnalyticsStorage(storeManager, deleted.store);
       response.json(buildDeleteObservationResponse(deleted, warehouse));
     } catch (error) {
       next(error);
@@ -119,8 +119,8 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
     try {
       const measurementCode = measurementCodeParamSchema.parse(request.params.measurementCode);
       const store = activeStore();
-      const deleted = store.deleteObservationsByMeasurementCode(measurementCode);
-      const warehouse = await rebuildWarehouseFromStore(deleted.store);
+      const deleted = await store.deleteObservationsByMeasurementCode(measurementCode);
+      const warehouse = await refreshAnalyticsStorage(storeManager, deleted.store);
       response.json(buildDeleteObservationsByTypeResponse(deleted, warehouse));
     } catch (error) {
       next(error);
@@ -130,7 +130,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
   router.post("/warehouse/rebuild", async (_request, response, next) => {
     try {
       response.setHeader("x-lfa-lifecycle", "experimental");
-      const result = await rebuildWarehouseFromStore(activeStore().snapshot());
+      const result = await refreshAnalyticsStorage(storeManager, activeStore().snapshot());
       response.status(201).json(result);
     } catch (error) {
       next(error);
@@ -141,15 +141,19 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
     try {
       const store = activeStore();
       const insight = await generateInsight(store.snapshot());
-      response.status(201).json(store.addInsight(insight));
+      response.status(201).json(await store.addInsight(insight));
     } catch (error) {
       next(error);
     }
   });
 
-  router.get("/export", (_request, response) => {
-    response.setHeader("content-disposition", "attachment; filename=local-fitness-advisor-export.json");
-    response.json(activeStore().exportData());
+  router.get("/export", async (_request, response, next) => {
+    try {
+      response.setHeader("content-disposition", "attachment; filename=local-fitness-advisor-export.json");
+      response.json(await activeStore().exportData());
+    } catch (error) {
+      next(error);
+    }
   });
 
   router.get("/export/pdf", async (_request, response, next) => {

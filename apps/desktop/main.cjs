@@ -1,6 +1,7 @@
-const { app, BrowserWindow, session } = require("electron");
+const { app, BrowserWindow, safeStorage, session } = require("electron");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
+const { loadOrCreateSecureStoreKey } = require("./secure-store-key.cjs");
 
 let apiServer;
 
@@ -13,10 +14,26 @@ async function launch() {
   process.env.LFA_WEB_ROOT = packaged
     ? path.join(process.resourcesPath, "web")
     : path.resolve(__dirname, "../web/dist");
+  process.env.LFA_DUCKDB_HTTPFS_EXTENSION = packaged
+    ? path.join(process.resourcesPath, "duckdb-extensions", "httpfs.duckdb_extension")
+    : path.resolve(__dirname, "build", "duckdb-extensions", "httpfs.duckdb_extension");
 
   const serverPath = require.resolve("@local-fitness-advisor/api");
   const { startServer } = await import(pathToFileURL(serverPath).href);
-  apiServer = await startServer();
+  const configuredSecret = process.env.LFA_SECRET;
+  const secureKey = configuredSecret
+    ? undefined
+    : loadOrCreateSecureStoreKey({
+        safeStorage,
+        userDataPath: app.getPath("userData"),
+        legacyKeyPath: path.join(app.getPath("userData"), "local.key")
+      });
+  apiServer = await startServer({
+    storeSecurity: configuredSecret
+      ? { passphrase: configuredSecret, securityMode: "env-secret" }
+      : { passphrase: secureKey.passphrase, securityMode: "os-secure-storage" }
+  });
+  secureKey?.finalize();
 
   session.defaultSession.setCertificateVerifyProc((request, callback) => {
     callback(request.hostname === "127.0.0.1" || request.hostname === "localhost" ? 0 : -3);

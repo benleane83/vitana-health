@@ -15,7 +15,11 @@
     "pretest": "npm run build -w @local-fitness-advisor/shared",
     "test": "vitest run",
     "start": "node dist/server.js",
-    "poc:duckdb": "tsx src/poc/duckdbPocCli.ts"
+    "prepare:poc:duckdb": "node ../../scripts/prepare-duckdb-httpfs.mjs --output ../desktop/build/duckdb-extensions",
+    "prepoc:duckdb": "npm run prepare:poc:duckdb",
+    "poc:duckdb": "tsx src/poc/duckdbPocCli.ts",
+    "prepoc:duckdb:benchmark": "npm run prepare:poc:duckdb",
+    "poc:duckdb:benchmark": "tsx src/poc/duckdbBenchmark.ts"
   },
   "dependencies": {
     "@local-fitness-advisor/shared": "file:../../packages/shared",

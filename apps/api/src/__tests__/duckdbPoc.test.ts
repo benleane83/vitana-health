@@ -30,7 +30,27 @@ describe("encrypted DuckDB PoC boundary", () => {
     expect(existsSync(databasePath)).toBe(false);
   });
 
-  it("reports the installed binding's native-encryption no-go", async () => {
+  it("rejects writable encryption when httpfs is unavailable", async () => {
     await expect(proveNativeEncryption(root)).rejects.toThrow("read-only crypto module");
   });
+
+  it.skipIf(!process.env.LFA_DUCKDB_HTTPFS_EXTENSION)(
+    "passes all native-encryption gates with an explicit signed httpfs extension",
+    async () => {
+      const result = await proveNativeEncryption(root, {
+        httpfsExtensionPath: process.env.LFA_DUCKDB_HTTPFS_EXTENSION
+      });
+      expect(result).toMatchObject({
+        encrypted: true,
+        correctKeyRead: true,
+        missingKeyRejected: true,
+        wrongKeyRejected: true,
+        walCreated: true,
+        tempSpillCreated: true,
+        sensitiveValuesAbsent: true,
+        rejectedKeysPreservedDatabase: true
+      });
+    },
+    30_000
+  );
 });
