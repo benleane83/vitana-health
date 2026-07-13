@@ -20,6 +20,11 @@ const categoryLabels: Record<HealthDataSummaryTypeRow["category"], string> = {
   uncategorized: "Uncategorized"
 };
 
+export interface MeasurementDetailPage {
+  offset: number;
+  limit: number;
+}
+
 export function summarizeStoreData(store: HealthStoreData): HealthDataSummary {
   const measurementTypes = new Map(store.measurementTypes.map((item) => [item.code, item]));
   const rows = new Map<string, HealthDataSummaryTypeRow>();
@@ -49,8 +54,12 @@ export function summarizeStoreData(store: HealthStoreData): HealthDataSummary {
     }
   }
 
+  return summarizeSummaryRows([...rows.values()]);
+}
+
+export function summarizeSummaryRows(rows: HealthDataSummaryTypeRow[]): HealthDataSummary {
   const grouped = new Map<HealthDataSummaryTypeRow["category"], HealthDataSummaryTypeRow[]>();
-  for (const row of rows.values()) {
+  for (const row of rows) {
     const existing = grouped.get(row.category);
     if (existing) {
       existing.push(row);
@@ -199,7 +208,20 @@ export function listHealthDataDetailEntries(store: HealthStoreData, measurementC
 export function summarizeMeasurementDetail(store: HealthStoreData, measurementCode: string): HealthDataDetail {
   const measurementTypes = new Map(store.measurementTypes.map((item) => [item.code, item]));
   const entries = listHealthDataDetailEntries(store, measurementCode);
-  const counts = entries.reduce<HealthDataSummarySourceCounts & { total: number }>(
+  return summarizeMeasurementEntries(measurementCode, measurementTypes.get(measurementCode), entries);
+}
+
+export function summarizeMeasurementEntries(
+  measurementCode: string,
+  type: MeasurementType | undefined,
+  entries: HealthDataDetailEntry[],
+  options: {
+    counts?: HealthDataSummarySourceCounts & { total: number };
+    latestTimestamp?: string;
+    pagination?: HealthDataDetail["pagination"];
+  } = {}
+): HealthDataDetail {
+  const entryCounts = entries.reduce<HealthDataSummarySourceCounts & { total: number }>(
     (acc, entry) => {
       if (entry.kind === "observation") {
         acc.observations += 1;
@@ -213,9 +235,9 @@ export function summarizeMeasurementDetail(store: HealthStoreData, measurementCo
     },
     { observations: 0, samples: 0, activities: 0, total: 0 }
   );
+  const counts = options.counts ?? entryCounts;
 
-  const latestTimestamp = entries[0]?.timestamp;
-  const type = measurementTypes.get(measurementCode);
+  const latestTimestamp = options.latestTimestamp ?? entries[0]?.timestamp;
   const measurement: HealthDataSummaryTypeRow = {
     code: measurementCode,
     displayName: type?.display ?? entries[0]?.displayName ?? humanizeCode(measurementCode),
@@ -224,15 +246,7 @@ export function summarizeMeasurementDetail(store: HealthStoreData, measurementCo
     lastMeasuredAt: latestTimestamp
   };
 
-  const chartPoints = [...entries]
-    .filter((entry) => entry.timestamp)
-    .sort((a, b) => a.timestamp.localeCompare(b.timestamp) || a.id.localeCompare(b.id))
-    .map((entry) => ({
-      kind: entry.kind,
-      timestamp: entry.timestamp,
-      value: entry.value,
-      unit: entry.unit
-    }));
+  const chartPoints = chartPointsForEntries(entries);
 
   return {
     generatedAt: new Date().toISOString(),
@@ -242,9 +256,27 @@ export function summarizeMeasurementDetail(store: HealthStoreData, measurementCo
     counts,
     deletion: {
       observationEntries: counts.observations,
-      deletableEntries: entries.filter((entry) => entry.canDelete).length
+      deletableEntries: counts.observations
+    },
+    pagination: options.pagination ?? {
+      limit: entries.length,
+      loaded: entries.length,
+      total: counts.total,
+      hasMore: false
     }
   };
+}
+
+export function chartPointsForEntries(entries: HealthDataDetailEntry[]): HealthDataDetail["chartPoints"] {
+  return [...entries]
+    .filter((entry) => entry.timestamp)
+    .sort((a, b) => a.timestamp.localeCompare(b.timestamp) || a.id.localeCompare(b.id))
+    .map((entry) => ({
+      kind: entry.kind,
+      timestamp: entry.timestamp,
+      value: entry.value,
+      unit: entry.unit
+    }));
 }
 
 function ensureRow(

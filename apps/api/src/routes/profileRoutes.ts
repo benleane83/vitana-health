@@ -38,63 +38,79 @@ const setActiveProfileSchema = z.object({
 export function makeProfileRoutes(storeManager: ProfileStoreManager): express.Router {
   const router = express.Router();
 
-  router.get("/", (_request, response) => {
-    response.json(storeManager.getActiveStore().snapshot().profile);
+  router.get("/", async (_request, response, next) => {
+    try {
+      response.json(await storeManager.getActiveStore().getProfile());
+    } catch (error) {
+      next(error);
+    }
   });
 
-  router.put("/", (request, response) => {
-    const parsed = profileSchema.parse(request.body);
-    const store = storeManager.getActiveStore();
-    const existing = store.snapshot().profile;
-    const profile: Profile = {
-      ...existing,
-      ...parsed,
-      id: store.profileId,
-      updatedAt: new Date().toISOString()
-    };
-    const saved = store.replaceProfile(profile);
-    storeManager.syncProfileEntry(saved);
-    response.json(saved);
+  router.put("/", async (request, response, next) => {
+    try {
+      const parsed = profileSchema.parse(request.body);
+      const store = storeManager.getActiveStore();
+      const existing = await store.getProfile();
+      const profile: Profile = {
+        ...existing,
+        ...parsed,
+        id: store.profileId,
+        updatedAt: new Date().toISOString()
+      };
+      const saved = await store.replaceProfile(profile);
+      storeManager.syncProfileEntry(saved);
+      response.json(saved);
+    } catch (error) {
+      next(error);
+    }
   });
 
-  router.get("/cloud-ai-consent", (_request, response) => {
-    const profile = storeManager.getActiveStore().snapshot().profile;
-    response.json(
-      profile.cloudAiConsent ?? {
-        enabled: false,
-        providerScopeAccepted: false,
-        consentedAt: undefined,
-        consentVersion: undefined
-      }
-    );
-  });
-
-  router.put("/cloud-ai-consent", (request, response) => {
-    const parsed = cloudConsentSchema.parse(request.body ?? {});
-    const store = storeManager.getActiveStore();
-    const current = store.snapshot().profile;
-    const nextConsent = parsed.enabled
-      ? {
-          enabled: true,
-          providerScopeAccepted: parsed.providerScopeAccepted,
-          consentedAt: new Date().toISOString(),
-          consentVersion: parsed.consentVersion ?? "v1"
-        }
-      : {
+  router.get("/cloud-ai-consent", async (_request, response, next) => {
+    try {
+      const profile = await storeManager.getActiveStore().getProfile();
+      response.json(
+        profile.cloudAiConsent ?? {
           enabled: false,
           providerScopeAccepted: false,
           consentedAt: undefined,
-          consentVersion: parsed.consentVersion ?? current.cloudAiConsent?.consentVersion ?? "v1"
-        };
+          consentVersion: undefined
+        }
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
 
-    const saved = store.replaceProfile({
-      ...current,
-      cloudAiConsent: nextConsent,
-      id: store.profileId,
-      updatedAt: new Date().toISOString()
-    });
-    storeManager.syncProfileEntry(saved);
-    response.json(saved.cloudAiConsent);
+  router.put("/cloud-ai-consent", async (request, response, next) => {
+    try {
+      const parsed = cloudConsentSchema.parse(request.body ?? {});
+      const store = storeManager.getActiveStore();
+      const current = await store.getProfile();
+      const nextConsent = parsed.enabled
+        ? {
+            enabled: true,
+            providerScopeAccepted: parsed.providerScopeAccepted,
+            consentedAt: new Date().toISOString(),
+            consentVersion: parsed.consentVersion ?? "v1"
+          }
+        : {
+            enabled: false,
+            providerScopeAccepted: false,
+            consentedAt: undefined,
+            consentVersion: parsed.consentVersion ?? current.cloudAiConsent?.consentVersion ?? "v1"
+          };
+
+      const saved = await store.replaceProfile({
+        ...current,
+        cloudAiConsent: nextConsent,
+        id: store.profileId,
+        updatedAt: new Date().toISOString()
+      });
+      storeManager.syncProfileEntry(saved);
+      response.json(saved.cloudAiConsent);
+    } catch (error) {
+      next(error);
+    }
   });
 
   return router;
@@ -110,10 +126,14 @@ export function makeProfilesRoutes(storeManager: ProfileStoreManager): express.R
     });
   });
 
-  router.post("/", (request, response) => {
-    const parsed = createProfileSchema.parse(request.body ?? {});
-    const created = storeManager.createProfile(parsed.displayName);
-    response.status(201).json(created);
+  router.post("/", async (request, response, next) => {
+    try {
+      const parsed = createProfileSchema.parse(request.body ?? {});
+      const created = await storeManager.createProfile(parsed.displayName);
+      response.status(201).json(created);
+    } catch (error) {
+      next(error);
+    }
   });
 
   router.get("/active", (_request, response) => {
@@ -126,14 +146,18 @@ export function makeProfilesRoutes(storeManager: ProfileStoreManager): express.R
     response.json({ profileId });
   });
 
-  router.delete("/:id", (request, response) => {
-    const profileId = profileIdSchema.parse(request.params.id);
-    const result = storeManager.deleteProfile(profileId);
-    response.json({
-      deletedProfileId: profileId,
-      activeProfileId: result.activeProfileId,
-      profiles: storeManager.listProfiles()
-    });
+  router.delete("/:id", async (request, response, next) => {
+    try {
+      const profileId = profileIdSchema.parse(request.params.id);
+      const result = await storeManager.deleteProfile(profileId);
+      response.json({
+        deletedProfileId: profileId,
+        activeProfileId: result.activeProfileId,
+        profiles: storeManager.listProfiles()
+      });
+    } catch (error) {
+      next(error);
+    }
   });
 
   return router;

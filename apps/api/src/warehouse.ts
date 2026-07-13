@@ -10,6 +10,7 @@ import {
 import { dirname, resolve } from "node:path";
 import duckdb from "duckdb";
 import type { HealthStoreData } from "@local-fitness-advisor/shared";
+import { dailyMetricsViewSql, weeklyMetricsViewSql } from "./analyticalViews.js";
 
 const dataDir = process.env.LFA_DATA_DIR ? resolve(process.env.LFA_DATA_DIR) : resolveDataDir();
 const warehousePath = resolve(dataDir, "health-warehouse.duckdb");
@@ -30,6 +31,7 @@ export interface WarehouseBuildResult {
 export async function rebuildWarehouseFromStore(store: HealthStoreData): Promise<WarehouseBuildResult> {
   let db: duckdb.Database | undefined;
   let conn: duckdb.Connection | undefined;
+  let warehouseAttached = false;
   let transactionStarted = false;
   const targetPath = warehousePath;
   const tempPath = `${targetPath}.tmp-${process.pid}-${Date.now()}`;
@@ -42,15 +44,19 @@ export async function rebuildWarehouseFromStore(store: HealthStoreData): Promise
     if (existsSync(tempPath)) {
       await removeFileWithRetry(tempPath);
     }
-    db = new duckdb.Database(tempPath);
+    db = new duckdb.Database(":memory:");
     conn = db.connect();
+    await exec(conn, "SET TimeZone = 'UTC';");
+    await exec(conn, `ATTACH ${sqlStringLiteral(tempPath)} AS warehouse;`);
+    await exec(conn, "USE warehouse;");
+    warehouseAttached = true;
 
     await exec(conn, "PRAGMA threads=4;");
     await exec(conn, "DROP VIEW IF EXISTS v_weekly_metrics;");
     await exec(conn, "DROP VIEW IF EXISTS v_daily_metrics;");
     await exec(conn, "DROP TABLE IF EXISTS imports;");
     await exec(conn, "DROP TABLE IF EXISTS observations;");
-    await exec(conn, "DROP TABLE IF EXISTS samples;");
+    await exec(conn, "DROP TABLE IF EXISTS time_series_samples;");
     await exec(conn, "DROP TABLE IF EXISTS activities;");
 
     await exec(
@@ -80,7 +86,7 @@ export async function rebuildWarehouseFromStore(store: HealthStoreData): Promise
         source_json VARCHAR
       );
 
-      CREATE TABLE samples (
+      CREATE TABLE time_series_samples (
         id VARCHAR,
         measurement_code VARCHAR,
         start_at TIMESTAMP,
@@ -142,7 +148,7 @@ export async function rebuildWarehouseFromStore(store: HealthStoreData): Promise
 
     await bulkInsert(
       conn,
-      "samples",
+      "time_series_samples",
       7,
       store.timeSeriesSamples.map((entry) => [
         entry.id,
@@ -174,67 +180,13 @@ export async function rebuildWarehouseFromStore(store: HealthStoreData): Promise
     await exec(conn, "COMMIT;");
     transactionStarted = false;
 
-    await exec(
-      conn,
-      `
-      CREATE VIEW v_daily_metrics AS
-      WITH daily_source_metrics AS (
-        SELECT
-          DATE(observed_at) AS day,
-          measurement_code,
-          AVG(value) AS avg_value,
-          MIN(value) AS min_value,
-          MAX(value) AS max_value,
-          COUNT(*) AS n,
-          MIN(unit) AS unit
-        FROM observations
-        GROUP BY 1, 2
-        UNION ALL
-        SELECT
-          DATE(start_at) AS day,
-          measurement_code,
-          CASE WHEN measurement_code = 'steps' THEN SUM(value) ELSE AVG(value) END AS avg_value,
-          MIN(value) AS min_value,
-          MAX(value) AS max_value,
-          COUNT(*) AS n,
-          MIN(unit) AS unit
-        FROM samples
-        GROUP BY 1, 2
-      )
-      SELECT
-        day,
-        measurement_code,
-        SUM(avg_value * n) / NULLIF(SUM(n), 0) AS avg_value,
-        MIN(min_value) AS min_value,
-        MAX(max_value) AS max_value,
-        SUM(n) AS n,
-        MIN(unit) AS unit
-      FROM daily_source_metrics
-      GROUP BY 1, 2;
-      `
-    );
-
-    await exec(
-      conn,
-      `
-      CREATE VIEW v_weekly_metrics AS
-      SELECT
-        DATE_TRUNC('week', day) AS week_start,
-        measurement_code,
-        AVG(avg_value) AS avg_value,
-        MIN(min_value) AS min_value,
-        MAX(max_value) AS max_value,
-        SUM(n) AS n,
-        MIN(unit) AS unit
-      FROM v_daily_metrics
-      GROUP BY 1, 2;
-      `
-    );
+    await exec(conn, dailyMetricsViewSql);
+    await exec(conn, weeklyMetricsViewSql);
 
     const [importCount, observationCount, sampleCount, activityCount] = await Promise.all([
       scalar(conn, "SELECT COUNT(*) AS c FROM imports"),
       scalar(conn, "SELECT COUNT(*) AS c FROM observations"),
-      scalar(conn, "SELECT COUNT(*) AS c FROM samples"),
+      scalar(conn, "SELECT COUNT(*) AS c FROM time_series_samples"),
       scalar(conn, "SELECT COUNT(*) AS c FROM activities")
     ]);
 
@@ -256,6 +208,9 @@ export async function rebuildWarehouseFromStore(store: HealthStoreData): Promise
     };
   } finally {
     if (conn) {
+      if (warehouseAttached) {
+        await exec(conn, "USE memory; DETACH warehouse;").catch(() => undefined);
+      }
       await closeConnection(conn);
     }
     if (db) {
@@ -331,15 +286,23 @@ export async function rebuildWarehouseFromStore(store: HealthStoreData): Promise
 export async function runWarehouseQuery(sql: string): Promise<Array<Record<string, unknown>>> {
   let db: duckdb.Database | undefined;
   let conn: duckdb.Connection | undefined;
+  let warehouseAttached = false;
   try {
-    db = new duckdb.Database(activeWarehousePath, { access_mode: "READ_ONLY" });
+    db = new duckdb.Database(":memory:");
     conn = db.connect();
+    await exec(conn, "SET TimeZone = 'UTC';");
+    await exec(conn, `ATTACH ${sqlStringLiteral(activeWarehousePath)} AS warehouse (READ_ONLY);`);
+    await exec(conn, "USE warehouse;");
+    warehouseAttached = true;
     return await all(conn, sql);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown warehouse query error";
     throw new Error(`Warehouse query failed: ${message}`);
   } finally {
     if (conn) {
+      if (warehouseAttached) {
+        await exec(conn, "USE memory; DETACH warehouse;").catch(() => undefined);
+      }
       await closeConnection(conn);
     }
     if (db) {
@@ -362,12 +325,16 @@ function exec(connection: duckdb.Connection, sql: string): Promise<void> {
 
 function run(connection: duckdb.Connection, sql: string, ...params: unknown[]): Promise<void> {
   return new Promise((resolvePromise, reject) => {
-    connection.run(sql, ...params, (error) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-      resolvePromise();
+    let statement: duckdb.Statement;
+    statement = connection.run(sql, ...params, (runError) => {
+      statement.finalize((finalizeError) => {
+        const error = runError ?? finalizeError;
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolvePromise();
+      });
     });
   });
 }
@@ -427,6 +394,10 @@ function resolveDataDir(): string {
   ];
   const existing = candidates.find((candidate) => existsSync(candidate));
   return existing ?? candidates[0];
+}
+
+function sqlStringLiteral(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
 }
 
 function fsyncPath(path: string): void {

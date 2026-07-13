@@ -55,6 +55,7 @@ export function App() {
   const [summaryDetailBusy, setSummaryDetailBusy] = useState(false);
   const [summaryDetailError, setSummaryDetailError] = useState<string>();
   const [summaryDetailActionBusy, setSummaryDetailActionBusy] = useState(false);
+  const [summaryDetailLoadMoreBusy, setSummaryDetailLoadMoreBusy] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
   const [exportError, setExportError] = useState<string>();
   const [summarySort, setSummarySort] = useState<"name" | "count" | "recency">("recency");
@@ -603,6 +604,32 @@ export function App() {
     }
   }
 
+  async function loadMoreSummaryDetail() {
+    if (!summaryDetailCode || !summaryDetail?.pagination.hasMore) return;
+    setSummaryDetailLoadMoreBusy(true);
+    setSummaryDetailError(undefined);
+    try {
+      const nextPage = await api.healthDataDetail(summaryDetailCode, {
+        limit: summaryDetail.pagination.limit,
+        offset: summaryDetail.pagination.loaded
+      });
+      setSummaryDetail((current) => {
+        if (!current) return nextPage;
+        return {
+          ...nextPage,
+          entries: [...current.entries, ...nextPage.entries],
+          chartPoints: [...current.chartPoints, ...nextPage.chartPoints].sort(
+            (left, right) => left.timestamp.localeCompare(right.timestamp) || left.kind.localeCompare(right.kind)
+          )
+        };
+      });
+    } catch (error) {
+      setSummaryDetailError(error instanceof Error ? error.message : "Unable to load more entries.");
+    } finally {
+      setSummaryDetailLoadMoreBusy(false);
+    }
+  }
+
   async function deleteObservationsByType() {
     if (!summaryDetailCode || !summaryDetail) return;
     const observationCount = summaryDetail.deletion.observationEntries;
@@ -876,9 +903,11 @@ export function App() {
               loading={summaryDetailBusy}
               error={summaryDetailError}
               actionBusy={summaryDetailActionBusy}
+              loadMoreBusy={summaryDetailLoadMoreBusy}
               onBack={() => navigate("track")}
               onDeleteObservation={deleteObservationEntry}
               onDeleteAll={deleteObservationsByType}
+              onLoadMore={loadMoreSummaryDetail}
             />
           ) : (
             <SummaryPage

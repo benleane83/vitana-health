@@ -7,7 +7,8 @@
  * - All output goes to stderr as newline-delimited JSON.
  */
 
-const SENSITIVE_FIELD = /\b(?:password|token|secret|key|auth|credential|bearer|pin)\b/i;
+const SENSITIVE_VALUE = /\b(password|token|secret|key|auth|credential|pin)\b\s*(?:=|:)\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi;
+const BEARER_VALUE = /\bbearer\s+[^\s,;]+/gi;
 
 export interface LogRecord {
   ts: string;
@@ -19,6 +20,11 @@ export interface LogRecord {
   status?: number;
   durationMs?: number;
   code?: string;
+  storageBackend?: "json" | "duckdb";
+  profileCount?: number;
+  activeProfileId?: string;
+  activeProfileDisplayName?: string;
+  activationState?: "initial-activation" | "reopen" | "not-applicable";
 }
 
 function write(record: LogRecord): void {
@@ -26,9 +32,9 @@ function write(record: LogRecord): void {
 }
 
 function redactMessage(msg: string): string {
-  if (!SENSITIVE_FIELD.test(msg)) return msg;
-  // Redact anything that looks like a value after separators
-  return msg.replace(/([=:\s])([^\s,;]+)/g, (_m, sep: string, _val: string) => `${sep}[redacted]`);
+  return msg
+    .replace(SENSITIVE_VALUE, (_match, field: string) => `${field}=[redacted]`)
+    .replace(BEARER_VALUE, "Bearer [redacted]");
 }
 
 export const log = {

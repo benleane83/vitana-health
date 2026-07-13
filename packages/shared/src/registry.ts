@@ -1052,7 +1052,11 @@ export const defaultMeasurementTypes: MeasurementType[] = [
 
 for (const type of defaultMeasurementTypes) {
   if (type.normalLow !== undefined || type.normalHigh !== undefined) {
-    type.referenceRanges = [{ low: type.normalLow, high: type.normalHigh, unit: type.canonicalUnit }];
+    type.referenceRanges = [{
+      ...(type.normalLow === undefined ? {} : { low: type.normalLow }),
+      ...(type.normalHigh === undefined ? {} : { high: type.normalHigh }),
+      unit: type.canonicalUnit
+    }];
   }
 }
 

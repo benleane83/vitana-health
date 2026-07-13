@@ -14,7 +14,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "pretest": "npm run build -w @local-fitness-advisor/shared",
     "test": "vitest run",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "prepare:duckdb": "node ../../scripts/prepare-duckdb-httpfs.mjs --output ../desktop/build/duckdb-extensions"
   },
   "dependencies": {
     "@local-fitness-advisor/shared": "file:../../packages/shared",
