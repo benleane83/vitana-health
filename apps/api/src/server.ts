@@ -117,9 +117,13 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
       if (lanIp) {
         log.info(`LAN address for companion pairing: ${scheme}://${lanIp}:${port}`);
       }
-      const bonjour = new Bonjour();
-      bonjour.publish({ name: "Local Fitness Advisor", type: "local-fitness-advisor", port });
-      process.on("exit", () => bonjour.destroy());
+      try {
+        const bonjour = new Bonjour();
+        bonjour.publish({ name: "Local Fitness Advisor", type: "local-fitness-advisor", port });
+        process.on("exit", () => bonjour.destroy());
+      } catch (bonjourError) {
+        log.warn(`mDNS service discovery is unavailable: ${bonjourError instanceof Error ? bonjourError.message : String(bonjourError)}`);
+      }
       resolve();
     });
   });

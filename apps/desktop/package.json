@@ -27,7 +27,6 @@
     "asarUnpack": [
       "**/*.node"
     ],
-    "npmRebuild": false,
     "files": [
       "main.cjs",
       "secure-store-key.cjs",

@@ -22,15 +22,16 @@ function Stop-DesktopProcess([System.Diagnostics.Process]$Process) {
 }
 
 function Wait-ForHealth {
-  for ($attempt = 0; $attempt -lt 60; $attempt++) {
+  for ($attempt = 0; $attempt -lt 120; $attempt++) {
     try {
       $health = Invoke-RestMethod -Uri "https://127.0.0.1:4317/api/health" -SkipCertificateCheck
       if ($health.ok -eq $true) {
         return
       }
     } catch {
-      Start-Sleep -Seconds 1
+      # Server not yet ready
     }
+    Start-Sleep -Seconds 1
   }
   throw "The installed desktop application did not expose its local health endpoint."
 }
