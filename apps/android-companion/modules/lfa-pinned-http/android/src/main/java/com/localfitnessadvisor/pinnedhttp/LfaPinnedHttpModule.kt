@@ -6,7 +6,6 @@ import java.io.IOException
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
-import java.security.MessageDigest
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
@@ -32,11 +31,7 @@ class LfaPinnedHttpModule : Module() {
         override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) = Unit
         override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {
           val certificate = chain.firstOrNull() ?: throw java.security.cert.CertificateException("Server sent no certificate.")
-          val actual = android.util.Base64.encodeToString(
-            MessageDigest.getInstance("SHA-256").digest(certificate.publicKey.encoded),
-            android.util.Base64.NO_WRAP
-          )
-          if (!MessageDigest.isEqual(actual.toByteArray(), publicKeyHash.toByteArray())) {
+          if (!PinnedPublicKeyVerifier.matches(certificate.publicKey.encoded, publicKeyHash)) {
             throw java.security.cert.CertificateException("Server identity did not match the scanned QR code.")
           }
         }

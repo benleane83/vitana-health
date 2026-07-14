@@ -22,9 +22,10 @@
   },
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "web": "expo start --web",
+    "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit",
     "build:android:preview": "npx -y eas-cli@20.5.1 build --platform android --profile preview",
     "build:android:development": "npx -y eas-cli@20.5.1 build --platform android --profile development",

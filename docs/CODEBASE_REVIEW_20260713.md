@@ -99,7 +99,7 @@ Sync and pairing use the native pinned client, but profile refresh uses ordinary
 
 **Status (partially addressed 2026-07-13):** Profile refresh now uses `pinnedFetch` with the paired companion token. Bounded timeout behavior and an intentionally minimal companion-safe profile response remain open.
 
-#### P1 — AI API keys are stored as plaintext application data
+#### [DONE] P1 — AI API keys are stored as plaintext application data
 
 AI settings, including API keys, are written as JSON with mode `0600` (`apps/api/src/aiSettings.ts:24-38,90-92`). The desktop already has an OS-backed `safeStorage` abstraction for the DuckDB key, so the stronger mechanism is available.
 
@@ -142,6 +142,8 @@ Unsigned public binaries will produce poor SmartScreen trust and make update aut
 The Vitest workspace covers shared, API, and web only (`vitest.config.ts:3-10`). Android receives only TypeScript checking in CI (`.github/workflows/ci.yml:35-36`). Complex cursor, partial-permission, pagination, chunking, retry, category mapping, secure-storage, and Kotlin certificate-pin behavior therefore have no automated regression gate.
 
 **Required:** Unit-test pure sync mapping/chunk/cursor logic, test storage migrations, and add Android/native integration tests for pin match/mismatch, timeouts, authentication, partial grants, duplicate retries, and multi-chunk cursor advancement.
+
+**Status (partially addressed 2026-07-13):** Initial test suite created, but not running local yet until local Android SDK is added. Install Android Studio or the Android command-line SDK with Platform 36 and build-tools, then set ANDROID_HOME and ANDROID_SDK_ROOT.
 
 #### P2 — Dependency vulnerability acceptance needs active ownership
 

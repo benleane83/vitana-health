@@ -61,6 +61,7 @@ The installer packages the API and web UI, configures private-network firewall a
 - If you use a cloud provider, you are responsible for that provider's data retention, logging, and compliance settings.
 - Local model mode (for example Ollama) keeps all processing on-device.
 - Set `LFA_SECRET` to control the encryption passphrase for standalone use. The packaged desktop wraps its generated key with the operating system through Electron `safeStorage`.
+- The packaged desktop also wraps saved cloud-model API keys with Electron `safeStorage`; existing plaintext keys migrate when the desktop next opens them. A standalone API has no OS credential wrapper, so manually saved model keys remain in its mode-`0600` settings file; use environment variables where that persistence model is unsuitable.
 - Owner authentication protects all API data and administration routes. Companion tokens can be revoked from the paired-device list.
 - Pairing codes and polling secrets expire and are delivered through the owner-authenticated QR flow.
 

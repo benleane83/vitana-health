@@ -17,6 +17,8 @@ import { validateEnv } from "./env.js";
 import { getLanIp } from "./netutil.js";
 import { log } from "./logger.js";
 
+export { configureAiCredentialProtector } from "./aiSettings.js";
+
 loadEnvironmentFiles();
 
 export interface StartServerOptions {

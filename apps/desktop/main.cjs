@@ -22,7 +22,11 @@ async function launch() {
     : path.resolve(__dirname, "build", "duckdb-extensions", "httpfs.duckdb_extension");
 
   const serverPath = require.resolve("@local-fitness-advisor/api");
-  const { startServer } = await import(pathToFileURL(serverPath).href);
+  const { configureAiCredentialProtector, startServer } = await import(pathToFileURL(serverPath).href);
+  configureAiCredentialProtector({
+    encryptString: (value) => safeStorage.encryptString(value),
+    decryptString: (value) => safeStorage.decryptString(value)
+  });
   const configuredSecret = process.env.LFA_SECRET;
   const secureKey = configuredSecret
     ? undefined

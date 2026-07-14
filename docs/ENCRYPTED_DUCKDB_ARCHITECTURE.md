@@ -39,9 +39,9 @@ DuckDB uses AES-256-GCM with encrypted temporary spill files. Writable encryptio
 
 `21eea4547cf5aa5231f4838906e8935067c956f56a5efd09035a51189af8a77b`
 
-The desktop generates a random 256-bit data key, wraps it with Electron `safeStorage`, and persists only the wrapped blob. The unwrapped passphrase is injected into the in-process API. A profile-specific database key is derived with a versioned SHA-256 domain separator and the profile ID.
+The desktop generates a random 256-bit data key, wraps it with Electron `safeStorage`, and persists only the wrapped blob. The unwrapped passphrase is injected into the in-process API. A profile-specific database key is derived with a versioned SHA-256 domain separator and the profile ID. Packaged desktop model API keys use the same OS-backed storage: `ai-settings.json` contains a wrapped key blob rather than the plaintext key. Opening a legacy desktop settings file with a plaintext key migrates it atomically on first read.
 
-Standalone production API use requires `LFA_SECRET`. Generated plaintext `local.key` material remains a development/test fallback only.
+Standalone production API use requires `LFA_SECRET`. It does not have Electron's OS credential wrapper, so manually saved model API keys remain in the mode-`0600` `ai-settings.json` file; environment-provided keys are not written there. A standalone server cannot open a desktop-wrapped model credential and fails closed rather than falling back to a default model configuration. Generated plaintext `local.key` material remains a development/test fallback only.
 
 ## Analytics
 

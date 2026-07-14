@@ -66,7 +66,7 @@ interface HealthConnectPointValue {
   provenance?: HealthConnectProvenance;
 }
 
-interface HealthConnectImportPayload {
+export interface HealthConnectImportPayload {
   profileId?: string;
   syncedAt: string;
   rangeStart: string;
@@ -414,7 +414,10 @@ async function readGrantedRecords(categories: HealthConnectCategory[], options: 
   };
 }
 
-function chunkPayload(payload: HealthConnectImportPayload): HealthConnectImportPayload[] {
+export function chunkPayload(
+  payload: HealthConnectImportPayload,
+  maxUploadBytes = MAX_UPLOAD_BYTES
+): HealthConnectImportPayload[] {
   const rows = [
     ...payload.steps.map((value) => ["steps", value] as const),
     ...payload.heartRate.map((value) => ["heartRate", value] as const),
@@ -456,7 +459,7 @@ function chunkPayload(payload: HealthConnectImportPayload): HealthConnectImportP
     candidate[category].push(value as never);
 
     const candidateSize = JSON.stringify(candidate).length;
-    if (candidateSize <= MAX_UPLOAD_BYTES || countRows(current) === 0) {
+    if (candidateSize <= maxUploadBytes || countRows(current) === 0) {
       current = candidate;
       continue;
     }
