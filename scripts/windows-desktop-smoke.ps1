@@ -40,7 +40,7 @@ try {
 
   $application = Join-Path $installRoot "Local Fitness Advisor.exe"
   if (-not (Test-Path $application)) {
-    throw "Installed application was not found at $application."
+    throw "Desktop application not found at expected installation path: $application."
   }
   $rule = Get-NetFirewallRule -DisplayName "Local Fitness Advisor" -ErrorAction Stop
   $filter = $rule | Get-NetFirewallApplicationFilter

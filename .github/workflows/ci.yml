@@ -96,7 +96,7 @@ jobs:
         run: npm run test -w @local-fitness-advisor/desktop
 
       - name: Package baseline installer
-        run: npm run package -w @local-fitness-advisor/desktop -- --config.extraMetadata.version=0.0.0-smoke --config.directories.output=dist-baseline
+        run: npm run package -w @local-fitness-advisor/desktop -- --config.extraMetadata.version=0.0.0-baseline --config.directories.output=dist-baseline
 
       - name: Package candidate installer
         run: npm run package:desktop
