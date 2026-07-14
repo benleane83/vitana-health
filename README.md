@@ -118,8 +118,10 @@ It supports:
 
 - QR-based pairing with the local API
 - Manual "Sync now" action
-- Configurable Health Connect category selection and initial sync window (365 days by default)
+- Optional Health Connect category selection (none selected by default) and a 30–365 day initial sync window (30 days by default)
 - POST to `POST /api/import/health-connect` on your local API
+
+See the [Android privacy policy](docs/PRIVACY_POLICY.md), [Health Connect data inventory](docs/HEALTH_CONNECT_DATA_INVENTORY.md), and release declaration instructions in [docs/ANDROID_RELEASE.md](docs/ANDROID_RELEASE.md).
 
 The API import pipeline uses deterministic IDs so re-running sync keeps existing records deduplicated.
 

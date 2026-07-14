@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useKeepAwake } from "expo-keep-awake";
 import {
   clearConnection,
   clearSelectedProfileId,
   HEALTH_CONNECT_CATEGORIES,
+  HEALTH_CONNECT_SYNC_WINDOW_OPTIONS,
   loadConnection,
   loadSelectedProfileId,
   saveConnection,
@@ -17,6 +18,8 @@ import { PairScreen } from "./src/PairScreen";
 import type { PairResult } from "./src/PairScreen";
 import { pinnedFetch } from "./src/pinnedFetch";
 import { syncHealthConnect } from "./src/syncHealthConnect";
+
+const PRIVACY_POLICY_URL = "https://github.com/benleane83/local-fitness-advisor/blob/main/docs/PRIVACY_POLICY.md";
 
 interface ProfileListEntry {
   id: string;
@@ -147,6 +150,18 @@ export default function App() {
     setConnection(updated);
   }
 
+  async function handleSelectSyncWindow(days: number): Promise<void> {
+    if (!connection?.url) return;
+    const updated = await saveConnection({ ...connection, healthConnectSyncWindowDays: days });
+    setConnection(updated);
+  }
+
+  async function handleAcknowledgeHealthConnectDisclosure(): Promise<void> {
+    if (!connection?.url) return;
+    const updated = await saveConnection({ ...connection, healthConnectDisclosureAcknowledged: true });
+    setConnection(updated);
+  }
+
   if (pairScreenVisible) {
     return (
       <PairScreen
@@ -162,7 +177,7 @@ export default function App() {
     <SafeAreaView style={styles.root}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>Local Fitness Advisor Companion</Text>
-        <Text style={styles.subtitle}>Health Connect → Local API sync (initial window: {connection?.healthConnectSyncWindowDays ?? 365} days)</Text>
+        <Text style={styles.subtitle}>Health Connect → Local API sync (initial window: {connection?.healthConnectSyncWindowDays ?? 30} days)</Text>
 
         <View style={styles.connectionCard}>
           <Text style={styles.connectionLabel}>Server connection</Text>
@@ -236,16 +251,51 @@ export default function App() {
               );
             })}
           </View>
-          <Text style={styles.connectionMeta}>Permissions can be changed in Health Connect. New selections may need a historical backfill.</Text>
+          <Text style={styles.connectionMeta}>Choose only data needed for your local wellness analytics. Permissions can be changed in Health Connect.</Text>
+          <Text style={styles.connectionLabel}>Initial sync window</Text>
+          <View style={styles.profileChips}>
+            {HEALTH_CONNECT_SYNC_WINDOW_OPTIONS.map((days) => {
+              const selected = connection?.healthConnectSyncWindowDays === days;
+              return (
+                <Pressable
+                  key={days}
+                  style={[styles.profileChip, selected ? styles.profileChipSelected : undefined]}
+                  onPress={() => { void handleSelectSyncWindow(days); }}
+                >
+                  <Text style={[styles.profileChipText, selected ? styles.profileChipTextSelected : undefined]}>{days} days</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={styles.connectionMeta}>The initial import is limited to 30–365 days. Later syncs use a cursor to import new data.</Text>
         </View>
 
+        {!connection?.healthConnectDisclosureAcknowledged ? (
+          <View style={styles.connectionCard}>
+            <Text style={styles.connectionLabel}>Before Health Connect permissions</Text>
+            <Text style={styles.disclosureText}>
+              Local Fitness Advisor requests read access only for the categories you select. It sends selected records to your paired local API over HTTPS with certificate pinning for local storage and analytics. It does not use Health Connect data for advertising or sell it.
+            </Text>
+            <Pressable onPress={() => { void Linking.openURL(PRIVACY_POLICY_URL); }}>
+              <Text style={styles.privacyLink}>Read the privacy policy</Text>
+            </Pressable>
+            <Pressable style={styles.button} onPress={() => { void handleAcknowledgeHealthConnectDisclosure(); }}>
+              <Text style={styles.buttonText}>I understand and continue</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <Pressable onPress={() => { void Linking.openURL(PRIVACY_POLICY_URL); }}>
+            <Text style={styles.privacyLink}>Privacy policy</Text>
+          </Pressable>
+        )}
+
         <Pressable
-          disabled={syncing || !connection?.url}
+          disabled={syncing || !connection?.url || !connection.healthConnectDisclosureAcknowledged}
           onPress={() => { void handleSyncPress(); }}
           style={({ pressed }) => [
             styles.syncButton,
             pressed && !syncing ? styles.buttonPressed : undefined,
-            syncing || !connection?.url ? styles.buttonDisabled : undefined
+            syncing || !connection?.url || !connection.healthConnectDisclosureAcknowledged ? styles.buttonDisabled : undefined
           ]}
         >
           {syncing ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.buttonText}>Sync now</Text>}
@@ -283,6 +333,8 @@ const styles = StyleSheet.create({
   dotUnpaired: { backgroundColor: "#f59e0b" },
   connectionUrl: { color: "#111827", fontSize: 14, fontWeight: "600", flex: 1 },
   connectionMeta: { color: "#6b7280", fontSize: 12 },
+  disclosureText: { color: "#374151", fontSize: 14, lineHeight: 20 },
+  privacyLink: { color: "#2563eb", fontSize: 14, fontWeight: "600" },
   connectionEmpty: { color: "#9ca3af", fontSize: 14 },
   connectionButtons: { flexDirection: "row", gap: 8 },
   profileChips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },

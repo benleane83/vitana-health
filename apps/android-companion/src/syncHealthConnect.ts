@@ -184,7 +184,7 @@ export async function syncHealthConnect(
     throw new Error(`Health Connect initialization error: ${error instanceof Error ? error.message : "Unknown error"}`);
   }
 
-  const selectedCategories = HEALTH_CONNECT_CATEGORIES.filter((category) => options.categories?.includes(category) ?? true);
+  const selectedCategories = HEALTH_CONNECT_CATEGORIES.filter((category) => options.categories?.includes(category) ?? false);
   if (selectedCategories.length === 0) throw new Error("Select at least one Health Connect data category to sync.");
   const unsupportedCategories = selectedCategories.filter((category) => !permissionsByCategory[category]);
   const requestedPermissions = selectedCategories
@@ -713,7 +713,7 @@ function parseCursor(value: string | null | undefined): Date | undefined {
 }
 
 function normalizeSyncWindowDays(value: number | undefined): number {
-  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 3650
+  return typeof value === "number" && Number.isInteger(value) && value >= 30 && value <= 365
     ? value
     : DEFAULT_HEALTH_CONNECT_SYNC_WINDOW_DAYS;
 }

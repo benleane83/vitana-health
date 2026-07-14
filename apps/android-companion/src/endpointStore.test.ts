@@ -67,9 +67,21 @@ describe("connection storage", () => {
       deviceId: "device-1",
       token: "companion-token",
       healthConnectSyncCursor: null,
-      healthConnectSyncWindowDays: 365,
-      healthConnectCategories: expect.arrayContaining(["Steps", "Weight"])
+      healthConnectSyncWindowDays: 30,
+      healthConnectCategories: [],
+      healthConnectDisclosureAcknowledged: false
     });
+  });
+
+  it("limits the initial sync window to 30–365 days", async () => {
+    storage.secure.set(deviceIdKey, "device-1");
+
+    await expect(saveConnection({ url: "https://desktop.test", healthConnectSyncWindowDays: 29 }))
+      .resolves.toMatchObject({ healthConnectSyncWindowDays: 30 });
+    await expect(saveConnection({ url: "https://desktop.test", healthConnectSyncWindowDays: 365 }))
+      .resolves.toMatchObject({ healthConnectSyncWindowDays: 365 });
+    await expect(saveConnection({ url: "https://desktop.test", healthConnectSyncWindowDays: 366 }))
+      .resolves.toMatchObject({ healthConnectSyncWindowDays: 30 });
   });
 
   it("keeps tokens and device IDs out of AsyncStorage while advancing a cursor for the matching endpoint", async () => {
@@ -78,7 +90,7 @@ describe("connection storage", () => {
       url: "https://desktop.test",
       token: "companion-token",
       publicKeyHash: "pin",
-      healthConnectSyncWindowDays: 14,
+      healthConnectSyncWindowDays: 30,
       healthConnectCategories: ["Steps"]
     });
 
