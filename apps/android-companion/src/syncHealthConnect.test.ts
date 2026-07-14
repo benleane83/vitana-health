@@ -49,6 +49,14 @@ afterEach(() => {
 });
 
 describe("Health Connect sync", () => {
+  it("does not request permission when no categories are selected", async () => {
+    await expect(syncHealthConnect("https://desktop.test", "companion-token", null, "pin", {
+      deviceId: "device-1"
+    })).rejects.toThrow("Select at least one Health Connect data category to sync.");
+
+    expect(mocks.requestPermission).not.toHaveBeenCalled();
+  });
+
   it("uses an overlapping cursor, follows pages, and does not advance after a partial permission grant", async () => {
     mocks.readRecords.mockImplementation(async (_recordType: string, options: { pageToken?: string }) => (
       options.pageToken

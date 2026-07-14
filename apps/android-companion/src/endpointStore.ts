@@ -34,7 +34,8 @@ export const HEALTH_CONNECT_CATEGORIES = [
 ] as const;
 
 export type HealthConnectCategory = (typeof HEALTH_CONNECT_CATEGORIES)[number];
-export const DEFAULT_HEALTH_CONNECT_SYNC_WINDOW_DAYS = 365;
+export const DEFAULT_HEALTH_CONNECT_SYNC_WINDOW_DAYS = 30;
+export const HEALTH_CONNECT_SYNC_WINDOW_OPTIONS = [30, 60, 90, 180, 365] as const;
 
 export interface ConnectionDetails {
   url: string;
@@ -47,6 +48,7 @@ export interface ConnectionDetails {
   healthConnectSyncCursor: string | null;
   healthConnectSyncWindowDays: number;
   healthConnectCategories: HealthConnectCategory[];
+  healthConnectDisclosureAcknowledged: boolean;
 }
 
 interface StoredConnection extends Omit<ConnectionDetails, "token" | "deviceId"> {}
@@ -75,7 +77,8 @@ export async function loadConnection(): Promise<ConnectionDetails | null> {
       token,
       healthConnectSyncCursor: stored.healthConnectSyncCursor ?? null,
       healthConnectSyncWindowDays: normalizeSyncWindowDays(stored.healthConnectSyncWindowDays),
-      healthConnectCategories: normalizeHealthConnectCategories(stored.healthConnectCategories)
+      healthConnectCategories: normalizeHealthConnectCategories(stored.healthConnectCategories),
+      healthConnectDisclosureAcknowledged: stored.healthConnectDisclosureAcknowledged === true
     };
   } catch {
     return null;
@@ -101,7 +104,11 @@ export async function saveConnection(patch: Partial<ConnectionDetails> & { url: 
     ),
     healthConnectCategories: normalizeHealthConnectCategories(
       patch.healthConnectCategories ?? existing?.healthConnectCategories
-    )
+    ),
+    healthConnectDisclosureAcknowledged:
+      patch.healthConnectDisclosureAcknowledged ??
+      existing?.healthConnectDisclosureAcknowledged ??
+      false
   };
   const { token: _token, deviceId: _deviceId, ...stored } = updated;
   await AsyncStorage.setItem(CONNECTION_KEY, JSON.stringify(stored));
@@ -139,13 +146,13 @@ export async function clearSelectedProfileId(): Promise<void> {
 }
 
 function normalizeSyncWindowDays(value: number | undefined): number {
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > 3650) {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 30 || value > 365) {
     return DEFAULT_HEALTH_CONNECT_SYNC_WINDOW_DAYS;
   }
   return value;
 }
 
 function normalizeHealthConnectCategories(value: HealthConnectCategory[] | undefined): HealthConnectCategory[] {
-  if (!value) return [...HEALTH_CONNECT_CATEGORIES];
+  if (!value) return [];
   return HEALTH_CONNECT_CATEGORIES.filter((category) => value.includes(category));
 }
