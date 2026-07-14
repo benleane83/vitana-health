@@ -11,6 +11,7 @@ $productName = "Local Fitness Advisor"
 $applicationName = "$productName.exe"
 $installRoot = Join-Path $env:RUNNER_TEMP "lfa-smoke"
 $evidenceRoot = New-Item -ItemType Directory -Force -Path $EvidenceDirectory
+$healthTimeoutSeconds = 240
 
 function Stop-DesktopProcess([System.Diagnostics.Process]$Process) {
   if (-not $Process.HasExited) {
@@ -25,14 +26,14 @@ function Stop-DesktopProcess([System.Diagnostics.Process]$Process) {
         throw "Unable to stop desktop process $($Process.Id)."
       }
       if (-not $Process.WaitForExit(10000)) {
-        throw "Desktop process $($Process.Id) did not exit after force stop."
+        throw "Desktop process $($Process.Id) did not exit within 10 seconds after force stop."
       }
     }
   }
 }
 
 function Wait-ForHealth {
-  for ($attempt = 0; $attempt -lt 240; $attempt++) {
+  for ($attempt = 0; $attempt -lt $healthTimeoutSeconds; $attempt++) {
     try {
       $health = Invoke-RestMethod -Uri "https://127.0.0.1:4317/api/health" -SkipCertificateCheck
       if ($health.ok -eq $true) {
@@ -51,7 +52,7 @@ function Wait-ForHealth {
     }
     Start-Sleep -Seconds 1
   }
-  throw "The installed desktop application did not expose its local health endpoint."
+  throw "The installed desktop application did not expose its local health endpoint within $healthTimeoutSeconds seconds."
 }
 
 try {
