@@ -14,8 +14,9 @@
   "scripts": {
     "prepackage": "node ../../scripts/prepare-duckdb-httpfs.mjs --output build/duckdb-extensions --skip-runtime-verification",
     "start": "electron .",
-    "test": "node --test secure-store-key.test.cjs",
-    "package": "electron-builder"
+    "test": "node --test secure-store-key.test.cjs package-config.test.cjs",
+    "package": "electron-builder",
+    "package:signed": "electron-builder --config.forceCodeSigning=true"
   },
   "license": "AGPL-3.0-only",
   "type": "commonjs",
@@ -26,7 +27,6 @@
     "asarUnpack": [
       "**/*.node"
     ],
-    "npmRebuild": false,
     "files": [
       "main.cjs",
       "secure-store-key.cjs",
@@ -43,7 +43,11 @@
       }
     ],
     "win": {
-      "target": "nsis"
+      "signtoolOptions": {
+        "publisherName": "Local Fitness Advisor"
+      },
+      "target": "nsis",
+      "verifyUpdateCodeSignature": true
     },
     "nsis": {
       "oneClick": false,
