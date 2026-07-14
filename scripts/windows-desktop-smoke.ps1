@@ -14,17 +14,35 @@ $evidenceRoot = New-Item -ItemType Directory -Force -Path $EvidenceDirectory
 
 function Stop-DesktopProcess([System.Diagnostics.Process]$Process) {
   if (-not $Process.HasExited) {
-    & taskkill /PID $Process.Id /T /F
-    if ($LASTEXITCODE -ne 0) {
-      throw "Unable to stop desktop process $($Process.Id)."
+    try {
+      $null = $Process.CloseMainWindow()
+    } catch {
+      # Process does not expose a main window in this session.
+    }
+    if (-not $Process.WaitForExit(30000)) {
+      & taskkill /PID $Process.Id /T /F
+      if ($LASTEXITCODE -ne 0) {
+        throw "Unable to stop desktop process $($Process.Id)."
+      }
+      if (-not $Process.WaitForExit(10000)) {
+        throw "Desktop process $($Process.Id) did not exit after force stop."
+      }
     }
   }
 }
 
 function Wait-ForHealth {
-  for ($attempt = 0; $attempt -lt 120; $attempt++) {
+  for ($attempt = 0; $attempt -lt 240; $attempt++) {
     try {
       $health = Invoke-RestMethod -Uri "https://127.0.0.1:4317/api/health" -SkipCertificateCheck
+      if ($health.ok -eq $true) {
+        return
+      }
+    } catch {
+      # Server not yet ready
+    }
+    try {
+      $health = Invoke-RestMethod -Uri "http://127.0.0.1:4317/api/health"
       if ($health.ok -eq $true) {
         return
       }
