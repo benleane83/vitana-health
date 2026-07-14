@@ -1,12 +1,12 @@
 name: CI
 
 on:
-  push:
-    branches: ["**"]
+  # push:
+  #   branches: ["**"]
   pull_request:
-  schedule:
-    # Run the full desktop lifecycle smoke test daily at 03:00 UTC.
-    - cron: "0 3 * * *"
+  # schedule:
+  #   # Run the full desktop lifecycle smoke test daily at 03:00 UTC.
+  #   - cron: "0 3 * * *"
   workflow_dispatch:
     inputs:
       desktop_smoke_scope:
