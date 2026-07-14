@@ -125,13 +125,27 @@ describe("computeAnalytics — labAlerts", () => {
     expect(result.labAlerts.map((a) => a.flag)).toContain("low");
   });
 
-  it("does not classify mismatched units", () => {
+  it("classifies mismatched units after conversion", () => {
     const store = makeEmptyStore();
     store.observations = [
-      makeObservation({ id: "m1", measurementCode: "glucose", observedAt: "2026-01-01T00:00:00.000Z", value: 85, unit: "mg/dL", sourceId: "source" })
+      makeObservation({ id: "m1", measurementCode: "glucose", observedAt: "2026-01-01T00:00:00.000Z", value: 180, unit: "mg/dL", sourceId: "source" })
     ];
     const result = computeAnalytics(store);
-    expect(result.labAlerts).toHaveLength(0);
+    expect(result.labAlerts).toMatchObject([{ unit: "mmol/L", flag: "high" }]);
+    expect(result.labAlerts[0].value).toBeCloseTo(9.99, 2);
+  });
+
+  it("displays mixed-unit trends in the active profile's preferred unit", () => {
+    const store = makeEmptyStore();
+    store.profile.units = "imperial";
+    store.observations = [
+      makeObservation({ id: "w1", measurementCode: "weight", observedAt: "2026-01-01T00:00:00.000Z", value: 70, unit: "kg", sourceId: "source" }),
+      makeObservation({ id: "w2", measurementCode: "weight", observedAt: "2026-01-02T00:00:00.000Z", value: 154.324, unit: "lb", sourceId: "source" })
+    ];
+    const result = computeAnalytics(store);
+    const trend = result.trendCards.find((card) => card.code === "weight");
+    expect(trend?.unit).toBe("lb");
+    expect(trend?.points[0].value).toBeCloseTo(trend?.points[1].value ?? 0, 2);
   });
 });
 

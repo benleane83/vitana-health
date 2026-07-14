@@ -75,6 +75,19 @@ unknown_lab_marker,99,units`;
     expect(result.observations).toHaveLength(0);
     expect(result.sourceImport.diagnostics.length).toBeGreaterThan(0);
   });
+
+  describe("profile unit defaults", () => {
+    it("uses the profile preference only when a known CSV measurement has no source unit", () => {
+      const result = parseObservationCsv(
+        "observations.csv",
+        "observedAt,measurement,value,unit\n2026-06-15,weight,154,\n2026-06-16,weight,70,kg",
+        "2026-06-17T00:00:00.000Z",
+        "imperial"
+      );
+
+      expect(result.observations.map((observation) => observation.unit)).toEqual(["lb", "kg"]);
+    });
+  });
 });
 
 // ─── buildManualLabEntryImport ─────────────────────────────────────────────────

@@ -1,5 +1,5 @@
-import type { AnalyticsSummary, HealthStoreData, MeasurementType, Observation } from "./types.js";
-import { classifyValue } from "./registry.js";
+import type { AnalyticsSummary, HealthStoreData, MeasurementType, Observation, UnitSystem } from "./types.js";
+import { classifyValue, getReferenceRange, toPreferredMeasurementValue } from "./registry.js";
 
 export function computeAnalytics(store: HealthStoreData): AnalyticsSummary {
   return computeAnalyticsFromInput({
@@ -11,7 +11,8 @@ export function computeAnalytics(store: HealthStoreData): AnalyticsSummary {
       insights: store.insights.length
     },
     measurementTypes: store.measurementTypes,
-    observations: store.observations
+    observations: store.observations,
+    units: store.profile.units
   });
 }
 
@@ -19,19 +20,20 @@ export interface AnalyticsInput {
   counts: AnalyticsSummary["counts"];
   measurementTypes: MeasurementType[];
   observations: Observation[];
+  units?: UnitSystem;
 }
 
 export function computeAnalyticsFromInput(input: AnalyticsInput): AnalyticsSummary {
   const registry = new Map(input.measurementTypes.map((type) => [type.code, type]));
   const observationsByCode = groupBy(input.observations, (observation) => observation.measurementCode);
   const latestMetrics = [...observationsByCode.entries()]
-    .map(([code, observations]) => latestMetric(code, observations, registry.get(code)))
+    .map(([code, observations]) => latestMetric(code, observations, registry.get(code), input.units ?? "metric"))
     .filter((metric): metric is NonNullable<typeof metric> => metric !== undefined)
     .sort((a, b) => b.observedAt.localeCompare(a.observedAt))
     .slice(0, 12);
 
   const trendCards = [...observationsByCode.entries()]
-    .map(([code, observations]) => trendCard(code, observations, registry.get(code)))
+    .map(([code, observations]) => trendCard(code, observations, registry.get(code), input.units ?? "metric"))
     .filter((card): card is NonNullable<typeof card> => card !== undefined)
     .slice(0, 8);
 
@@ -40,7 +42,7 @@ export function computeAnalyticsFromInput(input: AnalyticsInput): AnalyticsSumma
       const category = registry.get(observation.measurementCode)?.category;
       return category === "lab";
     })
-    .map((observation) => labAlert(observation, registry.get(observation.measurementCode)))
+    .map((observation) => labAlert(observation, registry.get(observation.measurementCode), input.units ?? "metric"))
     .filter((alert): alert is NonNullable<typeof alert> => alert !== undefined)
     .slice(0, 12);
 
@@ -63,25 +65,26 @@ export function computeAnalyticsFromInput(input: AnalyticsInput): AnalyticsSumma
   };
 }
 
-function latestMetric(code: string, observations: Observation[], type?: MeasurementType) {
+function latestMetric(code: string, observations: Observation[], type: MeasurementType | undefined, units: UnitSystem) {
   if (!type || observations.length === 0) return undefined;
   const latest = [...observations].sort((a, b) => b.observedAt.localeCompare(a.observedAt))[0];
+  const display = toPreferredMeasurementValue(latest.value, latest.unit, type, units);
   return {
     code,
     label: type.display,
-    value: latest.value,
-    unit: latest.unit,
+    value: display.value,
+    unit: display.unit,
     observedAt: latest.observedAt,
     status: classifyValue(latest.value, type, latest.unit)
   };
 }
 
-function trendCard(code: string, observations: Observation[], type?: MeasurementType) {
+function trendCard(code: string, observations: Observation[], type: MeasurementType | undefined, units: UnitSystem) {
   if (!type || observations.length < 2) return undefined;
   const sorted = [...observations].sort((a, b) => a.observedAt.localeCompare(b.observedAt)).slice(-12);
   const points = sorted.map((observation) => ({
     date: observation.observedAt.slice(0, 10),
-    value: observation.value
+    value: toPreferredMeasurementValue(observation.value, observation.unit, type, units).value
   }));
   const first = points[0].value;
   const last = points[points.length - 1].value;
@@ -90,22 +93,23 @@ function trendCard(code: string, observations: Observation[], type?: Measurement
   return {
     code,
     label: type.display,
-    unit: sorted[sorted.length - 1].unit,
+    unit: toPreferredMeasurementValue(sorted[sorted.length - 1].value, sorted[sorted.length - 1].unit, type, units).unit,
     points,
     direction,
     summary: `${type.display} is ${direction} over the latest ${points.length} reading(s).`
   };
 }
 
-function labAlert(observation: Observation, type?: MeasurementType) {
+function labAlert(observation: Observation, type: MeasurementType | undefined, units: UnitSystem) {
   if (!type) return undefined;
-  const range = type.referenceRanges?.find((candidate) => candidate.unit === observation.unit);
   const status = classifyValue(observation.value, type, observation.unit);
+  const display = toPreferredMeasurementValue(observation.value, observation.unit, type, units);
+  const range = getReferenceRange(type, display.unit);
   if (!range || status === "normal") return undefined;
   return {
     marker: type.display,
-    value: observation.value,
-    unit: observation.unit,
+    value: display.value,
+    unit: display.unit,
     reference: `${range.low ?? "-"}-${range.high ?? "-"}`,
     flag: status
   };

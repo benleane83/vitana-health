@@ -11,6 +11,8 @@ export type SourceKind =
   | "body-composition-report"
   | "derived";
 
+export type UnitSystem = "metric" | "imperial";
+
 export interface Profile {
   id: string;
   displayName: string;
@@ -20,7 +22,7 @@ export interface Profile {
   bloodType?: BloodType;
   goalSummary?: string;
   cloudAiConsent?: CloudAiConsent;
-  units: "metric" | "imperial";
+  units: UnitSystem;
   updatedAt: string;
 }
 
@@ -72,6 +74,8 @@ export interface MeasurementType {
   category: "activity" | "cardio" | "sleep" | "body" | "lab" | "derived";
   kind: MeasurementKind;
   canonicalUnit: string;
+  preferredUnits?: Partial<Record<UnitSystem, string>>;
+  unitAliases?: Record<string, string[]>;
   aliases: string[];
   fhirCode?: string;
   loincCode?: string;
@@ -387,7 +391,9 @@ export interface HealthDataDetail {
 export interface ClinicianReport {
   generatedAt: string;
   disclaimer: string;
-  patient: Pick<Profile, "displayName" | "birthYear" | "sex" | "heightCm" | "units">;
+  patient: Pick<Profile, "displayName" | "birthYear" | "sex" | "heightCm" | "units"> & {
+    height?: { value: number; unit: string };
+  };
   totals: {
     observations: number;
     samples: number;

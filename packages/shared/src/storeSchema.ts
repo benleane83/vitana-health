@@ -38,6 +38,8 @@ const measurementTypeSchema = z.object({
   code: z.string(), display: z.string(),
   category: z.enum(["activity", "cardio", "sleep", "body", "lab", "derived"]),
   kind: z.enum(["point", "interval", "event", "panel-component"]), canonicalUnit: z.string(), aliases: z.array(z.string()),
+  preferredUnits: z.object({ metric: z.string().optional(), imperial: z.string().optional() }).strict().optional(),
+  unitAliases: z.record(z.array(z.string())).optional(),
   fhirCode: z.string().optional(), loincCode: z.string().optional(), openMHealthSchema: z.string().optional(),
   normalLow: z.number().optional(), normalHigh: z.number().optional(),
   referenceRanges: z.array(z.object({ low: z.number().optional(), high: z.number().optional(), unit: z.string(), label: z.string().optional(), source: z.string().optional() }).strict()).optional(),
