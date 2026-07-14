@@ -13,6 +13,8 @@ $installRoot = Join-Path $env:RUNNER_TEMP "lfa-smoke"
 $evidenceRoot = New-Item -ItemType Directory -Force -Path $EvidenceDirectory
 $gracefulShutdownTimeoutMs = 30000
 $forcedShutdownTimeoutMs = 10000
+# Install/upgrade startup on CI runners can take several minutes while
+# signed binaries initialize and rebuild local runtime state.
 $healthTimeoutSeconds = 240
 $healthUris = @(
   "https://127.0.0.1:4317/api/health",
