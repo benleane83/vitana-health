@@ -37,7 +37,7 @@ jobs:
         env:
           CSC_LINK: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 }}
           CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PFX_PASSWORD }}
-        run: npm run package:desktop && npm run package:signed -w @local-fitness-advisor/desktop
+        run: npm run package:desktop:signed
 
       - name: Verify Authenticode signatures
         shell: pwsh

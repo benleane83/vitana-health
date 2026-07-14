@@ -7,6 +7,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$applicationName = "Local Fitness Advisor.exe"
 $installRoot = Join-Path $env:RUNNER_TEMP "lfa-smoke"
 $evidenceRoot = New-Item -ItemType Directory -Force -Path $EvidenceDirectory
 
@@ -38,13 +39,13 @@ try {
     throw "Installer exited with code $($installerProcess.ExitCode)."
   }
 
-  $application = Join-Path $installRoot "Local Fitness Advisor.exe"
+  $application = Join-Path $installRoot $applicationName
   if (-not (Test-Path $application)) {
     throw "Desktop application not found at expected installation path: $application."
   }
   $rule = Get-NetFirewallRule -DisplayName "Local Fitness Advisor" -ErrorAction Stop
   $filter = $rule | Get-NetFirewallApplicationFilter
-  if ($filter.Program -notcontains $application) {
+  if (@($filter.Program) -notcontains $application) {
     throw "Installed firewall rule does not target the desktop executable."
   }
   if ($rule.Profile -notmatch "Private") {
@@ -83,7 +84,7 @@ try {
   }
   $extensionDirectory = Join-Path $installRoot "resources\duckdb-extensions"
   $extensionManifest = Get-Content (Join-Path $extensionDirectory "manifest.json") -Raw | ConvertFrom-Json
-  if ((Get-FileHash (Join-Path $extensionDirectory "httpfs.duckdb_extension") -Algorithm SHA256).Hash.ToLower() -ne $extensionManifest.sha256) {
+  if ((Get-FileHash (Join-Path $extensionDirectory "httpfs.duckdb_extension") -Algorithm SHA256).Hash.ToLower() -ne $extensionManifest.sha256.ToLower()) {
     throw "The installed DuckDB extension does not match its manifest."
   }
   Stop-DesktopProcess $secondLaunch
