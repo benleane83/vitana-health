@@ -437,7 +437,7 @@ function ManualMeasurementRow({
             onChange(row.id, {
               marker: selectedMeasurement.display,
               measurementCode: selectedMeasurement.code,
-              unit: row.unit.trim() || getPreferredUnit(selectedMeasurement, units)
+              unit: getPreferredUnit(selectedMeasurement, units)
             });
           }}
         >

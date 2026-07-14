@@ -95,6 +95,12 @@ function mockFetch(urlResponses: Record<string, unknown>) {
 
 beforeEach(() => {
   globalThis.history.replaceState({}, "", "/");
+  HTMLDialogElement.prototype.showModal = function showModal() {
+    this.setAttribute("open", "");
+  };
+  HTMLDialogElement.prototype.close = function close() {
+    this.removeAttribute("open");
+  };
   global.fetch = mockFetch({
     "/api/store": makeEmptyStore(),
     "/api/analytics": makeEmptyAnalytics(),
@@ -374,6 +380,65 @@ describe("App — import tab", () => {
     measurement = screen.getByRole("combobox", { name: /row 1: select known measurement/i });
     expect([...measurement.querySelectorAll("optgroup")].map((group) => group.getAttribute("label")))
       .toEqual(["Activity", "Body", "Cardio", "Derived", "Lab", "Sleep"]);
+  });
+
+  it("uses imperial units when editing a profile and changing manual measurements", async () => {
+    global.fetch = mockFetch({
+      "/api/store": {
+        ...makeEmptyStore(),
+        profile: {
+          id: "self",
+          displayName: "Local user",
+          heightCm: 177.8,
+          units: "imperial",
+          updatedAt: "2026-01-01T00:00:00.000Z"
+        },
+        measurementTypes: defaultMeasurementTypes
+      },
+      "/api/analytics": makeEmptyAnalytics(),
+      "/api/profiles": { profiles: [], activeProfileId: "self" },
+      "/api/profile": {
+        id: "self",
+        displayName: "Local user",
+        heightCm: 177.8,
+        units: "imperial",
+        updatedAt: "2026-01-01T00:00:00.000Z"
+      }
+    });
+
+    render(<App />);
+    await waitFor(() => expect(screen.getByText("Imperial")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
+    const height = screen.getByRole("spinbutton", { name: /height in/i });
+    const units = screen.getByRole("combobox", { name: /^units$/i });
+    expect(height).toHaveValue(70);
+
+    fireEvent.change(units, { target: { value: "metric" } });
+    expect(screen.getByRole("spinbutton", { name: /height cm/i })).toHaveValue(177.8);
+    fireEvent.change(units, { target: { value: "imperial" } });
+    expect(screen.getByRole("spinbutton", { name: /height in/i })).toHaveValue(70);
+    fireEvent.click(screen.getByRole("button", { name: /save profile/i }));
+
+    await waitFor(() => {
+      const request = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([url, init]) =>
+        url === "/api/profile" && init?.method === "PUT"
+      );
+      const body = JSON.parse(String(request?.[1]?.body));
+      expect(body.units).toBe("imperial");
+      expect(body.heightCm).toBeCloseTo(177.8);
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: /^import$/i }));
+    const observationGroup = screen.getByRole("combobox", { name: /observation group/i });
+    fireEvent.change(observationGroup, { target: { value: "Lab" } });
+
+    const measurement = screen.getByRole("combobox", { name: /row 1: select known measurement/i });
+    await waitFor(() => expect(measurement).toHaveValue("glucose"));
+    expect(screen.getByRole("textbox", { name: /row 1 unit/i })).toHaveValue("mg/dL");
+
+    fireEvent.change(measurement, { target: { value: "iron" } });
+    expect(screen.getByRole("textbox", { name: /row 1 unit/i })).toHaveValue("µmol/L");
   });
 
   it("preloads blank rows for every measurement previously used by a custom group", async () => {

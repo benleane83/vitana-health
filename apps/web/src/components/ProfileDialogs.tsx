@@ -7,7 +7,7 @@
  * - Close on Escape via native <dialog> cancel event
  * - Are labelled and described for screen readers
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Profile, ProfileListEntry } from "@local-fitness-advisor/shared";
 
 const FOCUSABLE =
@@ -41,6 +41,20 @@ export function ProfileEditDialog({
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const firstFocusRef = useRef<HTMLInputElement>(null);
+  const [units, setUnits] = useState<Profile["units"]>(profile?.units ?? "metric");
+  const [height, setHeight] = useState(
+    profile?.heightCm === undefined
+      ? ""
+      : String(units === "imperial" ? centimetersToInches(profile.heightCm) : profile.heightCm)
+  );
+
+  function changeUnits(nextUnits: Profile["units"]) {
+    const numericHeight = Number(height);
+    if (height !== "" && Number.isFinite(numericHeight)) {
+      setHeight(String(nextUnits === "imperial" ? centimetersToInches(numericHeight) : inchesToCentimeters(numericHeight)));
+    }
+    setUnits(nextUnits);
+  }
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -87,11 +101,23 @@ export function ProfileEditDialog({
           <option value="unknown">Unknown</option>
         </select>
 
-        <label htmlFor="profile-heightCm">Height cm</label>
-        <input id="profile-heightCm" name="heightCm" type="number" step="0.1" defaultValue={profile?.heightCm ?? ""} />
+        <label htmlFor="profile-height">Height {units === "imperial" ? "in" : "cm"}</label>
+        <input
+          id="profile-height"
+          name="height"
+          type="number"
+          step="0.1"
+          value={height}
+          onChange={(event) => setHeight(event.target.value)}
+        />
 
         <label htmlFor="profile-units">Units</label>
-        <select id="profile-units" name="units" defaultValue={profile?.units ?? "metric"}>
+        <select
+          id="profile-units"
+          name="units"
+          value={units}
+          onChange={(event) => changeUnits(event.target.value as Profile["units"])}
+        >
           <option value="metric">Metric</option>
           <option value="imperial">Imperial</option>
         </select>
@@ -121,6 +147,14 @@ export function ProfileEditDialog({
       </form>
     </dialog>
   );
+}
+
+function centimetersToInches(value: number): number {
+  return Math.round((value / 2.54) * 10) / 10;
+}
+
+function inchesToCentimeters(value: number): number {
+  return Math.round((value * 2.54) * 10) / 10;
 }
 
 export function ProfileManagerDialog({

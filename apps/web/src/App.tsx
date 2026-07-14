@@ -392,15 +392,17 @@ export function App() {
   async function saveProfile(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const units = String(form.get("units") || "metric") as Profile["units"];
+    const height = numberOrUndefined(form.get("height"));
     await run("Profile saved locally.", async () => {
       await api.saveProfile({
         displayName: String(form.get("displayName") || "Local user"),
         birthYear: numberOrUndefined(form.get("birthYear")),
         sex: String(form.get("sex") || "not-specified") as Profile["sex"],
-        heightCm: numberOrUndefined(form.get("heightCm")),
+        heightCm: height === undefined ? undefined : units === "imperial" ? height * 2.54 : height,
         bloodType: String(form.get("bloodType") || "unknown") as Profile["bloodType"],
         goalSummary: String(form.get("goalSummary") || ""),
-        units: String(form.get("units") || "metric") as Profile["units"]
+        units
       });
       await refreshForCurrentRoute();
       setProfileEditorOpen(false);
