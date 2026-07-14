@@ -4,7 +4,9 @@ param(
   [string]$BaselineInstaller,
   [Parameter(Mandatory = $true)]
   [string]$EvidenceDirectory,
-  [int]$HealthTimeoutSeconds = 240
+  [ValidateSet("Fast", "Full")]
+  [string]$Scope = "Full",
+  [int]$HealthTimeoutSeconds = 0
 )
 
 $ErrorActionPreference = "Stop"
@@ -15,8 +17,13 @@ $evidenceRoot = New-Item -ItemType Directory -Force -Path $EvidenceDirectory
 $gracefulShutdownTimeoutMs = 30000
 $forcedShutdownTimeoutMs = 10000
 $forcedShutdownTimeoutSeconds = [int]($forcedShutdownTimeoutMs / 1000)
-# Install/upgrade startup on CI runners can take several minutes while
-# signed binaries initialize and rebuild local runtime state.
+$effectiveHealthTimeoutSeconds = if ($HealthTimeoutSeconds -gt 0) {
+  $HealthTimeoutSeconds
+} elseif ($Scope -eq "Fast") {
+  120
+} else {
+  240
+}
 $healthUris = @(
   "https://127.0.0.1:4317/api/health",
   "http://127.0.0.1:4317/api/health"
@@ -55,7 +62,7 @@ function Test-HealthEndpoint([string]$Uri) {
 }
 
 function Wait-ForHealth {
-  for ($elapsedSeconds = 0; $elapsedSeconds -lt $healthTimeoutSeconds; $elapsedSeconds++) {
+  for ($elapsedSeconds = 0; $elapsedSeconds -lt $effectiveHealthTimeoutSeconds; $elapsedSeconds++) {
     foreach ($healthUri in $healthUris) {
       if (Test-HealthEndpoint $healthUri) {
         return
@@ -63,13 +70,37 @@ function Wait-ForHealth {
     }
     Start-Sleep -Seconds 1
   }
-  throw "The installed desktop application did not expose its local health endpoint within $healthTimeoutSeconds seconds."
+  Save-HealthDiagnostics
+  throw "The installed desktop application did not expose its local health endpoint within $effectiveHealthTimeoutSeconds seconds."
+}
+
+function Save-HealthDiagnostics {
+  $diagnosticsDirectory = New-Item -ItemType Directory -Force -Path (Join-Path $evidenceRoot "health-diagnostics")
+  try {
+    Get-CimInstance Win32_Process -Filter "Name = '$applicationName'" -ErrorAction SilentlyContinue |
+      Select-Object ProcessId, Name, CommandLine |
+      ConvertTo-Json | Set-Content (Join-Path $diagnosticsDirectory "processes.json")
+  } catch {}
+  try {
+    (& netstat -ano | Select-String ":4317") | Set-Content (Join-Path $diagnosticsDirectory "port-4317.txt")
+  } catch {}
+  try {
+    $appDataDirectory = Join-Path $env:APPDATA $productName
+    if (Test-Path $appDataDirectory) {
+      Get-ChildItem $appDataDirectory -Filter "*.log" -Recurse -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTimeUtc -Descending |
+        Select-Object -First 10 |
+        Copy-Item -Destination $diagnosticsDirectory -Force
+    }
+  } catch {}
 }
 
 try {
   Remove-Item -Recurse -Force $installRoot -ErrorAction SilentlyContinue
+  $installStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
   $initialInstaller = if ($BaselineInstaller) { $BaselineInstaller } else { $Installer }
   $installerProcess = Start-Process -FilePath $initialInstaller -ArgumentList "/S", "/D=$installRoot" -Wait -PassThru
+  $installStopwatch.Stop()
   if ($installerProcess.ExitCode -ne 0) {
     throw "Installer exited with code $($installerProcess.ExitCode)."
   }
@@ -78,18 +109,22 @@ try {
   if (-not (Test-Path $application)) {
     throw "Desktop application not found at expected installation path: $application."
   }
-  $rule = Get-NetFirewallRule -DisplayName $productName -ErrorAction Stop
-  $filter = $rule | Get-NetFirewallApplicationFilter
-  if (-not (@($filter.Program) | Where-Object { $_ -eq $application })) {
-    throw "Installed firewall rule does not target the desktop executable."
-  }
-  $profiles = @($rule.Profile)
-  if ($profiles.Count -ne 1 -or $profiles -notcontains "Private") {
-    throw "Installed firewall rule is not restricted to the private profile."
+  if ($Scope -eq "Full") {
+    $rule = Get-NetFirewallRule -DisplayName $productName -ErrorAction Stop
+    $filter = $rule | Get-NetFirewallApplicationFilter
+    if (-not (@($filter.Program) | Where-Object { $_ -eq $application })) {
+      throw "Installed firewall rule does not target the desktop executable."
+    }
+    $profiles = @($rule.Profile)
+    if ($profiles.Count -ne 1 -or $profiles -notcontains "Private") {
+      throw "Installed firewall rule is not restricted to the private profile."
+    }
   }
 
   $firstLaunch = Start-Process -FilePath $application -PassThru
+  $firstLaunchStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
   Wait-ForHealth
+  $firstLaunchStopwatch.Stop()
   $manifest = Get-ChildItem $env:APPDATA -Filter "storage-backend.json" -Recurse |
     Sort-Object LastWriteTimeUtc -Descending |
     Select-Object -First 1
@@ -99,6 +134,17 @@ try {
   $storage = Get-Content $manifest.FullName -Raw | ConvertFrom-Json
   if ($storage.storageBackend -ne "duckdb") {
     throw "The packaged runtime selected '$($storage.storageBackend)' instead of encrypted DuckDB."
+  }
+  if ($Scope -eq "Fast") {
+    Stop-DesktopProcess $firstLaunch
+    [pscustomobject]@{
+      scope = "fast"
+      installerSha256 = (Get-FileHash $Installer -Algorithm SHA256).Hash
+      storageManifest = $manifest.FullName
+      install_ms = $installStopwatch.ElapsedMilliseconds
+      launch_to_health_ms = $firstLaunchStopwatch.ElapsedMilliseconds
+    } | ConvertTo-Json | Set-Content (Join-Path $evidenceRoot "smoke-test-fast.json")
+    return
   }
   if (-not (Get-ChildItem (Join-Path $manifest.DirectoryName "duckdb-storage") -Filter "*.duckdb" -Recurse -ErrorAction SilentlyContinue)) {
     throw "The packaged runtime did not create an encrypted DuckDB database."
@@ -114,7 +160,9 @@ try {
   }
 
   $secondLaunch = Start-Process -FilePath $application -PassThru
+  $secondLaunchStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
   Wait-ForHealth
+  $secondLaunchStopwatch.Stop()
   if ((Get-FileHash $manifest.FullName -Algorithm SHA256).Hash -ne $manifestHash) {
     throw "Encrypted DuckDB storage metadata did not persist across restart."
   }
@@ -138,11 +186,15 @@ try {
   }
 
   [pscustomobject]@{
+    scope = "full"
     installerSha256 = (Get-FileHash $Installer -Algorithm SHA256).Hash
     storageManifest = $manifest.FullName
     storageManifestSha256 = $manifestHash
     upgraded = [bool]$BaselineInstaller
     firewallRuleRemoved = $true
+    install_ms = $installStopwatch.ElapsedMilliseconds
+    launch_to_health_ms = $firstLaunchStopwatch.ElapsedMilliseconds
+    restart_to_health_ms = $secondLaunchStopwatch.ElapsedMilliseconds
   } | ConvertTo-Json | Set-Content (Join-Path $evidenceRoot "smoke-test.json")
 } finally {
   if ($firstLaunch) {
