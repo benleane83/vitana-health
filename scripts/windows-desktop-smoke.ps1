@@ -3,7 +3,8 @@ param(
   [string]$Installer,
   [string]$BaselineInstaller,
   [Parameter(Mandatory = $true)]
-  [string]$EvidenceDirectory
+  [string]$EvidenceDirectory,
+  [int]$HealthTimeoutSeconds = 240
 )
 
 $ErrorActionPreference = "Stop"
@@ -11,29 +12,58 @@ $productName = "Local Fitness Advisor"
 $applicationName = "$productName.exe"
 $installRoot = Join-Path $env:RUNNER_TEMP "lfa-smoke"
 $evidenceRoot = New-Item -ItemType Directory -Force -Path $EvidenceDirectory
+$gracefulShutdownTimeoutMs = 30000
+$forcedShutdownTimeoutMs = 10000
+$forcedShutdownTimeoutSeconds = [int]($forcedShutdownTimeoutMs / 1000)
+# Install/upgrade startup on CI runners can take several minutes while
+# signed binaries initialize and rebuild local runtime state.
+$healthUris = @(
+  "https://127.0.0.1:4317/api/health",
+  "http://127.0.0.1:4317/api/health"
+)
 
 function Stop-DesktopProcess([System.Diagnostics.Process]$Process) {
   if (-not $Process.HasExited) {
-    & taskkill /PID $Process.Id /T /F
-    if ($LASTEXITCODE -ne 0) {
-      throw "Unable to stop desktop process $($Process.Id)."
+    try {
+      $null = $Process.CloseMainWindow()
+    } catch {
+      # Process does not expose a main window in this session.
+    }
+    if (-not $Process.WaitForExit($gracefulShutdownTimeoutMs)) {
+      & taskkill /PID $Process.Id /T /F
+      if ($LASTEXITCODE -ne 0) {
+        throw "Unable to stop desktop process $($Process.Id)."
+      }
+      if (-not $Process.WaitForExit($forcedShutdownTimeoutMs)) {
+        throw "Desktop process $($Process.Id) did not exit within $forcedShutdownTimeoutSeconds seconds after force stop."
+      }
     }
   }
 }
 
+function Test-HealthEndpoint([string]$Uri) {
+  try {
+    if ($Uri.StartsWith("https://")) {
+      $health = Invoke-RestMethod -Uri $Uri -SkipCertificateCheck
+    } else {
+      $health = Invoke-RestMethod -Uri $Uri
+    }
+    return $health.ok -eq $true
+  } catch {
+    return $false
+  }
+}
+
 function Wait-ForHealth {
-  for ($attempt = 0; $attempt -lt 120; $attempt++) {
-    try {
-      $health = Invoke-RestMethod -Uri "https://127.0.0.1:4317/api/health" -SkipCertificateCheck
-      if ($health.ok -eq $true) {
+  for ($elapsedSeconds = 0; $elapsedSeconds -lt $healthTimeoutSeconds; $elapsedSeconds++) {
+    foreach ($healthUri in $healthUris) {
+      if (Test-HealthEndpoint $healthUri) {
         return
       }
-    } catch {
-      # Server not yet ready
     }
     Start-Sleep -Seconds 1
   }
-  throw "The installed desktop application did not expose its local health endpoint."
+  throw "The installed desktop application did not expose its local health endpoint within $healthTimeoutSeconds seconds."
 }
 
 try {
