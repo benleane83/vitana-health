@@ -61,7 +61,7 @@ export function createApp(
   app.disable("x-powered-by");
 
   // Body limits — larger limits only on routes that require them
-  app.use("/api/import/body-composition/preview", express.json({ limit: "20mb" }));
+  app.use(["/api/import/body-composition/preview", "/api/import/blood-test/preview"], express.json({ limit: "20mb" }));
   app.use("/api/import/health-connect", express.json({ limit: "10mb" }));
   app.use(express.json({ limit: "1mb" }));
 

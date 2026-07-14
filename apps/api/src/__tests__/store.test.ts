@@ -127,6 +127,33 @@ describe("HealthStore — deleteObservation", () => {
   });
 });
 
+describe("HealthStore — updateObservation", () => {
+  it("updates editable fields and preserves source and group linkage", () => {
+    const store = makeStore();
+    store.mergeImport(makeManualImport());
+    const before = store.snapshot().observations[0];
+
+    const result = store.updateObservation(before.id, {
+      measurementCode: "creatinine",
+      observedAt: "2026-02-03T10:30:00.000Z",
+      value: 61.4,
+      unit: "µmol/L",
+      note: "Corrected"
+    });
+
+    expect(result?.updatedObservation).toMatchObject({
+      id: before.id,
+      measurementCode: "creatinine",
+      sourceId: before.sourceId,
+      observationGroupId: before.observationGroupId
+    });
+    expect(result?.updatedObservation.sourceJson).toEqual(before.sourceJson);
+    expect(store.updateObservation("missing-observation", {
+      measurementCode: "creatinine", observedAt: "2026-02-03T10:30:00.000Z", value: 1, unit: "µmol/L"
+    })).toBeUndefined();
+  });
+});
+
 describe("HealthStore — deleteObservationsByMeasurementCode", () => {
   it("returns deletedCount 0 for a measurement code with no observations", () => {
     const store = makeStore();

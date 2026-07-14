@@ -2,7 +2,9 @@ import type {
   AppBootstrap,
   DeleteObservationResponse,
   DeleteObservationsByTypeResponse,
-  HealthStoreData
+  HealthStoreData,
+  UpdateObservationInput,
+  UpdateObservationResponse
 } from "@local-fitness-advisor/shared";
 import type { StoreSecurityMode } from "../store.js";
 import {
@@ -107,6 +109,12 @@ export class DuckDbHealthStore {
   deleteObservation(id: string): Promise<DeleteObservationResponse | undefined> {
     return this.enqueueMutation(async () => {
       return this.repository.deleteObservation(id);
+    });
+  }
+
+  updateObservation(id: string, input: UpdateObservationInput): Promise<UpdateObservationResponse | undefined> {
+    return this.enqueueMutation(async () => {
+      return this.repository.updateObservation(id, input);
     });
   }
 

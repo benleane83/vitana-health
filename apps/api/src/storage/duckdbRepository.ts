@@ -4,6 +4,7 @@ import type duckdb from "duckdb";
 import {
   classifyValue,
   computeAnalyticsFromInput,
+  defaultMeasurementTypes,
   healthStoreDataSchema,
   insightSchema,
   profileSchema,
@@ -18,7 +19,9 @@ import {
   type Observation,
   type ObservationGroup,
   type Profile,
-  type SourceImport
+  type SourceImport,
+  type UpdateObservationInput,
+  type UpdateObservationResponse
 } from "@local-fitness-advisor/shared";
 import {
   type MeasurementDetailPage,
@@ -95,7 +98,9 @@ export class DuckDbRepository implements ProfileRepository {
     const handle = await openEncryptedDuckDbDatabase(root, databasePath, key, options);
     try {
       await migrateDuckDbSchema(handle);
-      return new DuckDbRepository(handle, options.testHooks);
+      const repository = new DuckDbRepository(handle, options.testHooks);
+      await repository.reconcileDefaultMeasurementTypes();
+      return repository;
     } catch (error) {
       await closeEncryptedDuckDbDatabase(handle).catch(() => undefined);
       throw error;
@@ -106,6 +111,68 @@ export class DuckDbRepository implements ProfileRepository {
     this.assertOpen();
     const rows = await all(this.connection, "SELECT schema_version FROM poc_metadata ORDER BY schema_version;");
     return rows.map((row) => Number(row.schema_version));
+  }
+
+  private async reconcileDefaultMeasurementTypes(): Promise<void> {
+    const profileRows = await all(this.connection, "SELECT COUNT(*) AS count FROM profile;");
+    if (Number(profileRows[0]?.count ?? 0) === 0) {
+      return;
+    }
+    const [existingRows, referencedRows] = await Promise.all([
+      all(this.connection, "SELECT * EXCLUDE (ordinal) FROM measurement_types;"),
+      all(this.connection, `
+        SELECT measurement_code FROM observations
+        UNION
+        SELECT measurement_code FROM time_series_samples;
+      `)
+    ]);
+    const existingByCode = new Map(existingRows.map((row) => [String(row.code), row]));
+    const referencedCodes = new Set(referencedRows.map((row) => String(row.measurement_code)));
+    const referencedDefaultTypes = defaultMeasurementTypes.filter((type) => referencedCodes.has(type.code));
+    const missingTypes = referencedDefaultTypes.filter((type) => !existingByCode.has(type.code));
+    const retiredTypes = defaultMeasurementTypes.filter((type) => {
+      const existing = existingByCode.get(type.code);
+      return String(existing?.category) === "metabolic";
+    });
+    if (missingTypes.length === 0 && retiredTypes.length === 0) {
+      return;
+    }
+    await this.transaction(async () => {
+      const ordinalRows = await all(this.connection, "SELECT COALESCE(MAX(ordinal), -1) + 1 AS ordinal FROM measurement_types;");
+      let ordinal = Number(ordinalRows[0]?.ordinal ?? 0);
+      for (const entry of missingTypes) {
+        await run(
+          this.connection,
+          "INSERT INTO measurement_types VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);",
+          ordinal,
+          entry.code,
+          entry.display,
+          entry.category,
+          entry.kind,
+          entry.canonicalUnit,
+          json(entry.aliases),
+          entry.aggregation,
+          json(measurementTypeProperties(entry))
+        );
+        ordinal += 1;
+      }
+      for (const entry of retiredTypes) {
+        await run(
+          this.connection,
+          `UPDATE measurement_types
+           SET display = ?, category = ?, kind = ?, canonical_unit = ?, aliases = ?, aggregation = ?, custom_properties = ?
+           WHERE code = ?;`,
+          entry.display,
+          entry.category,
+          entry.kind,
+          entry.canonicalUnit,
+          json(entry.aliases),
+          entry.aggregation,
+          json(measurementTypeProperties(entry)),
+          entry.code
+        );
+      }
+    });
   }
 
   async snapshot(options: { includeRaw?: boolean } = { includeRaw: true }): Promise<HealthStoreData> {
@@ -595,6 +662,30 @@ export class DuckDbRepository implements ProfileRepository {
         deletedObservation: observation,
         counts: await this.storageCounts()
       };
+    });
+  }
+
+  async updateObservation(id: string, input: UpdateObservationInput): Promise<UpdateObservationResponse | undefined> {
+    this.assertOpen();
+    return this.transaction(async () => {
+      const rows = await allWithParams(this.connection, "SELECT 1 AS found FROM observations WHERE id = ? LIMIT 1;", id);
+      if (!rows[0]) {
+        return undefined;
+      }
+      await run(
+        this.connection,
+        `UPDATE observations SET measurement_code = ?, observed_at = ?, value = ?, unit = ?, note = ? WHERE id = ?;`,
+        input.measurementCode,
+        input.observedAt,
+        input.value,
+        input.unit,
+        input.note ?? null,
+        id
+      );
+      const updatedRows = await allWithParams(this.connection, "SELECT * EXCLUDE (ordinal) FROM observations WHERE id = ?;", id);
+      const updatedObservation = observationFromRow(updatedRows[0]);
+      await this.insertAudit("observation-updated", `${updatedObservation.measurementCode} observation updated for ${updatedObservation.observedAt}.`);
+      return { updatedObservation, counts: await this.storageCounts() };
     });
   }
 

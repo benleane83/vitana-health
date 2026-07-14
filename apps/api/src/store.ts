@@ -27,7 +27,9 @@ import {
   type Observation,
   type Profile,
   type ProfileListEntry,
-  type SourceImport
+  type SourceImport,
+  type UpdateObservationInput,
+  type UpdateObservationResponse
 } from "@local-fitness-advisor/shared";
 import {
   chartPointsForEntries,
@@ -288,6 +290,22 @@ export class HealthStore {
     this.audit("insight-generated", `${insight.model} insight generated.`);
     this.persist();
     return insight;
+  }
+
+  updateObservation(id: string, input: UpdateObservationInput): UpdateObservationResponse | undefined {
+    const index = this.data.observations.findIndex((entry) => entry.id === id);
+    if (index < 0) {
+      return undefined;
+    }
+    const updatedObservation: Observation = {
+      ...this.data.observations[index],
+      ...input,
+      ...(input.note ? { note: input.note } : { note: undefined })
+    };
+    this.data.observations[index] = updatedObservation;
+    this.audit("observation-updated", `${updatedObservation.measurementCode} observation updated for ${updatedObservation.observedAt}.`);
+    this.persist();
+    return { updatedObservation, counts: storeCounts(this.data) };
   }
 
   deleteObservation(id: string): DeleteObservationResponse | undefined {

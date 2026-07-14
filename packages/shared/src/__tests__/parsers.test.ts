@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildBodyCompositionImportFromDraft,
+  buildBloodTestImportFromDraft,
   buildManualLabEntryImport,
   buildManualObservationImport,
   checksum,
@@ -167,6 +168,30 @@ describe("parseBloodTestScanText", () => {
     );
     expect(result.reportDate).toContain("2026-06-06T12:36:00.000Z");
   });
+
+  it("parses a known marker from a lab table without treating metadata dates as measurements", () => {
+    const result = parseBloodTestScanText(
+      "BloodTestResults_Jul2026_Iron.pdf",
+      [
+        "Receiving Date 08/07/2026 18:49",
+        "08/07/2026 19:25 AUTHORISED Date",
+        "Iron (Fe++) 13.7 umol/L 5.8-34.5 Test Result Flag Units Ref. Range",
+        "Instant: 09/07/2026 11:20"
+      ].join("\n")
+    );
+
+    expect(result.rows).toEqual([
+      expect.objectContaining({
+        measurementCode: "iron",
+        displayName: "Iron",
+        value: 13.7,
+        unit: "µmol/L",
+        included: true,
+        confidence: "high"
+      })
+    ]);
+    expect(result.reportDate).toBe("2026-07-08T18:49:00.000Z");
+  });
 });
 
 describe("parseBodyCompositionText", () => {
@@ -185,7 +210,18 @@ describe("buildBodyCompositionImportFromDraft", () => {
       fileName: "report.pdf", reportDate: "2026-06-15", sourceChecksum: "report",
       rows: [{ id: "weight", label: "Weight", measurementCode: "weight", displayName: "Weight", value: 82, unit: "kg", confidence: "high", included: true }]
     });
-    expect(result.observationGroups).toEqual([expect.objectContaining({ kind: "body_composition_report" })]);
+    expect(result.observationGroups).toEqual([expect.objectContaining({ kind: "body_composition_report", label: "Body" })]);
+    expect(result.observations[0].observationGroupId).toBe(result.observationGroups[0].id);
+  });
+});
+
+describe("buildBloodTestImportFromDraft", () => {
+  it("maps lab-result observations to the Lab group", () => {
+    const result = buildBloodTestImportFromDraft({
+      fileName: "results.pdf", reportDate: "2026-06-15", sourceChecksum: "results",
+      rows: [{ id: "iron", label: "Iron", measurementCode: "iron", displayName: "Iron", value: 13.7, unit: "µmol/L", confidence: "high", included: true }]
+    });
+    expect(result.observationGroups).toEqual([expect.objectContaining({ kind: "lab_panel", label: "Lab" })]);
     expect(result.observations[0].observationGroupId).toBe(result.observationGroups[0].id);
   });
 });

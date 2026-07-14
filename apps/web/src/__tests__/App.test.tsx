@@ -94,6 +94,7 @@ function mockFetch(urlResponses: Record<string, unknown>) {
 }
 
 beforeEach(() => {
+  globalThis.history.replaceState({}, "", "/");
   global.fetch = mockFetch({
     "/api/store": makeEmptyStore(),
     "/api/analytics": makeEmptyAnalytics(),
@@ -174,6 +175,34 @@ describe("App — navigation landmarks", () => {
     expect(screen.getByText(/incomplete data/i)).toBeInTheDocument();
   });
 
+  it("presents available Biological Age results without a redundant status label", async () => {
+    global.fetch = mockFetch({
+      "/api/store": makeEmptyStore(),
+      "/api/analytics": makeEmptyAnalytics(),
+      "/api/profiles": { profiles: [], activeProfileId: "self" },
+      "/api/biological-age": {
+        generatedAt: "2026-07-14T00:00:00Z",
+        disclaimer: "Wellness only.",
+        models: [{
+          id: "phenoage-levine-2018", name: "PhenoAge", version: "Levine 2018", status: "available",
+          methodology: "Published model.", citation: "Citation.", inputs: [], limitations: ["No limitations."],
+          chronologicalAge: 46, biologicalAge: 39.8, ageAcceleration: -6.2,
+          panelCollectedAt: "2026-07-14T00:00:00.000Z"
+        }]
+      }
+    });
+    render(<App />);
+    fireEvent.click(screen.getByRole("tab", { name: /^insights$/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /biological age/i }));
+
+    const selectedPanel = await screen.findByText(/Selected lab panel:/i);
+    expect(screen.queryByText(/^Available$/i)).not.toBeInTheDocument();
+    expect(selectedPanel.querySelector("strong")).not.toBeNull();
+    expect(screen.getByText("Chronological age").closest(".biological-age-stats")).not.toBeNull();
+    expect(screen.getByText("Biological age").closest(".biological-age-stats")).not.toBeNull();
+    expect(screen.getByText("Age acceleration").closest(".biological-age-stats")).not.toBeNull();
+  });
+
   it("opens the AI setup screen from Settings", async () => {
     global.fetch = mockFetch({
       "/api/store": makeEmptyStore(),
@@ -244,6 +273,69 @@ describe("App — import tab", () => {
     expect(screen.getByRole("tab", { name: /upload csv/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /^scan$/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /fitness tracker/i })).toBeInTheDocument();
+  });
+
+  it("labels blood-test scans as Lab results", () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("tab", { name: /^import$/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /^scan$/i }));
+    expect(screen.getByRole("option", { name: "Lab results" })).toHaveValue("blood-test");
+  });
+
+  it("dismisses a global notification after it has been read", () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("tab", { name: /^import$/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /upload csv/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^upload csv$/i }));
+
+    expect(screen.getByRole("status")).toHaveTextContent("Select a CSV file before upload.");
+    fireEvent.click(screen.getByRole("button", { name: /dismiss notification/i }));
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("adds a manually entered row to a scan preview", async () => {
+    global.fetch = mockFetch({
+      "/api/store": { ...makeEmptyStore(), measurementTypes: defaultMeasurementTypes },
+      "/api/analytics": makeEmptyAnalytics(),
+      "/api/profiles": { profiles: [], activeProfileId: "self" },
+      "/api/import/body-composition/preview": {
+        fileName: "report.pdf",
+        reportDate: "2026-07-08T00:00:00.000Z",
+        sourceText: "Weight 80 kg",
+        checksum: "sha256-test",
+        parserVersion: "body-composition-text-v1",
+        diagnostics: [],
+        rows: [{
+          id: "weight-row",
+          label: "Weight",
+          measurementCode: "weight",
+          displayName: "Weight",
+          value: 80,
+          unit: "kg",
+          confidence: "high",
+          included: true
+        }]
+      }
+    });
+
+    render(<App />);
+    fireEvent.click(screen.getByRole("tab", { name: /^import$/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /^scan$/i }));
+    fireEvent.change(screen.getByLabelText(/select report/i), {
+      target: { files: [new File(["report"], "report.pdf", { type: "application/pdf" })] }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /preview scan/i }));
+
+    await screen.findByRole("button", { name: /^add row$/i });
+    fireEvent.click(screen.getByRole("button", { name: /^add row$/i }));
+
+    expect(screen.getAllByRole("checkbox", { name: /save/i })).toHaveLength(2);
+    expect(screen.getByRole("checkbox", { name: /row 2: save/i })).toBeChecked();
+    const measurement = screen.getByRole("combobox", { name: /row 2 known measurement/i });
+    expect(measurement).toHaveValue("");
+    fireEvent.change(measurement, { target: { value: "iron" } });
+    expect(screen.getByRole("combobox", { name: /row 2 known measurement/i })).toHaveValue("iron");
+    expect(screen.getByRole("textbox", { name: /row 2 unit/i })).toHaveValue("µmol/L");
   });
 
   it("uses category-backed groups to initialize and filter manual rows", async () => {
@@ -348,6 +440,99 @@ describe("App — import tab", () => {
         String(init?.body).includes('"label":"Weekend movement"')
       )).toBe(true);
     });
+  });
+});
+
+describe("App — measurement detail", () => {
+  it("shows only the source label for manually entered measurements", async () => {
+    globalThis.history.replaceState({}, "", "/track/glucose");
+    global.fetch = mockFetch({
+      "/api/store": { ...makeEmptyStore(), measurementTypes: defaultMeasurementTypes },
+      "/api/analytics": makeEmptyAnalytics(),
+      "/api/profiles": { profiles: [], activeProfileId: "self" },
+      "/api/summary/glucose": {
+        generatedAt: "2026-07-14T00:00:00.000Z",
+        measurement: {
+          code: "glucose", displayName: "Glucose", category: "lab", canonicalUnit: "mmol/L",
+          counts: { observations: 1, samples: 0, activities: 0, total: 1 },
+          lastMeasuredAt: "2026-07-14T00:00:00.000Z"
+        },
+        entries: [{
+          kind: "observation", id: "glucose-1", measurementCode: "glucose", displayName: "Glucose",
+          timestamp: "2026-07-14T00:00:00.000Z", value: 5.2, unit: "mmol/L",
+          sourceLabel: "Manual observations: Lab", sourceKind: "manual-entry",
+          importFileName: "lab-2026-07-14.manual-entry", note: "Manual observation from Lab", canDelete: true
+        }],
+        chartPoints: [{ kind: "observation", timestamp: "2026-07-14T00:00:00.000Z", value: 5.2, unit: "mmol/L" }],
+        counts: { observations: 1, samples: 0, activities: 0, total: 1 },
+        deletion: { observationEntries: 1, deletableEntries: 1 },
+        pagination: { limit: 50, loaded: 1, total: 1, hasMore: false }
+      }
+    });
+
+    render(<App />);
+    expect(await screen.findByText("Manual observations: Lab")).toBeInTheDocument();
+    expect(screen.queryByText(/lab-2026-07-14\.manual-entry/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Manual observation from Lab/i)).not.toBeInTheDocument();
+  });
+
+  it("edits a single observation from its detail row", async () => {
+    globalThis.history.replaceState({}, "", "/track/glucose");
+    const detail = {
+      generatedAt: "2026-07-14T00:00:00.000Z",
+      measurement: {
+        code: "glucose", displayName: "Glucose", category: "lab", canonicalUnit: "mmol/L",
+        counts: { observations: 1, samples: 0, activities: 0, total: 1 },
+        lastMeasuredAt: "2026-07-14T00:00:00.000Z"
+      },
+      entries: [{
+        kind: "observation", id: "glucose-edit-1", measurementCode: "glucose", displayName: "Glucose",
+        timestamp: "2026-07-14T08:30:00.000Z", value: 5.2, unit: "mmol/L",
+        sourceLabel: "Manual observations: Lab", sourceKind: "manual-entry", note: "Fasting", canDelete: true
+      }],
+      chartPoints: [{ kind: "observation", timestamp: "2026-07-14T08:30:00.000Z", value: 5.2, unit: "mmol/L" }],
+      counts: { observations: 1, samples: 0, activities: 0, total: 1 },
+      deletion: { observationEntries: 1, deletableEntries: 1 },
+      pagination: { limit: 50, loaded: 1, total: 1, hasMore: false }
+    };
+    global.fetch = mockFetch({
+      "/api/store": { ...makeEmptyStore(), measurementTypes: defaultMeasurementTypes },
+      "/api/analytics": makeEmptyAnalytics(),
+      "/api/profiles": { profiles: [], activeProfileId: "self" },
+      "/api/summary/glucose": detail,
+      "/api/summary": {
+        generatedAt: "2026-07-14T00:00:00.000Z",
+        totals: { types: 1, observations: 1, samples: 0, activities: 0, total: 1 },
+        categories: []
+      },
+      "/api/observations/glucose-edit-1": { updatedObservation: { id: "glucose-edit-1" } }
+    });
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: /edit glucose observation/i }));
+
+    expect(await screen.findByRole("dialog", { name: /edit observation/i })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /^measurement$/i })).toHaveValue("glucose");
+    expect(screen.getByRole("spinbutton", { name: /^value$/i })).toHaveValue(5.2);
+    expect(screen.getByRole("textbox", { name: /^unit$/i })).toHaveValue("mmol/L");
+    expect(screen.getByRole("textbox", { name: /^note$/i })).toHaveValue("Fasting");
+
+    fireEvent.change(screen.getByRole("spinbutton", { name: /^value$/i }), { target: { value: "5.6" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /^note$/i }), { target: { value: "Corrected fasting result" } });
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => {
+      const request = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([url, init]) =>
+        String(url).includes("/api/observations/glucose-edit-1") && init?.method === "PATCH"
+      );
+      expect(JSON.parse(String(request?.[1]?.body))).toMatchObject({
+        measurementCode: "glucose",
+        value: 5.6,
+        unit: "mmol/L",
+        note: "Corrected fasting result"
+      });
+    });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /edit observation/i })).not.toBeInTheDocument());
   });
 });
 

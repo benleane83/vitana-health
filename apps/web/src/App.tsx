@@ -12,7 +12,8 @@ import type {
   ManualObservationPayload,
   MeasurementType,
   Profile,
-  ProfileListEntry
+  ProfileListEntry,
+  UpdateObservationInput
 } from "@local-fitness-advisor/shared";
 import { defaultMeasurementTypes, safetyNotice } from "@local-fitness-advisor/shared";
 import { api } from "./api.js";
@@ -22,6 +23,7 @@ import { todayIsoDate, numberOrUndefined, readFileAsBase64, isSupportedBodyCompM
 import { ConfirmDialog } from "./components/ConfirmDialog.js";
 import { ManualGroupSaveDialog } from "./components/ManualGroupSaveDialog.js";
 import { ProfileEditDialog, ProfileManagerDialog } from "./components/ProfileDialogs.js";
+import { ObservationEditDialog } from "./components/ObservationEditDialog.js";
 import { DashboardPage } from "./pages/DashboardPage.js";
 import { ImportPage } from "./pages/ImportPage.js";
 import { SummaryPage, ObservationTypeDetailPage } from "./pages/SummaryPage.js";
@@ -62,6 +64,7 @@ export function App() {
   const [summaryDetailBusy, setSummaryDetailBusy] = useState(false);
   const [summaryDetailError, setSummaryDetailError] = useState<string>();
   const [summaryDetailActionBusy, setSummaryDetailActionBusy] = useState(false);
+  const [observationBeingEdited, setObservationBeingEdited] = useState<HealthDataDetailEntry>();
   const [summaryDetailLoadMoreBusy, setSummaryDetailLoadMoreBusy] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
   const [exportError, setExportError] = useState<string>();
@@ -643,6 +646,32 @@ export function App() {
     }
   }
 
+  async function updateObservationEntry(input: UpdateObservationInput) {
+    if (!observationBeingEdited) return;
+    setSummaryDetailActionBusy(true);
+    setMessage(undefined);
+    try {
+      await api.updateObservation(observationBeingEdited.id, input);
+      const [nextBootstrap, nextAnalytics, nextSummary, nextDetail] = await Promise.all([
+        api.bootstrap(),
+        api.analytics(),
+        api.summary(),
+        api.healthDataDetail(input.measurementCode)
+      ]);
+      setBootstrap(nextBootstrap);
+      setAnalytics(nextAnalytics);
+      applySummary(nextSummary);
+      setSummaryDetail(nextDetail);
+      setObservationBeingEdited(undefined);
+      if (summaryDetailCode !== input.measurementCode) navigateSummaryDetail(input.measurementCode);
+      setMessage("Observation updated.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unexpected local error.");
+    } finally {
+      setSummaryDetailActionBusy(false);
+    }
+  }
+
   async function loadMoreSummaryDetail() {
     if (!summaryDetailCode || !summaryDetail?.pagination.hasMore) return;
     setSummaryDetailLoadMoreBusy(true);
@@ -759,6 +788,20 @@ export function App() {
 
   function updateBodyCompRow(id: string, patch: Partial<BodyCompositionEditableRow>) {
     setBodyCompRows((current) => current.map((row) => (row.id === id ? { ...row, ...patch } : row)));
+  }
+
+  function addBodyCompRow() {
+    setBodyCompRows((current) => [...current, {
+      id: globalThis.crypto.randomUUID(),
+      label: "",
+      measurementCode: "",
+      displayName: "",
+      value: "",
+      unit: "",
+      confidence: "low",
+      included: true,
+      generatedCode: true
+    }]);
   }
 
   function resetManualForm() {
@@ -879,8 +922,19 @@ export function App() {
 
       {/* Global status/notice — live region */}
       {message ? (
-        <div className="notice" role="status" aria-live="polite" aria-atomic="true">
-          {message}
+        <div className="notice">
+          <span className="notice-message" role="status" aria-live="polite" aria-atomic="true">
+            {message}
+          </span>
+          <button
+            className="notice-dismiss"
+            type="button"
+            aria-label="Dismiss notification"
+            title="Dismiss notification"
+            onClick={() => setMessage(undefined)}
+          >
+            <span aria-hidden="true">×</span>
+          </button>
         </div>
       ) : null}
 
@@ -949,6 +1003,7 @@ export function App() {
             onBodyCompFileChange={setBodyCompFile}
             onBodyCompReportDateChange={setBodyCompReportDate}
             onBodyCompRowChange={updateBodyCompRow}
+            onBodyCompAddRow={addBodyCompRow}
             measurementTypes={recordedMeasurementTypes}
             onPreviewBodyComp={previewBodyCompositionReport}
             onCommitBodyComp={commitBodyCompositionReport}
@@ -975,6 +1030,7 @@ export function App() {
               actionBusy={summaryDetailActionBusy}
               loadMoreBusy={summaryDetailLoadMoreBusy}
               onBack={() => navigate("track")}
+              onEditObservation={setObservationBeingEdited}
               onDeleteObservation={deleteObservationEntry}
               onDeleteAll={deleteObservationsByType}
               onLoadMore={loadMoreSummaryDetail}
@@ -993,6 +1049,16 @@ export function App() {
           )
         ) : null}
       </div>
+
+      {observationBeingEdited ? (
+        <ObservationEditDialog
+          entry={observationBeingEdited}
+          measurementTypes={recordedMeasurementTypes}
+          busy={summaryDetailActionBusy}
+          onClose={() => setObservationBeingEdited(undefined)}
+          onSave={updateObservationEntry}
+        />
+      ) : null}
 
       <div id="route-panel-insights" role="tabpanel" aria-labelledby={navTabIds.insights} hidden={route !== "insights"}>
         {route === "insights" ? (

@@ -17,20 +17,21 @@ describe("persisted health store schema", () => {
     expect(() => parsePersistedHealthStore(store({ observations: {} }))).toThrow();
   });
 
-  it("accepts persisted metabolic measurement types", () => {
+  it("migrates persisted metabolic measurement types to the current registry category", () => {
     const result = parsePersistedHealthStore(store({
       measurementTypes: [{
-        code: "basal_metabolic_rate",
-        display: "Basal metabolic rate",
+        code: "glucose",
+        display: "Glucose",
         category: "metabolic",
-        kind: "point",
-        canonicalUnit: "kcal/day",
-        aliases: ["bmr"],
+        kind: "panel-component",
+        canonicalUnit: "mg/dL",
+        aliases: ["glucose"],
         aggregation: "latest"
       }]
     }));
 
-    expect(result.data.measurementTypes[0]?.category).toBe("metabolic");
+    expect(result.migrated).toBe(true);
+    expect(result.data.measurementTypes[0]).toMatchObject({ code: "glucose", category: "lab", canonicalUnit: "mmol/L" });
   });
 
   it("preserves previously persisted profile metadata and migration audit events", () => {

@@ -8,7 +8,9 @@ import type {
   HealthDataSummary,
   HealthStoreData,
   Profile,
-  SourceImport
+  SourceImport,
+  UpdateObservationInput,
+  UpdateObservationResponse
 } from "@local-fitness-advisor/shared";
 import type { MeasurementDetailPage } from "../summary.js";
 
@@ -35,6 +37,7 @@ export interface ProfileRepository {
   mergeImport(imported: ProfileImport): Promise<ImportMutationResult>;
   addInsight(insight: HealthStoreData["insights"][number]): Promise<HealthStoreData["insights"][number]>;
   exportData(): Promise<HealthStoreData>;
+  updateObservation(id: string, input: UpdateObservationInput): Promise<UpdateObservationResponse | undefined>;
   deleteObservation(id: string): Promise<DeleteObservationResponse | undefined>;
   deleteObservationsByMeasurementCode(measurementCode: string): Promise<DeleteObservationsByTypeResponse>;
   summary(): Promise<HealthDataSummary>;

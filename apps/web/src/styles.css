@@ -659,12 +659,49 @@ h3 {
 }
 
 .notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   border-color: oklch(78% 0.06 195 / 0.6);
   border-radius: var(--radius-md);
   background: oklch(95% 0.03 198 / 0.72);
   color: oklch(34% 0.08 245);
   margin-bottom: var(--space-6);
   padding: var(--space-4) var(--space-5);
+}
+
+.notice-message {
+  flex: 1;
+  min-width: 0;
+}
+
+.notice-dismiss {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 24px;
+  width: 24px;
+  min-height: 24px;
+  border-color: transparent;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: oklch(34% 0.08 245 / 0.58);
+  font-size: 1.1rem;
+  font-weight: 500;
+  line-height: 1;
+  padding: 0;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .notice-dismiss:hover:not(:disabled) {
+    background: oklch(34% 0.08 245 / 0.08);
+    color: oklch(34% 0.08 245 / 0.85);
+    transform: none;
+  }
+}
+
+.notice-dismiss:active:not(:disabled) {
+  background: oklch(34% 0.08 245 / 0.12);
+  transform: none;
 }
 
 .grid {
@@ -731,6 +768,10 @@ h3 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.biological-age-stats {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .summary-detail-header {
   display: flex;
   justify-content: space-between;
@@ -766,6 +807,12 @@ h3 {
   font-size: 0.85rem;
 }
 
+.summary-row-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.summary-row-edit,
 .summary-row-delete {
   display: inline-grid;
   place-items: center;
@@ -780,6 +827,12 @@ h3 {
   transform: none;
 }
 
+.summary-row-edit {
+  border-color: var(--line);
+  color: var(--text);
+}
+
+.summary-row-edit svg,
 .summary-row-delete svg {
   width: 1rem;
   height: 1rem;
@@ -787,6 +840,12 @@ h3 {
 }
 
 @media (hover: hover) and (pointer: fine) {
+  .summary-row-edit:hover:not(:disabled) {
+    background: var(--surface-3);
+    border-color: var(--line-strong);
+    transform: none;
+  }
+
   .summary-row-delete:hover:not(:disabled) {
     background: oklch(70% 0.18 35 / 0.14);
     border-color: oklch(70% 0.18 35 / 0.5);
@@ -795,8 +854,42 @@ h3 {
   }
 }
 
+.summary-row-edit:active:not(:disabled),
 .summary-row-delete:active:not(:disabled) {
   transform: none;
+}
+
+.observation-edit-dialog {
+  width: min(620px, calc(100vw - 2rem));
+  max-height: calc(100vh - 4rem);
+  overflow-y: auto;
+}
+
+.observation-edit-dialog h2 {
+  margin: 0;
+}
+
+.observation-edit-close {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--text);
+}
+
+.observation-edit-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+}
+
+.observation-edit-form textarea {
+  min-height: 6rem;
+}
+
+.observation-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
 }
 
 .summary-detail-chart-panel,
@@ -1979,12 +2072,17 @@ button.stat {
 }
 
 @media (max-width: 620px) {
+  .biological-age-stats {
+    grid-template-columns: 1fr;
+  }
+
   .shell {
     width: min(100% - 24px, 1320px);
     padding-top: var(--space-4);
   }
 
   .profile-form,
+  .observation-edit-form,
   .profile-summary,
   .stat-row,
   .metric,

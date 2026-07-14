@@ -1,7 +1,8 @@
 import type {
   DeleteObservationResponse,
   DeleteObservationsByTypeResponse,
-  HealthStoreData
+  HealthStoreData,
+  UpdateObservationResponse
 } from "@local-fitness-advisor/shared";
 import type { ProfileStoreManager } from "../store.js";
 import type { ImportMutationResult } from "./profileRepository.js";
@@ -15,7 +16,7 @@ import type { WarehouseBuildResult } from "../warehouse.js";
 
 export async function refreshAnalyticsStorage(
   storeManager: ProfileStoreManager,
-  source: HealthStoreData | ImportMutationResult | DeleteObservationResponse | DeleteObservationsByTypeResponse,
+  source: HealthStoreData | ImportMutationResult | UpdateObservationResponse | DeleteObservationResponse | DeleteObservationsByTypeResponse,
   profileId = storeManager.getActiveProfileId()
 ): Promise<WarehouseBuildResult> {
   const counts = "sourceImports" in source

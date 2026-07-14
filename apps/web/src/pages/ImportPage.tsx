@@ -37,6 +37,7 @@ export function ImportPage({
   onBodyCompFileChange,
   onBodyCompReportDateChange,
   onBodyCompRowChange,
+  onBodyCompAddRow,
   measurementTypes,
   onPreviewBodyComp,
   onCommitBodyComp,
@@ -74,6 +75,7 @@ export function ImportPage({
   onBodyCompFileChange: (file?: File) => void;
   onBodyCompReportDateChange: (value: string) => void;
   onBodyCompRowChange: (id: string, patch: Partial<BodyCompositionEditableRow>) => void;
+  onBodyCompAddRow: () => void;
   measurementTypes: MeasurementType[];
   onPreviewBodyComp: (event: React.FormEvent<HTMLFormElement>) => void;
   onCommitBodyComp: (event: React.FormEvent<HTMLFormElement>) => void;
@@ -189,13 +191,13 @@ export function ImportPage({
             <label htmlFor="scan-kind">Report type</label>
             <select id="scan-kind" value={scanKind} onChange={(event) => onScanKindChange(event.target.value as ScanKind)}>
               <option value="body-composition">Body composition</option>
-              <option value="blood-test">Blood test</option>
+              <option value="blood-test">Lab results</option>
             </select>
             <BodyCompositionImportPanel
               busy={busy} file={bodyCompFile} draft={bodyCompDraft} rows={bodyCompRows} reportDate={bodyCompReportDate}
               measurementTypes={measurementTypes}
               inputRef={bodyCompInputRef} onFileChange={onBodyCompFileChange} onReportDateChange={onBodyCompReportDateChange}
-              onRowChange={onBodyCompRowChange} onPreview={onPreviewBodyComp} onCommit={onCommitBodyComp}
+              onRowChange={onBodyCompRowChange} onAddRow={onBodyCompAddRow} onPreview={onPreviewBodyComp} onCommit={onCommitBodyComp}
             />
           </section>
         </div>
@@ -235,7 +237,6 @@ const measurementCategoryLabels: Record<MeasurementType["category"], string> = {
   cardio: "Cardio",
   derived: "Derived",
   lab: "Lab",
-  metabolic: "Metabolic",
   sleep: "Sleep"
 };
 
@@ -516,6 +517,7 @@ function BodyCompositionImportPanel({
   onFileChange,
   onReportDateChange,
   onRowChange,
+  onAddRow,
   onPreview,
   onCommit
 }: {
@@ -529,6 +531,7 @@ function BodyCompositionImportPanel({
   onFileChange: (file?: File) => void;
   onReportDateChange: (value: string) => void;
   onRowChange: (id: string, patch: Partial<BodyCompositionEditableRow>) => void;
+  onAddRow: () => void;
   onPreview: (event: React.FormEvent<HTMLFormElement>) => void;
   onCommit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
@@ -654,7 +657,9 @@ function BodyCompositionImportPanel({
                       onRowChange(row.id, {
                         displayName: selectedMeasurement.display,
                         measurementCode: selectedMeasurement.code,
-                        unit: selectedMeasurement.canonicalUnit || row.unit
+                        unit: selectedMeasurement.canonicalUnit || row.unit,
+                        confidence: "high",
+                        generatedCode: false
                       });
                     }}
                     aria-label={`Row ${index + 1} known measurement`}
@@ -721,6 +726,7 @@ function BodyCompositionImportPanel({
           </div>
 
           <div className="labs-actions">
+            <button disabled={busy} type="button" onClick={onAddRow}>Add row</button>
             <span className="empty">Only selected rows will be saved as observations.</span>
             <button disabled={busy || includedCount === 0} type="submit">Save approved observations</button>
           </div>

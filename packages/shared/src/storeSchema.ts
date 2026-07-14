@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { HealthStoreData, InsightModel } from "./types.js";
+import { defaultMeasurementTypes } from "./registry.js";
 
 export const CURRENT_SCHEMA_VERSION = 2 as const;
 
@@ -33,6 +34,16 @@ export const insightSchema = z.object({
   safetyNotice: z.string()
 }).strict();
 
+const measurementTypeSchema = z.object({
+  code: z.string(), display: z.string(),
+  category: z.enum(["activity", "cardio", "sleep", "body", "lab", "derived"]),
+  kind: z.enum(["point", "interval", "event", "panel-component"]), canonicalUnit: z.string(), aliases: z.array(z.string()),
+  fhirCode: z.string().optional(), loincCode: z.string().optional(), openMHealthSchema: z.string().optional(),
+  normalLow: z.number().optional(), normalHigh: z.number().optional(),
+  referenceRanges: z.array(z.object({ low: z.number().optional(), high: z.number().optional(), unit: z.string(), label: z.string().optional(), source: z.string().optional() }).strict()).optional(),
+  aggregation: z.enum(["sum", "average", "min", "max", "latest", "none"])
+}).strict();
+
 const storeFields = {
   profile: profileSchema,
   sourceImports: z.array(z.object({
@@ -46,15 +57,7 @@ const storeFields = {
   devices: z.array(z.object({
     id: z.string(), label: z.string(), manufacturer: z.string().optional(), model: z.string().optional(), sourceId: z.string().optional()
   }).strict()),
-  measurementTypes: z.array(z.object({
-    code: z.string(), display: z.string(),
-    category: z.enum(["activity", "cardio", "sleep", "body", "lab", "metabolic", "derived"]),
-    kind: z.enum(["point", "interval", "event", "panel-component"]), canonicalUnit: z.string(), aliases: z.array(z.string()),
-    fhirCode: z.string().optional(), loincCode: z.string().optional(), openMHealthSchema: z.string().optional(),
-    normalLow: z.number().optional(), normalHigh: z.number().optional(),
-    referenceRanges: z.array(z.object({ low: z.number().optional(), high: z.number().optional(), unit: z.string(), label: z.string().optional(), source: z.string().optional() }).strict()).optional(),
-    aggregation: z.enum(["sum", "average", "min", "max", "latest", "none"])
-  }).strict()),
+  measurementTypes: z.array(measurementTypeSchema),
   observations: z.array(z.object({
     id: z.string(), measurementCode: z.string(), observedAt: z.string(), effectiveStart: z.string().optional(), effectiveEnd: z.string().optional(),
     value: z.number(), unit: z.string(), sourceId: z.string(), observationGroupId: z.string().optional(), deviceId: z.string().optional(),
@@ -76,7 +79,7 @@ const storeFields = {
   insights: z.array(insightSchema),
   auditEvents: z.array(z.object({
     id: z.string(), createdAt: z.string(),
-    eventType: z.enum(["store-created", "profile-updated", "migration-applied", "import-processed", "insight-generated", "export-created", "observation-deleted", "observation-type-deleted"]),
+    eventType: z.enum(["store-created", "profile-updated", "migration-applied", "import-processed", "insight-generated", "export-created", "observation-updated", "observation-deleted", "observation-type-deleted"]),
     detail: z.string()
   }).strict())
 };
@@ -85,6 +88,12 @@ export const healthStoreDataSchema = z.object({
   schemaVersion: z.literal(CURRENT_SCHEMA_VERSION),
   ...storeFields
 }).strict();
+
+const retiredMetabolicStoreSchema = healthStoreDataSchema.extend({
+  measurementTypes: z.array(measurementTypeSchema.extend({
+    category: z.enum(["activity", "cardio", "sleep", "body", "lab", "metabolic", "derived"])
+  }))
+});
 
 const legacyStoreSchema = z.object({
   schemaVersion: z.literal(1),
@@ -138,7 +147,24 @@ function migrateV1ToV2(data: LegacyStoreData): HealthStoreData {
 export function parsePersistedHealthStore(data: unknown): { data: HealthStoreData; migrated: boolean } {
   const version = z.object({ schemaVersion: z.number().int() }).passthrough().parse(data).schemaVersion;
   if (version === CURRENT_SCHEMA_VERSION) {
-    return { data: healthStoreDataSchema.parse(data) as HealthStoreData, migrated: false };
+    const current = healthStoreDataSchema.safeParse(data);
+    if (current.success) {
+      return { data: current.data as HealthStoreData, migrated: false };
+    }
+    const retired = retiredMetabolicStoreSchema.parse(data);
+    const defaultsByCode = new Map(defaultMeasurementTypes.map((type) => [type.code, type]));
+    const measurementTypes = retired.measurementTypes.map((type) => {
+      if (type.category !== "metabolic") return type;
+      const replacement = defaultsByCode.get(type.code);
+      if (!replacement) {
+        throw new Error(`Retired metabolic measurement type ${type.code} has no current registry definition.`);
+      }
+      return replacement;
+    });
+    return {
+      data: healthStoreDataSchema.parse({ ...retired, measurementTypes }) as HealthStoreData,
+      migrated: true
+    };
   }
   if (version === 1) {
     return { data: migrateV1ToV2(legacyStoreSchema.parse(data)), migrated: true };
