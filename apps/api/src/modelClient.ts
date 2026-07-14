@@ -22,7 +22,7 @@ export interface ModelCallResult {
 
 export async function callConfiguredModel(prompt: string, options?: ModelRequestOptions): Promise<ModelCallResult> {
   const settings = getAiSettings();
-  const provider = resolveProvider(options?.provider);
+  const provider = options?.provider ?? settings.provider;
   const timeoutMs = options?.timeoutMs ?? parseTimeoutMs(process.env.MODEL_TIMEOUT_MS ?? process.env.OLLAMA_TIMEOUT_MS, 30000);
   if (provider === "openai" && options?.allowCloud === false) {
     return {
@@ -42,7 +42,7 @@ export async function callConfiguredModel(prompt: string, options?: ModelRequest
 }
 
 export function resolvedModelProvider(override?: "ollama" | "openai"): "ollama" | "openai" {
-  return resolveProvider(override);
+  return override ?? getAiSettings().provider;
 }
 
 export function currentModelConfig(): { provider: "ollama" | "openai"; endpoint: string; model: string; timeoutMs: number } {
@@ -221,23 +221,6 @@ async function callJsonEndpoint(args: {
   } finally {
     clearTimeout(timer);
   }
-}
-
-function resolveProvider(override?: "ollama" | "openai"): "ollama" | "openai" {
-  if (override) {
-    return override;
-  }
-  const configured = (process.env.LLM_PROVIDER ?? "").trim().toLowerCase();
-  if (configured === "openai" || configured === "azure") {
-    return "openai";
-  }
-  if (configured === "ollama") {
-    return "ollama";
-  }
-  if (process.env.OPENAI_RESPONSES_ENDPOINT && process.env.OPENAI_API_KEY) {
-    return "openai";
-  }
-  return "ollama";
 }
 
 function parseTimeoutMs(rawValue: string | undefined, fallback: number): number {

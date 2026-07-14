@@ -210,7 +210,7 @@ The README's privacy claim that companion tokens are import-scoped is also false
 
 **Status (partially addressed 2026-07-13):** README pairing/sync information and the Security backup description were reconciled with the current implementation. A complete release-artifact inventory and verification process remain open.
 
-#### P1 — OpenRouter callback likely cannot complete with the owner cookie policy
+#### [DONE] P1 — OpenRouter callback likely cannot complete with the owner cookie policy
 
 The owner cookie is `SameSite=Strict` (`apps/api/src/createApp.ts:160-177`). The OpenRouter callback is mounted behind owner authentication (`apps/api/src/createApp.ts:232-271`; `apps/api/src/routes/settingsRoutes.ts:41-78`). A top-level return from `openrouter.ai` will normally omit a Strict cookie, and browser navigation cannot add the session-storage bearer token.
 

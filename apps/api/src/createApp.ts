@@ -51,6 +51,10 @@ function isOwnerOnlyPath(requestPath: string): boolean {
   );
 }
 
+function isOpenRouterCallback(request: express.Request): boolean {
+  return request.method === "GET" && request.path === "/settings/ai/openrouter/callback";
+}
+
 export function createApp(
   storeManager: ProfileStoreManager,
   pairingStore: PairingStore,
@@ -232,7 +236,7 @@ export function createApp(
   // Auth middleware — all /api routes below require a valid credential
   app.use("/api", (request, response, next) => {
     const companionToken = request.headers["x-companion-token"];
-    if (ownerTokenIsValid(request)) {
+    if (ownerTokenIsValid(request) || isOpenRouterCallback(request)) {
       next();
       return;
     }

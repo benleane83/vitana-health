@@ -210,6 +210,45 @@ describe("central owner authorization", () => {
       expect(current.body.hasApiKey).toBe(true);
       expect(current.text).not.toContain("test-api-key");
     });
+
+    it("completes the OpenRouter callback without an owner cookie and consumes its state", async () => {
+      const exchange = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(JSON.stringify({ key: "openrouter-test-key" }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        })
+      );
+
+      const connect = await request(app)
+        .get("/api/settings/ai/openrouter/connect")
+        .set("authorization", ownerAuthorization);
+      expect(connect.status).toBe(302);
+
+      const authorizationUrl = new URL(connect.headers.location);
+      const state = authorizationUrl.searchParams.get("state");
+      expect(state).toBeTruthy();
+
+      const callbackPath = `/api/settings/ai/openrouter/callback?code=test-code&state=${encodeURIComponent(state!)}`;
+      const callback = await request(app).get(callbackPath);
+      expect(callback.status).toBe(200);
+      expect(callback.text).toContain("OpenRouter connected");
+      expect(exchange).toHaveBeenCalledWith(
+        "https://openrouter.ai/api/v1/auth/keys",
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ code: "test-code" }) })
+      );
+
+      const current = await request(app).get("/api/settings/ai").set("authorization", ownerAuthorization);
+      expect(current.body).toMatchObject({
+        provider: "openai",
+        endpoint: "https://openrouter.ai/api/v1/chat/completions",
+        hasApiKey: true
+      });
+      expect(current.text).not.toContain("openrouter-test-key");
+
+      const replay = await request(app).get(callbackPath);
+      expect(replay.status).toBe(400);
+      expect(exchange).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("allows a paired companion to use non-administrative APIs", async () => {
