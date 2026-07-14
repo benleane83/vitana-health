@@ -4,7 +4,18 @@ on:
   push:
     branches: ["**"]
   pull_request:
+  schedule:
+    - cron: "0 3 * * *"
   workflow_dispatch:
+    inputs:
+      desktop_smoke_scope:
+        description: Windows desktop smoke-test scope
+        required: false
+        default: fast
+        type: choice
+        options:
+          - fast
+          - full
 
 jobs:
   # ─── Typecheck & build ───────────────────────────────────────────────────────
@@ -72,7 +83,6 @@ jobs:
   windows-desktop:
     name: Windows desktop package smoke test
     runs-on: windows-2022
-    if: github.event_name == 'workflow_dispatch'
     needs: typecheck-and-build
     permissions:
       contents: read
@@ -97,6 +107,7 @@ jobs:
         run: npm run test -w @local-fitness-advisor/desktop
 
       - name: Package baseline installer
+        if: github.event_name == 'schedule' || startsWith(github.ref, 'refs/heads/release/') || (github.event_name == 'workflow_dispatch' && inputs.desktop_smoke_scope == 'full')
         run: npm run package -w @local-fitness-advisor/desktop -- --config.extraMetadata.version=0.0.0-baseline --config.directories.output=dist-baseline
 
       - name: Package candidate installer
@@ -104,11 +115,23 @@ jobs:
 
       - name: Smoke test installed encrypted DuckDB runtime
         shell: pwsh
-        run: >
-          ./scripts/windows-desktop-smoke.ps1
-          -Installer (Get-ChildItem apps/desktop/dist/*.exe | Select-Object -First 1).FullName
-          -BaselineInstaller (Get-ChildItem apps/desktop/dist-baseline/*.exe | Select-Object -First 1).FullName
-          -EvidenceDirectory desktop-test-evidence
+        env:
+          DISPATCHED_SMOKE_SCOPE: ${{ inputs.desktop_smoke_scope }}
+        run: |
+          $scope = if (
+            $env:GITHUB_EVENT_NAME -eq "schedule" -or
+            $env:GITHUB_REF -like "refs/heads/release/*" -or
+            $env:DISPATCHED_SMOKE_SCOPE -eq "full"
+          ) { "Full" } else { "Fast" }
+          $arguments = @{
+            Installer = (Get-ChildItem apps/desktop/dist/*.exe | Select-Object -First 1).FullName
+            EvidenceDirectory = "desktop-test-evidence"
+            Scope = $scope
+          }
+          if ($scope -eq "Full") {
+            $arguments.BaselineInstaller = (Get-ChildItem apps/desktop/dist-baseline/*.exe | Select-Object -First 1).FullName
+          }
+          & ./scripts/windows-desktop-smoke.ps1 @arguments
 
       - name: Upload desktop test evidence
         if: always()

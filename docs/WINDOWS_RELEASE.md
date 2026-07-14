@@ -27,9 +27,9 @@ certificate in the repository, build logs, issues, or artifacts.
    `forceCodeSigning`, verifies Authenticode on the installed application and
    NSIS installer, then installs, launches, restarts, and uninstalls the
    product. The smoke test verifies the signed extension's encrypted DuckDB
-   activation, storage persistence, and firewall-rule creation/removal. Normal
-   CI also performs a baseline-to-candidate installer upgrade before its
-   restart and uninstall checks.
+   activation, storage persistence, and firewall-rule creation/removal. The
+   nightly full CI smoke test also performs a baseline-to-candidate installer
+   upgrade before its restart and uninstall checks.
 4. Review the workflow's `signed-windows-release` artifact. It retains the
    installer, `SHA256SUMS.txt`, and smoke-test evidence for 90 days.
 5. The workflow publishes the signed installer and `SHA256SUMS.txt` to the
