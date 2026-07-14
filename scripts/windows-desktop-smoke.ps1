@@ -11,7 +11,13 @@ $productName = "Local Fitness Advisor"
 $applicationName = "$productName.exe"
 $installRoot = Join-Path $env:RUNNER_TEMP "lfa-smoke"
 $evidenceRoot = New-Item -ItemType Directory -Force -Path $EvidenceDirectory
+$gracefulShutdownTimeoutMs = 30000
+$forcedShutdownTimeoutMs = 10000
 $healthTimeoutSeconds = 240
+$healthUris = @(
+  "https://127.0.0.1:4317/api/health",
+  "http://127.0.0.1:4317/api/health"
+)
 
 function Stop-DesktopProcess([System.Diagnostics.Process]$Process) {
   if (-not $Process.HasExited) {
@@ -20,36 +26,37 @@ function Stop-DesktopProcess([System.Diagnostics.Process]$Process) {
     } catch {
       # Process does not expose a main window in this session.
     }
-    # Give Electron enough time to run the graceful before-quit shutdown path.
-    if (-not $Process.WaitForExit(30000)) {
+    if (-not $Process.WaitForExit($gracefulShutdownTimeoutMs)) {
       & taskkill /PID $Process.Id /T /F
       if ($LASTEXITCODE -ne 0) {
         throw "Unable to stop desktop process $($Process.Id)."
       }
-      if (-not $Process.WaitForExit(10000)) {
-        throw "Desktop process $($Process.Id) did not exit within 10 seconds after force stop."
+      if (-not $Process.WaitForExit($forcedShutdownTimeoutMs)) {
+        throw "Desktop process $($Process.Id) did not exit within $($forcedShutdownTimeoutMs / 1000) seconds after force stop."
       }
     }
   }
 }
 
+function Test-HealthEndpoint([string]$Uri) {
+  try {
+    if ($Uri.StartsWith("https://")) {
+      $health = Invoke-RestMethod -Uri $Uri -SkipCertificateCheck
+    } else {
+      $health = Invoke-RestMethod -Uri $Uri
+    }
+    return $health.ok -eq $true
+  } catch {
+    return $false
+  }
+}
+
 function Wait-ForHealth {
   for ($elapsedSeconds = 0; $elapsedSeconds -lt $healthTimeoutSeconds; $elapsedSeconds++) {
-    try {
-      $health = Invoke-RestMethod -Uri "https://127.0.0.1:4317/api/health" -SkipCertificateCheck
-      if ($health.ok -eq $true) {
+    foreach ($healthUri in $healthUris) {
+      if (Test-HealthEndpoint $healthUri) {
         return
       }
-    } catch {
-      # Server not yet ready
-    }
-    try {
-      $health = Invoke-RestMethod -Uri "http://127.0.0.1:4317/api/health"
-      if ($health.ok -eq $true) {
-        return
-      }
-    } catch {
-      # Server not yet ready
     }
     Start-Sleep -Seconds 1
   }
