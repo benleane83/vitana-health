@@ -8,3 +8,4 @@ data/
 .playwright-mcp/
 apps/desktop/build/duckdb-extensions/
 apps/desktop/dist-poc/
+apps/android-companion/modules/*/android/.gradle/
