@@ -30,4 +30,12 @@ describe("buildClinicianReport", () => {
     });
     expect(JSON.stringify(report)).not.toContain("private");
   });
+
+  it("uses the profile's preferred unit for height", () => {
+    const data = store();
+    data.profile = { ...data.profile, units: "imperial", heightCm: 180 };
+
+    expect(buildClinicianReport(data).patient.height).toMatchObject({ unit: "in" });
+    expect(buildClinicianReport(data).patient.height?.value).toBeCloseTo(70.87, 2);
+  });
 });

@@ -7,7 +7,7 @@ import type {
   HealthStoreData,
   MeasurementType
 } from "@local-fitness-advisor/shared";
-import { classifyValue } from "@local-fitness-advisor/shared";
+import { classifyValue, getReferenceRange, toPreferredMeasurementValue } from "@local-fitness-advisor/shared";
 
 const categoryLabels: Record<HealthDataSummaryTypeRow["category"], string> = {
   activity: "Activity",
@@ -119,15 +119,16 @@ export function listHealthDataDetailEntries(store: HealthStoreData, measurementC
       const imported = source?.importId ? sourceImports.get(source.importId) : undefined;
       const type = measurementTypes.get(entry.measurementCode);
       const group = entry.observationGroupId ? observationGroups.get(entry.observationGroupId) : undefined;
-      const referenceRange = type?.referenceRanges?.find((range) => range.unit === entry.unit);
+      const display = type ? toPreferredMeasurementValue(entry.value, entry.unit, type, store.profile.units) : entry;
+      const referenceRange = type ? getReferenceRange(type, display.unit) : undefined;
       return {
         kind: "observation",
         id: entry.id,
         measurementCode: entry.measurementCode,
         displayName,
         timestamp: entry.observedAt,
-        value: entry.value,
-        unit: entry.unit,
+        value: display.value,
+        unit: display.unit,
         sourceLabel: source?.label,
         sourceKind: source?.sourceKind,
         importFileName: imported?.fileName,
@@ -148,14 +149,16 @@ export function listHealthDataDetailEntries(store: HealthStoreData, measurementC
     .map<HealthDataDetailEntry>((entry) => {
       const source = dataSources.get(entry.sourceId);
       const imported = source?.importId ? sourceImports.get(source.importId) : undefined;
+      const type = measurementTypes.get(entry.measurementCode);
+      const display = type ? toPreferredMeasurementValue(entry.value, entry.unit, type, store.profile.units) : entry;
       return {
         kind: "sample",
         id: entry.id,
         measurementCode: entry.measurementCode,
         displayName,
         timestamp: entry.endAt || entry.startAt,
-        value: entry.value,
-        unit: entry.unit,
+        value: display.value,
+        unit: display.unit,
         sourceLabel: source?.label,
         sourceKind: source?.sourceKind,
         importFileName: imported?.fileName,

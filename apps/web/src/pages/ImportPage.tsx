@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from "react";
-import type { BodyCompositionDraft, MeasurementType } from "@local-fitness-advisor/shared";
+import { getPreferredUnit, type BodyCompositionDraft, type MeasurementType, type UnitSystem } from "@local-fitness-advisor/shared";
 import { api } from "../api.js";
 import type { PairedDevice, PendingPairing } from "../api.js";
 import type { BodyCompositionEditableRow, ImportMode, ManualMarkerRow, ScanKind } from "../types.js";
@@ -44,7 +44,8 @@ export function ImportPage({
   bodyCompInputRef,
   pendingPairings,
   onApprovePairing,
-  onDenyPairing
+  onDenyPairing,
+  units
 }: {
   busy: boolean;
   mode: ImportMode;
@@ -83,6 +84,7 @@ export function ImportPage({
   pendingPairings: PendingPairing[];
   onApprovePairing: (id: string) => void;
   onDenyPairing: (id: string) => void;
+  units: UnitSystem;
 }) {
   const manualTabId = "import-tab-manual";
   const uploadTabId = "import-tab-upload";
@@ -170,6 +172,7 @@ export function ImportPage({
             onRowChange={onRowChange}
             onAddRow={onAddRow}
             onRemoveRow={onRemoveRow}
+            units={units}
             onSubmit={onSubmitManual}
           />
         </div>
@@ -181,7 +184,7 @@ export function ImportPage({
             <p id="csv-upload-help" className="empty">Use columns: observedAt, measurement, value, unit, label, sourceName.</p>
             <div className="labs-upload-actions">
               <button disabled={busy} type="submit">Upload CSV</button>
-              <button type="button" onClick={downloadObservationCsvTemplate}>Download CSV Template</button>
+              <button type="button" onClick={() => downloadObservationCsvTemplate(units)}>Download CSV Template</button>
             </div>
           </form>
         </div>
@@ -196,6 +199,7 @@ export function ImportPage({
             <BodyCompositionImportPanel
               busy={busy} file={bodyCompFile} draft={bodyCompDraft} rows={bodyCompRows} reportDate={bodyCompReportDate}
               measurementTypes={measurementTypes}
+              units={units}
               inputRef={bodyCompInputRef} onFileChange={onBodyCompFileChange} onReportDateChange={onBodyCompReportDateChange}
               onRowChange={onBodyCompRowChange} onAddRow={onBodyCompAddRow} onPreview={onPreviewBodyComp} onCommit={onCommitBodyComp}
             />
@@ -214,10 +218,10 @@ export function ImportPage({
   );
 }
 
-function downloadObservationCsvTemplate() {
+function downloadObservationCsvTemplate(units: UnitSystem) {
   const template = [
     "observedAt,measurement,value,unit,label,sourceName",
-    "2026-07-11T08:30:00Z,glucose,95,mg/dL,Morning check,Home lab"
+    `2026-07-11T08:30:00Z,glucose,${units === "imperial" ? "95,mg/dL" : "5.3,mmol/L"},Morning check,Home lab`
   ].join("\n");
   const blob = new Blob([template], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -255,7 +259,8 @@ function ManualEntryForm({
   onRowChange,
   onAddRow,
   onRemoveRow,
-  onSubmit
+  onSubmit,
+  units
 }: {
   busy: boolean;
   observationGroup: string;
@@ -272,6 +277,7 @@ function ManualEntryForm({
   onAddRow: () => void;
   onRemoveRow: (id: string) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  units: UnitSystem;
 }) {
   const [customMeasurementRows, setCustomMeasurementRows] = useState<Record<string, true>>({});
   const selectedObservationGroup = observationGroupOptions.includes(observationGroup)
@@ -367,6 +373,7 @@ function ManualEntryForm({
             }}
             onChange={onRowChange}
             onRemove={onRemoveRow}
+            units={units}
           />
         ))}
       </div>
@@ -386,7 +393,8 @@ function ManualMeasurementRow({
   customMeasurement,
   onSetCustomMeasurement,
   onChange,
-  onRemove
+  onRemove,
+  units
 }: {
   row: ManualMarkerRow;
   rowIndex: number;
@@ -395,6 +403,7 @@ function ManualMeasurementRow({
   onSetCustomMeasurement: (enabled: boolean) => void;
   onChange: (id: string, patch: Partial<ManualMarkerRow>) => void;
   onRemove: (id: string) => void;
+  units: UnitSystem;
 }) {
   const measurementSelectId = `manual-measurement-select-${row.id}`;
   const markerInputId = `manual-measurement-input-${row.id}`;
@@ -428,7 +437,7 @@ function ManualMeasurementRow({
             onChange(row.id, {
               marker: selectedMeasurement.display,
               measurementCode: selectedMeasurement.code,
-              unit: selectedMeasurement.canonicalUnit || row.unit
+              unit: getPreferredUnit(selectedMeasurement, units)
             });
           }}
         >
@@ -519,7 +528,8 @@ function BodyCompositionImportPanel({
   onRowChange,
   onAddRow,
   onPreview,
-  onCommit
+  onCommit,
+  units
 }: {
   busy: boolean;
   file?: File;
@@ -534,6 +544,7 @@ function BodyCompositionImportPanel({
   onAddRow: () => void;
   onPreview: (event: React.FormEvent<HTMLFormElement>) => void;
   onCommit: (event: React.FormEvent<HTMLFormElement>) => void;
+  units: UnitSystem;
 }) {
   const includedCount = rows.filter((row) => row.included).length;
   const [customMeasurementRows, setCustomMeasurementRows] = useState<Record<string, true>>({});
@@ -657,7 +668,7 @@ function BodyCompositionImportPanel({
                       onRowChange(row.id, {
                         displayName: selectedMeasurement.display,
                         measurementCode: selectedMeasurement.code,
-                        unit: selectedMeasurement.canonicalUnit || row.unit,
+                        unit: row.unit.trim() || getPreferredUnit(selectedMeasurement, units),
                         confidence: "high",
                         generatedCode: false
                       });

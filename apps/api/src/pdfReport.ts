@@ -32,7 +32,7 @@ export async function createClinicianReportPdf(report: ClinicianReport): Promise
   const patientDetails = [
     report.patient.birthYear ? `Birth year: ${report.patient.birthYear}` : undefined,
     report.patient.sex ? `Sex: ${report.patient.sex}` : undefined,
-    report.patient.heightCm ? `Height: ${report.patient.heightCm} cm` : undefined
+    report.patient.height ? `Height: ${report.patient.height.value} ${report.patient.height.unit}` : undefined
   ].filter(Boolean);
   if (patientDetails.length) document.text(patientDetails.join("  |  "));
 

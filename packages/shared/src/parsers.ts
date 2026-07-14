@@ -6,9 +6,10 @@ import type {
   Observation,
   ObservationGroup,
   SourceImport,
-  TimeSeriesSample
+  TimeSeriesSample,
+  UnitSystem
 } from "./types.js";
-import { defaultMeasurementTypes, findMeasurementType } from "./registry.js";
+import { defaultMeasurementTypes, findMeasurementType, getPreferredUnit } from "./registry.js";
 
 export interface ParsedImport {
   sourceImport: SourceImport;
@@ -119,7 +120,7 @@ function splitCsvLine(line: string): string[] {
   return cells;
 }
 
-export function parseBloodTestCsv(fileName: string, content: string, importedAt = new Date().toISOString()): ParsedImport {
+export function parseBloodTestCsv(fileName: string, content: string, importedAt = new Date().toISOString(), units: UnitSystem = "metric"): ParsedImport {
   const rows = parseCsv(content);
   const sourceChecksum = checksum(content);
   const importId = stableId("import", ["blood-test-csv", fileName, sourceChecksum]);
@@ -148,7 +149,7 @@ export function parseBloodTestCsv(fileName: string, content: string, importedAt 
       diagnostics.push(`Skipped lab row with unrecognized marker or missing value: ${JSON.stringify(row).slice(0, 180)}`);
       continue;
     }
-    const unit = normalized.unit || measurementType.canonicalUnit;
+    const unit = normalized.unit || getPreferredUnit(measurementType, units);
     if (!normalized.unit) {
       diagnostics.push(`Used canonical unit for lab row with no unit: ${measurementType.display}.`);
     }
@@ -198,7 +199,7 @@ export function parseBloodTestCsv(fileName: string, content: string, importedAt 
  *
  * `measurementCode` and common aliases may be used in place of `measurement`.
  */
-export function parseObservationCsv(fileName: string, content: string, importedAt = new Date().toISOString()): ParsedImport {
+export function parseObservationCsv(fileName: string, content: string, importedAt = new Date().toISOString(), units: UnitSystem = "metric"): ParsedImport {
   const rows = parseCsv(content);
   const sourceChecksum = checksum(content);
   const importId = stableId("import", ["observation-csv", fileName, sourceChecksum]);
@@ -232,7 +233,7 @@ export function parseObservationCsv(fileName: string, content: string, importedA
     }
     const measurementCode = measurementType?.code ?? code ?? fallbackMeasurementCode(name);
     if (!measurementType) diagnostics.push(`Used generated code for "${name || code}".`);
-    const unit = normalized.unit || measurementType?.canonicalUnit || "unknown";
+    const unit = normalized.unit || (measurementType ? getPreferredUnit(measurementType, units) : "unknown");
     const rowObservedAt = readDate(normalized.observed_at ?? normalized.collected_at ?? normalized.date) ?? observedAt;
     observations.push({
       id: stableId("obs", ["observation-csv", sourceChecksum, rowObservedAt, measurementCode, String(value), unit]),
@@ -258,7 +259,7 @@ export function parseObservationCsv(fileName: string, content: string, importedA
   };
 }
 
-export function buildManualLabEntryImport(payload: ManualLabEntryPayload, importedAt = new Date().toISOString()): ParsedImport {
+export function buildManualLabEntryImport(payload: ManualLabEntryPayload, importedAt = new Date().toISOString(), units: UnitSystem = "metric"): ParsedImport {
   return buildManualObservationImport(
     {
       observedAt: payload.collectedAt,
@@ -272,14 +273,16 @@ export function buildManualLabEntryImport(payload: ManualLabEntryPayload, import
       }))
     },
     importedAt,
-    "lab_panel"
+    "lab_panel",
+    units
   );
 }
 
 export function buildManualObservationImport(
   payload: ManualObservationPayload,
   importedAt = new Date().toISOString(),
-  groupKind: ObservationGroup["kind"] = "custom"
+  groupKind: ObservationGroup["kind"] = "custom",
+  units: UnitSystem = "metric"
 ): ParsedImport {
   const diagnostics: string[] = [];
   const panelName = payload.label.trim() || "Manual observations";
@@ -320,7 +323,7 @@ export function buildManualObservationImport(
     }
     const displayName = markerName || measurementType?.display || markerCode || "Manual marker";
     const measurementCode = measurementType?.code || markerCode || fallbackMeasurementCode(displayName);
-    const unit = row.unit?.trim() || measurementType?.canonicalUnit || "unknown";
+    const unit = row.unit?.trim() || (measurementType ? getPreferredUnit(measurementType, units) : "unknown");
     observations.push({
       id: stableId("obs", ["manual-entry", sourceChecksum, measurementCode, String(value), unit]),
       measurementCode,

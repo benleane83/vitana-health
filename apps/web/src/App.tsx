@@ -15,7 +15,7 @@ import type {
   ProfileListEntry,
   UpdateObservationInput
 } from "@local-fitness-advisor/shared";
-import { defaultMeasurementTypes, safetyNotice } from "@local-fitness-advisor/shared";
+import { defaultMeasurementTypes, getPreferredUnit, safetyNotice } from "@local-fitness-advisor/shared";
 import { api } from "./api.js";
 import type { AiQueryResult, LlmConfig, PairedDevice, PendingPairing } from "./api.js";
 import type { AppRoute, BodyCompositionEditableRow, ImportMode, InsightsTab, ManualMarkerRow, ScanKind } from "./types.js";
@@ -392,15 +392,17 @@ export function App() {
   async function saveProfile(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const units = String(form.get("units") || "metric") as Profile["units"];
+    const height = numberOrUndefined(form.get("height"));
     await run("Profile saved locally.", async () => {
       await api.saveProfile({
         displayName: String(form.get("displayName") || "Local user"),
         birthYear: numberOrUndefined(form.get("birthYear")),
         sex: String(form.get("sex") || "not-specified") as Profile["sex"],
-        heightCm: numberOrUndefined(form.get("heightCm")),
+        heightCm: height === undefined ? undefined : units === "imperial" ? height * 2.54 : height,
         bloodType: String(form.get("bloodType") || "unknown") as Profile["bloodType"],
         goalSummary: String(form.get("goalSummary") || ""),
-        units: String(form.get("units") || "metric") as Profile["units"]
+        units
       });
       await refreshForCurrentRoute();
       setProfileEditorOpen(false);
@@ -747,7 +749,7 @@ export function App() {
         measurement?.display ?? defaultGroup.measurementCode,
         defaultGroup.measurementCode,
         "",
-        measurement?.canonicalUnit ?? ""
+        measurement ? getPreferredUnit(measurement, profile?.units ?? "metric") : ""
       )]);
       return;
     }
@@ -778,7 +780,8 @@ export function App() {
         if (row.id !== id) return row;
         const next = { ...row, ...patch };
         if (patch.marker !== undefined && patch.unit === undefined && !next.unit.trim()) {
-          const resolvedUnit = findKnownMeasurement(patch.marker, recordedMeasurementTypes)?.canonicalUnit;
+          const measurement = findKnownMeasurement(patch.marker, recordedMeasurementTypes);
+          const resolvedUnit = measurement && getPreferredUnit(measurement, profile?.units ?? "metric");
           if (resolvedUnit) next.unit = resolvedUnit;
         }
         return next;
@@ -809,7 +812,7 @@ export function App() {
     setManualObservationGroup("Activity");
     setManualLabName("");
     const steps = recordedMeasurementTypes.find((type) => type.code === "steps");
-    setManualRows([createEmptyRow(steps?.display ?? "Steps", "steps", "", steps?.canonicalUnit ?? "count")]);
+    setManualRows([createEmptyRow(steps?.display ?? "Steps", "steps", "", steps ? getPreferredUnit(steps, profile?.units ?? "metric") : "count")]);
   }
 
   // ─── Navigation tabs ─────────────────────────────────────────────────────────
@@ -1011,6 +1014,7 @@ export function App() {
             pendingPairings={pendingPairings}
             onApprovePairing={approvePairing}
             onDenyPairing={denyPairing}
+            units={profile?.units ?? "metric"}
           />
         ) : null}
       </div>

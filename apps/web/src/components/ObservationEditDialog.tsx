@@ -84,8 +84,6 @@ export function ObservationEditDialog({
             onChange={(event) => {
               const nextCode = event.target.value;
               setMeasurementCode(nextCode);
-              const measurement = measurementTypes.find((type) => type.code === nextCode);
-              if (measurement) setUnit(measurement.canonicalUnit);
             }}
           >
             {currentMeasurementIsCustom ? <option value={entry.measurementCode}>{entry.displayName}</option> : null}

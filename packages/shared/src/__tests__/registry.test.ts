@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { classifyValue, findMeasurementType, defaultMeasurementTypes } from "../registry.js";
+import {
+  classifyValue,
+  convertMeasurementValue,
+  defaultMeasurementTypes,
+  findMeasurementType,
+  getPreferredUnit,
+  getReferenceRange
+} from "../registry.js";
 import type { MeasurementType } from "../types.js";
 
 describe("classifyValue", () => {
@@ -96,6 +103,35 @@ describe("defaultMeasurementTypes", () => {
     expect(defaultMeasurementTypes.find((type) => type.code === "hba1c")?.canonicalUnit).toBe("mmol/mol");
     expect(defaultMeasurementTypes.find((type) => type.code === "creatinine")?.canonicalUnit).toBe("µmol/L");
     expect(defaultMeasurementTypes.find((type) => type.code === "total_cholesterol")?.canonicalUnit).toBe("mmol/L");
+  });
+
+  describe("measurement units", () => {
+    const weight = defaultMeasurementTypes.find((type) => type.code === "weight")!;
+    const glucose = defaultMeasurementTypes.find((type) => type.code === "glucose")!;
+
+    it("selects profile-appropriate defaults without changing canonical storage units", () => {
+      expect(weight.canonicalUnit).toBe("kg");
+      expect(getPreferredUnit(weight, "metric")).toBe("kg");
+      expect(getPreferredUnit(weight, "imperial")).toBe("lb");
+      expect(getPreferredUnit(glucose, "imperial")).toBe("mg/dL");
+    });
+
+    it("converts supported units and accepts registered aliases", () => {
+      expect(convertMeasurementValue(70, weight, "kg", "lbs")).toBeCloseTo(154.324, 3);
+      expect(convertMeasurementValue(180, defaultMeasurementTypes.find((type) => type.code === "height")!, "cm", "inches")).toBeCloseTo(70.866, 3);
+      expect(convertMeasurementValue(90, glucose, "mg/dL", "mmol/L")).toBeCloseTo(4.995, 3);
+      expect(convertMeasurementValue(1, defaultMeasurementTypes.find((type) => type.code === "total_body_water")!, "L", "fl oz")).toBeCloseTo(33.814, 3);
+    });
+
+    it("does not convert unsupported units", () => {
+      expect(convertMeasurementValue(70, weight, "kg", "stone")).toBeUndefined();
+    });
+
+    it("converts reference ranges before classifying values", () => {
+      expect(getReferenceRange(glucose, "mg/dL")).toMatchObject({ low: expect.any(Number), high: expect.any(Number), unit: "mg/dL" });
+      expect(classifyValue(180, glucose, "mg/dL")).toBe("high");
+      expect(classifyValue(50, glucose, "mg/dL")).toBe("low");
+    });
   });
 
   it("includes Open mHealth, body composition, and biological-age measurements", () => {
