@@ -63,11 +63,7 @@ export class DuckDbHealthStore {
   }
 
   async readSnapshot(options: { includeRaw?: boolean } = {}): Promise<HealthStoreData> {
-    const snapshot = await this.repository.snapshot();
-    if (options.includeRaw !== true) {
-      snapshot.sourceImports = snapshot.sourceImports.map(({ rawContent: _rawContent, ...sourceImport }) => sourceImport);
-    }
-    return snapshot;
+    return this.repository.snapshot(options);
   }
 
   getProfile() {
@@ -76,6 +72,10 @@ export class DuckDbHealthStore {
 
   appBootstrap(): Promise<AppBootstrap> {
     return this.repository.appBootstrap();
+  }
+
+  analyticsSummary() {
+    return this.repository.analyticsSummary();
   }
 
   getSummary() {

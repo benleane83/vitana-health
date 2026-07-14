@@ -411,11 +411,11 @@ export interface ClinicianReport {
 export interface DeleteObservationResponse {
   deletedCount: number;
   deletedObservation?: Observation;
-  store: HealthStoreData;
+  counts: AppBootstrap["counts"];
 }
 
 export interface DeleteObservationsByTypeResponse {
   deletedCount: number;
   measurementCode: string;
-  store: HealthStoreData;
+  counts: AppBootstrap["counts"];
 }

@@ -117,6 +117,22 @@ describe("payload chunking", () => {
     ]);
     expect(chunks.flatMap((chunk) => chunk.exerciseSessions).map((session) => session.title)).toEqual(["a".repeat(500), "b".repeat(500)]);
   });
+
+  it("keeps large payload chunks within the UTF-8 upload limit without losing rows", () => {
+    const payload = emptyPayload();
+    payload.exerciseSessions = Array.from({ length: 5_000 }, (_, index) => ({
+      startTime: "2026-01-10T10:00:00.000Z",
+      endTime: "2026-01-10T11:00:00.000Z",
+      activityType: "run",
+      title: `Session ${index} 🏃`
+    }));
+    const maxUploadBytes = 50_000;
+
+    const chunks = chunkPayload(payload, maxUploadBytes);
+
+    expect(chunks.flatMap((chunk) => chunk.exerciseSessions)).toHaveLength(5_000);
+    expect(chunks.every((chunk) => new TextEncoder().encode(JSON.stringify(chunk)).length <= maxUploadBytes)).toBe(true);
+  });
 });
 
 function emptyPayload(): HealthConnectImportPayload {

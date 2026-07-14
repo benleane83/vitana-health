@@ -453,23 +453,28 @@ export function chunkPayload(
 
   const chunks: HealthConnectImportPayload[] = [];
   let current = makeChunkSkeleton(payload);
+  let currentRows = 0;
+  const batchIdDigits = String(Math.max(1, rows.length)).length;
+  const batchIdReserve = utf8ByteLength(JSON.stringify({
+    batchId: `${payload.rangeEnd}:${"9".repeat(batchIdDigits)}/${"9".repeat(batchIdDigits)}`
+  })) - 1;
+  let currentSize = utf8ByteLength(JSON.stringify(current)) + batchIdReserve;
 
   for (const [category, value] of rows) {
-    const candidate = cloneChunk(current);
-    candidate[category].push(value as never);
-
-    const candidateSize = JSON.stringify(candidate).length;
-    if (candidateSize <= maxUploadBytes || countRows(current) === 0) {
-      current = candidate;
-      continue;
+    const valueSize = utf8ByteLength(JSON.stringify(value));
+    const addedSize = valueSize + (current[category].length > 0 ? 1 : 0);
+    if (currentRows > 0 && currentSize + addedSize > maxUploadBytes) {
+      chunks.push(current);
+      current = makeChunkSkeleton(payload);
+      currentRows = 0;
+      currentSize = utf8ByteLength(JSON.stringify(current)) + batchIdReserve;
     }
-
-    chunks.push(current);
-    current = makeChunkSkeleton(payload);
     current[category].push(value as never);
+    currentRows += 1;
+    currentSize += valueSize + (current[category].length > 1 ? 1 : 0);
   }
 
-  if (countRows(current) > 0) chunks.push(current);
+  if (currentRows > 0) chunks.push(current);
 
   return chunks.map((chunk, index) => ({
     ...chunk,
@@ -548,15 +553,27 @@ function makeChunkSkeleton(payload: HealthConnectImportPayload): HealthConnectIm
   };
 }
 
-function cloneChunk(chunk: HealthConnectImportPayload): HealthConnectImportPayload {
-  const cloned = {
-    ...chunk,
-    batchId: chunk.batchId
-  } as HealthConnectImportPayload;
-  for (const key of PAYLOAD_COLLECTION_KEYS) {
-    cloned[key] = [...chunk[key]] as never;
+function utf8ByteLength(value: string): number {
+  let bytes = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code <= 0x7f) {
+      bytes += 1;
+    } else if (code <= 0x7ff) {
+      bytes += 2;
+    } else if (code >= 0xd800 && code <= 0xdbff && index + 1 < value.length) {
+      const next = value.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        bytes += 4;
+        index += 1;
+      } else {
+        bytes += 3;
+      }
+    } else {
+      bytes += 3;
+    }
   }
-  return cloned;
+  return bytes;
 }
 
 function sleep(ms: number): Promise<void> {

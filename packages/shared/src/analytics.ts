@@ -2,8 +2,28 @@ import type { AnalyticsSummary, HealthStoreData, MeasurementType, Observation } 
 import { classifyValue } from "./registry.js";
 
 export function computeAnalytics(store: HealthStoreData): AnalyticsSummary {
-  const registry = new Map(store.measurementTypes.map((type) => [type.code, type]));
-  const observationsByCode = groupBy(store.observations, (observation) => observation.measurementCode);
+  return computeAnalyticsFromInput({
+    counts: {
+      imports: store.sourceImports.length,
+      observations: store.observations.length,
+      samples: store.timeSeriesSamples.length,
+      activities: store.activitySessions.length,
+      insights: store.insights.length
+    },
+    measurementTypes: store.measurementTypes,
+    observations: store.observations
+  });
+}
+
+export interface AnalyticsInput {
+  counts: AnalyticsSummary["counts"];
+  measurementTypes: MeasurementType[];
+  observations: Observation[];
+}
+
+export function computeAnalyticsFromInput(input: AnalyticsInput): AnalyticsSummary {
+  const registry = new Map(input.measurementTypes.map((type) => [type.code, type]));
+  const observationsByCode = groupBy(input.observations, (observation) => observation.measurementCode);
   const latestMetrics = [...observationsByCode.entries()]
     .map(([code, observations]) => latestMetric(code, observations, registry.get(code)))
     .filter((metric): metric is NonNullable<typeof metric> => metric !== undefined)
@@ -15,7 +35,7 @@ export function computeAnalytics(store: HealthStoreData): AnalyticsSummary {
     .filter((card): card is NonNullable<typeof card> => card !== undefined)
     .slice(0, 8);
 
-  const labAlerts = store.observations
+  const labAlerts = input.observations
     .filter((observation) => {
       const category = registry.get(observation.measurementCode)?.category;
       return category === "lab";
@@ -25,7 +45,7 @@ export function computeAnalytics(store: HealthStoreData): AnalyticsSummary {
     .slice(0, 12);
 
   const evidenceDigest = [
-    `Imported ${store.sourceImports.length} source file(s), ${store.observations.length} observations, and ${store.timeSeriesSamples.length} tracker samples.`,
+    `Imported ${input.counts.imports} source file(s), ${input.counts.observations} observations, and ${input.counts.samples} tracker samples.`,
     latestMetrics[0]
       ? `Latest tracked metric is ${latestMetrics[0].label}: ${latestMetrics[0].value} ${latestMetrics[0].unit}.`
       : "No latest metric is available yet.",
@@ -35,13 +55,7 @@ export function computeAnalytics(store: HealthStoreData): AnalyticsSummary {
   ];
 
   return {
-    counts: {
-      imports: store.sourceImports.length,
-      observations: store.observations.length,
-      samples: store.timeSeriesSamples.length,
-      activities: store.activitySessions.length,
-      insights: store.insights.length
-    },
+    counts: input.counts,
     latestMetrics,
     trendCards,
     labAlerts,

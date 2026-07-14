@@ -1,5 +1,6 @@
 import type {
   AppBootstrap,
+  AnalyticsSummary,
   DataSource,
   DeleteObservationResponse,
   DeleteObservationsByTypeResponse,
@@ -26,8 +27,9 @@ export interface ImportMutationResult {
 }
 
 export interface ProfileRepository {
-  snapshot(): Promise<HealthStoreData>;
+  snapshot(options?: { includeRaw?: boolean }): Promise<HealthStoreData>;
   appBootstrap(): Promise<AppBootstrap>;
+  analyticsSummary(): Promise<AnalyticsSummary>;
   getProfile(): Promise<Profile>;
   replaceProfile(profile: Profile): Promise<Profile>;
   mergeImport(imported: ProfileImport): Promise<ImportMutationResult>;
