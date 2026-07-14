@@ -23,9 +23,7 @@
   "build": {
     "appId": "com.localfitnessadvisor.desktop",
     "productName": "Local Fitness Advisor",
-    "publisherName": [
-      "Local Fitness Advisor"
-    ],
+    "publisherName": "Local Fitness Advisor",
     "asar": true,
     "asarUnpack": [
       "**/*.node"

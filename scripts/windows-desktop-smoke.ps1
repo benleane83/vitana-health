@@ -7,13 +7,17 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$applicationName = "Local Fitness Advisor.exe"
+$productName = "Local Fitness Advisor"
+$applicationName = "$productName.exe"
 $installRoot = Join-Path $env:RUNNER_TEMP "lfa-smoke"
 $evidenceRoot = New-Item -ItemType Directory -Force -Path $EvidenceDirectory
 
 function Stop-DesktopProcess([System.Diagnostics.Process]$Process) {
   if (-not $Process.HasExited) {
-    & taskkill /PID $Process.Id /T /F | Out-Null
+    & taskkill /PID $Process.Id /T /F
+    if ($LASTEXITCODE -ne 0) {
+      throw "Unable to stop desktop process $($Process.Id)."
+    }
   }
 }
 
@@ -43,7 +47,7 @@ try {
   if (-not (Test-Path $application)) {
     throw "Desktop application not found at expected installation path: $application."
   }
-  $rule = Get-NetFirewallRule -DisplayName "Local Fitness Advisor" -ErrorAction Stop
+  $rule = Get-NetFirewallRule -DisplayName $productName -ErrorAction Stop
   $filter = $rule | Get-NetFirewallApplicationFilter
   if (@($filter.Program) -notcontains $application) {
     throw "Installed firewall rule does not target the desktop executable."
@@ -94,7 +98,7 @@ try {
   if ($uninstallProcess.ExitCode -ne 0) {
     throw "Uninstaller exited with code $($uninstallProcess.ExitCode)."
   }
-  if (Get-NetFirewallRule -DisplayName "Local Fitness Advisor" -ErrorAction SilentlyContinue) {
+  if (Get-NetFirewallRule -DisplayName $productName -ErrorAction SilentlyContinue) {
     throw "The firewall rule remained after uninstall."
   }
   if (-not (Test-Path $manifest.FullName)) {
