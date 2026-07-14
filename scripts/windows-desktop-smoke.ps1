@@ -49,10 +49,10 @@ try {
   }
   $rule = Get-NetFirewallRule -DisplayName $productName -ErrorAction Stop
   $filter = $rule | Get-NetFirewallApplicationFilter
-  if (@($filter.Program) -notcontains $application) {
+  if (-not (@($filter.Program) | Where-Object { $_ -eq $application })) {
     throw "Installed firewall rule does not target the desktop executable."
   }
-  if ($rule.Profile -notmatch "Private") {
+  if ([string]$rule.Profile -ne "Private") {
     throw "Installed firewall rule is not restricted to the private profile."
   }
 
