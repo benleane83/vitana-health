@@ -52,7 +52,8 @@ try {
   if (-not (@($filter.Program) | Where-Object { $_ -eq $application })) {
     throw "Installed firewall rule does not target the desktop executable."
   }
-  if ([string]$rule.Profile -ne "Private") {
+  $profiles = @($rule.Profile)
+  if ($profiles.Count -ne 1 -or $profiles -notcontains "Private") {
     throw "Installed firewall rule is not restricted to the private profile."
   }
 
