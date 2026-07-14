@@ -63,8 +63,8 @@ export interface ProfileStoreManagerOptions {
 }
 
 export interface OpenProfileStoreManagerOptions extends ProfileStoreManagerOptions {
-  storageBackend: "json" | "duckdb";
-  duckdb?: DuckDbActivationOptions;
+  storageBackend: "duckdb";
+  duckdb: DuckDbActivationOptions;
 }
 
 interface ProfileStoreManagerConstructionOptions extends ProfileStoreManagerOptions {
@@ -76,19 +76,15 @@ export interface DuckDbActivationOptions {
   root?: string;
 }
 
-export interface DuckDbRollbackOptions {
-  discardDuckDbChanges: true;
-}
-
 interface StorageBackendManifest {
   version: 1;
   backend: "duckdb";
   activatedAt: string;
   profiles: Array<{
     profileId: string;
-    sourceFile: string;
-    sourceSha256: string;
-    baselineDigest: string;
+    sourceFile?: string;
+    sourceSha256?: string;
+    baselineDigest?: string;
     databaseFile: string;
   }>;
 }
@@ -151,6 +147,10 @@ export class HealthStore {
       ...this.data,
       sourceImports: this.data.sourceImports.map((item) => redactRawImport(item, options.includeRaw === true))
     };
+  }
+
+  readSnapshot(options: { includeRaw?: boolean } = {}): Promise<HealthStoreData> {
+    return Promise.resolve(this.snapshot(options));
   }
 
   appBootstrap(): Promise<AppBootstrap> {
@@ -398,16 +398,14 @@ export class ProfileStoreManager {
 
   static async open(options: OpenProfileStoreManagerOptions): Promise<ProfileStoreManager> {
     const manager = new ProfileStoreManager({ ...options, deferInitialization: true });
-    if (options.storageBackend === "duckdb" && hasDuckDbActivationManifest()) {
+    if (hasDuckDbActivationManifest()) {
       manager.initializeDuckDbBootstrap();
-      await manager.activateDuckDb(manager.requireDuckDbOpenOptions(options));
+      await manager.activateDuckDb(options.duckdb);
       return manager;
     }
 
     manager.initialize();
-    if (options.storageBackend === "duckdb") {
-      await manager.activateDuckDb(manager.requireDuckDbOpenOptions(options));
-    }
+    await manager.activateDuckDb(options.duckdb);
     return manager;
   }
 
@@ -478,10 +476,6 @@ export class ProfileStoreManager {
     try {
       if (existingManifest) {
         for (const entry of existingManifest.profiles) {
-          const sourcePath = resolve(resolveDataDir(), entry.sourceFile);
-          if (!existsSync(sourcePath) || hashFile(sourcePath) !== entry.sourceSha256) {
-            throw new Error(`Retained JSON rollback artifact changed for profile ${entry.profileId}.`);
-          }
           const store = await DuckDbHealthStore.open({
             root,
             databasePath: resolve(root, "databases", entry.databaseFile),
@@ -492,7 +486,7 @@ export class ProfileStoreManager {
           });
           opened.set(entry.profileId, store);
         }
-        this.commitDuckDbActivation(existingManifest, opened, root, duckdbOptions);
+        await this.commitDuckDbActivation(existingManifest, opened, root, duckdbOptions);
         removeLegacyWarehouseArtifacts();
         recordStoragePilotEvent("storage-duckdb-reopened", "duckdb", opened.size, startedAt);
         return;
@@ -510,7 +504,7 @@ export class ProfileStoreManager {
           throw new Error(`Encrypted JSON source is missing for profile ${profile.id}.`);
         }
         const sourceSha256 = hashFile(sourcePath);
-        const sourceSnapshot = this.getStore(profile.id).snapshot({ includeRaw: true });
+        const sourceSnapshot = await this.getStore(profile.id).readSnapshot({ includeRaw: true });
         const databaseFile = `health-store-${profile.id}.duckdb`;
         const databasePath = resolve(root, "databases", databaseFile);
         const store = existsSync(databasePath)
@@ -530,7 +524,7 @@ export class ProfileStoreManager {
               securityMode: this.securityMode,
               duckdb: duckdbOptions
             }, sourceSnapshot);
-        if (digestHealthStoreData(store.snapshot({ includeRaw: true })) !== digestHealthStoreData(sourceSnapshot)) {
+        if (digestHealthStoreData(await store.readSnapshot({ includeRaw: true })) !== digestHealthStoreData(sourceSnapshot)) {
           await store.close();
           throw new Error(`DuckDB activation parity failed for profile ${profile.id}.`);
         }
@@ -548,41 +542,13 @@ export class ProfileStoreManager {
         });
       }
       persistStorageBackendManifest(manifest);
-      this.commitDuckDbActivation(manifest, opened, root, duckdbOptions);
+      await this.commitDuckDbActivation(manifest, opened, root, duckdbOptions);
       removeLegacyWarehouseArtifacts();
       recordStoragePilotEvent("storage-duckdb-activated", "duckdb", opened.size, startedAt);
     } catch (error) {
       await Promise.all([...opened.values()].map((store) => store.close().catch(() => undefined)));
       throw error;
     }
-  }
-
-  async rollbackDuckDb(options: DuckDbRollbackOptions): Promise<string> {
-    const archivedManifestPath = rollbackDuckDbActivation({
-      security: { passphrase: this.passphrase, securityMode: this.securityMode },
-      discardDuckDbChanges: options.discardDuckDbChanges
-    });
-    const jsonStores = new Map<string, HealthStore>();
-    for (const profile of this.profiles) {
-      const store = new HealthStore({
-        profileId: profile.id,
-        passphrase: this.passphrase,
-        securityMode: this.securityMode
-      });
-      jsonStores.set(profile.id, store);
-    }
-
-    const duckdbStores = [...this.stores.values()].filter(
-      (store): store is DuckDbHealthStore => store instanceof DuckDbHealthStore
-    );
-    this.stores = new Map(jsonStores);
-    this.duckdbManifest = undefined;
-    this.duckdbRoot = undefined;
-    this.duckdbOptions = undefined;
-    this.backend = "json";
-    this.refreshProfileEntriesFromStores();
-    await Promise.all(duckdbStores.map((store) => store.close()));
-    return archivedManifestPath;
   }
 
   async closeAll(): Promise<void> {
@@ -593,18 +559,20 @@ export class ProfileStoreManager {
     this.stores.clear();
   }
 
-  private commitDuckDbActivation(
+  private async commitDuckDbActivation(
     manifest: StorageBackendManifest,
     stores: Map<string, DuckDbHealthStore>,
     root: string,
     options: DuckDbOptions
-  ): void {
+  ): Promise<void> {
     this.stores = new Map(stores);
     this.duckdbManifest = manifest;
     this.duckdbRoot = root;
     this.duckdbOptions = options;
     this.backend = "duckdb";
-    this.profiles = [...stores.values()].map((store) => profileListEntryFromProfile(store.snapshot().profile));
+    this.profiles = await Promise.all(
+      [...stores.values()].map(async (store) => profileListEntryFromProfile(await store.getProfile()))
+    );
     this.persistProfiles();
     if (!this.profiles.some((profile) => profile.id === this.activeProfileId)) {
       this.activeProfileId = this.profiles[0].id;
@@ -619,18 +587,8 @@ export class ProfileStoreManager {
       const manifest = this.requireDuckDbManifest();
       const root = this.duckdbRoot!;
       const duckdbOptions = this.duckdbOptions!;
-      const sourceStore = new HealthStore({
-        profileId: id,
-        passphrase: this.passphrase,
-        securityMode: this.securityMode
-      });
-      sourceStore.replaceProfile({
-        ...sourceStore.snapshot().profile,
-        id,
-        displayName: name
-      });
-      const sourcePath = resolveStorePath(id);
-      const sourceSnapshot = sourceStore.snapshot({ includeRaw: true });
+      const sourceSnapshot = createEmptyStore(id);
+      sourceSnapshot.profile.displayName = name;
       const databaseFile = `health-store-${id}.duckdb`;
       const databasePath = resolve(root, "databases", databaseFile);
       let store: DuckDbHealthStore | undefined;
@@ -643,15 +601,12 @@ export class ProfileStoreManager {
           securityMode: this.securityMode,
           duckdb: duckdbOptions
         }, sourceSnapshot);
-        const entry = profileListEntryFromProfile(store.snapshot().profile);
+        const entry = profileListEntryFromProfile(await store.getProfile());
         const nextProfiles = [...this.profiles, entry];
         const nextManifest: StorageBackendManifest = {
           ...manifest,
           profiles: [...manifest.profiles, {
             profileId: id,
-            sourceFile: relativeDataFile(sourcePath),
-            sourceSha256: hashFile(sourcePath),
-            baselineDigest: digestHealthStoreData(sourceSnapshot),
             databaseFile
           }]
         };
@@ -673,12 +628,13 @@ export class ProfileStoreManager {
       }
     }
     const store = this.getStore(id);
+    const currentProfile = (await store.readSnapshot()).profile;
     await store.replaceProfile({
-      ...store.snapshot().profile,
+      ...currentProfile,
       id,
       displayName: name
     });
-    const entry = profileListEntryFromProfile(store.snapshot().profile);
+    const entry = profileListEntryFromProfile(await store.getProfile());
     this.profiles.push(entry);
     this.persistProfiles();
     return entry;
@@ -772,13 +728,6 @@ export class ProfileStoreManager {
     return this.duckdbManifest;
   }
 
-  private requireDuckDbOpenOptions(options: OpenProfileStoreManagerOptions): DuckDbActivationOptions {
-    if (!options.duckdb) {
-      throw new Error("DuckDB startup requires DuckDB activation options.");
-    }
-    return options.duckdb;
-  }
-
   syncProfileEntry(profile: Profile): void {
     const normalizedId = normalizeProfileId(profile.id);
     const next = profileListEntryFromProfile(profile);
@@ -796,7 +745,7 @@ export class ProfileStoreManager {
     this.profiles = loadProfileRegistry();
     if (this.profiles.length === 0) {
       const store = this.getStore("self");
-      this.profiles = [profileListEntryFromProfile(store.snapshot().profile)];
+      this.profiles = [profileListEntryFromProfile(migrationSnapshot(store).profile)];
       this.persistProfiles();
     }
 
@@ -833,7 +782,7 @@ export class ProfileStoreManager {
   }
 
   private refreshProfileEntriesFromStores(): void {
-    this.profiles = this.profiles.map((entry) => profileListEntryFromProfile(this.getStore(entry.id).snapshot().profile));
+    this.profiles = this.profiles.map((entry) => profileListEntryFromProfile(migrationSnapshot(this.getStore(entry.id)).profile));
     this.persistProfiles();
   }
 
@@ -853,7 +802,7 @@ export class ProfileStoreManager {
         copyFileSync(legacyBackupPath, targetBackupPath);
       }
       const store = this.getStore("self");
-      this.profiles = [profileListEntryFromProfile(store.snapshot().profile)];
+      this.profiles = [profileListEntryFromProfile(migrationSnapshot(store).profile)];
       this.activeProfileId = "self";
       this.persistProfiles();
       this.persistActiveProfile();
@@ -861,7 +810,7 @@ export class ProfileStoreManager {
     }
 
     const store = this.getStore("self");
-    this.profiles = [profileListEntryFromProfile(store.snapshot().profile)];
+    this.profiles = [profileListEntryFromProfile(migrationSnapshot(store).profile)];
     this.activeProfileId = "self";
     this.persistProfiles();
     this.persistActiveProfile();
@@ -874,6 +823,13 @@ export class ProfileStoreManager {
   private persistActiveProfile(): void {
     writeFileSync(activeProfilePath(), JSON.stringify({ profileId: this.activeProfileId }, null, 2), { encoding: "utf8" });
   }
+}
+
+function migrationSnapshot(store: HealthStoreHandle): HealthStoreData {
+  if (!(store instanceof HealthStore)) {
+    throw new Error("Synchronous snapshots are restricted to one-time JSON migration.");
+  }
+  return store.snapshot();
 }
 
 function createEmptyStore(profileId = "self"): HealthStoreData {
@@ -1161,40 +1117,9 @@ export function hasDuckDbActivationManifest(): boolean {
   return existsSync(storageBackendManifestPath());
 }
 
-export function rollbackDuckDbActivation(options: {
-  security: StoreSecurityConfig;
-  discardDuckDbChanges: true;
-}): string {
-  const startedAt = performance.now();
-  if (options.discardDuckDbChanges !== true) {
-    throw new Error("DuckDB rollback requires explicit acknowledgement that post-activation changes will be discarded.");
-  }
-  const manifest = loadStorageBackendManifest();
-  if (!manifest) {
-    throw new Error("DuckDB storage is not activated for this data directory.");
-  }
-  assertManifestProfiles(manifest, loadProfileRegistry());
-  for (const entry of manifest.profiles) {
-    const sourcePath = resolve(resolveDataDir(), entry.sourceFile);
-    if (!existsSync(sourcePath) || hashFile(sourcePath) !== entry.sourceSha256) {
-      throw new Error(`Retained JSON rollback artifact changed for profile ${entry.profileId}.`);
-    }
-    const parsed = parsePersistedHealthStore(readEncryptedStoreAtPath(sourcePath, options.security.passphrase));
-    if (digestHealthStoreData(parsed.data) !== entry.baselineDigest) {
-      throw new Error(`Retained JSON rollback artifact does not match the activation baseline for profile ${entry.profileId}.`);
-    }
-    if (hashFile(sourcePath) !== entry.sourceSha256) {
-      throw new Error(`Retained JSON rollback artifact changed while validating profile ${entry.profileId}.`);
-    }
-  }
-  const archivedManifestPath = archiveStorageBackendManifest();
-  recordStoragePilotEvent("storage-duckdb-rolled-back", "json", manifest.profiles.length, startedAt);
-  return archivedManifestPath;
-}
-
 function recordStoragePilotEvent(
-  code: "storage-duckdb-activated" | "storage-duckdb-reopened" | "storage-duckdb-rolled-back",
-  storageBackend: "json" | "duckdb",
+  code: "storage-duckdb-activated" | "storage-duckdb-reopened",
+  storageBackend: "duckdb",
   profileCount: number,
   startedAt: number
 ): void {
@@ -1207,10 +1132,8 @@ function recordStoragePilotEvent(
   };
   const message = code === "storage-duckdb-activated"
     ? "DuckDB storage activation completed."
-    : code === "storage-duckdb-reopened"
-      ? "DuckDB storage reopened from the activation manifest."
-      : "DuckDB storage was explicitly rolled back to the retained JSON baseline.";
-  (code === "storage-duckdb-rolled-back" ? log.warn : log.info)(message, record);
+    : "DuckDB storage reopened from the activation manifest.";
+  log.info(message, record);
   try {
     appendFileSync(resolve(resolveDataDir(), "storage-pilot.ndjson"), `${JSON.stringify(record)}\n`, {
       encoding: "utf8",
@@ -1244,15 +1167,21 @@ function loadStorageBackendManifest(): StorageBackendManifest | undefined {
     parsed.profiles.some((entry) =>
       !entry ||
       typeof entry.profileId !== "string" ||
-      typeof entry.sourceFile !== "string" ||
-      typeof entry.sourceSha256 !== "string" ||
-      typeof entry.baselineDigest !== "string" ||
       typeof entry.databaseFile !== "string" ||
       normalizeProfileId(entry.profileId) !== entry.profileId ||
-      !isDirectChildFileName(entry.sourceFile) ||
       !isDirectChildFileName(entry.databaseFile) ||
-      !/^[a-f0-9]{64}$/.test(entry.sourceSha256) ||
-      !/^[a-f0-9]{64}$/.test(entry.baselineDigest)
+      (entry.sourceFile !== undefined && (
+        typeof entry.sourceFile !== "string" ||
+        !isDirectChildFileName(entry.sourceFile)
+      )) ||
+      (entry.sourceSha256 !== undefined && (
+        typeof entry.sourceSha256 !== "string" ||
+        !/^[a-f0-9]{64}$/.test(entry.sourceSha256)
+      )) ||
+      (entry.baselineDigest !== undefined && (
+        typeof entry.baselineDigest !== "string" ||
+        !/^[a-f0-9]{64}$/.test(entry.baselineDigest)
+      ))
     )
   ) {
     throw new Error("Storage backend activation manifest is invalid.");
@@ -1275,22 +1204,6 @@ function persistStorageBackendManifest(manifest: StorageBackendManifest): void {
     fsyncPath(dirname(path));
   } finally {
     rmSync(temporaryPath, { force: true });
-  }
-}
-
-function archiveStorageBackendManifest(): string {
-  const path = storageBackendManifestPath();
-  const archivedPath = `${path}.rolled-back-${new Date().toISOString().replace(/[:.]/g, "-")}`;
-  renameSync(path, archivedPath);
-  fsyncPath(dirname(path));
-  return archivedPath;
-}
-
-function assertManifestProfiles(manifest: StorageBackendManifest, profiles: ProfileListEntry[]): void {
-  const expected = profiles.map((profile) => profile.id).sort();
-  const actual = manifest.profiles.map((profile) => normalizeProfileId(profile.profileId)).sort();
-  if (expected.length !== actual.length || expected.some((profileId, index) => profileId !== actual[index])) {
-    throw new Error("Storage backend activation manifest does not match the profile registry.");
   }
 }
 

@@ -61,7 +61,7 @@ export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Rout
         return;
       }
       const parsed = askSchema.parse(request.body ?? {});
-      const plan = planStoreAnswer(parsed.question, activeStore().snapshot());
+      const plan = planStoreAnswer(parsed.question, await activeStore().readSnapshot());
       if (!plan) {
         response.status(400).json({
           error: "Question is not yet supported by the store ask planner.",

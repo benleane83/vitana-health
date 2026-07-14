@@ -24,15 +24,9 @@ The explicit DuckDB alias is:
 npm run dev:duckdb
 ```
 
-On first use, activation parity-checks every registered profile side by side and retains the encrypted JSON files as the rollback baseline. Later launches reopen the encrypted databases. The API startup record reports the active profile and whether startup performed initial activation or reopen.
+On first use, existing encrypted JSON profiles are parity-checked and imported into encrypted DuckDB databases. Later launches open those databases directly; retained JSON files are no longer required by runtime startup. New profiles are created directly in DuckDB. The API startup record reports whether startup performed initial migration or reopened canonical storage.
 
-Use JSON explicitly before DuckDB activation with `npm run dev:json`. After activation, returning to JSON is a destructive rollback that discards post-activation DuckDB changes:
-
-```powershell
-npm run dev:rollback
-```
-
-See [Encrypted DuckDB Architecture](docs/ENCRYPTED_DUCKDB_ARCHITECTURE.md) for migration, key lifecycle, fallback semantics, and platform limits.
+See [Encrypted DuckDB Architecture](docs/ENCRYPTED_DUCKDB_ARCHITECTURE.md) for migration, key lifecycle, and platform limits.
 
 The API generates and persists its owner credential automatically. A browser running on the same computer obtains an `HttpOnly` local session, so users never copy or enter a token.
 

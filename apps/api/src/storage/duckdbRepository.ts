@@ -29,7 +29,7 @@ import {
   type DuckDbOptions,
   type EncryptedDuckDbDatabase
 } from "./duckdbRuntime.js";
-import type { ProfileImport, ProfileRepository } from "./profileRepository.js";
+import type { ImportMutationResult, ProfileImport, ProfileRepository } from "./profileRepository.js";
 
 export class DuckDbRepository implements ProfileRepository {
   private closed = false;
@@ -227,7 +227,7 @@ export class DuckDbRepository implements ProfileRepository {
 
   async appBootstrap(): Promise<AppBootstrap> {
     this.assertOpen();
-    const [profileRows, measurementRows, templateRows, insightRows, countRows] = await Promise.all([
+    const [profileRows, measurementRows, templateRows, insightRows, counts] = await Promise.all([
       all(this.connection, "SELECT * FROM profile;"),
       all(this.connection, "SELECT * FROM measurement_types ORDER BY display, code;"),
       all(this.connection, `
@@ -244,13 +244,7 @@ export class DuckDbRepository implements ProfileRepository {
         ORDER BY g.label, marker, o.measurement_code;
       `),
       all(this.connection, "SELECT * FROM insights ORDER BY created_at DESC, ordinal ASC LIMIT 1;"),
-      all(this.connection, `
-        SELECT
-          (SELECT COUNT(*) FROM imports) AS imports,
-          (SELECT COUNT(*) FROM observations) AS observations,
-          (SELECT COUNT(*) FROM time_series_samples) AS samples,
-          (SELECT COUNT(*) FROM activities) AS activities;
-      `)
+      this.storageCounts()
     ]);
     if (profileRows.length !== 1) {
       throw new Error("DuckDB expected exactly one profile row.");
@@ -271,18 +265,12 @@ export class DuckDbRepository implements ProfileRepository {
       });
       templatesByLabel.set(normalizedLabel, existing);
     }
-    const counts = countRows[0] ?? {};
     return {
       profile: profileFromRow(profileRows[0]),
       measurementTypes: measurementRows.map(measurementTypeFromRow),
       manualObservationGroupTemplates: [...templatesByLabel.values()],
       latestInsight: insightRows[0] ? insightFromRow(insightRows[0]) : undefined,
-      counts: {
-        imports: Number(counts.imports ?? 0),
-        observations: Number(counts.observations ?? 0),
-        samples: Number(counts.samples ?? 0),
-        activities: Number(counts.activities ?? 0)
-      }
+      counts
     };
   }
 
@@ -328,95 +316,101 @@ export class DuckDbRepository implements ProfileRepository {
     });
   }
 
-  async mergeImport(parsed: DuckDbImport): Promise<HealthStoreData> {
+  async mergeImport(parsed: DuckDbImport): Promise<ImportMutationResult> {
     this.assertOpen();
     return this.transaction(async () => {
-      const current = await this.snapshot();
       const sourceImport = sanitizeSourceImport(parsed.sourceImport);
-      const sourceImports = current.sourceImports.some((entry) =>
-        entry.sourceKind === sourceImport.sourceKind &&
-        entry.checksum === sourceImport.checksum &&
-        entry.fileName === sourceImport.fileName
-      ) ? current.sourceImports : [...current.sourceImports, sourceImport];
-      const dataSources = current.dataSources.some((entry) => entry.id === parsed.dataSource.id)
-        ? current.dataSources
-        : [...current.dataSources, parsed.dataSource];
-      const observations = limitByNewest(
-        appendUniqueById(current.observations, parsed.observations),
-        maxObservations,
-        (entry) => entry.observedAt,
-        (entry) => entry.measurementCode,
-        minPerMeasurementCode
+      const duplicateImports = await allWithParams(
+        this.connection,
+        "SELECT 1 AS found FROM imports WHERE source_kind = ? AND checksum = ? AND file_name = ? LIMIT 1;",
+        sourceImport.sourceKind,
+        sourceImport.checksum,
+        sourceImport.fileName
       );
-      const observationGroups = limitByNewest(
-        appendUniqueById(current.observationGroups, parsed.observationGroups),
-        maxObservationGroups,
-        (entry) => entry.collectedAt ?? entry.endAt ?? entry.startAt ?? entry.id
-      );
-      const timeSeriesSamples = limitByNewest(
-        appendUniqueById(current.timeSeriesSamples, parsed.timeSeriesSamples),
-        maxTimeSeriesSamples,
-        (entry) => entry.endAt,
-        (entry) => entry.measurementCode,
-        minPerMeasurementCode
-      );
-      const activitySessions = limitByNewest(
-        appendUniqueById(current.activitySessions, parsed.activitySessions),
-        maxActivitySessions,
-        (entry) => entry.startAt
-      );
-      healthStoreDataSchema.parse({
-        ...current,
-        sourceImports,
-        dataSources,
-        observations,
-        observationGroups,
-        timeSeriesSamples,
-        activitySessions
-      });
+      if (duplicateImports.length === 0) {
+        await run(
+          this.connection,
+          "INSERT INTO imports VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+          await this.nextOrdinal("imports"),
+          sourceImport.id,
+          sourceImport.sourceKind,
+          sourceImport.fileName,
+          sourceImport.importedAt,
+          sourceImport.parserVersion,
+          sourceImport.checksum,
+          sourceImport.rowCount,
+          sourceImport.status,
+          json(sourceImport.diagnostics),
+          sourceImport.rawContent ?? null
+        );
+      }
 
-      await this.syncCollection("imports", current.sourceImports, sourceImports, (ordinal, entry) => run(
-        this.connection,
-        "INSERT INTO imports VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
-        ordinal, entry.id, entry.sourceKind, entry.fileName, entry.importedAt, entry.parserVersion, entry.checksum,
-        entry.rowCount, entry.status, json(entry.diagnostics), entry.rawContent ?? null
-      ));
-      await this.syncCollection("sources", current.dataSources, dataSources, (ordinal, entry) => run(
-        this.connection,
-        "INSERT INTO sources VALUES (?, ?, ?, ?, ?, ?);",
-        ordinal, entry.id, entry.sourceKind, entry.label, entry.importId ?? null, entry.createdAt
-      ));
-      await this.syncCollection("observations", current.observations, observations, (ordinal, entry) => run(
-        this.connection,
-        "INSERT INTO observations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
-        ordinal, entry.id, entry.measurementCode, entry.observedAt, entry.effectiveStart ?? null,
-        entry.effectiveEnd ?? null, entry.value, entry.unit, entry.sourceId, entry.observationGroupId ?? null,
-        entry.deviceId ?? null, entry.note ?? null, entry.sourceJson !== undefined, optionalJsonValue(entry.sourceJson)
-      ));
-      await this.syncCollection("observation_groups", current.observationGroups, observationGroups, (ordinal, entry) => run(
-        this.connection,
-        "INSERT INTO observation_groups VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
-        ordinal, entry.id, entry.kind, entry.label, entry.sourceId ?? null, entry.importId ?? null,
-        entry.startAt ?? null, entry.endAt ?? null, entry.collectedAt ?? null, optionalJsonValue(entry.metadata)
-      ));
-      await this.syncCollection("time_series_samples", current.timeSeriesSamples, timeSeriesSamples, (ordinal, entry) => run(
-        this.connection,
-        "INSERT INTO time_series_samples VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
-        ordinal, entry.id, entry.measurementCode, entry.startAt, entry.endAt, entry.value, entry.unit, entry.sourceId,
-        entry.deviceId ?? null, entry.sourceJson !== undefined, optionalJsonValue(entry.sourceJson)
-      ));
-      await this.syncCollection("activities", current.activitySessions, activitySessions, (ordinal, entry) => run(
-        this.connection,
-        "INSERT INTO activities VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
-        ordinal, entry.id, entry.activityType, entry.startAt, entry.endAt ?? null, entry.durationMinutes ?? null,
-        entry.energyKcal ?? null, entry.distanceMeters ?? null, entry.sourceId,
-        entry.sourceJson !== undefined, optionalJsonValue(entry.sourceJson)
-      ));
-      await this.insertAudit(
+      await insertRows(this.connection, "INSERT OR IGNORE INTO sources VALUES (?, ?, ?, ?, ?, ?);", [[
+        await this.nextOrdinal("sources"),
+        parsed.dataSource.id,
+        parsed.dataSource.sourceKind,
+        parsed.dataSource.label,
+        parsed.dataSource.importId ?? null,
+        parsed.dataSource.createdAt
+      ]]);
+      const groupFirstOrdinal = await this.nextOrdinal("observation_groups");
+      await insertRows(this.connection, "INSERT OR IGNORE INTO observation_groups VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+        parsed.observationGroups.map((entry, index) => [
+          groupFirstOrdinal + index,
+          entry.id,
+          entry.kind,
+          entry.label,
+          entry.sourceId ?? null,
+          entry.importId ?? null,
+          entry.startAt ?? null,
+          entry.endAt ?? null,
+          entry.collectedAt ?? null,
+          optionalJsonValue(entry.metadata)
+        ]));
+
+      await insertObservationRows(this.connection, parsed.observations, await this.nextOrdinal("observations"));
+
+      const sampleFirstOrdinal = await this.nextOrdinal("time_series_samples");
+      await insertRows(this.connection, "INSERT OR IGNORE INTO time_series_samples VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+        parsed.timeSeriesSamples.map((entry, index) => [
+          sampleFirstOrdinal + index,
+          entry.id,
+          entry.measurementCode,
+          entry.startAt,
+          entry.endAt,
+          entry.value,
+          entry.unit,
+          entry.sourceId,
+          entry.deviceId ?? null,
+          entry.sourceJson !== undefined,
+          optionalJsonValue(entry.sourceJson)
+        ]));
+
+      const activityFirstOrdinal = await this.nextOrdinal("activities");
+      await insertRows(this.connection, "INSERT OR IGNORE INTO activities VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+        parsed.activitySessions.map((entry, index) => [
+          activityFirstOrdinal + index,
+          entry.id,
+          entry.activityType,
+          entry.startAt,
+          entry.endAt ?? null,
+          entry.durationMinutes ?? null,
+          entry.energyKcal ?? null,
+          entry.distanceMeters ?? null,
+          entry.sourceId,
+          entry.sourceJson !== undefined,
+          optionalJsonValue(entry.sourceJson)
+        ]));
+
+      await this.pruneMeasurementRows("observations", "observed_at", maxObservations);
+      await this.pruneMeasurementRows("time_series_samples", "end_at", maxTimeSeriesSamples);
+      await this.pruneByNewest("observation_groups", "COALESCE(collected_at, end_at, start_at)", maxObservationGroups);
+      await this.pruneByNewest("activities", "start_at", maxActivitySessions);
+      const auditEvent = await this.insertAudit(
         "import-processed",
         `${sourceImport.sourceKind} import processed with ${sourceImport.rowCount} source row(s).`
       );
-      return this.snapshot();
+      return { counts: await this.storageCounts(), auditEvent };
     });
   }
 
@@ -854,22 +848,103 @@ export class DuckDbRepository implements ProfileRepository {
   private async insertAudit(
     eventType: HealthStoreData["auditEvents"][number]["eventType"],
     detail: string
-  ): Promise<void> {
+  ): Promise<HealthStoreData["auditEvents"][number]> {
     const rows = await all(this.connection, "SELECT COALESCE(MIN(ordinal), 1) - 1 AS ordinal FROM audit_events;");
+    const auditEvent = {
+      id: `audit_${globalThis.crypto.randomUUID().replaceAll("-", "").slice(0, 18)}`,
+      createdAt: new Date().toISOString(),
+      eventType,
+      detail
+    };
     await run(
       this.connection,
       "INSERT INTO audit_events VALUES (?, ?, ?, ?, ?);",
       Number(rows[0]?.ordinal ?? 0),
-      `audit_${globalThis.crypto.randomUUID().replaceAll("-", "").slice(0, 18)}`,
-      new Date().toISOString(),
-      eventType,
-      detail
+      auditEvent.id,
+      auditEvent.createdAt,
+      auditEvent.eventType,
+      auditEvent.detail
     );
+    return auditEvent;
   }
 
   private async prependOrdinal(table: OrderedTable): Promise<number> {
     const rows = await all(this.connection, `SELECT COALESCE(MIN(ordinal), 1) - 1 AS ordinal FROM ${table};`);
     return Number(rows[0]?.ordinal ?? 0);
+  }
+
+  private async storageCounts(): Promise<AppBootstrap["counts"]> {
+    const rows = await all(this.connection, `
+      SELECT
+        (SELECT COUNT(*) FROM imports) AS imports,
+        (SELECT COUNT(*) FROM observations) AS observations,
+        (SELECT COUNT(*) FROM time_series_samples) AS samples,
+        (SELECT COUNT(*) FROM activities) AS activities;
+    `);
+    const counts = rows[0] ?? {};
+    return {
+      imports: Number(counts.imports ?? 0),
+      observations: Number(counts.observations ?? 0),
+      samples: Number(counts.samples ?? 0),
+      activities: Number(counts.activities ?? 0)
+    };
+  }
+
+  private async pruneMeasurementRows(
+    table: "observations" | "time_series_samples",
+    timestampColumn: "observed_at" | "end_at",
+    maxItems: number
+  ): Promise<void> {
+    const countRows = await all(this.connection, `SELECT COUNT(*) AS count FROM ${table};`);
+    if (Number(countRows[0]?.count ?? 0) <= maxItems) return;
+
+    const rankedSql = `
+      SELECT id, measurement_code, ${timestampColumn},
+        ROW_NUMBER() OVER (PARTITION BY measurement_code ORDER BY ${timestampColumn} DESC, id DESC) AS measurement_rank
+      FROM ${table}`;
+    const protectedRows = await all(this.connection, `
+      WITH ranked AS (${rankedSql})
+      SELECT COUNT(*) AS count FROM ranked WHERE measurement_rank <= ${minPerMeasurementCode};
+    `);
+    const protectedCount = Number(protectedRows[0]?.count ?? 0);
+    const remainingLimit = Math.max(0, maxItems - protectedCount);
+    const retainedSql = remainingLimit === 0
+      ? `
+        WITH ranked AS (${rankedSql})
+        SELECT id FROM (
+          SELECT id FROM ranked WHERE measurement_rank <= ${minPerMeasurementCode}
+          ORDER BY ${timestampColumn} DESC, id DESC
+          LIMIT ${maxItems}
+        )`
+      : `
+        WITH ranked AS (${rankedSql}), retained AS (
+          SELECT id FROM ranked WHERE measurement_rank <= ${minPerMeasurementCode}
+          UNION ALL
+          SELECT id FROM (
+            SELECT id FROM ranked WHERE measurement_rank > ${minPerMeasurementCode}
+            ORDER BY ${timestampColumn} DESC, id DESC
+            LIMIT ${remainingLimit}
+          )
+        )
+        SELECT id FROM retained`;
+    await exec(this.connection, `DELETE FROM ${table} WHERE id NOT IN (${retainedSql});`);
+  }
+
+  private async pruneByNewest(
+    table: "observation_groups" | "activities",
+    timestampExpression: string,
+    maxItems: number
+  ): Promise<void> {
+    const countRows = await all(this.connection, `SELECT COUNT(*) AS count FROM ${table};`);
+    if (Number(countRows[0]?.count ?? 0) <= maxItems) return;
+    await exec(this.connection, `
+      DELETE FROM ${table}
+      WHERE id NOT IN (
+        SELECT id FROM ${table}
+        ORDER BY ${timestampExpression} DESC NULLS LAST, id DESC
+        LIMIT ${maxItems}
+      );
+    `);
   }
 
   private async syncCollection<T extends { id: string }>(
@@ -1170,7 +1245,7 @@ async function insertRows(connection: duckdb.Connection, sql: string, rows: unkn
   if (rows.length === 0) {
     return;
   }
-  const match = /^(INSERT INTO .+ VALUES )\(([^;]+)\);$/s.exec(sql);
+  const match = /^(INSERT(?: OR IGNORE)? INTO .+ VALUES )\(([^;]+)\);$/s.exec(sql);
   if (!match) {
     throw new Error("DuckDB bulk insert received an unsupported SQL shape.");
   }
@@ -1230,7 +1305,7 @@ async function insertObservationRows(
     }));
     await run(
       connection,
-      `INSERT INTO observations
+      `INSERT OR IGNORE INTO observations
       SELECT
         CAST(value->>'ordinal' AS BIGINT), value->>'id', value->>'measurementCode',
         CAST(value->>'observedAt' AS TIMESTAMP), CAST(value->>'effectiveStart' AS TIMESTAMP),

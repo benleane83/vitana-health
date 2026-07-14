@@ -316,8 +316,8 @@ describe("profile lifecycle routes", () => {
       .set("authorization", ownerAuthorization)
       .send({ ...minimalHealthConnectPayload, profileId: "shabnam" });
     expect(res.status).toBe(201);
-    expect(storeManager.getStore("shabnam").snapshot().sourceImports).toHaveLength(1);
-    expect(storeManager.getStore("self").snapshot().sourceImports).toHaveLength(0);
+    expect((await storeManager.getStore("shabnam").readSnapshot()).sourceImports).toHaveLength(1);
+    expect((await storeManager.getStore("self").readSnapshot()).sourceImports).toHaveLength(0);
   });
 });
 
@@ -379,15 +379,15 @@ describe("DELETE /api/observations/:id", () => {
       "2026-01-01T00:00:00.000Z"
     );
     const store = storeManager.getActiveStore();
-    store.mergeImport(parsed);
+    await store.mergeImport(parsed);
 
-    const observationId = store.snapshot().observations[0]?.id;
+    const observationId = (await store.readSnapshot()).observations[0]?.id;
     expect(observationId).toBeDefined();
 
     const res = await request(app).delete(`/api/observations/${observationId}`).set("authorization", ownerAuthorization);
     expect(res.status).toBe(200);
     expect(res.body.deletedCount).toBe(1);
-    expect(store.snapshot().observations.find((o) => o.id === observationId)).toBeUndefined();
+    expect((await store.readSnapshot()).observations.find((o) => o.id === observationId)).toBeUndefined();
   });
 });
 

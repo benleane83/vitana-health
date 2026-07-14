@@ -296,8 +296,15 @@ describe("DuckDbRepository fidelity", () => {
     };
 
     try {
-      await repository.mergeImport(parsedImport);
-      await repository.mergeImport(parsedImport);
+      const firstImportResult = await repository.mergeImport(parsedImport);
+      const repeatedImportResult = await repository.mergeImport(parsedImport);
+      expect(firstImportResult).toMatchObject({
+        counts: { imports: 2, observations: 3, samples: 2, activities: 2 },
+        auditEvent: { eventType: "import-processed" }
+      });
+      expect(repeatedImportResult.counts).toEqual(firstImportResult.counts);
+      expect(firstImportResult).not.toHaveProperty("observations");
+      expect(firstImportResult).not.toHaveProperty("sourceImports");
       await repository.addInsight(addedInsight);
       const deleted = await repository.deleteObservation("observation-z");
       expect(deleted).toMatchObject({ deletedCount: 1, deletedObservation: { id: "observation-z" } });

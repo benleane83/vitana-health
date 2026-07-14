@@ -1,44 +1,39 @@
 import type { HealthStoreData } from "@local-fitness-advisor/shared";
 import type { ProfileStoreManager } from "../store.js";
+import type { ImportMutationResult } from "./profileRepository.js";
 import type { QueryDSL } from "../aiQueryPlanner.js";
 import {
   duckDbAnalyticsQueryCompiler,
   type CompileOutcome,
   type SqlValidationResult
 } from "../queryCompiler.js";
-import {
-  rebuildWarehouseFromStore,
-  runWarehouseQuery,
-  type WarehouseBuildResult
-} from "../warehouse.js";
+import type { WarehouseBuildResult } from "../warehouse.js";
 
 export async function refreshAnalyticsStorage(
   storeManager: ProfileStoreManager,
-  snapshot: HealthStoreData,
+  source: HealthStoreData | ImportMutationResult,
   profileId = storeManager.getActiveProfileId()
 ): Promise<WarehouseBuildResult> {
-  if (storeManager.getStorageBackend() === "duckdb") {
-    return {
-      databasePath: `encrypted-profile:${profileId}`,
-      engine: "duckdb",
-      counts: {
-        imports: snapshot.sourceImports.length,
-        observations: snapshot.observations.length,
-        samples: snapshot.timeSeriesSamples.length,
-        activities: snapshot.activitySessions.length
-      }
-    };
-  }
-  return rebuildWarehouseFromStore(snapshot);
+  const counts = "counts" in source
+    ? source.counts
+    : {
+        imports: source.sourceImports.length,
+        observations: source.observations.length,
+        samples: source.timeSeriesSamples.length,
+        activities: source.activitySessions.length
+      };
+  return {
+    databasePath: `encrypted-profile:${profileId}`,
+    engine: "duckdb",
+    counts
+  };
 }
 
 export function runAnalyticsQuery(
   storeManager: ProfileStoreManager,
   sql: string
 ): Promise<Array<Record<string, unknown>>> {
-  return storeManager.getStorageBackend() === "duckdb"
-    ? storeManager.runActiveDuckDbQuery(sql)
-    : runWarehouseQuery(sql);
+  return storeManager.runActiveDuckDbQuery(sql);
 }
 
 export function compileAnalyticsQuery(

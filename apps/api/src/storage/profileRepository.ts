@@ -20,12 +20,17 @@ export interface ProfileImport {
   activitySessions: HealthStoreData["activitySessions"];
 }
 
+export interface ImportMutationResult {
+  counts: AppBootstrap["counts"];
+  auditEvent: HealthStoreData["auditEvents"][number];
+}
+
 export interface ProfileRepository {
   snapshot(): Promise<HealthStoreData>;
   appBootstrap(): Promise<AppBootstrap>;
   getProfile(): Promise<Profile>;
   replaceProfile(profile: Profile): Promise<Profile>;
-  mergeImport(imported: ProfileImport): Promise<HealthStoreData>;
+  mergeImport(imported: ProfileImport): Promise<ImportMutationResult>;
   addInsight(insight: HealthStoreData["insights"][number]): Promise<HealthStoreData["insights"][number]>;
   exportData(): Promise<HealthStoreData>;
   deleteObservation(id: string): Promise<DeleteObservationResponse | undefined>;

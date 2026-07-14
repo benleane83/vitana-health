@@ -78,8 +78,12 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
     return storeManager.getActiveStore();
   }
 
-  router.get("/store", (_request, response) => {
-    response.json(activeStore().snapshot());
+  router.get("/store", async (_request, response, next) => {
+    try {
+      response.json(await activeStore().readSnapshot());
+    } catch (error) {
+      next(error);
+    }
   });
 
   router.get("/bootstrap", async (_request, response, next) => {
@@ -90,12 +94,20 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
     }
   });
 
-  router.get("/analytics", (_request, response) => {
-    response.json(computeAnalytics(activeStore().snapshot()));
+  router.get("/analytics", async (_request, response, next) => {
+    try {
+      response.json(computeAnalytics(await activeStore().readSnapshot()));
+    } catch (error) {
+      next(error);
+    }
   });
 
-  router.get("/biological-age", (_request, response) => {
-    response.json(calculateBiologicalAge(activeStore().snapshot()));
+  router.get("/biological-age", async (_request, response, next) => {
+    try {
+      response.json(calculateBiologicalAge(await activeStore().readSnapshot()));
+    } catch (error) {
+      next(error);
+    }
   });
 
   router.get("/summary", async (_request, response, next) => {
@@ -147,7 +159,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
   router.post("/warehouse/rebuild", async (_request, response, next) => {
     try {
       response.setHeader("x-lfa-lifecycle", "experimental");
-      const result = await refreshAnalyticsStorage(storeManager, activeStore().snapshot());
+      const result = await refreshAnalyticsStorage(storeManager, await activeStore().readSnapshot());
       response.status(201).json(result);
     } catch (error) {
       next(error);
@@ -157,7 +169,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
   router.post("/insights/generate", async (_request, response, next) => {
     try {
       const store = activeStore();
-      const insight = await generateInsight(store.snapshot());
+      const insight = await generateInsight(await store.readSnapshot());
       response.status(201).json(await store.addInsight(insight));
     } catch (error) {
       next(error);
@@ -175,7 +187,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.get("/export/pdf", async (_request, response, next) => {
     try {
-      const report = buildClinicianReport(activeStore().snapshot());
+      const report = buildClinicianReport(await activeStore().readSnapshot());
       const pdf = await createClinicianReportPdf(report);
       response.setHeader("content-type", "application/pdf");
       response.setHeader("content-disposition", `attachment; filename="${reportFilename(report.patient.displayName)}"`);

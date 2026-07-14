@@ -11,8 +11,6 @@
   "scripts": {
     "dev": "node ./scripts/dev-storage.mjs",
     "dev:duckdb": "node ./scripts/dev-storage.mjs",
-    "dev:json": "node ./scripts/dev-storage.mjs --json",
-    "dev:rollback": "node ./scripts/dev-storage.mjs --json --rollback",
     "dev:services": "concurrently -n api,web -c cyan,magenta \"npm run dev -w apps/api\" \"npx wait-on tcp:127.0.0.1:4317 && npm run dev -w apps/web\"",
     "dev:reset": "node ./scripts/dev-reset.mjs",
     "build": "npm run build -w packages/shared && npm run build -w apps/api && npm run build -w apps/web",
