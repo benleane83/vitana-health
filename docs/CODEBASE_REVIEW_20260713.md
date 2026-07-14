@@ -69,7 +69,7 @@ This contradicts the scoped-token claims in the prior review and README (`docs/C
 
 **Required:** Make owner authorization the default. Give companion tokens an explicit allowlist limited to the profile-list fields needed by the app and Health Connect import. Bind each token to a device and allowed profile(s), and add negative authorization tests for export, deletion, settings, consent, query, and profile administration.
 
-#### P0 — Cloud consent is not enforced by the central model client
+#### [IN PROGRESS] P0 — Cloud consent is not enforced by the central model client
 
 `callConfiguredModel` accepts `allowCloud` but never evaluates it; an OpenAI-configured provider is called unconditionally (`apps/api/src/modelClient.ts:3-8,23-30`). Query routes have route-level checks, but insight generation calls the model with health metrics, dates, lab flags, and reference ranges and relies on the ignored option (`apps/api/src/insights.ts:5-15`; `apps/api/src/routes/dataRoutes.ts:153-160`).
 
@@ -77,7 +77,7 @@ This means a user can disable or never grant cloud consent and still transmit he
 
 **Status (partially addressed 2026-07-13):** `allowCloud: false` is now enforced centrally after provider resolution, with a regression test that confirms no cloud request is made. Route-level disabled-consent coverage and a privacy-safe local audit event remain open.
 
-#### P0 — Overbroad companion access enables SSRF and model-key disclosure
+#### [DONE] P0 — Overbroad companion access enables SSRF and model-key disclosure
 
 The AI settings route accepts any URL and retains the existing API key when a new one is omitted (`apps/api/src/routes/settingsRoutes.ts:7-12,26-38`). Model validation then sends both `Authorization` and `api-key` headers to that endpoint (`apps/api/src/modelClient.ts:64-105,128-159`).
 
@@ -85,7 +85,9 @@ Combined with the companion authorization defect, a paired-token holder can chan
 
 **Required:** First make settings owner-only. Then require key re-entry when endpoint origin changes, permit only explicitly supported HTTPS endpoint origins, resolve and reject loopback/private/link-local/metadata destinations where remote providers are expected, and validate redirects.
 
-#### P0 — Play privacy and Health Connect disclosure work is incomplete
+**Status (addressed 2026-07-14):** The full settings route subtree is owner-only, with negative companion-token coverage. Cloud settings accept only official HTTPS/443 host families for OpenRouter, OpenAI, Anthropic, Azure AI Foundry/Azure OpenAI, and AWS Bedrock Runtime; Ollama is loopback-only. Endpoint-origin changes require key re-entry. Cloud destinations are resolved on save and again before credentialed requests, and local, private, link-local, metadata, multicast, documentation, and reserved ranges are rejected. Model and OpenRouter key-exchange requests use manual redirect handling. Provider-contract tests cover native Anthropic Messages requests and OpenAI-compatible Foundry and Bedrock requests.
+
+#### [IN PROGRESS] P0 — Play privacy and Health Connect disclosure work is incomplete
 
 The release checklist still depends on a public privacy-policy URL, Data Safety declaration, Health Connect declaration, and physical-device evidence (`docs/ANDROID_RELEASE.md:56-68`). The app has no privacy-policy link or purpose-specific explanation before permission requests (`apps/android-companion/App.tsx:220-237`).
 
@@ -93,7 +95,7 @@ The default is also maximum collection: all supported categories and a 365-day i
 
 **Required:** Publish and link a stable policy covering every category, purpose, LAN transfer, retention/eviction, deletion, cloud-model exception, security controls, and support contact. Default to no categories or a justified minimal set, show rationale before the system prompt, and make repository documentation and Play declarations derive from the same inventory.
 
-#### P1 — Android profile discovery bypasses the authenticated pinned client
+#### [ IN PROGRESS] P1 — Android profile discovery bypasses the authenticated pinned client
 
 Sync and pairing use the native pinned client, but profile refresh uses ordinary unauthenticated `fetch` (`apps/android-companion/App.tsx:107-130`). The API currently returns data only because companion authorization is overbroad; once authorization is corrected, this flow will stop working.
 
@@ -107,7 +109,7 @@ AI settings, including API keys, are written as JSON with mode `0600` (`apps/api
 
 ### Build, testing, and release engineering
 
-#### P0 — Clean installation is not reproducible
+#### [DONE] P0 — Clean installation is not reproducible
 
 The repository cannot currently demonstrate its own CI contract from a clean install. The root self-dependency (`"local-fitness-advisor": "file:"`) and stale workspace lock metadata are the leading evidence (`package.json:37-39`; `package-lock.json:15256-15262`).
 
@@ -131,7 +133,7 @@ The production storage path explicitly rejects non-Windows x64 (`apps/api/src/se
 
 **Status (partially addressed 2026-07-13):** Initial version now added in draft PR
 
-#### [IN PROGRESS] P1 — The public Windows installer has no signing or distribution hardening
+#### [DONE] P1 — The public Windows installer has no signing or distribution hardening
 
 The Electron configuration creates a per-machine NSIS installer and firewall rule, but contains no Windows code-signing configuration (`apps/desktop/package.json:22-54`). The firewall script does not inspect command failure (`apps/desktop/build/installer.nsh:1-7`).
 
@@ -139,9 +141,7 @@ Unsigned public binaries will produce poor SmartScreen trust and make update aut
 
 **Required:** Define code-signing ownership and protected credentials, sign and verify both application and installer, test firewall-rule failure/retry/removal, publish checksums, and document a secure update/release channel.
 
-**Status (partially addressed 2026-07-13):** Initial version now added in draft PR
-
-#### P1 — Android and native pinning logic lack automated tests
+#### [IN PROGRESS] P1 — Android and native pinning logic lack automated tests
 
 The Vitest workspace covers shared, API, and web only (`vitest.config.ts:3-10`). Android receives only TypeScript checking in CI (`.github/workflows/ci.yml:35-36`). Complex cursor, partial-permission, pagination, chunking, retry, category mapping, secure-storage, and Kotlin certificate-pin behavior therefore have no automated regression gate.
 
@@ -210,7 +210,7 @@ The README's privacy claim that companion tokens are import-scoped is also false
 
 **Status (partially addressed 2026-07-13):** README pairing/sync information and the Security backup description were reconciled with the current implementation. A complete release-artifact inventory and verification process remain open.
 
-#### P1 — OpenRouter callback likely cannot complete with the owner cookie policy
+#### [DONE] P1 — OpenRouter callback likely cannot complete with the owner cookie policy
 
 The owner cookie is `SameSite=Strict` (`apps/api/src/createApp.ts:160-177`). The OpenRouter callback is mounted behind owner authentication (`apps/api/src/createApp.ts:232-271`; `apps/api/src/routes/settingsRoutes.ts:41-78`). A top-level return from `openrouter.ai` will normally omit a Strict cookie, and browser navigation cannot add the session-storage bearer token.
 

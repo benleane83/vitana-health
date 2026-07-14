@@ -30,7 +30,9 @@ beforeEach(() => {
 
   storeManager = new ProfileStoreManager();
   pairingStore = new PairingStore();
-  app = createApp(storeManager, pairingStore);
+  app = createApp(storeManager, pairingStore, {
+    assertSafeCloudModelEndpoint: async () => "openai"
+  });
 });
 
 afterEach(() => {
@@ -191,7 +193,7 @@ describe("central owner authorization", () => {
         .set("authorization", ownerAuthorization)
         .send({
           provider: "openai",
-          endpoint: "https://example.test/v1/chat/completions",
+          endpoint: "https://api.openai.com/v1/chat/completions",
           apiKey: "test-api-key",
           model: "test-model",
           timeoutMs: 30000
@@ -199,7 +201,7 @@ describe("central owner authorization", () => {
       expect(saved.status).toBe(200);
       expect(saved.body).toMatchObject({
         provider: "openai",
-        endpoint: "https://example.test/v1/chat/completions",
+        endpoint: "https://api.openai.com/v1/chat/completions",
         model: "test-model",
         hasApiKey: true
       });
@@ -209,6 +211,97 @@ describe("central owner authorization", () => {
       expect(current.status).toBe(200);
       expect(current.body.hasApiKey).toBe(true);
       expect(current.text).not.toContain("test-api-key");
+    });
+
+    it("requires a new API key when the cloud endpoint origin changes", async () => {
+      const initial = await request(app)
+        .put("/api/settings/ai")
+        .set("authorization", ownerAuthorization)
+        .send({
+          provider: "openai",
+          endpoint: "https://openrouter.ai/api/v1/chat/completions",
+          apiKey: "openrouter-key",
+          model: "openrouter/free",
+          timeoutMs: 30000
+        });
+      expect(initial.status).toBe(200);
+
+      const changedWithoutKey = await request(app)
+        .put("/api/settings/ai")
+        .set("authorization", ownerAuthorization)
+        .send({
+          provider: "openai",
+          endpoint: "https://api.openai.com/v1/responses",
+          model: "gpt-5.4-mini",
+          timeoutMs: 30000
+        });
+      expect(changedWithoutKey.status).toBe(400);
+      expect(changedWithoutKey.body.error).toContain("Enter the API key again");
+
+      const changedWithKey = await request(app)
+        .put("/api/settings/ai")
+        .set("authorization", ownerAuthorization)
+        .send({
+          provider: "openai",
+          endpoint: "https://api.openai.com/v1/responses",
+          apiKey: "new-openai-key",
+          model: "gpt-5.4-mini",
+          timeoutMs: 30000
+        });
+      expect(changedWithKey.status).toBe(200);
+    });
+
+    it("rejects unsupported and private model endpoints", async () => {
+      for (const [provider, endpoint] of [
+        ["openai", "https://attacker.example/v1/chat/completions"],
+        ["openai", "http://169.254.169.254/latest/meta-data"],
+        ["ollama", "http://192.168.1.20:11434/api/generate"]
+      ]) {
+        const response = await request(app)
+          .put("/api/settings/ai")
+          .set("authorization", ownerAuthorization)
+          .send({ provider, endpoint, model: "test-model", timeoutMs: 30000 });
+        expect(response.status).toBe(400);
+      }
+    });
+
+    it("completes the OpenRouter callback without an owner cookie and consumes its state", async () => {
+      const exchange = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(JSON.stringify({ key: "openrouter-test-key" }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        })
+      );
+
+      const connect = await request(app)
+        .get("/api/settings/ai/openrouter/connect")
+        .set("authorization", ownerAuthorization);
+      expect(connect.status).toBe(302);
+
+      const authorizationUrl = new URL(connect.headers.location);
+      const state = authorizationUrl.searchParams.get("state");
+      expect(state).toBeTruthy();
+
+      const callbackPath = `/api/settings/ai/openrouter/callback?code=test-code&state=${encodeURIComponent(state!)}`;
+      const callback = await request(app).get(callbackPath);
+      expect(callback.status).toBe(200);
+      expect(callback.text).toContain("OpenRouter connected");
+      expect(exchange).toHaveBeenCalledWith(
+        "https://openrouter.ai/api/v1/auth/keys",
+        expect.objectContaining({ method: "POST", redirect: "manual", body: JSON.stringify({ code: "test-code" }) })
+      );
+
+      const current = await request(app).get("/api/settings/ai").set("authorization", ownerAuthorization);
+      expect(current.body).toMatchObject({
+        provider: "openai",
+        endpoint: "https://openrouter.ai/api/v1/chat/completions",
+        hasApiKey: true
+      });
+      expect(current.text).not.toContain("openrouter-test-key");
+
+      const replay = await request(app).get(callbackPath);
+      expect(replay.status).toBe(400);
+      expect(exchange).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -220,6 +313,10 @@ describe("central owner authorization", () => {
 
     expect((await request(app).get("/api/store").set("x-companion-token", token)).status).toBe(200);
     expect((await request(app).get("/api/pairing/devices").set("x-companion-token", token)).status).toBe(401);
+    expect((await request(app).get("/api/settings/ai").set("x-companion-token", token)).status).toBe(401);
+    expect((await request(app).put("/api/settings/ai").set("x-companion-token", token).send({})).status).toBe(401);
+    expect((await request(app).post("/api/settings/ai/validate").set("x-companion-token", token)).status).toBe(401);
+    expect((await request(app).get("/api/settings/ai/openrouter/connect").set("x-companion-token", token)).status).toBe(401);
   });
 
   it("creates an owner session only for a local client", async () => {

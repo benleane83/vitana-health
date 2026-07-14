@@ -3,6 +3,7 @@ import express from "express";
 import { z } from "zod";
 import { getAiSettings, saveAiSettings, toPublicAiSettings, type AiSettings } from "../aiSettings.js";
 import { callConfiguredModel } from "../modelClient.js";
+import { assertSafeCloudModelEndpoint, ModelEndpointPolicyError, validateModelEndpoint } from "../modelEndpointPolicy.js";
 
 const settingsSchema = z.object({
   provider: z.enum(["ollama", "openai"]),
@@ -16,21 +17,36 @@ const pendingOpenRouterStates = new Map<string, number>();
 const openRouterEndpoint = "https://openrouter.ai/api/v1/chat/completions";
 const openRouterStateExpiryMs = 10 * 60_000;
 
-export function makeSettingsRoutes(): express.Router {
+export function makeSettingsRoutes(options: {
+  assertSafeCloudEndpoint?: (endpoint: string) => Promise<unknown>;
+} = {}): express.Router {
   const router = express.Router();
+  const assertSafeCloudEndpoint = options.assertSafeCloudEndpoint ?? assertSafeCloudModelEndpoint;
 
   router.get("/ai", (_request, response) => {
     response.json(toPublicAiSettings(getAiSettings()));
   });
 
-  router.put("/ai", (request, response) => {
-    const parsed = settingsSchema.parse(request.body ?? {});
-    const current = getAiSettings();
-    const settings: AiSettings = {
-      ...parsed,
-      apiKey: parsed.apiKey?.trim() || current.apiKey
-    };
-    response.json(saveAiSettings(settings));
+  router.put("/ai", async (request, response, next) => {
+    try {
+      const parsed = settingsSchema.parse(request.body ?? {});
+      const endpoint = validateModelEndpoint(parsed.provider, parsed.endpoint).toString();
+      if (parsed.provider === "openai") await assertSafeCloudEndpoint(endpoint);
+      const current = getAiSettings();
+      const submittedApiKey = parsed.apiKey?.trim();
+      const originChanged = new URL(endpoint).origin !== new URL(current.endpoint).origin;
+      if (parsed.provider === "openai" && originChanged && current.apiKey && !submittedApiKey) {
+        throw new ModelEndpointPolicyError("Enter the API key again when changing the model endpoint origin.");
+      }
+      const settings: AiSettings = {
+        ...parsed,
+        endpoint,
+        apiKey: parsed.provider === "openai" ? submittedApiKey || (!originChanged ? current.apiKey : undefined) : undefined
+      };
+      response.json(saveAiSettings(settings));
+    } catch (error) {
+      next(error);
+    }
   });
 
   router.post("/ai/validate", async (_request, response) => {
@@ -59,6 +75,7 @@ export function makeSettingsRoutes(): express.Router {
     try {
       const exchange = await fetch("https://openrouter.ai/api/v1/auth/keys", {
         method: "POST",
+        redirect: "manual",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ code: request.query.code })
       });
@@ -68,7 +85,7 @@ export function makeSettingsRoutes(): express.Router {
         provider: "openai",
         endpoint: openRouterEndpoint,
         apiKey: payload.key,
-        model: "openai/gpt-4.1-mini",
+        model: "openrouter/free",
         timeoutMs: 30000
       });
       response.send(callbackPage(true, "OpenRouter connected. You can close this window."));

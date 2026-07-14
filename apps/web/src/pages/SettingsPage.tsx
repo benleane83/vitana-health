@@ -33,8 +33,8 @@ export function SettingsPage() {
     try {
       await persistSettings();
       setMessage("AI settings saved.");
-    } catch {
-      setMessage("Unable to save AI settings.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to save AI settings.");
     } finally {
       setBusy(false);
     }
@@ -49,8 +49,8 @@ export function SettingsPage() {
       const response = await fetch("/api/settings/ai/validate", { method: "POST", credentials: "include" });
       const result = (await response.json()) as ModelValidation;
       setMessage(result.ok ? `Connection validated in ${result.elapsedMs} ms.` : result.error ?? "Validation failed.");
-    } catch {
-      setMessage("Unable to validate AI settings.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to validate AI settings.");
     } finally {
       setBusy(false);
     }
@@ -77,10 +77,11 @@ export function SettingsPage() {
         <label htmlFor="ai-provider">Provider</label>
         <select id="ai-provider" value={settings.provider} disabled={busy} onChange={(event) => setSettings({ ...settings, provider: event.target.value as AiSettings["provider"] })}>
           <option value="ollama">Ollama</option>
-          <option value="openai">OpenAI-compatible</option>
+          <option value="openai">Cloud API</option>
         </select>
         <label htmlFor="ai-endpoint">Endpoint URL</label>
-        <input id="ai-endpoint" type="url" value={settings.endpoint} disabled={busy} onChange={(event) => setSettings({ ...settings, endpoint: event.target.value })} required />
+        <input id="ai-endpoint" type="url" value={settings.endpoint} disabled={busy} onChange={(event) => setSettings({ ...settings, endpoint: event.target.value })} aria-describedby="ai-endpoint-help" required />
+        <p id="ai-endpoint-help" className="empty">Supported: OpenRouter, OpenAI, Anthropic, Foundry, Azure OpenAI, and AWS Bedrock.</p>
         <label htmlFor="ai-api-key">API key {settings.hasApiKey ? "(saved)" : ""}</label>
         <input id="ai-api-key" type="password" value={apiKey} disabled={busy} placeholder={settings.hasApiKey ? "Leave blank to keep the saved key" : "Required for OpenAI-compatible endpoints"} onChange={(event) => setApiKey(event.target.value)} autoComplete="off" />
         <label htmlFor="ai-model">Model name</label>
@@ -102,6 +103,9 @@ export function SettingsPage() {
 
 async function fetchSettings(path = "/api/settings/ai", options?: RequestInit): Promise<AiSettings> {
   const response = await fetch(path, { ...options, credentials: "include", headers: { "content-type": "application/json", ...options?.headers } });
-  if (!response.ok) throw new Error(await response.text());
+  if (!response.ok) {
+    const payload = await response.json().catch(() => undefined) as { error?: unknown } | undefined;
+    throw new Error(typeof payload?.error === "string" ? payload.error : "AI settings request failed.");
+  }
   return response.json() as Promise<AiSettings>;
 }

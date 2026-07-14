@@ -84,7 +84,7 @@ $env:OLLAMA_MODEL = "qwen3:14b"
 $env:MODEL_TIMEOUT_MS = "90000"
 ```
 
-### Option B: Azure Foundry / OpenAI Responses API
+### Option B: Supported cloud model API
 
 ```powershell
 $env:LLM_PROVIDER = "openai"
@@ -95,6 +95,8 @@ $env:MODEL_TIMEOUT_MS = "30000"
 ```
 
 If `LLM_PROVIDER` is omitted and `OPENAI_RESPONSES_ENDPOINT` plus `OPENAI_API_KEY` are set, the API auto-selects `openai`.
+
+Cloud endpoints are restricted to HTTPS on the official host families for OpenRouter, OpenAI, Anthropic, Azure AI Foundry, Azure OpenAI, and AWS Bedrock Runtime. Anthropic uses its native Messages API. Foundry/Azure use API-key authentication, and Bedrock is supported through its OpenAI-compatible runtime endpoint with a Bedrock API key. Changing endpoint origin requires entering the API key again; redirects and destinations resolving to local, private, link-local, metadata, or reserved addresses are rejected.
 
 Check active runtime configuration:
 
