@@ -20,6 +20,7 @@ function Stop-DesktopProcess([System.Diagnostics.Process]$Process) {
     } catch {
       # Process does not expose a main window in this session.
     }
+    # Give Electron enough time to run the graceful before-quit shutdown path.
     if (-not $Process.WaitForExit(30000)) {
       & taskkill /PID $Process.Id /T /F
       if ($LASTEXITCODE -ne 0) {
@@ -33,7 +34,7 @@ function Stop-DesktopProcess([System.Diagnostics.Process]$Process) {
 }
 
 function Wait-ForHealth {
-  for ($attempt = 0; $attempt -lt $healthTimeoutSeconds; $attempt++) {
+  for ($elapsedSeconds = 0; $elapsedSeconds -lt $healthTimeoutSeconds; $elapsedSeconds++) {
     try {
       $health = Invoke-RestMethod -Uri "https://127.0.0.1:4317/api/health" -SkipCertificateCheck
       if ($health.ok -eq $true) {
