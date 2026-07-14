@@ -7,5 +7,6 @@ test("electron-builder publisherName stays within the Windows config", () => {
   const packageJson = JSON.parse(readFileSync(path.join(__dirname, "package.json"), "utf8"));
 
   assert.equal(Object.hasOwn(packageJson.build, "publisherName"), false);
-  assert.equal(packageJson.build.win.publisherName, "Local Fitness Advisor");
+  assert.equal(Object.hasOwn(packageJson.build.win, "publisherName"), false);
+  assert.equal(packageJson.build.win.signtoolOptions.publisherName, "Local Fitness Advisor");
 });

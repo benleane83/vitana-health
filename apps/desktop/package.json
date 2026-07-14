@@ -44,7 +44,9 @@
       }
     ],
     "win": {
-      "publisherName": "Local Fitness Advisor",
+      "signtoolOptions": {
+        "publisherName": "Local Fitness Advisor"
+      },
       "target": "nsis",
       "verifyUpdateCodeSignature": true
     },
