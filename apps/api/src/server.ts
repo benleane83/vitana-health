@@ -7,8 +7,6 @@ import { PairingStore } from "./pairing.js";
 import {
   hasDuckDbActivationManifest,
   ProfileStoreManager,
-  resolveStoreSecurityConfig,
-  rollbackDuckDbActivation,
   type StoreSecurityConfig
 } from "./store.js";
 import { createApp } from "./createApp.js";
@@ -43,33 +41,19 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
     throw new Error("Could not configure HTTPS for non-loopback API access.");
   }
 
-  const rollbackRequested = env.LFA_DUCKDB_ROLLBACK === "discard-duckdb-changes";
-  if (rollbackRequested && env.LFA_STORAGE_BACKEND !== "json") {
-    throw new Error("LFA_DUCKDB_ROLLBACK requires LFA_STORAGE_BACKEND=json.");
+  if (process.platform !== "win32" || process.arch !== "x64") {
+    throw new Error("DuckDB storage productionization is currently approved only for Windows x64.");
   }
-  if (hasDuckDbActivationManifest() && env.LFA_STORAGE_BACKEND !== "duckdb" && !rollbackRequested) {
-    throw new Error("DuckDB storage is activated for this data directory. Set LFA_STORAGE_BACKEND=duckdb or perform an explicit rollback.");
+  if (!env.LFA_DUCKDB_HTTPFS_EXTENSION) {
+    throw new Error("LFA_DUCKDB_HTTPFS_EXTENSION is required for DuckDB storage.");
   }
-  const storeSecurity = options.storeSecurity ?? (rollbackRequested ? resolveStoreSecurityConfig() : undefined);
-  if (rollbackRequested) {
-    rollbackDuckDbActivation({ security: storeSecurity!, discardDuckDbChanges: true });
-  }
-  let activationState: "initial-activation" | "reopen" | "not-applicable" = "not-applicable";
-  if (env.LFA_STORAGE_BACKEND === "duckdb") {
-    if (process.platform !== "win32" || process.arch !== "x64") {
-      throw new Error("DuckDB storage productionization is currently approved only for Windows x64.");
-    }
-    if (!env.LFA_DUCKDB_HTTPFS_EXTENSION) {
-      throw new Error("LFA_DUCKDB_HTTPFS_EXTENSION is required when LFA_STORAGE_BACKEND=duckdb.");
-    }
-    activationState = hasDuckDbActivationManifest() ? "reopen" : "initial-activation";
-  }
+  const activationState: "initial-activation" | "reopen" = hasDuckDbActivationManifest()
+    ? "reopen"
+    : "initial-activation";
   const storeManager = await ProfileStoreManager.open({
-    security: storeSecurity,
-    storageBackend: env.LFA_STORAGE_BACKEND,
-    duckdb: env.LFA_STORAGE_BACKEND === "duckdb"
-      ? { httpfsExtensionPath: env.LFA_DUCKDB_HTTPFS_EXTENSION! }
-      : undefined
+    security: options.storeSecurity,
+    storageBackend: "duckdb",
+    duckdb: { httpfsExtensionPath: env.LFA_DUCKDB_HTTPFS_EXTENSION }
   });
   const profiles = storeManager.listProfiles();
   const activeProfileId = storeManager.getActiveProfileId();

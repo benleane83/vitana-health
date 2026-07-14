@@ -23,9 +23,7 @@ const envSchema = z.object({
 
   // Data storage
   LFA_DATA_DIR: z.string().optional(),
-  LFA_STORAGE_BACKEND: z.enum(["json", "duckdb"]).default("json"),
   LFA_DUCKDB_HTTPFS_EXTENSION: z.string().optional(),
-  LFA_DUCKDB_ROLLBACK: z.literal("discard-duckdb-changes").optional(),
 
   // TLS
   LFA_TLS_CERT: z.string().optional(),

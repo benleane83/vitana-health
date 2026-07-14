@@ -1,4 +1,5 @@
 import type {
+  AppBootstrap,
   DeleteObservationResponse,
   DeleteObservationsByTypeResponse,
   HealthStoreData
@@ -10,7 +11,7 @@ import {
 import type { DuckDbOptions } from "./duckdbRuntime.js";
 import type { MeasurementDetailPage } from "../summary.js";
 import { deriveProfileStorageKey } from "./profileKey.js";
-import type { ProfileImport, ProfileRepository } from "./profileRepository.js";
+import type { ImportMutationResult, ProfileImport, ProfileRepository } from "./profileRepository.js";
 
 export interface DuckDbHealthStoreOptions {
   root: string;
@@ -29,7 +30,6 @@ export class DuckDbHealthStore {
 
   private constructor(
     private readonly repository: ProfileRepository,
-    private cachedData: HealthStoreData,
     options: DuckDbHealthStoreOptions
   ) {
     this.profileId = options.profileId;
@@ -44,7 +44,7 @@ export class DuckDbHealthStore {
       store,
       options.duckdb
     );
-    return new DuckDbHealthStore(repository, await repository.snapshot(), options);
+    return new DuckDbHealthStore(repository, options);
   }
 
   static async open(options: DuckDbHealthStoreOptions): Promise<DuckDbHealthStore> {
@@ -54,25 +54,28 @@ export class DuckDbHealthStore {
       deriveProfileDatabaseKey(options.passphrase, options.profileId),
       options.duckdb
     );
-    const snapshot = await repository.snapshot();
-    if (snapshot.profile.id !== options.profileId) {
+    const profile = await repository.getProfile();
+    if (profile.id !== options.profileId) {
       await repository.close();
-      throw new Error(`DuckDB health store profile mismatch: expected ${options.profileId}, found ${snapshot.profile.id}.`);
+      throw new Error(`DuckDB health store profile mismatch: expected ${options.profileId}, found ${profile.id}.`);
     }
-    return new DuckDbHealthStore(repository, snapshot, options);
+    return new DuckDbHealthStore(repository, options);
   }
 
-  snapshot(options: { includeRaw?: boolean } = {}): HealthStoreData {
-    const snapshot = structuredClone(this.cachedData);
-    if (options.includeRaw === true) {
-      return snapshot;
+  async readSnapshot(options: { includeRaw?: boolean } = {}): Promise<HealthStoreData> {
+    const snapshot = await this.repository.snapshot();
+    if (options.includeRaw !== true) {
+      snapshot.sourceImports = snapshot.sourceImports.map(({ rawContent: _rawContent, ...sourceImport }) => sourceImport);
     }
-    snapshot.sourceImports = snapshot.sourceImports.map(({ rawContent: _rawContent, ...sourceImport }) => sourceImport);
     return snapshot;
   }
 
   getProfile() {
     return this.repository.getProfile();
+  }
+
+  appBootstrap(): Promise<AppBootstrap> {
+    return this.repository.appBootstrap();
   }
 
   getSummary() {
@@ -85,50 +88,37 @@ export class DuckDbHealthStore {
 
   replaceProfile(profile: HealthStoreData["profile"]): Promise<HealthStoreData["profile"]> {
     return this.enqueueMutation(async () => {
-      const saved = await this.repository.replaceProfile(profile);
-      await this.refreshCache();
-      return saved;
+      return this.repository.replaceProfile(profile);
     });
   }
 
-  mergeImport(parsed: ProfileImport): Promise<HealthStoreData> {
+  mergeImport(parsed: ProfileImport): Promise<ImportMutationResult> {
     return this.enqueueMutation(async () => {
-      this.cachedData = await this.repository.mergeImport(parsed);
-      return this.snapshot();
+      return this.repository.mergeImport(parsed);
     });
   }
 
   addInsight(insight: HealthStoreData["insights"][number]): Promise<HealthStoreData["insights"][number]> {
     return this.enqueueMutation(async () => {
-      const saved = await this.repository.addInsight(insight);
-      await this.refreshCache();
-      return saved;
+      return this.repository.addInsight(insight);
     });
   }
 
   deleteObservation(id: string): Promise<DeleteObservationResponse | undefined> {
     return this.enqueueMutation(async () => {
-      const deleted = await this.repository.deleteObservation(id);
-      if (!deleted) {
-        return undefined;
-      }
-      await this.refreshCache();
-      return { ...deleted, store: this.snapshot() };
+      return this.repository.deleteObservation(id);
     });
   }
 
   deleteObservationsByMeasurementCode(measurementCode: string): Promise<DeleteObservationsByTypeResponse> {
     return this.enqueueMutation(async () => {
-      const deleted = await this.repository.deleteObservationsByMeasurementCode(measurementCode);
-      await this.refreshCache();
-      return { ...deleted, store: this.snapshot() };
+      return this.repository.deleteObservationsByMeasurementCode(measurementCode);
     });
   }
 
   exportData(): Promise<HealthStoreData> {
     return this.enqueueMutation(async () => {
-      this.cachedData = await this.repository.exportData();
-      return this.snapshot({ includeRaw: true });
+      return this.repository.exportData();
     });
   }
 
@@ -139,10 +129,6 @@ export class DuckDbHealthStore {
   async close(): Promise<void> {
     await this.mutationTail;
     await this.repository.close();
-  }
-
-  private async refreshCache(): Promise<void> {
-    this.cachedData = await this.repository.snapshot();
   }
 
   private enqueueMutation<T>(mutation: () => Promise<T>): Promise<T> {

@@ -306,7 +306,7 @@ export function createApp(
           "status" in error && typeof error.status === "number" ? error.status : 500;
 
         if (status >= 500) {
-          log.error(`${status} ${error.constructor?.name ?? "Error"}`, {
+          log.error(`${status} ${error.constructor?.name ?? "Error"}: ${error.message}`, {
             correlationId,
             method: request.method,
             path: request.path,

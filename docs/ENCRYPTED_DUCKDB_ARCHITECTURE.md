@@ -4,19 +4,18 @@
 
 Local Fitness Advisor uses one encrypted DuckDB database per profile as the primary Windows x64 data architecture. The same database is the canonical health store and analytics engine. It replaces whole-store encrypted JSON rewrites and the derived plaintext analytics warehouse during normal operation.
 
-The standalone API retains JSON as its conservative default because macOS and Linux packaging have not been approved. The supported Windows development and packaged desktop hosts select DuckDB explicitly. JSON remains available as a baseline-backed rollback mode, not as synchronized failover.
+DuckDB is the only runtime backend. Existing encrypted JSON profiles are accepted only as a one-time migration source when no DuckDB manifest exists. There is no JSON runtime or rollback mode.
 
 ## Storage layout
 
 Each profile has:
 
 - `duckdb-storage/databases/health-store-<profile-id>.duckdb`: canonical AES-256-GCM DuckDB database.
-- `health-store-<profile-id>.enc`: encrypted JSON snapshot retained at activation or profile creation for rollback.
-- One entry in `storage-backend.json`, containing the source hash, canonical baseline digest, and database filename.
+- One entry in `storage-backend.json`, containing the profile ID and database filename. Existing entries may retain historical source hashes and baseline digests, but runtime reopen does not depend on those files.
 
 `profiles.json` and `active-profile.json` remain small routing metadata files. Profile databases contain normalized imports, sources, devices, measurement types, observations, groups, time-series samples, activities, insights, and audit events. Daily and weekly analytics views are compiled into the encrypted schema.
 
-Successful DuckDB activation removes legacy `health-warehouse*.duckdb` and WAL artifacts. JSON mode may recreate the derived warehouse after an explicit rollback.
+Successful DuckDB migration removes legacy `health-warehouse*.duckdb` and WAL artifacts.
 
 ## Activation and reopen
 
@@ -29,9 +28,9 @@ Initial activation is side by side:
 5. Recheck the source-file SHA-256.
 6. Atomically promote the database and write `storage-backend.json`.
 
-Startup fails closed if the extension, key, source hash, manifest, schema, or profile identity is invalid. Reopen validates every retained baseline before opening its corresponding encrypted database.
+Startup fails closed if the extension, key, manifest, schema, or profile identity is invalid. Reopen reads canonical encrypted databases directly and does not require retained JSON sources.
 
-Profile creation while DuckDB is active creates a new encrypted JSON rollback baseline, hydrates the encrypted database, and then publishes registry and manifest metadata. Profile deletion removes the profile from registry and manifest, closes the database, and removes both storage representations. Restart reconciliation uses the manifest and successfully opened databases as the committed profile set.
+Profile creation builds an empty in-memory seed, hydrates the encrypted database atomically, and then publishes registry and manifest metadata. It does not create an encrypted JSON store. Profile deletion removes the profile from registry and manifest, closes the database, and removes its database files. Restart reconciliation uses the manifest and successfully opened databases as the committed profile set.
 
 ## Encryption and keys
 
@@ -47,27 +46,7 @@ Standalone production API use requires `LFA_SECRET`. It does not have Electron's
 
 DuckDB mode executes compiled, SELECT-only queries directly against the active encrypted profile. Import and mutation responses report `encrypted-profile:<profile-id>` and do not build a second warehouse.
 
-JSON fallback retains the existing warehouse implementation behind the analytics backend adapter. This isolates fallback behavior without permanent dual writes.
-
-## Rollback
-
-Rollback is explicit and destructive. It verifies every retained JSON file against both its stored SHA-256 and canonical activation digest, archives `storage-backend.json`, and starts JSON mode. All DuckDB changes made after each profile baseline was created are discarded.
-
-For local development:
-
-```powershell
-npm run dev:rollback
-```
-
-For an installed desktop, stop the app and launch once with:
-
-```powershell
-$env:LFA_STORAGE_BACKEND = "json"
-$env:LFA_DUCKDB_ROLLBACK = "discard-duckdb-changes"
-& "C:\Program Files\Local Fitness Advisor\Local Fitness Advisor.exe"
-```
-
-Clear both environment variables after the rollback launch. Keep the archived manifest and DuckDB directory until the rollback is reviewed.
+The legacy warehouse implementation remains only for migration-era tests and is not reachable from supported runtime startup.
 
 ## Evidence
 

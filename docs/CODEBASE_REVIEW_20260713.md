@@ -115,7 +115,7 @@ This blocks trustworthy typecheck, build, test, packaging, dependency review, an
 
 **Status (partially addressed 2026-07-13):** The accidental root self-dependency was removed and workspace lock metadata regenerated. Clean-install and CI-gate verification remain open.
 
-#### P1 — CI does not validate the actual Windows desktop product
+#### [IN PROGRESS] P1 — CI does not validate the actual Windows desktop product
 
 CI runs only on Ubuntu and builds shared/API/web, typechecks Android, runs Vitest, and audits dependencies (`.github/workflows/ci.yml:8-89`). It does not:
 
@@ -129,13 +129,17 @@ The production storage path explicitly rejects non-Windows x64 (`apps/api/src/se
 
 **Required:** Add a Windows x64 release gate that packages and smoke-tests the installer and encrypted DuckDB runtime. Run the desktop tests in normal CI and retain installer hashes and test evidence for releases.
 
-#### P1 — The public Windows installer has no signing or distribution hardening
+**Status (partially addressed 2026-07-13):** Initial version now added in draft PR
+
+#### [IN PROGRESS] P1 — The public Windows installer has no signing or distribution hardening
 
 The Electron configuration creates a per-machine NSIS installer and firewall rule, but contains no Windows code-signing configuration (`apps/desktop/package.json:22-54`). The firewall script does not inspect command failure (`apps/desktop/build/installer.nsh:1-7`).
 
 Unsigned public binaries will produce poor SmartScreen trust and make update authenticity difficult to establish.
 
 **Required:** Define code-signing ownership and protected credentials, sign and verify both application and installer, test firewall-rule failure/retry/removal, publish checksums, and document a secure update/release channel.
+
+**Status (partially addressed 2026-07-13):** Initial version now added in draft PR
 
 #### P1 — Android and native pinning logic lack automated tests
 
@@ -161,19 +165,30 @@ The chronological lab-marker bug from the previous review is addressed by using 
 
 **Required:** Stop silent eviction. Define retention per data class and category, return explicit accepted/deduplicated/evicted counts, preserve source diagnostics, provide capacity warnings, and let the user export before destructive compaction. Benchmark limits against realistic one-, three-, and five-year datasets.
 
-#### P1 — DuckDB removes whole-file rewrites but operations remain full-snapshot heavy
+#### [IN PROGRESS] P1 — DuckDB removes whole-file rewrites but operations remain full-snapshot heavy
 
 The migration fixes the previous full encrypted-JSON rewrite and plaintext warehouse design. However, every `mergeImport` still reads the complete database into arrays, computes in-memory retention/deduplication, diffs collections, performs row-by-row synchronization, then snapshots the whole database again (`apps/api/src/storage/duckdbRepository.ts:106-225,269-358`). `DuckDbHealthStore` also retains a full in-memory `HealthStoreData` cache (`apps/api/src/storage/duckdbHealthStore.ts:30-37,94-105,144-151`).
 
-The web app simultaneously requests the full store and analytics on refresh (`apps/web/src/App.tsx:248-252`), and several mutation responses return the full store (`apps/api/src/routes/importRoutes.ts:97-145,167-224`).
+**Status (substantially addressed 2026-07-14):** Normal web startup and routine refresh now use a bounded `GET /api/bootstrap` projection rather than `/api/store`. The projection contains profile metadata, measurement types, active reusable manual-group templates, latest insight, and aggregate counts; it excludes observation history, samples, sources, audit events, and raw import content. Import and deletion routes now return compact mutation metadata instead of complete stores.
 
-This will create avoidable memory, serialization, and latency costs near the configured row limits despite using native DuckDB.
+`DuckDbRepository.mergeImport()` now appends only novel rows by primary key and performs retention in SQL. It no longer reads a pre-import database snapshot, materializes persisted collections in memory, synchronizes whole tables row-by-row, or returns a full post-import snapshot. It returns aggregate committed counts plus the audit event. Existing encrypted profile databases and schema remain intact.
 
-**Required:** Make imports set-based and incremental, query summaries/details directly, stop maintaining a complete cache as the routine read model, return compact mutation results, and remove `/api/store` from normal web startup. Establish import, startup, query, and memory budgets with representative data.
+Runtime startup is now DuckDB-only. JSON and rollback launch controls have been removed, existing manifests no longer require retained JSON files, and new profiles are created directly in DuckDB. Encrypted JSON remains only as a one-time migration source when no manifest exists.
+
+The complete `DuckDbHealthStore` compatibility cache has also been removed. Profile reopen reads only the profile row, mutations no longer refresh or maintain a full in-memory mirror, and callers that genuinely need a complete store use an explicit asynchronous repository snapshot. Synchronous snapshots are restricted to the one-time JSON migration implementation.
+
+**Pending work:**
+
+- Return accepted, duplicate/skipped, and evicted counts from persistence so import responses can accurately describe the committed result rather than only parsed input counts.
+- Move remaining snapshot-based consumers, including analytics, biological-age, insight generation, clinician reports, and query planning, to direct or deliberately bounded repository projections.
+- Keep `/api/store` as an explicit export/debug or migration endpoint; do not reintroduce it into normal app startup or mutation refresh paths.
+- Establish representative import, startup, query, payload-size, and peak-memory budgets after the incremental import path is in place.
+
+**Required before public release:** Complete committed import accounting and the remaining bounded projections, then validate against representative one-, three-, and five-year datasets.
 
 #### P1 — Active DuckDB data has no user-facing backup/restore path
 
-The retained encrypted JSON is an activation baseline, not a current backup; explicit rollback discards all post-activation DuckDB changes (`docs/ENCRYPTED_DUCKDB_ARCHITECTURE.md:52-70`). The active database has transactional crash safety but no documented versioned backup, integrity-check schedule, restore workflow, or in-product recovery action.
+Retained encrypted JSON files, where present from migration, are historical snapshots rather than current backups. The active database has transactional crash safety but no documented versioned backup, integrity-check schedule, restore workflow, or in-product recovery action.
 
 `SECURITY.md` still describes `.enc.bak` automatic recovery as if it protects the current store (`SECURITY.md:61-67`), which is false for normal DuckDB operation.
 
@@ -223,6 +238,7 @@ The web client discards HTTP status and correlation IDs and throws raw response 
 - DuckDB hydration is transactional, parity-checked, checkpointed, and atomically promoted (`apps/api/src/storage/duckdbRepository.ts:41-79`).
 - Desktop DuckDB keys are wrapped with Electron `safeStorage`; insecure Linux storage is rejected.
 - Cloud-query routes have explicit consent UI and bounded prompt-row sanitization.
+- Normal web startup uses a bounded bootstrap projection, and import/delete API responses no longer serialize complete health stores.
 - Android sync now supports selected categories, partial grants, a cursor with overlap, paginated reads, provenance, bounded chunks, retries, and pinning (`apps/android-companion/src/syncHealthConnect.ts:19-75,187-222,370-385,417-513,563-570`).
 - The Android production/preview/development profiles and release checklist are substantially clearer.
 - API modularization, environment validation, structured logging, graceful shutdown, stable public error codes, and web semantics remain good foundations.
@@ -232,11 +248,11 @@ The web client discards HTTP status and correlation IDs and throws raw response 
 - LAN authentication exists, but companion authorization is dangerously overbroad.
 - Cloud consent exists, but one model path bypasses enforcement.
 - Retention ordering improved, but silent eviction and unbounded metadata remain.
-- DuckDB avoids file rewrites, but full snapshots remain on hot paths.
+- DuckDB avoids file rewrites; imports are incremental, mutation payloads are bounded, and profiles no longer materialize a full in-memory cache at open. Several explicit analytics/report/query operations still request full snapshots and need bounded projections.
 - Android profile networking still bypasses pinning/authentication.
 - Play privacy work and executed release evidence remain outstanding.
 - Accessibility semantics improved, but independent verification remains outstanding.
-- Query lifecycle consolidation and compact API responses remain incomplete.
+- Typed API errors, lifecycle documentation, and migration of the remaining snapshot-based analytics/report/query consumers remain incomplete.
 
 ## Positive foundations to preserve
 

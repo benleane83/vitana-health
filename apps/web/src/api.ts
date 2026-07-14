@@ -1,4 +1,5 @@
 import type {
+  AppBootstrap,
   AnalyticsSummary,
   BiologicalAgeReport,
   BodyCompositionDraft,
@@ -147,9 +148,33 @@ export interface ProfilesResponse {
   activeProfileId: string;
 }
 
+export interface ImportMutationResponse {
+  import: {
+    id: string;
+    sourceKind: string;
+    fileName: string;
+    importedAt: string;
+    parserVersion: string;
+    checksum: string;
+    rowCount: number;
+    status: string;
+    diagnostics: string[];
+  };
+  changes: {
+    observations: number;
+    observationGroups: number;
+    timeSeriesSamples: number;
+    activitySessions: number;
+  };
+}
+
+export type DeleteObservationMutationResponse = Omit<DeleteObservationResponse, "store">;
+export type DeleteObservationsByTypeMutationResponse = Omit<DeleteObservationsByTypeResponse, "store">;
+
 export const api = {
   health: () => request<{ ok: boolean; uptime: number }>("/api/health"),
   store: () => request<HealthStoreData>("/api/store"),
+  bootstrap: () => request<AppBootstrap>("/api/bootstrap"),
   analytics: () => request<AnalyticsSummary>("/api/analytics"),
   biologicalAge: () => request<BiologicalAgeReport>("/api/biological-age"),
   exportPdf: async () => {
@@ -168,9 +193,9 @@ export const api = {
     const suffix = query.size > 0 ? `?${query.toString()}` : "";
     return request<HealthDataDetail>(`/api/summary/${encodeURIComponent(measurementCode)}${suffix}`);
   },
-  deleteObservation: (id: string) => request<DeleteObservationResponse>(`/api/observations/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  deleteObservation: (id: string) => request<DeleteObservationMutationResponse>(`/api/observations/${encodeURIComponent(id)}`, { method: "DELETE" }),
   deleteObservationsByType: (measurementCode: string) =>
-    request<DeleteObservationsByTypeResponse>(`/api/observations/by-type/${encodeURIComponent(measurementCode)}`, { method: "DELETE" }),
+    request<DeleteObservationsByTypeMutationResponse>(`/api/observations/by-type/${encodeURIComponent(measurementCode)}`, { method: "DELETE" }),
   saveProfile: (profile: Omit<Profile, "id" | "updatedAt">) =>
     request<Profile>("/api/profile", { method: "PUT", body: JSON.stringify(profile) }),
   cloudAiConsent: {
@@ -191,9 +216,9 @@ export const api = {
   commitBloodTestReport: (payload: BodyCompositionDraftCommitPayload) =>
     request<{ store: HealthStoreData }>("/api/import/blood-test/commit", { method: "POST", body: JSON.stringify(payload) }),
   importManualLabEntry: (payload: ManualLabEntryPayload) =>
-    request<{ store: HealthStoreData }>("/api/import/labs/manual", { method: "POST", body: JSON.stringify(payload) }),
+    request<ImportMutationResponse>("/api/import/labs/manual", { method: "POST", body: JSON.stringify(payload) }),
   importManualObservations: (payload: { observedAt: string; label: string; sourceName?: string; observations: Array<{ measurementName?: string; measurementCode?: string; value: number; unit?: string }> }) =>
-    request<{ store: HealthStoreData }>("/api/import/observations/manual", { method: "POST", body: JSON.stringify(payload) }),
+    request<ImportMutationResponse>("/api/import/observations/manual", { method: "POST", body: JSON.stringify(payload) }),
   generateInsight: () => request<Insight>("/api/insights/generate", { method: "POST" }),
   pairing: {
     qr: async () => {

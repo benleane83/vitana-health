@@ -46,8 +46,33 @@ describe("DuckDbHealthStore", () => {
     };
     const store = await DuckDbHealthStore.hydrate(options, fixture);
     try {
-      expect(store.snapshot({ includeRaw: true })).toEqual(fixture);
-      expect(store.snapshot().sourceImports[0]?.rawContent).toBeUndefined();
+      expect(await store.readSnapshot({ includeRaw: true })).toEqual(fixture);
+      expect((await store.readSnapshot()).sourceImports[0]?.rawContent).toBeUndefined();
+
+      const importResult = await store.mergeImport({
+        sourceImport: {
+          ...fixture.sourceImports[0],
+          id: "adapter-import",
+          fileName: "adapter.csv",
+          checksum: "adapter-checksum"
+        },
+        dataSource: {
+          ...fixture.dataSources[0],
+          id: "adapter-source",
+          importId: "adapter-import"
+        },
+        observations: [{
+          ...fixture.observations[0],
+          id: "adapter-observation",
+          sourceId: "adapter-source"
+        }],
+        observationGroups: [],
+        timeSeriesSamples: [],
+        activitySessions: []
+      });
+      expect(importResult.counts).toMatchObject({ imports: 2, observations: 3 });
+      expect((await store.readSnapshot()).observations.some((entry) => entry.id === "adapter-observation")).toBe(true);
+      expect((await store.readSnapshot()).auditEvents[0]).toEqual(importResult.auditEvent);
 
       await Promise.all([
         store.addInsight({
@@ -72,8 +97,8 @@ describe("DuckDbHealthStore", () => {
 
     const reopened = await DuckDbHealthStore.open(options);
     try {
-      expect(reopened.snapshot().insights[0]?.id).toBe("adapter-insight");
-      expect(reopened.snapshot().observations.some((entry) => entry.id === "observation-z")).toBe(false);
+      expect((await reopened.readSnapshot()).insights[0]?.id).toBe("adapter-insight");
+      expect((await reopened.readSnapshot()).observations.some((entry) => entry.id === "observation-z")).toBe(false);
     } finally {
       await reopened.close();
     }

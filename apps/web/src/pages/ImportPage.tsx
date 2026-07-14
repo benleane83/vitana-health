@@ -15,10 +15,12 @@ export function ImportPage({
   onScanKindChange,
   observationGroup,
   observationGroupOptions,
+  manualMeasurementTypes,
   labName,
   collectedAt,
   rows,
   onObservationGroupChange,
+  onCustomObservationGroupChange,
   onLabNameChange,
   onCollectedAtChange,
   onRowChange,
@@ -50,10 +52,12 @@ export function ImportPage({
   onScanKindChange: (kind: ScanKind) => void;
   observationGroup: string;
   observationGroupOptions: string[];
+  manualMeasurementTypes: MeasurementType[];
   labName: string;
   collectedAt: string;
   rows: ManualMarkerRow[];
   onObservationGroupChange: (value: string) => void;
+  onCustomObservationGroupChange: (value: string) => void;
   onLabNameChange: (value: string) => void;
   onCollectedAtChange: (value: string) => void;
   onRowChange: (id: string, patch: Partial<ManualMarkerRow>) => void;
@@ -156,8 +160,9 @@ export function ImportPage({
             labName={labName}
             collectedAt={collectedAt}
             rows={rows}
-            measurementTypes={measurementTypes}
+            measurementTypes={manualMeasurementTypes}
             onObservationGroupChange={onObservationGroupChange}
+            onCustomObservationGroupChange={onCustomObservationGroupChange}
             onLabNameChange={onLabNameChange}
             onCollectedAtChange={onCollectedAtChange}
             onRowChange={onRowChange}
@@ -223,6 +228,17 @@ function downloadObservationCsvTemplate() {
 
 // ─── Manual lab entry form ────────────────────────────────────────────────────
 
+const customObservationGroupValue = "__custom__";
+const measurementCategoryLabels: Record<MeasurementType["category"], string> = {
+  activity: "Activity",
+  body: "Body",
+  cardio: "Cardio",
+  derived: "Derived",
+  lab: "Lab",
+  metabolic: "Metabolic",
+  sleep: "Sleep"
+};
+
 function ManualEntryForm({
   busy,
   observationGroup,
@@ -232,6 +248,7 @@ function ManualEntryForm({
   measurementTypes,
   rows,
   onObservationGroupChange,
+  onCustomObservationGroupChange,
   onLabNameChange,
   onCollectedAtChange,
   onRowChange,
@@ -247,6 +264,7 @@ function ManualEntryForm({
   measurementTypes: MeasurementType[];
   rows: ManualMarkerRow[];
   onObservationGroupChange: (value: string) => void;
+  onCustomObservationGroupChange: (value: string) => void;
   onLabNameChange: (value: string) => void;
   onCollectedAtChange: (value: string) => void;
   onRowChange: (id: string, patch: Partial<ManualMarkerRow>) => void;
@@ -255,6 +273,9 @@ function ManualEntryForm({
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
   const [customMeasurementRows, setCustomMeasurementRows] = useState<Record<string, true>>({});
+  const selectedObservationGroup = observationGroupOptions.includes(observationGroup)
+    ? observationGroup
+    : customObservationGroupValue;
 
   useEffect(() => {
     setCustomMeasurementRows((current) => {
@@ -272,33 +293,48 @@ function ManualEntryForm({
   return (
     <form className="labs-manual-form" onSubmit={onSubmit}>
       <div className="labs-manual-meta">
-        <label htmlFor="manual-collected-at">Observation date</label>
-        <input
-          id="manual-collected-at"
-          type="date"
-          value={collectedAt}
-          onChange={(event) => onCollectedAtChange(event.target.value)}
-        />
-        <label htmlFor="manual-observation-group">Observation group</label>
-        <input
-          id="manual-observation-group"
-          list="manual-observation-group-options"
-          value={observationGroup}
-          onChange={(event) => onObservationGroupChange(event.target.value)}
-          placeholder="General observations"
-        />
-        <datalist id="manual-observation-group-options">
-          {observationGroupOptions.map((option) => (
-            <option key={option} value={option} />
-          ))}
-        </datalist>
-        <label htmlFor="manual-lab-name">Lab name (optional)</label>
-        <input
-          id="manual-lab-name"
-          value={labName}
-          onChange={(event) => onLabNameChange(event.target.value)}
-          placeholder="Quest Diagnostics"
-        />
+        <div className="labs-manual-field">
+          <label htmlFor="manual-collected-at">Observation date</label>
+          <input
+            id="manual-collected-at"
+            type="date"
+            value={collectedAt}
+            onChange={(event) => onCollectedAtChange(event.target.value)}
+          />
+        </div>
+        <div className="labs-manual-field">
+          <label htmlFor="manual-observation-group">Observation group</label>
+          <select
+            id="manual-observation-group"
+            value={selectedObservationGroup}
+            onChange={(event) => onObservationGroupChange(
+              event.target.value === customObservationGroupValue ? "" : event.target.value
+            )}
+          >
+            {observationGroupOptions.map((option) => (
+              <option key={option} value={option}>{option}</option>
+            ))}
+            <option value={customObservationGroupValue}>Custom group</option>
+          </select>
+          {selectedObservationGroup === customObservationGroupValue ? (
+            <input
+              id="manual-custom-observation-group"
+              value={observationGroup}
+              onChange={(event) => onCustomObservationGroupChange(event.target.value)}
+              placeholder="Enter a custom group"
+              aria-label="Custom observation group"
+            />
+          ) : null}
+        </div>
+        <div className="labs-manual-field">
+          <label htmlFor="manual-lab-name">Lab name (optional)</label>
+          <input
+            id="manual-lab-name"
+            value={labName}
+            onChange={(event) => onLabNameChange(event.target.value)}
+            placeholder="Quest Diagnostics"
+          />
+        </div>
       </div>
 
       <div className="labs-rows" role="table" aria-label="Manual observations">
@@ -366,6 +402,7 @@ function ManualMeasurementRow({
   const unitInputId = `lab-unit-${row.id}`;
   const selectedMeasurementCode = customMeasurement ? "" : resolveKnownMeasurementSelectionForManual(row, measurementTypes);
   const showCustomFields = selectedMeasurementCode === "";
+  const measurementGroups = groupMeasurementTypes(measurementTypes);
 
   return (
     <div className="summary-row labs-row" role="row">
@@ -395,9 +432,17 @@ function ManualMeasurementRow({
           }}
         >
           <option value="">Custom / free text</option>
-          {measurementTypes.map((type) => (
-            <option value={type.code} key={type.code}>{type.display} ({type.code})</option>
-          ))}
+          {measurementGroups.length > 1
+            ? measurementGroups.map(([category, types]) => (
+              <optgroup key={category} label={measurementCategoryLabels[category]}>
+                {types.map((type) => (
+                  <option value={type.code} key={type.code}>{type.display} ({type.code})</option>
+                ))}
+              </optgroup>
+            ))
+            : measurementTypes.map((type) => (
+              <option value={type.code} key={type.code}>{type.display} ({type.code})</option>
+            ))}
         </select>
         {showCustomFields ? (
           <>
@@ -871,6 +916,18 @@ function resolveKnownMeasurementSelectionForManual(row: ManualMarkerRow, measure
     return type.aliases.some((alias) => alias.trim().toLowerCase() === normalizedLabel);
   });
   return byLabel?.code ?? "";
+}
+
+function groupMeasurementTypes(measurementTypes: MeasurementType[]): Array<[MeasurementType["category"], MeasurementType[]]> {
+  const byCategory = new Map<MeasurementType["category"], MeasurementType[]>();
+  for (const measurementType of measurementTypes) {
+    const group = byCategory.get(measurementType.category) ?? [];
+    group.push(measurementType);
+    byCategory.set(measurementType.category, group);
+  }
+  return [...byCategory.entries()].sort(([left], [right]) =>
+    measurementCategoryLabels[left].localeCompare(measurementCategoryLabels[right])
+  );
 }
 
 function resolveKnownMeasurementSelection(row: BodyCompositionEditableRow, measurementTypes: MeasurementType[]): string {

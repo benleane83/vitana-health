@@ -192,6 +192,29 @@ export interface HealthStoreData {
   auditEvents: AuditEvent[];
 }
 
+export interface ManualObservationGroupTemplate {
+  label: string;
+  normalizedLabel: string;
+  measurements: Array<{
+    measurementCode: string;
+    marker: string;
+    unit: string;
+  }>;
+}
+
+export interface AppBootstrap {
+  profile: Profile;
+  measurementTypes: MeasurementType[];
+  manualObservationGroupTemplates: ManualObservationGroupTemplate[];
+  latestInsight?: Insight;
+  counts: {
+    imports: number;
+    observations: number;
+    samples: number;
+    activities: number;
+  };
+}
+
 export interface AnalyticsSummary {
   counts: {
     imports: number;

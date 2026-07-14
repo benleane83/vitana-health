@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildManualLabEntryImport } from "@local-fitness-advisor/shared";
 import { refreshAnalyticsStorage, runAnalyticsQuery } from "../storage/analyticsBackend.js";
-import { HealthStore, ProfileStoreManager, rollbackDuckDbActivation } from "../store.js";
+import { HealthStore, ProfileStoreManager } from "../store.js";
 
 const httpfsExtensionPath = findPreparedExtension();
 let tempDir: string;
@@ -60,7 +60,7 @@ describe.skipIf(!httpfsExtensionPath)("ProfileStoreManager DuckDB activation", (
     await manager.closeAll();
   });
 
-  it("migrates side by side, reopens DuckDB, and explicitly rolls back to JSON", async () => {
+  it("migrates side by side and reopens DuckDB without reading the JSON source", async () => {
     const manager = new ProfileStoreManager();
     await manager.getActiveStore().mergeImport(buildManualLabEntryImport({
       collectedAt: "2026-07-13T00:00:00.000Z",
@@ -75,7 +75,7 @@ describe.skipIf(!httpfsExtensionPath)("ProfileStoreManager DuckDB activation", (
     expect(manager.getStorageBackend()).toBe("duckdb");
     expect(existsSync(join(tempDir, "storage-backend.json"))).toBe(true);
     expect(hashFile(sourcePath)).toBe(sourceHash);
-    const analyticsStorage = await refreshAnalyticsStorage(manager, manager.getActiveStore().snapshot());
+    const analyticsStorage = await refreshAnalyticsStorage(manager, await manager.getActiveStore().readSnapshot());
     expect(analyticsStorage).toMatchObject({
       databasePath: "encrypted-profile:self",
       engine: "duckdb"
@@ -111,7 +111,7 @@ describe.skipIf(!httpfsExtensionPath)("ProfileStoreManager DuckDB activation", (
     });
     try {
       expect(reopened.getStorageBackend()).toBe("duckdb");
-      expect(reopened.getActiveStore().snapshot().insights[0]?.id).toBe("post-activation-insight");
+      expect((await reopened.getActiveStore().readSnapshot()).insights[0]?.id).toBe("post-activation-insight");
       expect(hashFile(sourcePath)).toBe(sourceHash);
       expect(jsonSnapshotSpy).not.toHaveBeenCalled();
     } finally {
@@ -119,32 +119,15 @@ describe.skipIf(!httpfsExtensionPath)("ProfileStoreManager DuckDB activation", (
       await reopened.closeAll();
     }
 
-    const archivedManifestPath = rollbackDuckDbActivation({
-      security: { passphrase: process.env.LFA_SECRET!, securityMode: "env-secret" },
-      discardDuckDbChanges: true
-    });
-    expect(existsSync(join(tempDir, "storage-backend.json"))).toBe(false);
-    expect(existsSync(archivedManifestPath)).toBe(true);
-    expect(hashFile(sourcePath)).toBe(sourceHash);
     const telemetry = readFileSync(join(tempDir, "storage-pilot.ndjson"), "utf8")
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line) as Record<string, unknown>);
     expect(telemetry.map((entry) => entry.code)).toEqual([
       "storage-duckdb-activated",
-      "storage-duckdb-reopened",
-      "storage-duckdb-rolled-back"
+      "storage-duckdb-reopened"
     ]);
     expect(telemetry.every((entry) => Object.keys(entry).sort().join(",") === "code,durationMs,profileCount,storageBackend,ts")).toBe(true);
-
-    const rolledBack = new ProfileStoreManager();
-    try {
-      expect(rolledBack.getStorageBackend()).toBe("json");
-      expect(rolledBack.getActiveStore().snapshot().insights).toHaveLength(0);
-      expect(hashFile(sourcePath)).toBe(sourceHash);
-    } finally {
-      await rolledBack.closeAll();
-    }
   }, 30_000);
 
   it("creates, reopens, and deletes profiles while DuckDB is active", async () => {
@@ -153,11 +136,11 @@ describe.skipIf(!httpfsExtensionPath)("ProfileStoreManager DuckDB activation", (
 
     const created = await manager.createProfile("Pilot profile");
     expect(created.id).toBe("pilot-profile");
-    expect(existsSync(join(tempDir, "health-store-pilot-profile.enc"))).toBe(true);
+    expect(existsSync(join(tempDir, "health-store-pilot-profile.enc"))).toBe(false);
     expect(existsSync(join(duckdbRoot, "databases", "health-store-pilot-profile.duckdb"))).toBe(true);
     await expect(refreshAnalyticsStorage(
       manager,
-      manager.getStore(created.id).snapshot(),
+      await manager.getStore(created.id).readSnapshot(),
       created.id
     )).resolves.toMatchObject({ databasePath: "encrypted-profile:pilot-profile" });
     manager.setActiveProfile(created.id);
@@ -179,7 +162,7 @@ describe.skipIf(!httpfsExtensionPath)("ProfileStoreManager DuckDB activation", (
       expect.objectContaining({ id: "pilot-profile", displayName: "Pilot profile" })
     ]));
     expect(reopened.getActiveProfileId()).toBe("pilot-profile");
-    expect(reopened.getActiveStore().snapshot().insights[0]?.id).toBe("pilot-profile-insight");
+    expect((await reopened.getActiveStore().readSnapshot()).insights[0]?.id).toBe("pilot-profile-insight");
 
     const deleted = await reopened.deleteProfile("pilot-profile");
     expect(deleted.activeProfileId).toBe("self");

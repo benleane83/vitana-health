@@ -248,7 +248,7 @@ describe("ProfileStoreManager", () => {
     expect(existsSync(backupPath)).toBe(true);
   });
 
-  it("migrates a legacy single-store file into the self profile", () => {
+  it("migrates a legacy single-store file into the self profile", async () => {
     const legacy = makeStore();
     legacy.addInsight({
       id: "legacy-test",
@@ -269,7 +269,7 @@ describe("ProfileStoreManager", () => {
     const manager = new ProfileStoreManager();
     expect(manager.getActiveProfileId()).toBe("self");
     expect(manager.listProfiles().map((entry) => entry.id)).toContain("self");
-    expect(manager.getStore("self").snapshot().insights).toHaveLength(1);
+    expect((await manager.getStore("self").readSnapshot()).insights).toHaveLength(1);
   });
 
   it("keeps profile stores isolated and tracks the active profile", async () => {
@@ -278,12 +278,13 @@ describe("ProfileStoreManager", () => {
     expect(created.id).toBe("shabnam-sarjami");
 
     manager.setActiveProfile(created.id);
-    manager.getActiveStore().replaceProfile({
-      ...manager.getActiveStore().snapshot().profile,
+    const currentProfile = (await manager.getActiveStore().readSnapshot()).profile;
+    await manager.getActiveStore().replaceProfile({
+      ...currentProfile,
       id: created.id,
       displayName: "Shabnam"
     });
-    manager.syncProfileEntry(manager.getActiveStore().snapshot().profile);
+    manager.syncProfileEntry(await manager.getActiveStore().getProfile());
 
     expect(manager.getActiveProfileId()).toBe("shabnam-sarjami");
     expect(manager.listProfiles()).toEqual(
