@@ -9,3 +9,7 @@ I'm only testing on Windows x64 currently, but I intend to support Linux and Mac
 ## Database design
 
 I'm currently using DuckDB as a local database, but considering SQLite as an alternative if transactional performance suffers. When working on database changes, please consider this and use abstractions over DuckDB where relevant to make swapping DB providers easier later.
+
+## Mobile app design
+
+My current mobile companion app is designed for sync of Health Connect data only to the API layer of my PC app. My longer term plan is to expand the mobile app to feature dashboards and copies of selected PC app features for the mobile device. Implementation hasn't started yet, but keep this in mind when developing PC features so they can be easily exposed/mirrored later.

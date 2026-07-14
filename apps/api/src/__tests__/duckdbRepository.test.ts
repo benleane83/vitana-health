@@ -11,6 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { computeAnalytics } from "@local-fitness-advisor/shared";
 import {
   closeEncryptedDuckDbDatabase,
   createDuckDbSchema,
@@ -51,6 +52,7 @@ describe("DuckDbRepository fidelity", () => {
       });
       expect(bootstrap).not.toHaveProperty("observations");
       expect(bootstrap).not.toHaveProperty("sourceImports");
+      expect(await repository.analyticsSummary()).toEqual(computeAnalytics(fixture));
     } finally {
       await repository.close();
     }

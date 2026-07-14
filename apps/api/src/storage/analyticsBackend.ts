@@ -1,4 +1,8 @@
-import type { HealthStoreData } from "@local-fitness-advisor/shared";
+import type {
+  DeleteObservationResponse,
+  DeleteObservationsByTypeResponse,
+  HealthStoreData
+} from "@local-fitness-advisor/shared";
 import type { ProfileStoreManager } from "../store.js";
 import type { ImportMutationResult } from "./profileRepository.js";
 import type { QueryDSL } from "../aiQueryPlanner.js";
@@ -11,17 +15,17 @@ import type { WarehouseBuildResult } from "../warehouse.js";
 
 export async function refreshAnalyticsStorage(
   storeManager: ProfileStoreManager,
-  source: HealthStoreData | ImportMutationResult,
+  source: HealthStoreData | ImportMutationResult | DeleteObservationResponse | DeleteObservationsByTypeResponse,
   profileId = storeManager.getActiveProfileId()
 ): Promise<WarehouseBuildResult> {
-  const counts = "counts" in source
-    ? source.counts
-    : {
+  const counts = "sourceImports" in source
+    ? {
         imports: source.sourceImports.length,
         observations: source.observations.length,
         samples: source.timeSeriesSamples.length,
         activities: source.activitySessions.length
-      };
+      }
+    : source.counts;
   return {
     databasePath: `encrypted-profile:${profileId}`,
     engine: "duckdb",
@@ -51,7 +55,5 @@ export function validateAnalyticsQuery(
 }
 
 function analyticsQueryCompilerFor(_storeManager: ProfileStoreManager) {
-  // JSON mode still uses the DuckDB warehouse, while active encrypted profiles
-  // use DuckDB directly. A SQLCipher implementation belongs here, not in routes.
   return duckDbAnalyticsQueryCompiler;
 }

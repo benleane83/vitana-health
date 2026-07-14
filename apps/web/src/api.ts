@@ -168,8 +168,8 @@ export interface ImportMutationResponse {
   };
 }
 
-export type DeleteObservationMutationResponse = Omit<DeleteObservationResponse, "store">;
-export type DeleteObservationsByTypeMutationResponse = Omit<DeleteObservationsByTypeResponse, "store">;
+export type DeleteObservationMutationResponse = DeleteObservationResponse;
+export type DeleteObservationsByTypeMutationResponse = DeleteObservationsByTypeResponse;
 
 export const api = {
   health: () => request<{ ok: boolean; uptime: number }>("/api/health"),

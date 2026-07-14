@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { HealthStoreData } from "./types.js";
+import type { HealthStoreData, InsightModel } from "./types.js";
 
 export const CURRENT_SCHEMA_VERSION = 2 as const;
 
@@ -9,15 +9,28 @@ const sourceKind = z.enum([
 ]);
 const stringRecord = z.record(z.unknown());
 
-const profileSchema = z.object({
+export const profileSchema = z.object({
   id: z.string(), displayName: z.string(), birthYear: z.number().optional(),
   sex: z.enum(["female", "male", "intersex", "unknown", "not-specified"]).optional(),
-  bloodType: z.string().optional(),
+  bloodType: z.enum([
+    "a-positive", "a-negative", "b-positive", "b-negative", "ab-positive", "ab-negative",
+    "o-positive", "o-negative", "unknown"
+  ]).optional(),
   heightCm: z.number().optional(), goalSummary: z.string().optional(),
   cloudAiConsent: z.object({
     enabled: z.boolean(), providerScopeAccepted: z.boolean(), consentedAt: z.string().optional(), consentVersion: z.string().optional()
   }).optional(),
   units: z.enum(["metric", "imperial"]), updatedAt: z.string()
+}).strict();
+
+export const insightSchema = z.object({
+  id: z.string(), createdAt: z.string(), title: z.string(), body: z.string(), evidence: z.array(z.string()),
+  confidence: z.enum(["low", "medium", "high"]),
+  model: z.custom<InsightModel>((value) =>
+    value === "deterministic" || value === "local-llm" ||
+    (typeof value === "string" && /^(ollama|openai):.+$/.test(value))
+  ),
+  safetyNotice: z.string()
 }).strict();
 
 const storeFields = {
@@ -60,10 +73,7 @@ const storeFields = {
     id: z.string(), activityType: z.string(), startAt: z.string(), endAt: z.string().optional(), durationMinutes: z.number().optional(),
     energyKcal: z.number().optional(), distanceMeters: z.number().optional(), sourceId: z.string(), sourceJson: z.unknown().optional()
   }).strict()),
-  insights: z.array(z.object({
-    id: z.string(), createdAt: z.string(), title: z.string(), body: z.string(), evidence: z.array(z.string()),
-    confidence: z.enum(["low", "medium", "high"]), model: z.string(), safetyNotice: z.string()
-  }).strict()),
+  insights: z.array(insightSchema),
   auditEvents: z.array(z.object({
     id: z.string(), createdAt: z.string(),
     eventType: z.enum(["store-created", "profile-updated", "migration-applied", "import-processed", "insight-generated", "export-created", "observation-deleted", "observation-type-deleted"]),

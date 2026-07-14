@@ -3,7 +3,11 @@ import { existsSync, renameSync, rmSync } from "node:fs";
 import type duckdb from "duckdb";
 import {
   classifyValue,
+  computeAnalyticsFromInput,
   healthStoreDataSchema,
+  insightSchema,
+  profileSchema,
+  type AnalyticsSummary,
   type AppBootstrap,
   type DeleteObservationResponse,
   type DeleteObservationsByTypeResponse,
@@ -104,7 +108,7 @@ export class DuckDbRepository implements ProfileRepository {
     return rows.map((row) => Number(row.schema_version));
   }
 
-  async snapshot(): Promise<HealthStoreData> {
+  async snapshot(options: { includeRaw?: boolean } = { includeRaw: true }): Promise<HealthStoreData> {
     this.assertOpen();
     const profileRows = await all(this.connection, "SELECT * FROM profile;");
     if (profileRows.length !== 1) {
@@ -112,7 +116,10 @@ export class DuckDbRepository implements ProfileRepository {
     }
     const profile = profileFromRow(profileRows[0]);
 
-    const sourceImports = (await orderedRows(this.connection, "imports")).map((row) => compact({
+    const importRows = options.includeRaw === true
+      ? await orderedRows(this.connection, "imports")
+      : await all(this.connection, "SELECT * EXCLUDE (ordinal, raw_content) FROM imports ORDER BY ordinal;");
+    const sourceImports = importRows.map((row) => compact({
       id: row.id,
       sourceKind: row.source_kind,
       fileName: row.file_name,
@@ -274,6 +281,49 @@ export class DuckDbRepository implements ProfileRepository {
     };
   }
 
+  async analyticsSummary(): Promise<AnalyticsSummary> {
+    this.assertOpen();
+    const [measurementRows, observationRows, countRows] = await Promise.all([
+      all(this.connection, "SELECT * EXCLUDE (ordinal) FROM measurement_types ORDER BY ordinal;"),
+      all(this.connection, `
+        SELECT * EXCLUDE (measurement_rank, category) FROM (
+          SELECT
+            o.* EXCLUDE (ordinal),
+            o.ordinal,
+            m.category,
+            ROW_NUMBER() OVER (
+              PARTITION BY o.measurement_code
+              ORDER BY o.observed_at DESC, o.id DESC
+            ) AS measurement_rank
+          FROM observations o
+          LEFT JOIN measurement_types m ON m.code = o.measurement_code
+        )
+        WHERE measurement_rank <= 12 OR category = 'lab'
+        ORDER BY ordinal;
+      `),
+      all(this.connection, `
+        SELECT
+          (SELECT COUNT(*) FROM imports) AS imports,
+          (SELECT COUNT(*) FROM observations) AS observations,
+          (SELECT COUNT(*) FROM time_series_samples) AS samples,
+          (SELECT COUNT(*) FROM activities) AS activities,
+          (SELECT COUNT(*) FROM insights) AS insights;
+      `)
+    ]);
+    const counts = countRows[0] ?? {};
+    return computeAnalyticsFromInput({
+      counts: {
+        imports: Number(counts.imports ?? 0),
+        observations: Number(counts.observations ?? 0),
+        samples: Number(counts.samples ?? 0),
+        activities: Number(counts.activities ?? 0),
+        insights: Number(counts.insights ?? 0)
+      },
+      measurementTypes: measurementRows.map(measurementTypeFromRow),
+      observations: observationRows.map(observationFromRow)
+    });
+  }
+
   async getProfile(): Promise<Profile> {
     this.assertOpen();
     const profileRows = await all(this.connection, "SELECT * FROM profile;");
@@ -286,13 +336,12 @@ export class DuckDbRepository implements ProfileRepository {
   async replaceProfile(profile: HealthStoreData["profile"]): Promise<HealthStoreData["profile"]> {
     this.assertOpen();
     return this.transaction(async () => {
-      const current = await this.snapshot();
-      const nextProfile = {
+      const current = await this.getProfile();
+      const nextProfile = profileSchema.parse({
         ...profile,
-        id: current.profile.id,
+        id: current.id,
         updatedAt: new Date().toISOString()
-      };
-      healthStoreDataSchema.parse({ ...current, profile: nextProfile });
+      });
       const profileProperties = nextProfile.cloudAiConsent
         ? json({ cloudAiConsent: nextProfile.cloudAiConsent })
         : null;
@@ -309,7 +358,7 @@ export class DuckDbRepository implements ProfileRepository {
         nextProfile.units,
         nextProfile.updatedAt,
         profileProperties,
-        current.profile.id
+        current.id
       );
       await this.insertAudit("profile-updated", "Profile details updated locally.");
       return nextProfile;
@@ -417,17 +466,16 @@ export class DuckDbRepository implements ProfileRepository {
   async addInsight(insight: HealthStoreData["insights"][number]): Promise<HealthStoreData["insights"][number]> {
     this.assertOpen();
     return this.transaction(async () => {
-      const current = await this.snapshot();
-      healthStoreDataSchema.parse({ ...current, insights: [insight, ...current.insights] });
+      const validatedInsight = insightSchema.parse(insight);
       const ordinal = await this.prependOrdinal("insights");
       await run(
         this.connection,
         "INSERT INTO insights VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);",
-        ordinal, insight.id, insight.createdAt, insight.title, insight.body, json(insight.evidence),
-        insight.confidence, insight.model, insight.safetyNotice
+        ordinal, validatedInsight.id, validatedInsight.createdAt, validatedInsight.title, validatedInsight.body,
+        json(validatedInsight.evidence), validatedInsight.confidence, validatedInsight.model, validatedInsight.safetyNotice
       );
-      await this.insertAudit("insight-generated", `${insight.model} insight generated.`);
-      return insight;
+      await this.insertAudit("insight-generated", `${validatedInsight.model} insight generated.`);
+      return validatedInsight;
     });
   }
 
@@ -535,17 +583,17 @@ export class DuckDbRepository implements ProfileRepository {
   async deleteObservation(id: string): Promise<DeleteObservationResponse | undefined> {
     this.assertOpen();
     return this.transaction(async () => {
-      const current = await this.snapshot();
-      const observation = current.observations.find((entry) => entry.id === id);
-      if (!observation) {
+      const rows = await allWithParams(this.connection, "SELECT * EXCLUDE (ordinal) FROM observations WHERE id = ?;", id);
+      if (!rows[0]) {
         return undefined;
       }
+      const observation = observationFromRow(rows[0]);
       await run(this.connection, "DELETE FROM observations WHERE id = ?;", id);
       await this.insertAudit("observation-deleted", observationDeleteDetail(observation));
       return {
         deletedCount: 1,
         deletedObservation: observation,
-        store: await this.snapshot()
+        counts: await this.storageCounts()
       };
     });
   }
@@ -553,8 +601,12 @@ export class DuckDbRepository implements ProfileRepository {
   async deleteObservationsByMeasurementCode(measurementCode: string): Promise<DeleteObservationsByTypeResponse> {
     this.assertOpen();
     return this.transaction(async () => {
-      const current = await this.snapshot();
-      const deletedCount = current.observations.filter((entry) => entry.measurementCode === measurementCode).length;
+      const countRows = await allWithParams(
+        this.connection,
+        "SELECT COUNT(*) AS count FROM observations WHERE measurement_code = ?;",
+        measurementCode
+      );
+      const deletedCount = Number(countRows[0]?.count ?? 0);
       if (deletedCount > 0) {
         await run(this.connection, "DELETE FROM observations WHERE measurement_code = ?;", measurementCode);
         await this.insertAudit(
@@ -565,7 +617,7 @@ export class DuckDbRepository implements ProfileRepository {
       return {
         deletedCount,
         measurementCode,
-        store: await this.snapshot()
+        counts: await this.storageCounts()
       };
     });
   }
@@ -1038,6 +1090,22 @@ function measurementTypeFromRow(row: Record<string, unknown>): MeasurementType {
     ...(optionalJson<Record<string, unknown>>(row.custom_properties) ?? {}),
     aggregation: String(row.aggregation) as MeasurementType["aggregation"]
   };
+}
+
+function observationFromRow(row: Record<string, unknown>): Observation {
+  return withStoredJson(compact({
+    id: row.id,
+    measurementCode: row.measurement_code,
+    observedAt: isoTimestamp(row.observed_at),
+    effectiveStart: optionalTimestamp(row.effective_start),
+    effectiveEnd: optionalTimestamp(row.effective_end),
+    value: Number(row.value),
+    unit: row.unit,
+    sourceId: row.source_id,
+    observationGroupId: row.observation_group_id,
+    deviceId: row.device_id,
+    note: row.note
+  }), row.source_json_present, row.source_json) as unknown as Observation;
 }
 
 function measurementDetailEntryFromRow(

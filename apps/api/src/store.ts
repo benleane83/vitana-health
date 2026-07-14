@@ -17,6 +17,7 @@ import { dirname, resolve } from "node:path";
 import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync } from "node:crypto";
 import {
   defaultMeasurementTypes,
+  computeAnalytics,
   parsePersistedHealthStore,
   type AppBootstrap,
   type DeleteObservationResponse,
@@ -191,6 +192,10 @@ export class HealthStore {
     });
   }
 
+  analyticsSummary() {
+    return Promise.resolve(computeAnalytics(this.snapshot()));
+  }
+
   getProfile(): Promise<Profile> {
     return Promise.resolve({ ...this.data.profile });
   }
@@ -296,7 +301,7 @@ export class HealthStore {
     return {
       deletedCount: 1,
       deletedObservation: match,
-      store: this.snapshot()
+      counts: storeCounts(this.data)
     };
   }
 
@@ -310,7 +315,7 @@ export class HealthStore {
     return {
       deletedCount: deleted.length,
       measurementCode,
-      store: this.snapshot()
+      counts: storeCounts(this.data)
     };
   }
 
@@ -830,6 +835,15 @@ function migrationSnapshot(store: HealthStoreHandle): HealthStoreData {
     throw new Error("Synchronous snapshots are restricted to one-time JSON migration.");
   }
   return store.snapshot();
+}
+
+function storeCounts(data: HealthStoreData): AppBootstrap["counts"] {
+  return {
+    imports: data.sourceImports.length,
+    observations: data.observations.length,
+    samples: data.timeSeriesSamples.length,
+    activities: data.activitySessions.length
+  };
 }
 
 function createEmptyStore(profileId = "self"): HealthStoreData {

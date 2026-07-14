@@ -2,11 +2,10 @@ import express from "express";
 import { z } from "zod";
 import {
   calculateBiologicalAge,
-  computeAnalytics,
   type DeleteObservationResponse,
   type DeleteObservationsByTypeResponse
 } from "@local-fitness-advisor/shared";
-import type { ProfileStoreManager, HealthStore } from "../store.js";
+import type { ProfileStoreManager } from "../store.js";
 import { refreshAnalyticsStorage } from "../storage/analyticsBackend.js";
 import { generateInsight } from "../insights.js";
 import { buildClinicianReport } from "../clinicianReport.js";
@@ -35,9 +34,8 @@ function buildDeleteObservationResponse(
   deleted: DeleteObservationResponse,
   warehouse: unknown
 ): unknown {
-  const { store: _store, ...mutation } = deleted;
   return {
-    ...mutation,
+    ...deleted,
     warehouse
   };
 }
@@ -46,19 +44,9 @@ function buildDeleteObservationsByTypeResponse(
   deleted: DeleteObservationsByTypeResponse,
   warehouse: unknown
 ): unknown {
-  const { store: _store, ...mutation } = deleted;
   return {
-    ...mutation,
+    ...deleted,
     warehouse
-  };
-}
-
-function storeCounts(snapshot: ReturnType<HealthStore["snapshot"]>) {
-  return {
-    sourceImports: snapshot.sourceImports.length,
-    observations: snapshot.observations.length,
-    timeSeriesSamples: snapshot.timeSeriesSamples.length,
-    activitySessions: snapshot.activitySessions.length
   };
 }
 
@@ -96,7 +84,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.get("/analytics", async (_request, response, next) => {
     try {
-      response.json(computeAnalytics(await activeStore().readSnapshot()));
+      response.json(await activeStore().analyticsSummary());
     } catch (error) {
       next(error);
     }
@@ -137,7 +125,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
         response.status(404).json({ error: "Observation not found.", code: "OBSERVATION_NOT_FOUND" });
         return;
       }
-      const warehouse = await refreshAnalyticsStorage(storeManager, deleted.store);
+      const warehouse = await refreshAnalyticsStorage(storeManager, deleted);
       response.json(buildDeleteObservationResponse(deleted, warehouse));
     } catch (error) {
       next(error);
@@ -149,7 +137,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
       const measurementCode = measurementCodeParamSchema.parse(request.params.measurementCode);
       const store = activeStore();
       const deleted = await store.deleteObservationsByMeasurementCode(measurementCode);
-      const warehouse = await refreshAnalyticsStorage(storeManager, deleted.store);
+      const warehouse = await refreshAnalyticsStorage(storeManager, deleted);
       response.json(buildDeleteObservationsByTypeResponse(deleted, warehouse));
     } catch (error) {
       next(error);
