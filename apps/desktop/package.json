@@ -14,7 +14,7 @@
   "scripts": {
     "prepackage": "node ../../scripts/prepare-duckdb-httpfs.mjs --output build/duckdb-extensions --skip-runtime-verification",
     "start": "electron .",
-    "test": "node --test secure-store-key.test.cjs",
+    "test": "node --test secure-store-key.test.cjs package-config.test.cjs",
     "package": "electron-builder",
     "package:signed": "electron-builder --config.forceCodeSigning=true"
   },
@@ -23,7 +23,6 @@
   "build": {
     "appId": "com.localfitnessadvisor.desktop",
     "productName": "Local Fitness Advisor",
-    "publisherName": "Local Fitness Advisor",
     "asar": true,
     "asarUnpack": [
       "**/*.node"
@@ -45,6 +44,7 @@
       }
     ],
     "win": {
+      "publisherName": "Local Fitness Advisor",
       "target": "nsis",
       "verifyUpdateCodeSignature": true
     },
