@@ -6,7 +6,7 @@ import org.junit.Test
 
 class PinnedPublicKeyVerifierTest {
   private val publicKey = "test-public-key".toByteArray()
-  private val matchingHash = "aYm8XQm7xD3B1bEyebANsDEHR0h4d7TMZofm3jJStPw="
+  private val matchingHash = "yI6AICpNZQhB5IZJtMP1U+SBMbQV22gEdv0NZWMv8rA="
 
   @Test
   fun `accepts the scanned public-key hash`() {
