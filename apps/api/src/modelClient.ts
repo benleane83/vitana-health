@@ -1,4 +1,5 @@
 import { getAiSettings, type AiSettings } from "./aiSettings.js";
+import { assertSafeCloudModelEndpoint, type CloudModelKind } from "./modelEndpointPolicy.js";
 
 export interface ModelRequestOptions {
   model?: string;
@@ -99,13 +100,22 @@ async function callOpenAiResponses(prompt: string, settings: AiSettings, overrid
     };
   }
 
-  const headers: Record<string, string> = {
-    "content-type": "application/json",
-    "api-key": apiKey,
-    authorization: `Bearer ${apiKey}`
-  };
-  const chatCompletions = endpoint.includes("/chat/completions");
-  const request = JSON.stringify(chatCompletions ? { model, messages: [{ role: "user", content: prompt }] } : { model, input: prompt });
+  let kind: CloudModelKind;
+  try {
+    kind = await assertSafeCloudModelEndpoint(endpoint);
+  } catch (error) {
+    return {
+      ok: false,
+      provider: "openai",
+      endpoint,
+      model,
+      timeoutMs,
+      elapsedMs: 0,
+      error: error instanceof Error ? error.message : "Cloud model endpoint is not allowed"
+    };
+  }
+  const headers = cloudHeaders(kind, apiKey);
+  const request = cloudRequest(kind, endpoint, model, prompt);
 
   return callJsonEndpoint({
     provider: "openai",
@@ -115,6 +125,14 @@ async function callOpenAiResponses(prompt: string, settings: AiSettings, overrid
     headers,
     requestBody: request,
     extractText(payload) {
+      if (kind === "anthropic") {
+        const content = Array.isArray(payload.content) ? payload.content : [];
+        return content
+          .filter((part: { type?: unknown; text?: unknown }) => part?.type === "text" && typeof part.text === "string")
+          .map((part: { text: string }) => part.text)
+          .join("\n")
+          .trim();
+      }
       if (typeof payload.output_text === "string") {
         return payload.output_text.trim();
       }
@@ -151,6 +169,7 @@ async function callJsonEndpoint(args: {
   try {
     const response = await fetch(args.endpoint, {
       method: "POST",
+      redirect: "manual",
       signal: controller.signal,
       headers: args.headers,
       body: args.requestBody
@@ -221,6 +240,31 @@ async function callJsonEndpoint(args: {
   } finally {
     clearTimeout(timer);
   }
+}
+
+function cloudHeaders(kind: CloudModelKind, apiKey: string): Record<string, string> {
+  if (kind === "anthropic") {
+    return {
+      "content-type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01"
+    };
+  }
+  if (kind === "azure") {
+    return { "content-type": "application/json", "api-key": apiKey };
+  }
+  return { "content-type": "application/json", authorization: `Bearer ${apiKey}` };
+}
+
+function cloudRequest(kind: CloudModelKind, endpoint: string, model: string, prompt: string): string {
+  if (kind === "anthropic") {
+    return JSON.stringify({ model, max_tokens: 256, messages: [{ role: "user", content: prompt }] });
+  }
+  return JSON.stringify(
+    endpoint.includes("/chat/completions")
+      ? { model, messages: [{ role: "user", content: prompt }] }
+      : { model, input: prompt }
+  );
 }
 
 function parseTimeoutMs(rawValue: string | undefined, fallback: number): number {

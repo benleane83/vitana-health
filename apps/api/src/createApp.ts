@@ -31,6 +31,7 @@ import { z } from "zod";
 export interface AppOptions {
   publicKeyHash?: string | null;
   webRoot?: string;
+  assertSafeCloudModelEndpoint?: (endpoint: string) => Promise<unknown>;
 }
 
 function decodeCookieToken(value: string | undefined): string {
@@ -44,6 +45,8 @@ function decodeCookieToken(value: string | undefined): string {
 
 function isOwnerOnlyPath(requestPath: string): boolean {
   return (
+    requestPath === "/settings" ||
+    requestPath.startsWith("/settings/") ||
     requestPath === "/pair/qr" ||
     requestPath === "/pairing/pending" ||
     requestPath === "/pairing/devices" ||
@@ -271,7 +274,7 @@ export function createApp(
   app.use("/api/import", makeImportRoutes(storeManager));
   app.use("/api/query", makeQueryRoutes(storeManager));
   app.use("/api/llm", makeLlmRoutes(storeManager));
-  app.use("/api/settings", makeSettingsRoutes());
+  app.use("/api/settings", makeSettingsRoutes({ assertSafeCloudEndpoint: options.assertSafeCloudModelEndpoint }));
   app.use("/api", makeDataRoutes(storeManager));
 
   // Static web serving
