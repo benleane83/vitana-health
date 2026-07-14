@@ -1,4 +1,5 @@
 import type {
+  AppBootstrap,
   DataSource,
   DeleteObservationResponse,
   DeleteObservationsByTypeResponse,
@@ -21,6 +22,7 @@ export interface ProfileImport {
 
 export interface ProfileRepository {
   snapshot(): Promise<HealthStoreData>;
+  appBootstrap(): Promise<AppBootstrap>;
   getProfile(): Promise<Profile>;
   replaceProfile(profile: Profile): Promise<Profile>;
   mergeImport(imported: ProfileImport): Promise<HealthStoreData>;

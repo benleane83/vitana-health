@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
+  AppBootstrap,
   AnalyticsSummary,
   BiologicalAgeReport,
   BodyCompositionDraft,
@@ -8,7 +9,6 @@ import type {
   HealthDataDetail,
   HealthDataDetailEntry,
   HealthDataSummary,
-  HealthStoreData,
   ManualObservationPayload,
   MeasurementType,
   Profile,
@@ -37,7 +37,7 @@ const manualGroupDefaults = [
 ] as const;
 
 export function App() {
-  const [store, setStore] = useState<HealthStoreData>();
+  const [bootstrap, setBootstrap] = useState<AppBootstrap>();
   const [analytics, setAnalytics] = useState<AnalyticsSummary>();
   const [biologicalAge, setBiologicalAge] = useState<BiologicalAgeReport>();
   const [biologicalAgeBusy, setBiologicalAgeBusy] = useState(false);
@@ -105,51 +105,21 @@ export function App() {
   const profileMenuRef = useRef<HTMLDivElement>(null);
 
   const recordedMeasurementTypes = useMemo(() => {
-    const measurementTypes = store?.measurementTypes?.length
-      ? store.measurementTypes
+    const measurementTypes = bootstrap?.measurementTypes?.length
+      ? bootstrap.measurementTypes
       : defaultMeasurementTypes;
     return [...measurementTypes].sort((left, right) => left.display.localeCompare(right.display));
-  }, [store?.measurementTypes]);
+  }, [bootstrap?.measurementTypes]);
   const manualGroupTemplates = useMemo(() => {
     const defaultLabels = new Set(manualGroupDefaults.map((group) => normalizeManualGroupLabel(group.label)));
-    const activeGroupIds = new Set(
-      (store?.observations ?? [])
-        .map((observation) => observation.observationGroupId)
-        .filter((groupId): groupId is string => Boolean(groupId))
-    );
-    const groupsByLabel = new Map<string, string[]>();
-    for (const group of store?.observationGroups ?? []) {
-      if (!activeGroupIds.has(group.id)) continue;
-      const label = group.label.trim();
-      const normalizedLabel = normalizeManualGroupLabel(label);
-      if (!normalizedLabel || defaultLabels.has(normalizedLabel)) continue;
-      const groupIds = groupsByLabel.get(normalizedLabel) ?? [];
-      groupIds.push(group.id);
-      groupsByLabel.set(normalizedLabel, groupIds);
-    }
-
-    return [...groupsByLabel.entries()].map(([normalizedLabel, groupIds]) => {
-      const groupIdSet = new Set(groupIds);
-      const latestUnits = new Map<string, string>();
-      for (const observation of store?.observations ?? []) {
-        if (observation.observationGroupId && groupIdSet.has(observation.observationGroupId)) {
-          latestUnits.set(observation.measurementCode, observation.unit);
-        }
-      }
-      const measurements = [...latestUnits.entries()]
-        .map(([measurementCode, unit]) => {
-          const measurement = recordedMeasurementTypes.find((type) => type.code === measurementCode);
-          return {
-            measurementCode,
-            marker: measurement?.display ?? measurementCode,
-            unit: measurement?.canonicalUnit || unit
-          };
-        })
-        .sort((left, right) => left.marker.localeCompare(right.marker));
-      const label = (store?.observationGroups ?? []).find((group) => groupIds.includes(group.id))?.label.trim() ?? normalizedLabel;
-      return { label, normalizedLabel, measurements };
-    }).sort((left, right) => left.label.localeCompare(right.label));
-  }, [recordedMeasurementTypes, store?.observationGroups, store?.observations]);
+    return (bootstrap?.manualObservationGroupTemplates ?? [])
+      .filter((group) => !defaultLabels.has(group.normalizedLabel))
+      .map((group) => ({
+        ...group,
+        measurements: [...group.measurements].sort((left, right) => left.marker.localeCompare(right.marker))
+      }))
+      .sort((left, right) => left.label.localeCompare(right.label));
+  }, [bootstrap?.manualObservationGroupTemplates]);
   const observationGroupOptions = useMemo(() => {
     return [...manualGroupDefaults.map((group) => group.label), ...manualGroupTemplates.map((group) => group.label)];
   }, [manualGroupTemplates]);
@@ -168,9 +138,9 @@ export function App() {
     return recordedMeasurementTypes;
   }, [recordedMeasurementTypes, selectedManualGroupDefault, selectedManualGroupTemplate]);
 
-  const profile = store?.profile;
+  const profile = bootstrap?.profile;
   const activeProfile = profiles.find((entry) => entry.id === activeProfileId) ?? profile;
-  const latestInsight = store?.insights[0];
+  const latestInsight = bootstrap?.latestInsight;
   const density = useMemo(() => {
     const counts = analytics?.counts;
     if (!counts) return 0;
@@ -302,13 +272,13 @@ export function App() {
   }, [route, importMode]);
 
   async function refresh() {
-    const [nextStore, nextAnalytics, nextProfiles, nextLlmConfig] = await Promise.all([
-      api.store(),
+    const [nextBootstrap, nextAnalytics, nextProfiles, nextLlmConfig] = await Promise.all([
+      api.bootstrap(),
       api.analytics(),
       api.profiles.list(),
       api.llm.config().catch(() => undefined)
     ]);
-    setStore(nextStore);
+    setBootstrap(nextBootstrap);
     setAnalytics(nextAnalytics);
     setProfiles(nextProfiles.profiles);
     setActiveProfileId(nextProfiles.activeProfileId);
@@ -495,8 +465,10 @@ export function App() {
       knownMeasurements: recordedMeasurementTypes
     });
     await run("Manual observations imported.", async () => {
-      await api.importManualObservations(payload);
-      await refresh();
+      const imported = await api.importManualObservations(payload);
+      const nextAnalytics = await api.analytics();
+      setBootstrap(await api.bootstrap());
+      setAnalytics(nextAnalytics);
       resetManualForm();
     });
   }
@@ -579,7 +551,7 @@ export function App() {
     event.preventDefault();
     const q = aiQuestion.trim();
     if (!q) return;
-    const cloudEnabled = store?.profile.cloudAiConsent?.enabled === true && store?.profile.cloudAiConsent?.providerScopeAccepted === true;
+    const cloudEnabled = bootstrap?.profile.cloudAiConsent?.enabled === true && bootstrap?.profile.cloudAiConsent?.providerScopeAccepted === true;
     if (llmConfig?.provider === "openai" && !cloudEnabled) {
       setAiError("Cloud model prompts are disabled. Enable cloud prompts in the consent panel to run this query.");
       return;
@@ -653,12 +625,14 @@ export function App() {
     setSummaryDetailActionBusy(true);
     setMessage(undefined);
     try {
-      await api.deleteObservation(entry.id);
-      await refresh();
-      const [nextSummary, nextDetail] = await Promise.all([
+      const deleted = await api.deleteObservation(entry.id);
+      const [nextAnalytics, nextSummary, nextDetail] = await Promise.all([
+        api.analytics(),
         api.summary(),
         summaryDetailCode ? api.healthDataDetail(summaryDetailCode) : Promise.resolve(undefined)
       ]);
+      setBootstrap(await api.bootstrap());
+      setAnalytics(nextAnalytics);
       applySummary(nextSummary);
       setSummaryDetail(nextDetail);
       setMessage("Observation deleted.");
@@ -708,12 +682,14 @@ export function App() {
     setSummaryDetailActionBusy(true);
     setMessage(undefined);
     try {
-      await api.deleteObservationsByType(summaryDetailCode);
-      await refresh();
-      const [nextSummary, nextDetail] = await Promise.all([
+      const deleted = await api.deleteObservationsByType(summaryDetailCode);
+      const [nextAnalytics, nextSummary, nextDetail] = await Promise.all([
+        api.analytics(),
         api.summary(),
         api.healthDataDetail(summaryDetailCode)
       ]);
+      setBootstrap(await api.bootstrap());
+      setAnalytics(nextAnalytics);
       applySummary(nextSummary);
       setSummaryDetail(nextDetail);
       setMessage(observationCount === 1 ? "1 observation deleted." : `${observationCount} observations deleted.`);
@@ -917,7 +893,7 @@ export function App() {
       >
         {route === "dashboard" ? (
           <DashboardPage
-            store={store}
+              importCount={bootstrap?.counts.imports ?? 0}
             analytics={analytics}
             density={density}
             busy={busy}
@@ -1034,7 +1010,7 @@ export function App() {
             {insightsTab === "biological-age" ? (
               <BiologicalAgePage report={biologicalAge} loading={biologicalAgeBusy} error={biologicalAgeError} />
             ) : (
-              <QueryPage question={aiQuestion} onQuestionChange={setAiQuestion} onSubmit={submitAiQuery} busy={aiBusy} cloudProvider={llmConfig?.provider} cloudConsent={store?.profile.cloudAiConsent} cloudConsentBusy={cloudConsentBusy} onCloudConsentChange={(enabled) => { void setCloudConsent(enabled); }} result={aiResult} error={aiError} />
+              <QueryPage question={aiQuestion} onQuestionChange={setAiQuestion} onSubmit={submitAiQuery} busy={aiBusy} cloudProvider={llmConfig?.provider} cloudConsent={bootstrap?.profile.cloudAiConsent} cloudConsentBusy={cloudConsentBusy} onCloudConsentChange={(enabled) => { void setCloudConsent(enabled); }} result={aiResult} error={aiError} />
             )}
           </section>
         ) : null}
@@ -1051,7 +1027,7 @@ export function App() {
             busy={exportBusy}
             error={exportError}
             hasHealthData={Boolean(
-              store && (store.observations.length || store.timeSeriesSamples.length || store.activitySessions.length)
+              bootstrap && (bootstrap.counts.observations || bootstrap.counts.samples || bootstrap.counts.activities)
             )}
             onDownload={() => { void downloadPdfReport(); }}
           />

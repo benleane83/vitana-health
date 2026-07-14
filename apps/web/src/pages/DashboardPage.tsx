@@ -26,7 +26,7 @@ function InsightCard({ insight }: { insight?: Insight }) {
 }
 
 export function DashboardPage({
-  store,
+  importCount,
   analytics,
   density,
   busy,
@@ -38,7 +38,7 @@ export function DashboardPage({
   onNavigateSummary,
   onGenerateInsight
 }: {
-  store?: { sourceImports: unknown[] };
+  importCount: number;
   analytics?: AnalyticsSummary;
   density: number;
   busy: boolean;
@@ -73,7 +73,7 @@ export function DashboardPage({
             <h2>Encrypted local vault</h2>
             <span>Offline by default</span>
           </div>
-          <p>{store?.sourceImports.length ?? 0} imports. Raw files stay off cloud services.</p>
+          <p>{importCount} imports. Raw files stay off cloud services.</p>
           <DensityBar density={density} />
         </article>
       </section>

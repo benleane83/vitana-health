@@ -16,6 +16,18 @@ import { refreshAnalyticsStorage } from "../storage/analyticsBackend.js";
 import { extractBodyCompositionText } from "../bodyCompositionExtract.js";
 import { parseBodyCompositionText } from "@local-fitness-advisor/shared";
 
+function compactImportResponse(imported: ReturnType<typeof buildManualObservationImport>) {
+  return {
+    import: { ...imported.sourceImport, rawContent: undefined },
+    changes: {
+      observations: imported.observations.length,
+      observationGroups: imported.observationGroups.length,
+      timeSeriesSamples: imported.timeSeriesSamples.length,
+      activitySessions: imported.activitySessions.length
+    }
+  };
+}
+
 const importSchema = z.object({
   fileName: z.string().min(1).max(240),
   content: z.string().min(1)
@@ -99,10 +111,8 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
       const parsed = importSchema.parse(request.body);
       const imported = parseBloodTestCsv(parsed.fileName, parsed.content);
       const store = activeStore();
-      response.status(201).json({
-        store: await store.mergeImport(imported),
-        import: { ...imported.sourceImport, rawContent: undefined }
-      });
+      await store.mergeImport(imported);
+      response.status(201).json(compactImportResponse(imported));
     } catch (error) {
       next(error);
     }
@@ -113,7 +123,8 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
       const parsed = importSchema.parse(request.body);
       const imported = parseObservationCsv(parsed.fileName, parsed.content);
       const store = activeStore();
-      response.status(201).json({ store: await store.mergeImport(imported), import: { ...imported.sourceImport, rawContent: undefined } });
+      await store.mergeImport(imported);
+      response.status(201).json(compactImportResponse(imported));
     } catch (error) {
       next(error);
     }
@@ -124,7 +135,8 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
       const parsed = manualObservationImportSchema.parse(request.body ?? {});
       const imported = buildManualObservationImport(parsed);
       const store = activeStore();
-      response.status(201).json({ store: await store.mergeImport(imported), import: { ...imported.sourceImport, rawContent: undefined } });
+      await store.mergeImport(imported);
+      response.status(201).json(compactImportResponse(imported));
     } catch (error) {
       next(error);
     }
@@ -135,10 +147,8 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
       const parsed = manualLabImportSchema.parse(request.body ?? {});
       const imported = buildManualLabEntryImport(parsed);
       const store = activeStore();
-      response.status(201).json({
-        store: await store.mergeImport(imported),
-        import: { ...imported.sourceImport, rawContent: undefined }
-      });
+      await store.mergeImport(imported);
+      response.status(201).json(compactImportResponse(imported));
     } catch (error) {
       next(error);
     }
@@ -171,7 +181,7 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
       const store = activeStore();
       const merged = await store.mergeImport(imported);
       const warehouse = await refreshAnalyticsStorage(storeManager, merged);
-      response.status(201).json({ store: merged, import: { ...imported.sourceImport, rawContent: undefined }, warehouse });
+      response.status(201).json({ ...compactImportResponse(imported), warehouse });
     } catch (error) {
       next(error);
     }
@@ -211,14 +221,7 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
       const merged = await store.mergeImport(imported);
       const warehouse = await refreshAnalyticsStorage(storeManager, merged);
       response.status(201).json({
-        counts: {
-          sourceImports: merged.sourceImports.length,
-          observations: merged.observations.length,
-          timeSeriesSamples: merged.timeSeriesSamples.length,
-          activitySessions: merged.activitySessions.length
-        },
-        store: merged,
-        import: { ...imported.sourceImport, rawContent: undefined },
+        ...compactImportResponse(imported),
         warehouse
       });
     } catch (error) {
@@ -235,13 +238,7 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
       const merged = await targetStore.mergeImport(imported);
       const warehouse = await refreshAnalyticsStorage(storeManager, merged, targetProfileId);
       response.status(201).json({
-        counts: {
-          sourceImports: merged.sourceImports.length,
-          observations: merged.observations.length,
-          timeSeriesSamples: merged.timeSeriesSamples.length,
-          activitySessions: merged.activitySessions.length
-        },
-        import: { ...imported.sourceImport, rawContent: undefined },
+        ...compactImportResponse(imported),
         warehouse
       });
     } catch (error) {

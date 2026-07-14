@@ -165,11 +165,20 @@ The chronological lab-marker bug from the previous review is addressed by using 
 
 The migration fixes the previous full encrypted-JSON rewrite and plaintext warehouse design. However, every `mergeImport` still reads the complete database into arrays, computes in-memory retention/deduplication, diffs collections, performs row-by-row synchronization, then snapshots the whole database again (`apps/api/src/storage/duckdbRepository.ts:106-225,269-358`). `DuckDbHealthStore` also retains a full in-memory `HealthStoreData` cache (`apps/api/src/storage/duckdbHealthStore.ts:30-37,94-105,144-151`).
 
-The web app simultaneously requests the full store and analytics on refresh (`apps/web/src/App.tsx:248-252`), and several mutation responses return the full store (`apps/api/src/routes/importRoutes.ts:97-145,167-224`).
+**Status (partially addressed 2026-07-14):** Normal web startup and routine refresh now use a bounded `GET /api/bootstrap` projection rather than `/api/store`. The projection contains profile metadata, measurement types, active reusable manual-group templates, latest insight, and aggregate counts; it excludes observation history, samples, sources, audit events, and raw import content. Import and deletion routes now return compact mutation metadata instead of complete stores. Focused API server tests, focused web tests, and API/web typechecks passed after this change.
 
-This will create avoidable memory, serialization, and latency costs near the configured row limits despite using native DuckDB.
+The central persistence path remains full-snapshot heavy: every `mergeImport` still reads the complete database into arrays, computes retention/deduplication in memory, diffs collections, performs row-by-row synchronization, and snapshots the database again. `DuckDbHealthStore` also still retains a complete in-memory `HealthStoreData` cache for snapshot/export compatibility. This remains a material memory and latency risk near the configured row limits despite using native DuckDB.
 
-**Required:** Make imports set-based and incremental, query summaries/details directly, stop maintaining a complete cache as the routine read model, return compact mutation results, and remove `/api/store` from normal web startup. Establish import, startup, query, and memory budgets with representative data.
+**Pending work:**
+
+- Replace `DuckDbRepository.mergeImport()` with incremental, set-based DuckDB transactions: stage incoming rows, insert only novel records, and enforce deduplication and retention in SQL.
+- Return accepted, duplicate/skipped, and evicted counts from persistence so import responses can accurately describe the committed result rather than only parsed input counts.
+- Remove the complete `DuckDbHealthStore` cache from routine reads. Retain full snapshots only for explicit export, activation/migration, profile-copy, and test-support workflows.
+- Move remaining snapshot-based consumers, including analytics, biological-age, insight generation, clinician reports, and query planning, to direct or deliberately bounded repository projections.
+- Keep `/api/store` as an explicit export/debug or migration endpoint; do not reintroduce it into normal app startup or mutation refresh paths.
+- Establish representative import, startup, query, payload-size, and peak-memory budgets after the incremental import path is in place.
+
+**Required before public release:** Complete the pending import/cache redesign and validate it against representative one-, three-, and five-year datasets.
 
 #### P1 — Active DuckDB data has no user-facing backup/restore path
 
@@ -223,6 +232,7 @@ The web client discards HTTP status and correlation IDs and throws raw response 
 - DuckDB hydration is transactional, parity-checked, checkpointed, and atomically promoted (`apps/api/src/storage/duckdbRepository.ts:41-79`).
 - Desktop DuckDB keys are wrapped with Electron `safeStorage`; insecure Linux storage is rejected.
 - Cloud-query routes have explicit consent UI and bounded prompt-row sanitization.
+- Normal web startup uses a bounded bootstrap projection, and import/delete API responses no longer serialize complete health stores.
 - Android sync now supports selected categories, partial grants, a cursor with overlap, paginated reads, provenance, bounded chunks, retries, and pinning (`apps/android-companion/src/syncHealthConnect.ts:19-75,187-222,370-385,417-513,563-570`).
 - The Android production/preview/development profiles and release checklist are substantially clearer.
 - API modularization, environment validation, structured logging, graceful shutdown, stable public error codes, and web semantics remain good foundations.
@@ -232,11 +242,11 @@ The web client discards HTTP status and correlation IDs and throws raw response 
 - LAN authentication exists, but companion authorization is dangerously overbroad.
 - Cloud consent exists, but one model path bypasses enforcement.
 - Retention ordering improved, but silent eviction and unbounded metadata remain.
-- DuckDB avoids file rewrites, but full snapshots remain on hot paths.
+- DuckDB avoids file rewrites; normal startup and mutation payloads are bounded, but `mergeImport` and the in-memory cache still materialize full snapshots on hot write paths.
 - Android profile networking still bypasses pinning/authentication.
 - Play privacy work and executed release evidence remain outstanding.
 - Accessibility semantics improved, but independent verification remains outstanding.
-- Query lifecycle consolidation and compact API responses remain incomplete.
+- Typed API errors, lifecycle documentation, and migration of the remaining snapshot-based analytics/report/query consumers remain incomplete.
 
 ## Positive foundations to preserve
 

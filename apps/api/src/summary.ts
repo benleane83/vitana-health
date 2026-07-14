@@ -15,6 +15,7 @@ const categoryLabels: Record<HealthDataSummaryTypeRow["category"], string> = {
   sleep: "Sleep",
   body: "Body",
   lab: "Lab",
+  metabolic: "Metabolic",
   derived: "Derived",
   uncategorized: "Uncategorized"
 };

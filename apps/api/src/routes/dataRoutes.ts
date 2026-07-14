@@ -35,11 +35,9 @@ function buildDeleteObservationResponse(
   deleted: DeleteObservationResponse,
   warehouse: unknown
 ): unknown {
+  const { store: _store, ...mutation } = deleted;
   return {
-    deletedCount: deleted.deletedCount,
-    deletedObservation: deleted.deletedObservation,
-    counts: storeCounts(deleted.store),
-    store: deleted.store,
+    ...mutation,
     warehouse
   };
 }
@@ -48,11 +46,9 @@ function buildDeleteObservationsByTypeResponse(
   deleted: DeleteObservationsByTypeResponse,
   warehouse: unknown
 ): unknown {
+  const { store: _store, ...mutation } = deleted;
   return {
-    deletedCount: deleted.deletedCount,
-    measurementCode: deleted.measurementCode,
-    counts: storeCounts(deleted.store),
-    store: deleted.store,
+    ...mutation,
     warehouse
   };
 }
@@ -84,6 +80,14 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.get("/store", (_request, response) => {
     response.json(activeStore().snapshot());
+  });
+
+  router.get("/bootstrap", async (_request, response, next) => {
+    try {
+      response.json(await activeStore().appBootstrap());
+    } catch (error) {
+      next(error);
+    }
   });
 
   router.get("/analytics", (_request, response) => {

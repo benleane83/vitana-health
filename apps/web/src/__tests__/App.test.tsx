@@ -2,12 +2,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import { App } from "../App.js";
-import { defaultMeasurementTypes, safetyNotice } from "@local-fitness-advisor/shared";
+import { defaultMeasurementTypes, safetyNotice, type HealthStoreData } from "@local-fitness-advisor/shared";
 
 // ─── Minimal fetch mock ────────────────────────────────────────────────────────
 
-function makeEmptyStore() {
+function makeEmptyStore(): HealthStoreData {
   return {
+    schemaVersion: 2,
     profile: { id: "self", displayName: "Local user", units: "metric", updatedAt: "2026-01-01T00:00:00.000Z" },
     sourceImports: [],
     dataSources: [],
@@ -32,11 +33,56 @@ function makeEmptyAnalytics() {
   };
 }
 
+function makeBootstrap(store: ReturnType<typeof makeEmptyStore>) {
+  const measurementsByCode = new Map(store.measurementTypes.map((measurement) => [measurement.code, measurement]));
+  const groupsById = new Map(store.observationGroups.map((group) => [group.id, group]));
+  const templatesByLabel = new Map<string, {
+    label: string;
+    normalizedLabel: string;
+    measurements: Array<{ measurementCode: string; marker: string; unit: string }>;
+  }>();
+  for (const observation of store.observations) {
+    const group = observation.observationGroupId ? groupsById.get(observation.observationGroupId) : undefined;
+    if (!group || group.kind !== "custom") continue;
+    const normalizedLabel = group.label.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+    const template = templatesByLabel.get(normalizedLabel) ?? {
+      label: group.label.trim(),
+      normalizedLabel,
+      measurements: []
+    };
+    if (!template.measurements.some((measurement) => measurement.measurementCode === observation.measurementCode)) {
+      const measurement = measurementsByCode.get(observation.measurementCode);
+      template.measurements.push({
+        measurementCode: observation.measurementCode,
+        marker: measurement?.display ?? observation.measurementCode,
+        unit: measurement?.canonicalUnit ?? observation.unit
+      });
+    }
+    templatesByLabel.set(normalizedLabel, template);
+  }
+  return {
+    profile: store.profile,
+    measurementTypes: store.measurementTypes,
+    manualObservationGroupTemplates: [...templatesByLabel.values()],
+    latestInsight: store.insights[0],
+    counts: {
+      imports: store.sourceImports.length,
+      observations: store.observations.length,
+      samples: store.timeSeriesSamples.length,
+      activities: store.activitySessions.length
+    }
+  };
+}
+
 function mockFetch(urlResponses: Record<string, unknown>) {
   return vi.fn((input: string | URL | Request) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     const key = Object.keys(urlResponses).find((k) => url.includes(k));
-    const body = key !== undefined ? urlResponses[key] : {};
+    const body = key !== undefined
+      ? urlResponses[key]
+      : url.includes("/api/bootstrap")
+        ? makeBootstrap((urlResponses["/api/store"] ?? makeEmptyStore()) as ReturnType<typeof makeEmptyStore>)
+        : {};
     return Promise.resolve({
       ok: true,
       json: () => Promise.resolve(body),
@@ -72,6 +118,12 @@ describe("App — renders without crashing", () => {
     render(<App />);
     expect(screen.getByText(/all your health\. in one place\./i)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /track\. understand\. thrive\./i })).toBeInTheDocument();
+  });
+
+  it("does not request the full store during startup", async () => {
+    render(<App />);
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledWith("/api/bootstrap", expect.anything()));
+    expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls.some(([url]) => String(url).includes("/api/store"))).toBe(false);
   });
 });
 

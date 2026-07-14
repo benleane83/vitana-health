@@ -4,6 +4,7 @@ import type duckdb from "duckdb";
 import {
   classifyValue,
   healthStoreDataSchema,
+  type AppBootstrap,
   type DeleteObservationResponse,
   type DeleteObservationsByTypeResponse,
   type HealthDataDetailEntry,
@@ -222,6 +223,67 @@ export class DuckDbRepository implements ProfileRepository {
       insights,
       auditEvents
     }) as HealthStoreData;
+  }
+
+  async appBootstrap(): Promise<AppBootstrap> {
+    this.assertOpen();
+    const [profileRows, measurementRows, templateRows, insightRows, countRows] = await Promise.all([
+      all(this.connection, "SELECT * FROM profile;"),
+      all(this.connection, "SELECT * FROM measurement_types ORDER BY display, code;"),
+      all(this.connection, `
+        SELECT
+          g.label,
+          o.measurement_code,
+          COALESCE(m.display, o.measurement_code) AS marker,
+          COALESCE(NULLIF(m.canonical_unit, ''), o.unit) AS unit
+        FROM observation_groups g
+        JOIN observations o ON o.observation_group_id = g.id
+        LEFT JOIN measurement_types m ON m.code = o.measurement_code
+        WHERE g.kind = 'custom'
+        GROUP BY g.label, o.measurement_code, m.display, m.canonical_unit, o.unit
+        ORDER BY g.label, marker, o.measurement_code;
+      `),
+      all(this.connection, "SELECT * FROM insights ORDER BY created_at DESC, ordinal ASC LIMIT 1;"),
+      all(this.connection, `
+        SELECT
+          (SELECT COUNT(*) FROM imports) AS imports,
+          (SELECT COUNT(*) FROM observations) AS observations,
+          (SELECT COUNT(*) FROM time_series_samples) AS samples,
+          (SELECT COUNT(*) FROM activities) AS activities;
+      `)
+    ]);
+    if (profileRows.length !== 1) {
+      throw new Error("DuckDB expected exactly one profile row.");
+    }
+
+    const templatesByLabel = new Map<string, AppBootstrap["manualObservationGroupTemplates"][number]>();
+    for (const row of templateRows) {
+      const normalizedLabel = normalizeGroupLabel(String(row.label));
+      const existing = templatesByLabel.get(normalizedLabel) ?? {
+        label: String(row.label).trim(),
+        normalizedLabel,
+        measurements: []
+      };
+      existing.measurements.push({
+        measurementCode: String(row.measurement_code),
+        marker: String(row.marker),
+        unit: String(row.unit)
+      });
+      templatesByLabel.set(normalizedLabel, existing);
+    }
+    const counts = countRows[0] ?? {};
+    return {
+      profile: profileFromRow(profileRows[0]),
+      measurementTypes: measurementRows.map(measurementTypeFromRow),
+      manualObservationGroupTemplates: [...templatesByLabel.values()],
+      latestInsight: insightRows[0] ? insightFromRow(insightRows[0]) : undefined,
+      counts: {
+        imports: Number(counts.imports ?? 0),
+        observations: Number(counts.observations ?? 0),
+        samples: Number(counts.samples ?? 0),
+        activities: Number(counts.activities ?? 0)
+      }
+    };
   }
 
   async getProfile(): Promise<Profile> {
@@ -967,6 +1029,10 @@ function humanizeCode(code: string): string {
   return code.replaceAll("_", " ").replace(/\b\w/g, (segment) => segment.toUpperCase());
 }
 
+function normalizeGroupLabel(label: string): string {
+  return label.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+}
+
 function measurementTypeProperties(entry: MeasurementType): Record<string, unknown> {
   return compact({
     fhirCode: entry.fhirCode,
@@ -1373,4 +1439,17 @@ function arraysEqual(left: string[], right: string[]): boolean {
 
 function observationDeleteDetail(observation: Observation): string {
   return `Observation ${observation.measurementCode} deleted at ${observation.observedAt} (${observation.value} ${observation.unit}).`;
+}
+
+function insightFromRow(row: Record<string, unknown>): HealthStoreData["insights"][number] {
+  return {
+    id: String(row.id),
+    createdAt: isoTimestamp(row.created_at),
+    title: String(row.title),
+    body: String(row.body),
+    evidence: requiredJson(row.evidence),
+    confidence: row.confidence,
+    model: row.model,
+    safetyNotice: String(row.safety_notice)
+  } as HealthStoreData["insights"][number];
 }

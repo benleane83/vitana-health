@@ -1,4 +1,5 @@
 import type {
+  AppBootstrap,
   DeleteObservationResponse,
   DeleteObservationsByTypeResponse,
   HealthStoreData
@@ -75,6 +76,10 @@ export class DuckDbHealthStore {
     return this.repository.getProfile();
   }
 
+  appBootstrap(): Promise<AppBootstrap> {
+    return this.repository.appBootstrap();
+  }
+
   getSummary() {
     return this.repository.summary();
   }
@@ -112,16 +117,16 @@ export class DuckDbHealthStore {
       if (!deleted) {
         return undefined;
       }
-      await this.refreshCache();
-      return { ...deleted, store: this.snapshot() };
+      this.cachedData = deleted.store;
+      return deleted;
     });
   }
 
   deleteObservationsByMeasurementCode(measurementCode: string): Promise<DeleteObservationsByTypeResponse> {
     return this.enqueueMutation(async () => {
       const deleted = await this.repository.deleteObservationsByMeasurementCode(measurementCode);
-      await this.refreshCache();
-      return { ...deleted, store: this.snapshot() };
+      this.cachedData = deleted.store;
+      return deleted;
     });
   }
 

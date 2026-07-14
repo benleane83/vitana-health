@@ -18,6 +18,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync }
 import {
   defaultMeasurementTypes,
   parsePersistedHealthStore,
+  type AppBootstrap,
   type DeleteObservationResponse,
   type DeleteObservationsByTypeResponse,
   type HealthDataDetailEntry,
@@ -150,6 +151,44 @@ export class HealthStore {
       ...this.data,
       sourceImports: this.data.sourceImports.map((item) => redactRawImport(item, options.includeRaw === true))
     };
+  }
+
+  appBootstrap(): Promise<AppBootstrap> {
+    const measurementByCode = new Map(this.data.measurementTypes.map((measurement) => [measurement.code, measurement]));
+    const groupsById = new Map(this.data.observationGroups.map((group) => [group.id, group]));
+    const templatesByLabel = new Map<string, AppBootstrap["manualObservationGroupTemplates"][number]>();
+    for (const observation of this.data.observations) {
+      const group = observation.observationGroupId ? groupsById.get(observation.observationGroupId) : undefined;
+      if (!group || group.kind !== "custom") continue;
+      const normalizedLabel = normalizeGroupLabel(group.label);
+      if (!normalizedLabel) continue;
+      const template = templatesByLabel.get(normalizedLabel) ?? {
+        label: group.label.trim(),
+        normalizedLabel,
+        measurements: []
+      };
+      if (!template.measurements.some((measurement) => measurement.measurementCode === observation.measurementCode)) {
+        const measurement = measurementByCode.get(observation.measurementCode);
+        template.measurements.push({
+          measurementCode: observation.measurementCode,
+          marker: measurement?.display ?? observation.measurementCode,
+          unit: measurement?.canonicalUnit ?? observation.unit
+        });
+      }
+      templatesByLabel.set(normalizedLabel, template);
+    }
+    return Promise.resolve({
+      profile: { ...this.data.profile },
+      measurementTypes: this.data.measurementTypes.map((measurement) => ({ ...measurement })),
+      manualObservationGroupTemplates: [...templatesByLabel.values()].sort((left, right) => left.label.localeCompare(right.label)),
+      latestInsight: this.data.insights[0] ? { ...this.data.insights[0] } : undefined,
+      counts: {
+        imports: this.data.sourceImports.length,
+        observations: this.data.observations.length,
+        samples: this.data.timeSeriesSamples.length,
+        activities: this.data.activitySessions.length
+      }
+    });
   }
 
   getProfile(): Promise<Profile> {
@@ -857,6 +896,10 @@ function createEmptyStore(profileId = "self"): HealthStoreData {
     insights: [],
     auditEvents: []
   };
+}
+
+function normalizeGroupLabel(label: string): string {
+  return label.trim().replace(/\s+/g, " ").toLocaleLowerCase();
 }
 
 function reconcileDefaultMeasurementTypes(data: HealthStoreData): boolean {

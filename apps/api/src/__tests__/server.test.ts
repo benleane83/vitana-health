@@ -135,9 +135,11 @@ describe("POST /api/import/health-connect — auth middleware", () => {
           observations: [{ measurementName: "Weight", value: 82, unit: "kg" }]
         });
       expect(manual.status).toBe(201);
-      expect(manual.body.store.observations).toEqual(expect.arrayContaining([
-        expect.objectContaining({ measurementCode: "weight", value: 82 })
-      ]));
+      expect(manual.body).toMatchObject({
+        changes: { observations: 1, observationGroups: 1 },
+        import: { sourceKind: "manual-entry" }
+      });
+      expect(manual.body.store).toBeUndefined();
 
       const csv = await request(app)
         .post("/api/import/observations/csv")
