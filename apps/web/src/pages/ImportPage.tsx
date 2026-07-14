@@ -437,7 +437,7 @@ function ManualMeasurementRow({
             onChange(row.id, {
               marker: selectedMeasurement.display,
               measurementCode: selectedMeasurement.code,
-              unit: row.unit || getPreferredUnit(selectedMeasurement, units)
+              unit: row.unit.trim() || getPreferredUnit(selectedMeasurement, units)
             });
           }}
         >
@@ -668,7 +668,7 @@ function BodyCompositionImportPanel({
                       onRowChange(row.id, {
                         displayName: selectedMeasurement.display,
                         measurementCode: selectedMeasurement.code,
-                        unit: row.unit || getPreferredUnit(selectedMeasurement, units),
+                        unit: row.unit.trim() || getPreferredUnit(selectedMeasurement, units),
                         confidence: "high",
                         generatedCode: false
                       });

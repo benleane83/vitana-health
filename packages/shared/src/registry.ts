@@ -1201,8 +1201,8 @@ function conversionFactor(code: string, from: string, to: string): ((value: numb
     if (from === "lb" && to === "kg") return reciprocal(1 / 2.2046226218);
     if (from === "cm" && to === "in") return reciprocal(1 / 2.54);
     if (from === "in" && to === "cm") return reciprocal(2.54);
-    if (from === "l" && to === "fl oz") return reciprocal(33.8140227);
-    if (from === "fl oz" && to === "l") return reciprocal(1 / 33.8140227);
+    if (from === "l" && to === "floz") return reciprocal(33.8140227);
+    if (from === "floz" && to === "l") return reciprocal(1 / 33.8140227);
     if (from === "°c" && to === "°f") return (value) => value * 9 / 5 + 32;
     if (from === "°f" && to === "°c") return (value) => (value - 32) * 5 / 9;
     if (from === "mmol/l" && to === "mg/dl") return reciprocal(mgPerDlFactor(code));

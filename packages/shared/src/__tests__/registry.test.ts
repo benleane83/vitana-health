@@ -120,6 +120,7 @@ describe("defaultMeasurementTypes", () => {
       expect(convertMeasurementValue(70, weight, "kg", "lbs")).toBeCloseTo(154.324, 3);
       expect(convertMeasurementValue(180, defaultMeasurementTypes.find((type) => type.code === "height")!, "cm", "inches")).toBeCloseTo(70.866, 3);
       expect(convertMeasurementValue(90, glucose, "mg/dL", "mmol/L")).toBeCloseTo(4.995, 3);
+      expect(convertMeasurementValue(1, defaultMeasurementTypes.find((type) => type.code === "total_body_water")!, "L", "fl oz")).toBeCloseTo(33.814, 3);
     });
 
     it("does not convert unsupported units", () => {
