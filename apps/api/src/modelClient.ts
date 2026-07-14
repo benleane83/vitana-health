@@ -24,6 +24,17 @@ export async function callConfiguredModel(prompt: string, options?: ModelRequest
   const settings = getAiSettings();
   const provider = resolveProvider(options?.provider);
   const timeoutMs = options?.timeoutMs ?? parseTimeoutMs(process.env.MODEL_TIMEOUT_MS ?? process.env.OLLAMA_TIMEOUT_MS, 30000);
+  if (provider === "openai" && options?.allowCloud === false) {
+    return {
+      ok: false,
+      provider,
+      endpoint: settings.endpoint,
+      model: options.model ?? settings.model,
+      timeoutMs,
+      elapsedMs: 0,
+      error: "Cloud model processing requires profile consent"
+    };
+  }
   if (provider === "openai") {
     return callOpenAiResponses(prompt, settings, options?.model, timeoutMs);
   }

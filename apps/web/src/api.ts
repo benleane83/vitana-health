@@ -148,7 +148,7 @@ export interface ProfilesResponse {
 }
 
 export const api = {
-  health: () => request<{ ok: boolean; storage: string; counts: AnalyticsSummary["counts"] }>("/api/health"),
+  health: () => request<{ ok: boolean; uptime: number }>("/api/health"),
   store: () => request<HealthStoreData>("/api/store"),
   analytics: () => request<AnalyticsSummary>("/api/analytics"),
   biologicalAge: () => request<BiologicalAgeReport>("/api/biological-age"),

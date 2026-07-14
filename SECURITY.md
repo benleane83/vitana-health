@@ -50,7 +50,7 @@ Local Fitness Advisor is a **local-first, single-user application**. Understandi
 
 ## Privacy and health data
 
-The app stores personal health data in an AES-GCM encrypted local file. It has **no telemetry, cloud sync, or vendor data upload paths**. The only optional off-device data path is model prompt text when you configure a cloud provider yourself — and only after explicit per-profile consent.
+The app stores personal health data in an encrypted local DuckDB database. It has **no telemetry, cloud sync, or vendor data upload paths**. The only optional off-device data path is model prompt text when you configure a cloud provider yourself — and only after explicit per-profile consent.
 
 If you discover a defect that could cause health data to leave the device unexpectedly, or to be accessible to other local users or processes without authorization, treat it as a high-severity security vulnerability and report it privately.
 
@@ -60,8 +60,8 @@ This application generates wellness-oriented summaries intended to support conve
 
 ## Backup and recovery
 
-The encrypted store is written atomically with a `.bak` backup maintained alongside it. If the primary store is corrupted, the API will attempt to restore from the backup automatically at startup.
+Encrypted `health-store-*.enc` files are activation baselines for explicit rollback, not current DuckDB backups. The active DuckDB store does not yet have an automated backup or restore workflow.
 
 - **Back up `data/`** (or the application-data directory for the packaged desktop app) regularly.
 - **Back up `data/local.key`** separately from the encrypted store and store it securely. Loss of the key means loss of access to your health data.
-- The `.enc` and `.enc.bak` files cannot be read without the key.
+- The encrypted files cannot be read without the key.

@@ -16,6 +16,23 @@ export interface PublicAiSettings extends Omit<AiSettings, "apiKey"> {
   hasApiKey: boolean;
 }
 
+export interface AiCredentialProtector {
+  encryptString(value: string): Buffer;
+  decryptString(value: Buffer): string;
+}
+
+interface PersistedAiSettings extends Omit<AiSettings, "apiKey"> {
+  apiKey?: string;
+  credentialStorage?: "electron-safe-storage-v1";
+  wrappedApiKey?: string;
+}
+
+let credentialProtector: AiCredentialProtector | undefined;
+
+export function configureAiCredentialProtector(protector: AiCredentialProtector | undefined): void {
+  credentialProtector = protector;
+}
+
 export function getAiSettings(): AiSettings {
   const saved = readSavedSettings();
   return saved ?? defaultAiSettings();
@@ -26,7 +43,7 @@ export function saveAiSettings(settings: AiSettings): PublicAiSettings {
   mkdirSync(dirname(dataPath), { recursive: true, mode: 0o700 });
   const tempPath = `${dataPath}.${randomBytes(8).toString("hex")}.tmp`;
   try {
-    writeFileSync(tempPath, JSON.stringify(settings), { encoding: "utf8", mode: 0o600 });
+    writeFileSync(tempPath, JSON.stringify(toPersistedAiSettings(settings)), { encoding: "utf8", mode: 0o600 });
     renameSync(tempPath, dataPath);
   } finally {
     try {
@@ -44,20 +61,54 @@ export function toPublicAiSettings(settings: AiSettings): PublicAiSettings {
 }
 
 function readSavedSettings(): AiSettings | undefined {
+  let parsed: Partial<PersistedAiSettings>;
   try {
-    const parsed = JSON.parse(readFileSync(settingsPath(), "utf8")) as Partial<AiSettings>;
-    if (
-      (parsed.provider !== "ollama" && parsed.provider !== "openai") ||
-      typeof parsed.endpoint !== "string" ||
-      typeof parsed.model !== "string" ||
-      typeof parsed.timeoutMs !== "number"
-    ) {
-      return undefined;
-    }
-    return parsed as AiSettings;
+    parsed = JSON.parse(readFileSync(settingsPath(), "utf8")) as Partial<PersistedAiSettings>;
   } catch {
     return undefined;
   }
+  if (
+    (parsed.provider !== "ollama" && parsed.provider !== "openai") ||
+    typeof parsed.endpoint !== "string" ||
+    typeof parsed.model !== "string" ||
+    typeof parsed.timeoutMs !== "number"
+  ) {
+    return undefined;
+  }
+  const settings: AiSettings = {
+    provider: parsed.provider,
+    endpoint: parsed.endpoint,
+    model: parsed.model,
+    timeoutMs: parsed.timeoutMs,
+    apiKey: readApiKey(parsed)
+  };
+  if (typeof parsed.apiKey === "string" && credentialProtector) {
+    saveAiSettings(settings);
+  }
+  return settings;
+}
+
+function toPersistedAiSettings(settings: AiSettings): PersistedAiSettings {
+  const { apiKey, ...publicSettings } = settings;
+  if (!apiKey) return publicSettings;
+  if (!credentialProtector) return { ...publicSettings, apiKey };
+  return {
+    ...publicSettings,
+    credentialStorage: "electron-safe-storage-v1",
+    wrappedApiKey: credentialProtector.encryptString(apiKey).toString("base64")
+  };
+}
+
+function readApiKey(settings: Partial<PersistedAiSettings>): string | undefined {
+  if (typeof settings.apiKey === "string") return settings.apiKey;
+  if (!settings.wrappedApiKey && !settings.credentialStorage) return undefined;
+  if (settings.credentialStorage !== "electron-safe-storage-v1" || typeof settings.wrappedApiKey !== "string") {
+    throw new Error("AI settings credential metadata is invalid.");
+  }
+  if (!credentialProtector) {
+    throw new Error("AI settings contain a desktop-protected credential that cannot be opened by this standalone server.");
+  }
+  return credentialProtector.decryptString(Buffer.from(settings.wrappedApiKey, "base64"));
 }
 
 function defaultAiSettings(): AiSettings {
