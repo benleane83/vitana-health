@@ -407,7 +407,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
   {
     code: "glucose",
     display: "Glucose",
-    category: "metabolic",
+    category: "lab",
     kind: "panel-component",
     canonicalUnit: "mmol/L",
     aliases: ["glucose", "blood glucose", "fasting glucose"],
@@ -789,7 +789,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
   {
     code: "insulin",
     display: "Insulin",
-    category: "metabolic",
+    category: "lab",
     kind: "panel-component",
     canonicalUnit: "pmol/L",
     aliases: ["insulin", "fasting insulin"],
@@ -1061,7 +1061,7 @@ for (const type of defaultMeasurementTypes) {
 }
 
 export const MANUAL_LAB_MARKER_CATALOG = defaultMeasurementTypes
-  .filter((type) => type.category === "lab" || type.category === "metabolic")
+  .filter((type) => type.category === "lab")
   .map((type) => ({ marker: type.display, unit: type.canonicalUnit, measurementCode: type.code }));
 
 export function findMeasurementType(input: string, registry = defaultMeasurementTypes): MeasurementType | undefined {

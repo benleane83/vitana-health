@@ -14,12 +14,13 @@ import type {
   Profile,
   ProfileListEntry
 } from "@local-fitness-advisor/shared";
-import { safetyNotice } from "@local-fitness-advisor/shared";
+import { defaultMeasurementTypes, safetyNotice } from "@local-fitness-advisor/shared";
 import { api } from "./api.js";
 import type { AiQueryResult, LlmConfig, PairedDevice, PendingPairing } from "./api.js";
 import type { AppRoute, BodyCompositionEditableRow, ImportMode, InsightsTab, ManualMarkerRow, ScanKind } from "./types.js";
 import { todayIsoDate, numberOrUndefined, readFileAsBase64, isSupportedBodyCompMimeType } from "./utils.js";
 import { ConfirmDialog } from "./components/ConfirmDialog.js";
+import { ManualGroupSaveDialog } from "./components/ManualGroupSaveDialog.js";
 import { ProfileEditDialog, ProfileManagerDialog } from "./components/ProfileDialogs.js";
 import { DashboardPage } from "./pages/DashboardPage.js";
 import { ImportPage } from "./pages/ImportPage.js";
@@ -28,6 +29,12 @@ import { QueryPage } from "./pages/QueryPage.js";
 import { ExportPage } from "./pages/ExportPage.js";
 import { SettingsPage } from "./pages/SettingsPage.js";
 import { BiologicalAgePage } from "./pages/BiologicalAgePage.js";
+
+const manualGroupDefaults = [
+  { label: "Activity", category: "activity", measurementCode: "steps" },
+  { label: "Body", category: "body", measurementCode: "weight" },
+  { label: "Lab", category: "lab", measurementCode: "glucose" }
+] as const;
 
 export function App() {
   const [store, setStore] = useState<HealthStoreData>();
@@ -63,9 +70,9 @@ export function App() {
 
   const [scanKind, setScanKind] = useState<ScanKind>("body-composition");
   const [manualCollectedAt, setManualCollectedAt] = useState(todayIsoDate());
-  const [manualObservationGroup, setManualObservationGroup] = useState("General observations");
+  const [manualObservationGroup, setManualObservationGroup] = useState("Activity");
   const [manualLabName, setManualLabName] = useState("");
-  const [manualRows, setManualRows] = useState<ManualMarkerRow[]>(() => createStarterRows());
+  const [manualRows, setManualRows] = useState<ManualMarkerRow[]>(() => [createEmptyRow("Steps", "steps", "", "count")]);
   const [uploadFile, setUploadFile] = useState<File>();
   const [bodyCompFile, setBodyCompFile] = useState<File>();
   const [bodyCompDraft, setBodyCompDraft] = useState<BodyCompositionDraft>();
@@ -91,26 +98,75 @@ export function App() {
     onConfirm: () => void;
     onCancel: () => void;
   } | null>(null);
+  const [manualGroupSaveDialog, setManualGroupSaveDialog] = useState<{ groupName: string } | null>(null);
 
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const bodyCompInputRef = useRef<HTMLInputElement>(null);
   const profileMenuRef = useRef<HTMLDivElement>(null);
 
-  const recordedMeasurementTypes = useMemo(
-    () => [...(store?.measurementTypes ?? [])].sort((left, right) => left.display.localeCompare(right.display)),
-    [store?.measurementTypes]
-  );
-  const observationGroupOptions = useMemo(() => {
-    const labels = new Set<string>();
+  const recordedMeasurementTypes = useMemo(() => {
+    const measurementTypes = store?.measurementTypes?.length
+      ? store.measurementTypes
+      : defaultMeasurementTypes;
+    return [...measurementTypes].sort((left, right) => left.display.localeCompare(right.display));
+  }, [store?.measurementTypes]);
+  const manualGroupTemplates = useMemo(() => {
+    const defaultLabels = new Set(manualGroupDefaults.map((group) => normalizeManualGroupLabel(group.label)));
+    const activeGroupIds = new Set(
+      (store?.observations ?? [])
+        .map((observation) => observation.observationGroupId)
+        .filter((groupId): groupId is string => Boolean(groupId))
+    );
+    const groupsByLabel = new Map<string, string[]>();
     for (const group of store?.observationGroups ?? []) {
-      const label = group.label?.trim();
-      if (label) labels.add(label);
+      if (!activeGroupIds.has(group.id)) continue;
+      const label = group.label.trim();
+      const normalizedLabel = normalizeManualGroupLabel(label);
+      if (!normalizedLabel || defaultLabels.has(normalizedLabel)) continue;
+      const groupIds = groupsByLabel.get(normalizedLabel) ?? [];
+      groupIds.push(group.id);
+      groupsByLabel.set(normalizedLabel, groupIds);
     }
-    if (labels.size === 0) {
-      ["General observations", "Lab panel", "Body composition report"].forEach((label) => labels.add(label));
+
+    return [...groupsByLabel.entries()].map(([normalizedLabel, groupIds]) => {
+      const groupIdSet = new Set(groupIds);
+      const latestUnits = new Map<string, string>();
+      for (const observation of store?.observations ?? []) {
+        if (observation.observationGroupId && groupIdSet.has(observation.observationGroupId)) {
+          latestUnits.set(observation.measurementCode, observation.unit);
+        }
+      }
+      const measurements = [...latestUnits.entries()]
+        .map(([measurementCode, unit]) => {
+          const measurement = recordedMeasurementTypes.find((type) => type.code === measurementCode);
+          return {
+            measurementCode,
+            marker: measurement?.display ?? measurementCode,
+            unit: measurement?.canonicalUnit || unit
+          };
+        })
+        .sort((left, right) => left.marker.localeCompare(right.marker));
+      const label = (store?.observationGroups ?? []).find((group) => groupIds.includes(group.id))?.label.trim() ?? normalizedLabel;
+      return { label, normalizedLabel, measurements };
+    }).sort((left, right) => left.label.localeCompare(right.label));
+  }, [recordedMeasurementTypes, store?.observationGroups, store?.observations]);
+  const observationGroupOptions = useMemo(() => {
+    return [...manualGroupDefaults.map((group) => group.label), ...manualGroupTemplates.map((group) => group.label)];
+  }, [manualGroupTemplates]);
+  const selectedManualGroupDefault = manualGroupDefaults.find((group) => group.label === manualObservationGroup);
+  const selectedManualGroupTemplate = manualGroupTemplates.find(
+    (group) => group.normalizedLabel === normalizeManualGroupLabel(manualObservationGroup)
+  );
+  const allowedManualMeasurementTypes = useMemo(() => {
+    if (selectedManualGroupDefault) {
+      return recordedMeasurementTypes.filter((type) => type.category === selectedManualGroupDefault.category);
     }
-    return [...labels].sort((left, right) => left.localeCompare(right));
-  }, [store?.observationGroups]);
+    if (selectedManualGroupTemplate) {
+      const measurementCodes = new Set(selectedManualGroupTemplate.measurements.map((measurement) => measurement.measurementCode));
+      return recordedMeasurementTypes.filter((type) => measurementCodes.has(type.code));
+    }
+    return recordedMeasurementTypes;
+  }, [recordedMeasurementTypes, selectedManualGroupDefault, selectedManualGroupTemplate]);
 
   const profile = store?.profile;
   const activeProfile = profiles.find((entry) => entry.id === activeProfileId) ?? profile;
@@ -422,9 +478,18 @@ export function App() {
 
   async function submitManualLabs(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const isDefaultGroup = manualGroupDefaults.some((group) => group.label === manualObservationGroup);
+    if (isDefaultGroup && manualRows.length > 1) {
+      setManualGroupSaveDialog({ groupName: "" });
+      return;
+    }
+    await importManualObservations(manualObservationGroup);
+  }
+
+  async function importManualObservations(observationGroup: string) {
     const payload = toManualPayload({
       collectedAt: manualCollectedAt,
-      observationGroup: manualObservationGroup,
+      observationGroup,
       labName: manualLabName,
       rows: manualRows,
       knownMeasurements: recordedMeasurementTypes
@@ -668,6 +733,32 @@ export function App() {
     });
   }
 
+  function selectManualObservationGroup(label: string) {
+    setManualObservationGroup(label);
+    const defaultGroup = manualGroupDefaults.find((group) => group.label === label);
+    if (defaultGroup) {
+      const measurement = recordedMeasurementTypes.find((type) => type.code === defaultGroup.measurementCode);
+      setManualRows([createEmptyRow(
+        measurement?.display ?? defaultGroup.measurementCode,
+        defaultGroup.measurementCode,
+        "",
+        measurement?.canonicalUnit ?? ""
+      )]);
+      return;
+    }
+
+    const template = manualGroupTemplates.find(
+      (group) => group.normalizedLabel === normalizeManualGroupLabel(label)
+    );
+    setManualRows(template?.measurements.length
+      ? template.measurements.map((measurement) => createEmptyRow(measurement.marker, measurement.measurementCode, "", measurement.unit))
+      : [createEmptyRow()]);
+  }
+
+  function updateCustomManualObservationGroup(label: string) {
+    setManualObservationGroup(label);
+  }
+
   function addManualRow() {
     setManualRows((current) => [...current, createEmptyRow()]);
   }
@@ -696,9 +787,10 @@ export function App() {
 
   function resetManualForm() {
     setManualCollectedAt(todayIsoDate());
-    setManualObservationGroup("General observations");
+    setManualObservationGroup("Activity");
     setManualLabName("");
-    setManualRows(createStarterRows());
+    const steps = recordedMeasurementTypes.find((type) => type.code === "steps");
+    setManualRows([createEmptyRow(steps?.display ?? "Steps", "steps", "", steps?.canonicalUnit ?? "count")]);
   }
 
   // ─── Navigation tabs ─────────────────────────────────────────────────────────
@@ -859,10 +951,12 @@ export function App() {
             onScanKindChange={setScanKind}
             observationGroup={manualObservationGroup}
             observationGroupOptions={observationGroupOptions}
+            manualMeasurementTypes={allowedManualMeasurementTypes}
             labName={manualLabName}
             collectedAt={manualCollectedAt}
             rows={manualRows}
-            onObservationGroupChange={setManualObservationGroup}
+            onObservationGroupChange={selectManualObservationGroup}
+            onCustomObservationGroupChange={updateCustomManualObservationGroup}
             onLabNameChange={setManualLabName}
             onCollectedAtChange={setManualCollectedAt}
             onRowChange={updateManualRow}
@@ -1004,6 +1098,27 @@ export function App() {
           onCancel={confirmState.onCancel}
         />
       ) : null}
+
+      {manualGroupSaveDialog ? (
+        <ManualGroupSaveDialog
+          open={true}
+          defaultGroup={manualObservationGroup}
+          rowCount={manualRows.length}
+          groupName={manualGroupSaveDialog.groupName}
+          onGroupNameChange={(groupName) => setManualGroupSaveDialog({ groupName })}
+          onSave={() => {
+            const groupName = manualGroupSaveDialog.groupName.trim();
+            if (!groupName) return;
+            setManualGroupSaveDialog(null);
+            void importManualObservations(groupName);
+          }}
+          onSkip={() => {
+            setManualGroupSaveDialog(null);
+            void importManualObservations(manualObservationGroup);
+          }}
+          onCancel={() => setManualGroupSaveDialog(null)}
+        />
+      ) : null}
     </main>
   );
 }
@@ -1133,15 +1248,10 @@ function toBodyCompositionDraftRow(row: BodyCompositionEditableRow): BodyComposi
   };
 }
 
-function createStarterRows(): ManualMarkerRow[] {
-  return [
-    createEmptyRow("HDL cholesterol", "hdl_cholesterol", "", "mg/dL"),
-    createEmptyRow("LDL cholesterol", "ldl_cholesterol", "", "mg/dL"),
-    createEmptyRow("Triglycerides", "triglycerides", "", "mg/dL"),
-    createEmptyRow("Glucose", "glucose", "", "mg/dL")
-  ];
-}
-
 function createEmptyRow(marker = "", measurementCode = "", value = "", unit = ""): ManualMarkerRow {
   return { id: globalThis.crypto.randomUUID(), marker, measurementCode, value, unit };
+}
+
+function normalizeManualGroupLabel(label: string): string {
+  return label.trim().replace(/\s+/g, " ").toLocaleLowerCase();
 }

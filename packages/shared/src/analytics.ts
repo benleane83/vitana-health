@@ -18,7 +18,7 @@ export function computeAnalytics(store: HealthStoreData): AnalyticsSummary {
   const labAlerts = store.observations
     .filter((observation) => {
       const category = registry.get(observation.measurementCode)?.category;
-      return category === "lab" || category === "metabolic";
+      return category === "lab";
     })
     .map((observation) => labAlert(observation, registry.get(observation.measurementCode)))
     .filter((alert): alert is NonNullable<typeof alert> => alert !== undefined)

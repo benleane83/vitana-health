@@ -903,6 +903,12 @@ h3 {
   gap: var(--space-3);
 }
 
+.labs-manual-field {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
 .labs-rows {
   display: grid;
   gap: var(--space-3);
@@ -1339,6 +1345,29 @@ label {
 
 .profile-dialog-actions button:hover:not(:disabled) {
   background: oklch(94% 0.06 35 / 0.68);
+}
+
+.manual-group-save-form {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.manual-group-save-form h2,
+.manual-group-save-form p {
+  margin: 0;
+}
+
+.manual-group-save-field {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.manual-group-save-field input {
+  width: 100%;
+}
+
+.manual-group-save-form .confirm-dialog-actions {
+  margin-top: var(--space-2);
 }
 
 .profile-manager-list {

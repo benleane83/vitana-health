@@ -960,7 +960,7 @@ function measurementDetailEntryFromRow(
 
 function isSummaryCategory(value: unknown): value is HealthDataSummaryTypeRow["category"] {
   return value === "activity" || value === "cardio" || value === "sleep" || value === "body" ||
-    value === "lab" || value === "metabolic" || value === "derived" || value === "uncategorized";
+    value === "lab" || value === "derived" || value === "uncategorized";
 }
 
 function humanizeCode(code: string): string {
