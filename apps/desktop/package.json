@@ -24,6 +24,7 @@
     "appId": "com.localfitnessadvisor.desktop",
     "productName": "Local Fitness Advisor",
     "asar": true,
+    "npmRebuild": false,
     "asarUnpack": [
       "**/*.node"
     ],
