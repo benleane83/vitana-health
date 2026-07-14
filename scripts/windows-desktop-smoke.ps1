@@ -17,7 +17,7 @@ $evidenceRoot = New-Item -ItemType Directory -Force -Path $EvidenceDirectory
 $gracefulShutdownTimeoutMs = 30000
 $forcedShutdownTimeoutMs = 10000
 $forcedShutdownTimeoutSeconds = [int]($forcedShutdownTimeoutMs / 1000)
-$healthTimeoutSeconds = if ($HealthTimeoutSeconds -gt 0) {
+$effectiveHealthTimeoutSeconds = if ($HealthTimeoutSeconds -gt 0) {
   $HealthTimeoutSeconds
 } elseif ($Scope -eq "Fast") {
   120
@@ -62,7 +62,7 @@ function Test-HealthEndpoint([string]$Uri) {
 }
 
 function Wait-ForHealth {
-  for ($elapsedSeconds = 0; $elapsedSeconds -lt $healthTimeoutSeconds; $elapsedSeconds++) {
+  for ($elapsedSeconds = 0; $elapsedSeconds -lt $effectiveHealthTimeoutSeconds; $elapsedSeconds++) {
     foreach ($healthUri in $healthUris) {
       if (Test-HealthEndpoint $healthUri) {
         return
@@ -71,7 +71,7 @@ function Wait-ForHealth {
     Start-Sleep -Seconds 1
   }
   Save-HealthDiagnostics
-  throw "The installed desktop application did not expose its local health endpoint within $healthTimeoutSeconds seconds."
+  throw "The installed desktop application did not expose its local health endpoint within $effectiveHealthTimeoutSeconds seconds."
 }
 
 function Save-HealthDiagnostics {
