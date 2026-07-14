@@ -56,6 +56,9 @@ function compactSourceLabel(entry: HealthDataDetailEntry): string | undefined {
 
 function renderEntryContext(entry: HealthDataDetailEntry): string {
   const sourceLabel = compactSourceLabel(entry);
+  if (entry.sourceKind === "manual-entry" && sourceLabel) {
+    return sourceLabel;
+  }
   const importFileName = entry.importFileName?.trim();
   const note = entry.note?.trim();
   const parts: string[] = [];
@@ -228,6 +231,7 @@ export function ObservationTypeDetailPage({
   actionBusy,
   loadMoreBusy,
   onBack,
+  onEditObservation,
   onDeleteObservation,
   onDeleteAll,
   onLoadMore
@@ -238,6 +242,7 @@ export function ObservationTypeDetailPage({
   actionBusy: boolean;
   loadMoreBusy: boolean;
   onBack: () => void;
+  onEditObservation: (entry: HealthDataDetailEntry) => void;
   onDeleteObservation: (entry: HealthDataDetailEntry) => void | Promise<void>;
   onDeleteAll: () => void | Promise<void>;
   onLoadMore: () => void | Promise<void>;
@@ -327,19 +332,33 @@ export function ObservationTypeDetailPage({
                           <td>{renderEntryContext(entry)}</td>
                           <td>
                             {entry.canDelete ? (
-                              <button
-                                type="button"
-                                className="summary-row-delete"
-                                onClick={() => void onDeleteObservation(entry)}
-                                disabled={actionBusy}
-                                aria-label={`Delete ${entry.displayName} observation from ${formatTimestamp(entry.timestamp)}`}
-                                title="Delete observation"
-                              >
-                                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                                  <path d="M9 3h6l1 2h4v2H4V5h4l1-2Z" />
-                                  <path d="M6 9h12l-1 12H7L6 9Zm4 2v8h2v-8h-2Zm4 0v8h2v-8h-2Z" />
-                                </svg>
-                              </button>
+                              <div className="summary-row-actions">
+                                <button
+                                  type="button"
+                                  className="summary-row-edit"
+                                  onClick={() => onEditObservation(entry)}
+                                  disabled={actionBusy}
+                                  aria-label={`Edit ${entry.displayName} observation from ${formatTimestamp(entry.timestamp)}`}
+                                  title="Edit observation"
+                                >
+                                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                    <path d="m15.7 5.3 3 3L9 18H6v-3l9.7-9.7Zm1.4-1.4 1.2-1.2a1 1 0 0 1 1.4 0l1.6 1.6a1 1 0 0 1 0 1.4l-1.2 1.2-3-3Z" />
+                                  </svg>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="summary-row-delete"
+                                  onClick={() => void onDeleteObservation(entry)}
+                                  disabled={actionBusy}
+                                  aria-label={`Delete ${entry.displayName} observation from ${formatTimestamp(entry.timestamp)}`}
+                                  title="Delete observation"
+                                >
+                                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                    <path d="M9 3h6l1 2h4v2H4V5h4l1-2Z" />
+                                    <path d="M6 9h12l-1 12H7L6 9Zm4 2v8h2v-8h-2Zm4 0v8h2v-8h-2Z" />
+                                  </svg>
+                                </button>
+                              </div>
                             ) : (
                               <span className="summary-readonly">Read-only</span>
                             )}

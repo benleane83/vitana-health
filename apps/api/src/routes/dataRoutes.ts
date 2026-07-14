@@ -3,7 +3,8 @@ import { z } from "zod";
 import {
   calculateBiologicalAge,
   type DeleteObservationResponse,
-  type DeleteObservationsByTypeResponse
+  type DeleteObservationsByTypeResponse,
+  type UpdateObservationResponse
 } from "@local-fitness-advisor/shared";
 import type { ProfileStoreManager } from "../store.js";
 import { refreshAnalyticsStorage } from "../storage/analyticsBackend.js";
@@ -30,6 +31,14 @@ const detailPageQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0)
 });
 
+const updateObservationBodySchema = z.object({
+  measurementCode: measurementCodeParamSchema,
+  observedAt: z.string().datetime({ offset: true }),
+  value: z.number().finite(),
+  unit: z.string().trim().min(1).max(40),
+  note: z.string().trim().max(1000).optional()
+}).strict();
+
 function buildDeleteObservationResponse(
   deleted: DeleteObservationResponse,
   warehouse: unknown
@@ -38,6 +47,10 @@ function buildDeleteObservationResponse(
     ...deleted,
     warehouse
   };
+}
+
+function buildUpdateObservationResponse(updated: UpdateObservationResponse, warehouse: unknown): unknown {
+  return { ...updated, warehouse };
 }
 
 function buildDeleteObservationsByTypeResponse(
@@ -111,6 +124,23 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
       const measurementCode = measurementCodeParamSchema.parse(request.params.measurementCode);
       const page = detailPageQuerySchema.parse(request.query);
       response.json(await activeStore().getMeasurementDetail(measurementCode, page));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.patch("/observations/:id", async (request, response, next) => {
+    try {
+      const id = observationIdParamSchema.parse(request.params.id);
+      const input = updateObservationBodySchema.parse(request.body);
+      const store = activeStore();
+      const updated = await store.updateObservation(id, input);
+      if (!updated) {
+        response.status(404).json({ error: "Observation not found.", code: "OBSERVATION_NOT_FOUND" });
+        return;
+      }
+      const warehouse = await refreshAnalyticsStorage(storeManager, updated);
+      response.json(buildUpdateObservationResponse(updated, warehouse));
     } catch (error) {
       next(error);
     }

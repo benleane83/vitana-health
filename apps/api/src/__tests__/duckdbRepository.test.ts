@@ -11,7 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { computeAnalytics } from "@local-fitness-advisor/shared";
+import { computeAnalytics, defaultMeasurementTypes } from "@local-fitness-advisor/shared";
 import {
   closeEncryptedDuckDbDatabase,
   createDuckDbSchema,
@@ -64,6 +64,53 @@ describe("DuckDbRepository fidelity", () => {
     await expect(DuckDbRepository.open(root, databasePath, key)).rejects.toThrow("refuses to create");
     expect(existsSync(databasePath)).toBe(false);
   });
+
+  it.skipIf(!httpfsExtensionPath)("reconciles stale default measurement types when opening an existing profile", async () => {
+    const databasePath = join(root, "databases", "health-store-legacy-registry.duckdb-poc");
+    const fixture = createDuckDbHealthStoreFixture();
+    const glucoseObservation = {
+      ...fixture.observations[0],
+      id: "legacy-glucose",
+      measurementCode: "glucose",
+      value: 5.2,
+      unit: "mmol/L"
+    };
+    const fixtureWithGlucose = {
+      ...fixture,
+      observations: [...fixture.observations, glucoseObservation]
+    };
+
+    const hydrated = await DuckDbRepository.hydrate(root, databasePath, key, fixtureWithGlucose, { httpfsExtensionPath });
+    await hydrated.close();
+    const legacyHandle = await openEncryptedDuckDbDatabase(root, databasePath, key, { httpfsExtensionPath });
+    await execSql(legacyHandle.connection, `
+      UPDATE measurement_types
+      SET category = 'metabolic', canonical_unit = 'mg/dL',
+          custom_properties = '{"fhirCode":"2345-7","loincCode":"2345-7","normalLow":70,"normalHigh":99}'
+      WHERE code = 'glucose';
+      CHECKPOINT;
+    `);
+    await closeEncryptedDuckDbDatabase(legacyHandle);
+
+    const repository = await DuckDbRepository.open(root, databasePath, key, { httpfsExtensionPath });
+    try {
+      expect((await repository.appBootstrap()).measurementTypes).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          code: "glucose",
+          category: "lab",
+          canonicalUnit: "mmol/L",
+          normalLow: 3.9,
+          normalHigh: 5.5
+        })
+      ]));
+      const summary = await repository.summary();
+      expect(summary.categories.flatMap((category) => category.rows)).toEqual(expect.arrayContaining([
+        expect.objectContaining({ code: "glucose", category: "lab" })
+      ]));
+    } finally {
+      await repository.close();
+    }
+  }, 30_000);
 
   it.skipIf(!httpfsExtensionPath)("hydrates, closes, and reopens every v2 collection with exact content and order", async () => {
     const databasePath = join(root, "databases", "health-store-profile-a.duckdb-poc");
@@ -308,6 +355,24 @@ describe("DuckDbRepository fidelity", () => {
       expect(firstImportResult).not.toHaveProperty("observations");
       expect(firstImportResult).not.toHaveProperty("sourceImports");
       await repository.addInsight(addedInsight);
+      const beforeUpdate = (await repository.snapshot()).observations.find((entry) => entry.id === "observation-z")!;
+      const updated = await repository.updateObservation("observation-z", {
+        measurementCode: "creatinine",
+        observedAt: "2026-02-03T10:30:00.000Z",
+        value: 61.4,
+        unit: "µmol/L",
+        note: "Corrected"
+      });
+      expect(updated?.updatedObservation).toMatchObject({
+        id: "observation-z",
+        measurementCode: "creatinine",
+        sourceId: beforeUpdate.sourceId,
+        observationGroupId: beforeUpdate.observationGroupId
+      });
+      expect(updated?.updatedObservation.sourceJson).toEqual(beforeUpdate.sourceJson);
+      expect(await repository.updateObservation("missing-observation", {
+        measurementCode: "creatinine", observedAt: "2026-02-03T10:30:00.000Z", value: 1, unit: "µmol/L"
+      })).toBeUndefined();
       const deleted = await repository.deleteObservation("observation-z");
       expect(deleted).toMatchObject({ deletedCount: 1, deletedObservation: { id: "observation-z" } });
       expect(await repository.deleteObservation("missing-observation")).toBeUndefined();
@@ -329,9 +394,10 @@ describe("DuckDbRepository fidelity", () => {
       expect(snapshot.activitySessions.map((entry) => entry.id)).toEqual(["activity-1", "activity-2"]);
       expect(snapshot.observations).toEqual([]);
       expect(snapshot.insights.map((entry) => entry.id)).toEqual(["insight-2", "insight-1"]);
-      expect(snapshot.auditEvents.map((entry) => entry.eventType).slice(0, 5)).toEqual([
+      expect(snapshot.auditEvents.map((entry) => entry.eventType).slice(0, 6)).toEqual([
         "observation-type-deleted",
         "observation-deleted",
+        "observation-updated",
         "insight-generated",
         "import-processed",
         "import-processed"

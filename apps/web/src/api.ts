@@ -13,7 +13,9 @@ import type {
   Insight,
   ManualLabEntryPayload,
   Profile,
-  ProfileListEntry
+  ProfileListEntry,
+  UpdateObservationInput,
+  UpdateObservationResponse
 } from "@local-fitness-advisor/shared";
 
 const ownerTokenKey = "local-fitness-advisor.ownerToken";
@@ -170,6 +172,7 @@ export interface ImportMutationResponse {
 
 export type DeleteObservationMutationResponse = DeleteObservationResponse;
 export type DeleteObservationsByTypeMutationResponse = DeleteObservationsByTypeResponse;
+export type UpdateObservationMutationResponse = UpdateObservationResponse;
 
 export const api = {
   health: () => request<{ ok: boolean; uptime: number }>("/api/health"),
@@ -193,6 +196,11 @@ export const api = {
     const suffix = query.size > 0 ? `?${query.toString()}` : "";
     return request<HealthDataDetail>(`/api/summary/${encodeURIComponent(measurementCode)}${suffix}`);
   },
+  updateObservation: (id: string, input: UpdateObservationInput) =>
+    request<UpdateObservationMutationResponse>(`/api/observations/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(input)
+    }),
   deleteObservation: (id: string) => request<DeleteObservationMutationResponse>(`/api/observations/${encodeURIComponent(id)}`, { method: "DELETE" }),
   deleteObservationsByType: (measurementCode: string) =>
     request<DeleteObservationsByTypeMutationResponse>(`/api/observations/by-type/${encodeURIComponent(measurementCode)}`, { method: "DELETE" }),

@@ -391,6 +391,55 @@ describe("DELETE /api/observations/:id", () => {
   });
 });
 
+describe("PATCH /api/observations/:id", () => {
+  it("returns 404 for a non-existent observation ID", async () => {
+    const res = await request(app)
+      .patch("/api/observations/obs_nonexistent123")
+      .set("authorization", ownerAuthorization)
+      .send({ measurementCode: "glucose", observedAt: "2026-02-03T10:30:00.000Z", value: 5.2, unit: "mmol/L" });
+    expect(res.status).toBe(404);
+  });
+
+  it("updates editable fields while preserving observation provenance", async () => {
+    const parsed = buildManualLabEntryImport(
+      {
+        collectedAt: "2026-01-01T00:00:00.000Z",
+        panelName: "Test panel",
+        markers: [{ markerName: "Glucose", value: 5.2, unit: "mmol/L" }]
+      },
+      "2026-01-01T00:00:00.000Z"
+    );
+    const store = storeManager.getActiveStore();
+    await store.mergeImport(parsed);
+    const before = (await store.readSnapshot()).observations[0];
+    expect(before).toBeDefined();
+
+    const res = await request(app)
+      .patch(`/api/observations/${before!.id}`)
+      .set("authorization", ownerAuthorization)
+      .send({
+        measurementCode: "creatinine",
+        observedAt: "2026-02-03T10:30:00.000Z",
+        value: 61.4,
+        unit: "µmol/L",
+        note: "Corrected from source report"
+      });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.updatedObservation).toMatchObject({
+      id: before!.id,
+      measurementCode: "creatinine",
+      observedAt: "2026-02-03T10:30:00.000Z",
+      value: 61.4,
+      unit: "µmol/L",
+      note: "Corrected from source report",
+      sourceId: before!.sourceId,
+      observationGroupId: before!.observationGroupId
+    });
+    expect(res.body.updatedObservation.sourceJson).toEqual(before!.sourceJson);
+  });
+});
+
 // ─── Schema validation ─────────────────────────────────────────────────────────
 
 describe("POST /api/import/blood-test — schema validation", () => {
@@ -400,6 +449,15 @@ describe("POST /api/import/blood-test — schema validation", () => {
       .set("authorization", ownerAuthorization)
       .send({});
     expect(res.status).not.toBe(404);
+  });
+
+  it("accepts Lab results preview payloads larger than the global JSON limit", async () => {
+    const res = await request(app)
+      .post("/api/import/blood-test/preview")
+      .set("authorization", ownerAuthorization)
+      .send({ fileName: "large.pdf", mimeType: "invalid", contentBase64: "A".repeat(1_100_000) });
+    expect(res.status).toBe(400);
+    expect(res.body.code).not.toBe("PAYLOAD_TOO_LARGE");
   });
 
   it("returns 400 when 'content' field is missing", async () => {

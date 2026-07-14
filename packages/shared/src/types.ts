@@ -69,7 +69,7 @@ export interface Device {
 export interface MeasurementType {
   code: string;
   display: string;
-  category: "activity" | "cardio" | "sleep" | "body" | "lab" | "metabolic" | "derived";
+  category: "activity" | "cardio" | "sleep" | "body" | "lab" | "derived";
   kind: MeasurementKind;
   canonicalUnit: string;
   aliases: string[];
@@ -125,6 +125,19 @@ export interface Observation {
   sourceJson?: unknown;
 }
 
+export interface UpdateObservationInput {
+  measurementCode: string;
+  observedAt: string;
+  value: number;
+  unit: string;
+  note?: string;
+}
+
+export interface UpdateObservationResponse {
+  updatedObservation: Observation;
+  counts: AppBootstrap["counts"];
+}
+
 export interface TimeSeriesSample {
   id: string;
   measurementCode: string;
@@ -172,6 +185,7 @@ export interface AuditEvent {
     | "import-processed"
     | "insight-generated"
     | "export-created"
+    | "observation-updated"
     | "observation-deleted"
     | "observation-type-deleted";
   detail: string;

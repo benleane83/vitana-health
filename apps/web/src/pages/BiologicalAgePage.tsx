@@ -31,18 +31,18 @@ export function BiologicalAgePage({
         <section className="summary-category" key={model.id}>
           <div className="summary-category-toggle">
             <strong>{model.name} <span className="summary-readonly">({model.version})</span></strong>
-            <span>{model.status === "available" ? "Available" : model.status === "incomplete" ? "Incomplete data" : "Not available"}</span>
+            {model.status !== "available" ? <span>{model.status === "incomplete" ? "Incomplete data" : "Not available"}</span> : null}
           </div>
           <div className="summary-detail-table">
             <p>{model.methodology}</p>
             {model.status === "available" ? (
-              <div className="summary-totals summary-detail-stats">
+              <div className="summary-totals summary-detail-stats biological-age-stats">
                 <div className="stat"><strong>{formatAge(model.chronologicalAge)}</strong><span>Chronological age</span></div>
                 <div className="stat"><strong>{formatAge(model.biologicalAge)}</strong><span>Biological age</span></div>
                 <div className="stat"><strong>{formatAge(model.ageAcceleration)}</strong><span>Age acceleration</span></div>
               </div>
             ) : null}
-            {model.panelCollectedAt ? <p>Selected lab panel: {formatTimestamp(model.panelCollectedAt)}</p> : null}
+            {model.panelCollectedAt ? <p>Selected lab panel: <strong>{formatTimestamp(model.panelCollectedAt)}</strong></p> : null}
             {model.chronologicalAgeDetail ? <p>{model.chronologicalAgeDetail}</p> : null}
             {model.inputs.length > 0 ? (
               <table>
