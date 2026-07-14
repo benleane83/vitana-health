@@ -50,6 +50,8 @@ npm run package:desktop
 
 The installer packages the API and web UI, configures private-network firewall access, and stores generated credentials, certificates, and health data in the user's application-data directory. Opening Local Fitness Advisor starts the local service and web UI together.
 
+For signing, verification, checksums, and the protected Windows release process, see the [Windows release runbook](docs/WINDOWS_RELEASE.md).
+
 ## Privacy model
 
 - Personal health data is stored locally in one encrypted DuckDB database per profile. Encrypted `health-store-*.enc` files are retained as activation baselines for explicit rollback.

@@ -1,0 +1,90 @@
+name: Windows release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  signed-windows-release:
+    name: Signed Windows installer
+    runs-on: windows-2022
+    environment: windows-release
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install DuckDB native binding
+        run: npm rebuild duckdb
+
+      - name: Package signed Windows installer
+        env:
+          CSC_LINK: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PFX_PASSWORD }}
+        run: npm run package:desktop && npm run package:signed -w @local-fitness-advisor/desktop
+
+      - name: Verify Authenticode signatures
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_SUBJECT: ${{ vars.WINDOWS_SIGNING_SUBJECT }}
+        run: |
+          $files = @(
+            Get-ChildItem apps/desktop/dist/*.exe
+            Get-ChildItem apps/desktop/dist/win-unpacked/*.exe
+          )
+          foreach ($file in $files) {
+            $signature = Get-AuthenticodeSignature $file
+            if ($signature.Status -ne "Valid" -or $signature.SignerCertificate.Subject -notlike "*$env:WINDOWS_SIGNING_SUBJECT*") {
+              throw "Signature verification failed for $($file.FullName): $($signature.Status)"
+            }
+          }
+
+      - name: Smoke test installer and packaged runtime
+        shell: pwsh
+        run: >
+          ./scripts/windows-desktop-smoke.ps1
+          -Installer (Get-ChildItem apps/desktop/dist/*.exe | Select-Object -First 1).FullName
+          -EvidenceDirectory desktop-release-evidence
+
+      - name: Write release checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem apps/desktop/dist/*.exe | Get-FileHash -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower()) *$($_.Path | Split-Path -Leaf)" } |
+            Set-Content apps/desktop/dist/SHA256SUMS.txt
+
+      - name: Upload signed installer and evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: signed-windows-release
+          path: |
+            apps/desktop/dist/*.exe
+            apps/desktop/dist/SHA256SUMS.txt
+            desktop-release-evidence
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish signed installer and checksums
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create $env:GITHUB_REF_NAME
+          apps/desktop/dist/*.exe apps/desktop/dist/SHA256SUMS.txt
+          --verify-tag --generate-notes
