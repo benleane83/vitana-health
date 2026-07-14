@@ -3,7 +3,8 @@ param(
   [string]$Installer,
   [string]$BaselineInstaller,
   [Parameter(Mandatory = $true)]
-  [string]$EvidenceDirectory
+  [string]$EvidenceDirectory,
+  [int]$HealthTimeoutSeconds = 240
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,9 +14,9 @@ $installRoot = Join-Path $env:RUNNER_TEMP "lfa-smoke"
 $evidenceRoot = New-Item -ItemType Directory -Force -Path $EvidenceDirectory
 $gracefulShutdownTimeoutMs = 30000
 $forcedShutdownTimeoutMs = 10000
+$forcedShutdownTimeoutSeconds = [int]($forcedShutdownTimeoutMs / 1000)
 # Install/upgrade startup on CI runners can take several minutes while
 # signed binaries initialize and rebuild local runtime state.
-$healthTimeoutSeconds = 240
 $healthUris = @(
   "https://127.0.0.1:4317/api/health",
   "http://127.0.0.1:4317/api/health"
@@ -34,7 +35,7 @@ function Stop-DesktopProcess([System.Diagnostics.Process]$Process) {
         throw "Unable to stop desktop process $($Process.Id)."
       }
       if (-not $Process.WaitForExit($forcedShutdownTimeoutMs)) {
-        throw "Desktop process $($Process.Id) did not exit within $($forcedShutdownTimeoutMs / 1000) seconds after force stop."
+        throw "Desktop process $($Process.Id) did not exit within $forcedShutdownTimeoutSeconds seconds after force stop."
       }
     }
   }
