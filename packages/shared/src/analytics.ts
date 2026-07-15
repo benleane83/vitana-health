@@ -2,14 +2,17 @@ import type { AnalyticsSummary, HealthStoreData, MeasurementType, Observation, U
 import { classifyValue, getReferenceRange, toPreferredMeasurementValue } from "./registry.js";
 
 export function computeAnalytics(store: HealthStoreData): AnalyticsSummary {
+  const counts = {
+    imports: store.sourceImports.length,
+    observations: store.observations.length,
+    samples: store.timeSeriesSamples.length,
+    activities: store.activitySessions.length,
+    insights: store.insights.length,
+    ...(store.healthEvents ? { healthEvents: store.healthEvents.length } : {}),
+    ...(store.careItems ? { careItems: store.careItems.length } : {})
+  };
   return computeAnalyticsFromInput({
-    counts: {
-      imports: store.sourceImports.length,
-      observations: store.observations.length,
-      samples: store.timeSeriesSamples.length,
-      activities: store.activitySessions.length,
-      insights: store.insights.length
-    },
+    counts: counts as AnalyticsSummary["counts"],
     measurementTypes: store.measurementTypes,
     observations: store.observations,
     units: store.profile.units

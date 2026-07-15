@@ -189,7 +189,9 @@ export class HealthStore {
         imports: this.data.sourceImports.length,
         observations: this.data.observations.length,
         samples: this.data.timeSeriesSamples.length,
-        activities: this.data.activitySessions.length
+        activities: this.data.activitySessions.length,
+        healthEvents: this.data.healthEvents?.length ?? 0,
+        careItems: this.data.careItems?.length ?? 0
       }
     });
   }
@@ -860,16 +862,19 @@ function storeCounts(data: HealthStoreData): AppBootstrap["counts"] {
     imports: data.sourceImports.length,
     observations: data.observations.length,
     samples: data.timeSeriesSamples.length,
-    activities: data.activitySessions.length
+    activities: data.activitySessions.length,
+    healthEvents: data.healthEvents?.length ?? 0,
+    careItems: data.careItems?.length ?? 0
   };
 }
 
 function createEmptyStore(profileId = "self"): HealthStoreData {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     profile: {
       id: normalizeProfileId(profileId),
       displayName: "Local user",
+      subjectKind: "adult",
       units: "metric",
       updatedAt: new Date().toISOString()
     },
@@ -881,6 +886,8 @@ function createEmptyStore(profileId = "self"): HealthStoreData {
     observationGroups: [],
     timeSeriesSamples: [],
     activitySessions: [],
+    healthEvents: [],
+    careItems: [],
     insights: [],
     auditEvents: []
   };

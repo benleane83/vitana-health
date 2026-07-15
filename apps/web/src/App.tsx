@@ -397,11 +397,18 @@ export function App() {
     await run("Profile saved locally.", async () => {
       await api.saveProfile({
         displayName: String(form.get("displayName") || "Local user"),
+        subjectKind: String(form.get("subjectKind") || "adult") as NonNullable<Profile["subjectKind"]>,
+        birthDate: String(form.get("birthDate") || "") || undefined,
         birthYear: numberOrUndefined(form.get("birthYear")),
         sex: String(form.get("sex") || "not-specified") as Profile["sex"],
         heightCm: height === undefined ? undefined : units === "imperial" ? height * 2.54 : height,
         bloodType: String(form.get("bloodType") || "unknown") as Profile["bloodType"],
         goalSummary: String(form.get("goalSummary") || ""),
+        pet: String(form.get("subjectKind")) === "pet" ? {
+          species: String(form.get("petSpecies") || ""),
+          breed: String(form.get("petBreed") || "") || undefined,
+          microchipId: String(form.get("petMicrochipId") || "") || undefined
+        } : undefined,
         units
       });
       await refreshForCurrentRoute();

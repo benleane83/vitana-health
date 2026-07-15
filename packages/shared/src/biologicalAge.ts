@@ -39,6 +39,21 @@ const disclaimer =
   "This wellness estimate is not a diagnosis, prognosis, or medical advice. Results depend on laboratory methods and complete, contemporaneous inputs; discuss questions or concerning results with a qualified clinician.";
 
 export function calculateBiologicalAge(store: HealthStoreData, generatedAt = new Date().toISOString()): BiologicalAgeReport {
+  if (store.profile.subjectKind && store.profile.subjectKind !== "adult") {
+    return {
+      generatedAt,
+      disclaimer,
+      models: [{
+        ...calculatePhenoAge(store, generatedAt),
+        status: "incomplete",
+        chronologicalAge: undefined,
+        chronologicalAgeDetail: "Biological age estimates are available only for adult profiles.",
+        biologicalAge: undefined,
+        ageAcceleration: undefined,
+        calculatedAt: undefined
+      }]
+    };
+  }
   return {
     generatedAt,
     disclaimer,
@@ -49,8 +64,9 @@ export function calculateBiologicalAge(store: HealthStoreData, generatedAt = new
 function calculatePhenoAge(store: HealthStoreData, generatedAt: string): BiologicalAgeModelResult {
   const observations = Array.isArray(store.observations) ? store.observations : [];
   const candidate = latestInputs(observations);
+  const birthDate = store.profile?.birthDate;
   const birthYear = typeof store.profile?.birthYear === "number" ? store.profile.birthYear : undefined;
-  const chronologicalAge = ageForDate(birthYear, candidate?.collectedAt ?? generatedAt);
+  const chronologicalAge = birthDate ? ageForBirthDate(birthDate, candidate?.collectedAt ?? generatedAt) : ageForDate(birthYear, candidate?.collectedAt ?? generatedAt);
 
   const base: Omit<BiologicalAgeModelResult, "status" | "biologicalAge" | "ageAcceleration" | "calculatedAt"> = {
     id: "phenoage-levine-2018",
@@ -60,8 +76,8 @@ function calculatePhenoAge(store: HealthStoreData, generatedAt: string): Biologi
     citation: phenoAgeCitation,
     chronologicalAge,
     chronologicalAgeDetail: chronologicalAge === undefined
-      ? "Add a valid birth year to calculate chronological age."
-      : "Estimated from the stored birth year at the selected panel date.",
+      ? "Add a valid birth date to calculate chronological age."
+      : birthDate ? "Calculated from the stored birth date at the selected panel date." : "Estimated from the stored birth year at the selected panel date.",
     panelCollectedAt: candidate?.collectedAt,
     inputs: candidate?.inputs ?? emptyInputs(),
     limitations: [
@@ -176,6 +192,18 @@ function normalizeValue(code: PhenoAgeCode, value: number, unit: string): number
   if (code === "glucose" && normalized === "mg/dl") return value / 18.0182;
   if (code === "high_sensitivity_c_reactive_protein" && normalized === "mg/l") return value / 10;
   return undefined;
+}
+
+function ageForBirthDate(birthDate: string, date: string): number | undefined {
+  const birth = new Date(`${birthDate}T00:00:00.000Z`);
+  const reference = new Date(date);
+  if (Number.isNaN(birth.getTime()) || Number.isNaN(reference.getTime()) || birth > reference) return undefined;
+  let age = reference.getUTCFullYear() - birth.getUTCFullYear();
+  if (
+    reference.getUTCMonth() < birth.getUTCMonth() ||
+    (reference.getUTCMonth() === birth.getUTCMonth() && reference.getUTCDate() < birth.getUTCDate())
+  ) age -= 1;
+  return age;
 }
 
 function ageForDate(birthYear: number | undefined, date: string): number | undefined {

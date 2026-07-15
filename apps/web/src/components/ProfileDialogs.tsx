@@ -89,8 +89,27 @@ export function ProfileEditDialog({
           defaultValue={profile?.displayName ?? "Local user"}
         />
 
+        <label htmlFor="profile-subjectKind">Profile type</label>
+        <select id="profile-subjectKind" name="subjectKind" defaultValue={profile?.subjectKind ?? "adult"}>
+          <option value="adult">Adult</option>
+          <option value="child">Child</option>
+          <option value="pet">Pet</option>
+        </select>
+
+        <label htmlFor="profile-birthDate">Birth date</label>
+        <input id="profile-birthDate" name="birthDate" type="date" defaultValue={profile?.birthDate ?? ""} />
+
         <label htmlFor="profile-birthYear">Birth year</label>
         <input id="profile-birthYear" name="birthYear" type="number" defaultValue={profile?.birthYear ?? ""} />
+
+        <label htmlFor="profile-petSpecies">Pet species</label>
+        <input id="profile-petSpecies" name="petSpecies" defaultValue={profile?.pet?.species ?? ""} />
+
+        <label htmlFor="profile-petBreed">Pet breed</label>
+        <input id="profile-petBreed" name="petBreed" defaultValue={profile?.pet?.breed ?? ""} />
+
+        <label htmlFor="profile-petMicrochipId">Microchip ID</label>
+        <input id="profile-petMicrochipId" name="petMicrochipId" defaultValue={profile?.pet?.microchipId ?? ""} />
 
         <label htmlFor="profile-sex">Sex</label>
         <select id="profile-sex" name="sex" defaultValue={profile?.sex ?? "not-specified"}>

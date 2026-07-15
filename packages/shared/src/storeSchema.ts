@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { HealthStoreData, InsightModel } from "./types.js";
 import { defaultMeasurementTypes } from "./registry.js";
 
-export const CURRENT_SCHEMA_VERSION = 2 as const;
+export const CURRENT_SCHEMA_VERSION = 3 as const;
 
 const sourceKind = z.enum([
   "health-connect", "manual-entry", "blood-test-csv", "observation-csv",
@@ -11,7 +11,8 @@ const sourceKind = z.enum([
 const stringRecord = z.record(z.unknown());
 
 export const profileSchema = z.object({
-  id: z.string(), displayName: z.string(), birthYear: z.number().optional(),
+  id: z.string(), displayName: z.string(), subjectKind: z.enum(["adult", "child", "pet"]).default("adult"),
+  birthDate: z.string().date().optional(), birthYear: z.number().optional(),
   sex: z.enum(["female", "male", "intersex", "unknown", "not-specified"]).optional(),
   bloodType: z.enum([
     "a-positive", "a-negative", "b-positive", "b-negative", "ab-positive", "ab-negative",
@@ -21,8 +22,17 @@ export const profileSchema = z.object({
   cloudAiConsent: z.object({
     enabled: z.boolean(), providerScopeAccepted: z.boolean(), consentedAt: z.string().optional(), consentVersion: z.string().optional()
   }).optional(),
+  pet: z.object({
+    species: z.string().min(1), breed: z.string().optional(),
+    reproductiveStatus: z.enum(["intact", "neutered", "spayed", "unknown"]).optional(),
+    microchipId: z.string().optional()
+  }).strict().optional(),
   units: z.enum(["metric", "imperial"]), updatedAt: z.string()
-}).strict();
+}).strict().superRefine((profile, context) => {
+  if (profile.subjectKind === "pet" && !profile.pet?.species?.trim()) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["pet", "species"], message: "Pet profiles require a species." });
+  }
+});
 
 export const insightSchema = z.object({
   id: z.string(), createdAt: z.string(), title: z.string(), body: z.string(), evidence: z.array(z.string()),
@@ -78,10 +88,42 @@ const storeFields = {
     id: z.string(), activityType: z.string(), startAt: z.string(), endAt: z.string().optional(), durationMinutes: z.number().optional(),
     energyKcal: z.number().optional(), distanceMeters: z.number().optional(), sourceId: z.string(), sourceJson: z.unknown().optional()
   }).strict()),
+  healthEvents: z.array(z.discriminatedUnion("kind", [
+    z.object({
+      id: z.string(), kind: z.literal("immunization"), status: z.enum(["completed", "entered-in-error"]),
+      occurredAt: z.string(), occurredEnd: z.string().optional(), source: sourceKind, provider: z.string().optional(),
+      notes: z.string().optional(), metadata: stringRecord.optional(),
+      immunization: z.object({
+        vaccine: z.string(), targetDisease: z.string().optional(), doseNumber: z.number().int().positive().optional(),
+        series: z.string().optional(), manufacturer: z.string().optional(), lotNumber: z.string().optional(),
+        expiresAt: z.string().optional(), route: z.string().optional(), site: z.string().optional(), reaction: z.string().optional()
+      }).strict()
+    }).strict(),
+    z.object({
+      id: z.string(), kind: z.literal("medication-administration"), status: z.enum(["completed", "entered-in-error"]),
+      occurredAt: z.string(), occurredEnd: z.string().optional(), source: sourceKind, provider: z.string().optional(),
+      notes: z.string().optional(), metadata: stringRecord.optional(),
+      medicationAdministration: z.object({
+        medication: z.string(), activeIngredient: z.string().optional(), dose: z.number(), unit: z.string(), route: z.string().optional()
+      }).strict()
+    }).strict(),
+    z.object({
+      id: z.string(), kind: z.literal("other"), status: z.enum(["completed", "entered-in-error"]),
+      occurredAt: z.string(), occurredEnd: z.string().optional(), source: sourceKind, provider: z.string().optional(),
+      notes: z.string().optional(), metadata: stringRecord.optional()
+    }).strict()
+  ])).default([]),
+  careItems: z.array(z.object({
+    id: z.string(), kind: z.string(), code: z.string().optional(), title: z.string(), dueStart: z.string().optional(),
+    dueEnd: z.string().optional(), reminderAt: z.string().optional(), priority: z.enum(["low", "normal", "high"]),
+    status: z.enum(["open", "completed", "cancelled", "skipped"]), scheduleProvenance: z.string().optional(),
+    scheduleVersion: z.string().optional(), notes: z.string().optional(), originatingHealthEventId: z.string().optional(),
+    completedHealthEventId: z.string().optional(), completedAt: z.string().optional()
+  }).strict()).default([]),
   insights: z.array(insightSchema),
   auditEvents: z.array(z.object({
     id: z.string(), createdAt: z.string(),
-    eventType: z.enum(["store-created", "profile-updated", "migration-applied", "import-processed", "insight-generated", "export-created", "observation-updated", "observation-deleted", "observation-type-deleted"]),
+    eventType: z.enum(["store-created", "profile-updated", "migration-applied", "import-processed", "insight-generated", "export-created", "observation-updated", "observation-deleted", "observation-type-deleted", "health-event-created", "health-event-updated", "health-event-deleted", "care-item-created", "care-item-updated", "care-item-completed", "care-item-cancelled", "care-item-deleted"]),
     detail: z.string()
   }).strict())
 };
@@ -90,6 +132,8 @@ export const healthStoreDataSchema = z.object({
   schemaVersion: z.literal(CURRENT_SCHEMA_VERSION),
   ...storeFields
 }).strict();
+
+const version2StoreSchema = healthStoreDataSchema.extend({ schemaVersion: z.literal(2) });
 
 const retiredMetabolicStoreSchema = healthStoreDataSchema.extend({
   measurementTypes: z.array(measurementTypeSchema.extend({
@@ -165,6 +209,13 @@ export function parsePersistedHealthStore(data: unknown): { data: HealthStoreDat
     });
     return {
       data: healthStoreDataSchema.parse({ ...retired, measurementTypes }) as HealthStoreData,
+      migrated: true
+    };
+  }
+  if (version === 2) {
+    const legacy = version2StoreSchema.parse(data);
+    return {
+      data: healthStoreDataSchema.parse({ ...legacy, schemaVersion: CURRENT_SCHEMA_VERSION }),
       migrated: true
     };
   }

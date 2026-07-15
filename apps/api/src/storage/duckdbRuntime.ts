@@ -4,7 +4,7 @@ import duckdb from "duckdb";
 import { dailyMetricsViewSql, weeklyMetricsViewSql } from "../analyticalViews.js";
 
 const markerName = ".lfa-duckdb-poc";
-const schemaVersion = 2;
+const schemaVersion = 3;
 
 export interface DuckDbOptions {
   httpfsExtensionPath?: string;
@@ -305,7 +305,37 @@ const schemaVersion2Sql = `
   INSERT OR IGNORE INTO poc_metadata VALUES (${schemaVersion}, CURRENT_TIMESTAMP, 'Daily and weekly analytical views');
 `;
 
+const schemaVersion3Sql = `
+  ALTER TABLE profile ADD COLUMN IF NOT EXISTS subject_kind VARCHAR DEFAULT 'adult';
+  ALTER TABLE profile ADD COLUMN IF NOT EXISTS birth_date DATE;
+  ALTER TABLE profile ADD COLUMN IF NOT EXISTS pet_species VARCHAR;
+  ALTER TABLE profile ADD COLUMN IF NOT EXISTS pet_breed VARCHAR;
+  ALTER TABLE profile ADD COLUMN IF NOT EXISTS pet_reproductive_status VARCHAR;
+  ALTER TABLE profile ADD COLUMN IF NOT EXISTS pet_microchip_id VARCHAR;
+  CREATE TABLE IF NOT EXISTS health_events (
+    ordinal BIGINT NOT NULL UNIQUE, id VARCHAR PRIMARY KEY, kind VARCHAR NOT NULL, status VARCHAR NOT NULL,
+    occurred_at TIMESTAMP NOT NULL, occurred_end TIMESTAMP, source VARCHAR NOT NULL, provider VARCHAR, notes VARCHAR, metadata JSON
+  );
+  CREATE TABLE IF NOT EXISTS immunizations (
+    health_event_id VARCHAR PRIMARY KEY, vaccine VARCHAR NOT NULL, target_disease VARCHAR, dose_number INTEGER, series VARCHAR,
+    manufacturer VARCHAR, lot_number VARCHAR, expires_at DATE, route VARCHAR, site VARCHAR, reaction VARCHAR
+  );
+  CREATE TABLE IF NOT EXISTS medication_administrations (
+    health_event_id VARCHAR PRIMARY KEY, medication VARCHAR NOT NULL, active_ingredient VARCHAR, dose DOUBLE NOT NULL, unit VARCHAR NOT NULL, route VARCHAR
+  );
+  CREATE TABLE IF NOT EXISTS care_items (
+    ordinal BIGINT NOT NULL UNIQUE, id VARCHAR PRIMARY KEY, kind VARCHAR NOT NULL, code VARCHAR, title VARCHAR NOT NULL,
+    due_start TIMESTAMP, due_end TIMESTAMP, reminder_at TIMESTAMP, priority VARCHAR NOT NULL, status VARCHAR NOT NULL,
+    schedule_provenance VARCHAR, schedule_version VARCHAR, notes VARCHAR, originating_health_event_id VARCHAR,
+    completed_health_event_id VARCHAR, completed_at TIMESTAMP
+  );
+  DROP TABLE IF EXISTS medication_events;
+  DROP TABLE IF EXISTS symptom_events;
+  INSERT OR IGNORE INTO poc_metadata VALUES (3, CURRENT_TIMESTAMP, 'Profile identity, health events, and care items');
+`;
+
 const schemaMigrations = [
   { version: 1, sql: schemaVersion1Sql },
-  { version: 2, sql: schemaVersion2Sql }
+  { version: 2, sql: schemaVersion2Sql },
+  { version: 3, sql: schemaVersion3Sql }
 ] as const;
