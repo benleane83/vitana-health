@@ -92,6 +92,7 @@ export interface PairedDevice {
   resolvedAt: string | null;
   lastUsedAt: string | null;
   revokedAt: string | null;
+  allowedProfileIds: [string];
 }
 
 export interface AiQueryChartSeries {
@@ -236,7 +237,8 @@ export const api = {
     },
     pending: () => request<PendingPairing[]>("/api/pairing/pending"),
     devices: () => request<PairedDevice[]>("/api/pairing/devices"),
-    approve: (id: string) => request<{ id: string; status: string }>(`/api/pairing/approve/${id}`, { method: "POST" }),
+    approve: (id: string, profileId: string) =>
+      request<{ id: string; status: string }>(`/api/pairing/approve/${id}`, { method: "POST", body: JSON.stringify({ profileId }) }),
     deny: (id: string) => request<{ id: string; status: string }>(`/api/pairing/deny/${id}`, { method: "POST" }),
     revoke: (id: string) => request<PairedDevice>(`/api/pairing/revoke/${id}`, { method: "POST" })
   },

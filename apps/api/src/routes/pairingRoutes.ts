@@ -2,8 +2,12 @@ import express from "express";
 import { z } from "zod";
 import QRCode from "qrcode";
 import type { PairingStore } from "../pairing.js";
+import type { AuthorizationPrincipal } from "../createApp.js";
 
-export function makePairingRoutes(pairingStore: PairingStore, options: { publicKeyHash?: string | null; port: number; scheme: string }): express.Router {
+export function makePairingRoutes(
+  pairingStore: PairingStore,
+  options: { publicKeyHash?: string | null; port: number; scheme: string; profileExists: (profileId: string) => boolean }
+): express.Router {
   const router = express.Router();
 
   const pairingRequestSchema = z.object({
@@ -79,8 +83,18 @@ export function makePairingRoutes(pairingStore: PairingStore, options: { publicK
     response.json(pairingStore.listDevices());
   });
 
+  const approvalSchema = z.object({ profileId: z.string().min(1).max(64) });
   router.post("/approve/:pairingId", (request, response) => {
-    const record = pairingStore.approve(request.params.pairingId);
+    const parsed = approvalSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      response.status(400).json({ error: "A valid profile grant is required.", code: "VALIDATION_ERROR" });
+      return;
+    }
+    if (!options.profileExists(parsed.data.profileId)) {
+      response.status(400).json({ error: "The selected profile does not exist.", code: "PROFILE_NOT_FOUND" });
+      return;
+    }
+    const record = pairingStore.approve(request.params.pairingId, parsed.data.profileId);
     if (!record) {
       response.status(404).json({ error: "Pairing request not found or already resolved.", code: "PAIRING_NOT_FOUND" });
       return;
@@ -104,6 +118,20 @@ export function makePairingRoutes(pairingStore: PairingStore, options: { publicK
       return;
     }
     response.json(record);
+  });
+
+  router.post("/revoke-self", (_request, response) => {
+    const principal = response.locals.principal as AuthorizationPrincipal;
+    if (principal.kind !== "companion") {
+      response.status(403).json({ error: "Companion credential required.", code: "CAPABILITY_REQUIRED" });
+      return;
+    }
+    const record = pairingStore.revoke(principal.pairingId);
+    if (!record) {
+      response.status(401).json({ error: "Paired device not found.", code: "AUTH_REQUIRED" });
+      return;
+    }
+    response.status(200).json({ id: record.id, status: "revoked" });
   });
 
   return router;

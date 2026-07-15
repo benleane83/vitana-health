@@ -164,14 +164,14 @@ describe("POST /api/import/health-connect — auth middleware", () => {
   it("accepts a valid single-delivery companion token", async () => {
     const challenge = pairingStore.createChallenge();
     const requested = pairingStore.request("device-1", "Test Phone", challenge.code)!;
-    pairingStore.approve(requested.record.id);
+    pairingStore.approve(requested.record.id, "self");
     const status = pairingStore.getStatus(requested.record.id, requested.pollingSecret)!;
     const token = status.token!;
 
     const res = await request(app)
       .post("/api/import/health-connect")
       .set("x-companion-token", token)
-      .send(minimalHealthConnectPayload);
+      .send({ ...minimalHealthConnectPayload, profileId: "self" });
     expect(res.status).toBe(201);
     expect(pairingStore.getStatus(requested.record.id, requested.pollingSecret)?.token).toBeUndefined();
   });
@@ -305,18 +305,30 @@ describe("central owner authorization", () => {
     });
   });
 
-  it("allows a paired companion to use non-administrative APIs", async () => {
+  it("limits a paired companion to explicit capabilities", async () => {
     const challenge = pairingStore.createChallenge();
     const requested = pairingStore.request("device-api", "API Phone", challenge.code)!;
-    pairingStore.approve(requested.record.id);
+    pairingStore.approve(requested.record.id, "self");
     const token = pairingStore.getStatus(requested.record.id, requested.pollingSecret)!.token!;
 
-    expect((await request(app).get("/api/store").set("x-companion-token", token)).status).toBe(200);
-    expect((await request(app).get("/api/pairing/devices").set("x-companion-token", token)).status).toBe(401);
-    expect((await request(app).get("/api/settings/ai").set("x-companion-token", token)).status).toBe(401);
-    expect((await request(app).put("/api/settings/ai").set("x-companion-token", token).send({})).status).toBe(401);
-    expect((await request(app).post("/api/settings/ai/validate").set("x-companion-token", token)).status).toBe(401);
-    expect((await request(app).get("/api/settings/ai/openrouter/connect").set("x-companion-token", token)).status).toBe(401);
+    const denied = [
+      ["/api/store", "get"], ["/api/profile", "get"], ["/api/export", "get"], ["/api/pairing/devices", "get"],
+      ["/api/settings/ai", "get"], ["/api/settings/ai", "put"], ["/api/query/ai", "post"], ["/api/observations/missing", "delete"]
+    ] as const;
+    for (const [path, method] of denied) {
+      expect((await request(app)[method](path).set("x-companion-token", token).send({})).status).toBe(403);
+    }
+    const profiles = await request(app).get("/api/profiles").set("x-companion-token", token);
+    expect(profiles.status).toBe(200);
+    expect(profiles.body).toEqual({ profiles: [{ id: "self", displayName: "Local user" }] });
+    expect((await request(app)
+      .post("/api/import/health-connect")
+      .set("x-companion-token", token)
+      .send({ ...minimalHealthConnectPayload, profileId: "self" })).status).toBe(201);
+    expect((await request(app)
+      .post("/api/import/health-connect")
+      .set("x-companion-token", token)
+      .send({ ...minimalHealthConnectPayload, profileId: "other" })).status).toBe(403);
   });
 
   it("creates an owner session only for a local client", async () => {
@@ -436,7 +448,8 @@ describe("companion pairing lifecycle", () => {
     expect((await request(app).get(`/api/pairing/status/${pairingId}`)).status).toBe(401);
     expect((await request(app)
       .post(`/api/pairing/approve/${pairingId}`)
-      .set("authorization", ownerAuthorization)).status).toBe(200);
+      .set("authorization", ownerAuthorization)
+      .send({ profileId: "self" })).status).toBe(200);
 
     const approved = await request(app)
       .get(`/api/pairing/status/${pairingId}`)
@@ -453,7 +466,16 @@ describe("companion pairing lifecycle", () => {
     expect((await request(app)
       .post("/api/import/health-connect")
       .set("x-companion-token", companionToken)
-      .send(minimalHealthConnectPayload)).status).toBe(401);
+      .send({ ...minimalHealthConnectPayload, profileId: "self" })).status).toBe(401);
+  });
+
+  it("revokes only the authenticated companion device", async () => {
+    const challenge = pairingStore.createChallenge();
+    const requested = pairingStore.request("device-self-revoke", "Phone", challenge.code)!;
+    pairingStore.approve(requested.record.id, "self");
+    const token = pairingStore.getStatus(requested.record.id, requested.pollingSecret)!.token!;
+    expect((await request(app).post("/api/pairing/revoke-self").set("x-companion-token", token)).status).toBe(200);
+    expect((await request(app).get("/api/profiles").set("x-companion-token", token)).status).toBe(401);
   });
 });
 

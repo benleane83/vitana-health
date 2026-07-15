@@ -3,6 +3,14 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const pairingLifetimeMs = 5 * 60 * 1000;
+const authorizationSchemaVersion = 1;
+
+export type CompanionCapability = "profiles:list-minimal" | "health-connect:import" | "pairing:self-revoke";
+export const companionCapabilities: readonly CompanionCapability[] = [
+  "profiles:list-minimal",
+  "health-connect:import",
+  "pairing:self-revoke"
+] as const;
 
 export interface PairingRecord {
   id: string;
@@ -15,12 +23,23 @@ export interface PairingRecord {
   lastUsedAt: string | null;
   revokedAt: string | null;
   tokenDelivered: boolean;
+  authorizationSchemaVersion: number;
+  capabilities: CompanionCapability[];
+  allowedProfileIds: [string];
 }
 
 interface InternalPairingRecord extends PairingRecord {
   pollingSecretHash: string;
   tokenHash: string | null;
   pendingToken: string | null;
+}
+
+export interface CompanionPrincipal {
+  kind: "companion";
+  pairingId: string;
+  deviceId: string;
+  capabilities: readonly CompanionCapability[];
+  allowedProfileIds: readonly [string];
 }
 
 interface PairingChallenge {
@@ -51,7 +70,14 @@ export class PairingStore {
     try {
       const records = JSON.parse(readFileSync(this.dataPath, "utf8")) as InternalPairingRecord[];
       for (const record of records) {
-        if (record.status === "approved" && record.tokenHash && !record.revokedAt) {
+        if (
+          record.status === "approved" &&
+          record.authorizationSchemaVersion === authorizationSchemaVersion &&
+          record.capabilities?.length === companionCapabilities.length &&
+          companionCapabilities.every((capability) => record.capabilities.includes(capability)) &&
+          Array.isArray(record.allowedProfileIds) &&
+          record.allowedProfileIds.length === 1
+        ) {
           this.records.set(record.id, { ...record, pendingToken: null, tokenDelivered: true });
         }
       }
@@ -91,6 +117,9 @@ export class PairingStore {
       lastUsedAt: null,
       revokedAt: null,
       tokenDelivered: false,
+      authorizationSchemaVersion,
+      capabilities: [...companionCapabilities],
+      allowedProfileIds: [""] as [string],
       pollingSecretHash: hash(pollingSecret),
       tokenHash: null,
       pendingToken: null
@@ -99,14 +128,23 @@ export class PairingStore {
     return { record: this.publicRecord(record), pollingSecret };
   }
 
-  approve(id: string): PairingRecord | null {
+  approve(id: string, profileId: string): PairingRecord | null {
     const record = this.records.get(id);
-    if (!record || record.status !== "pending" || Date.parse(record.expiresAt) <= Date.now()) return null;
+    if (!record || !profileId || record.status !== "pending" || Date.parse(record.expiresAt) <= Date.now()) return null;
+    for (const existing of this.records.values()) {
+      if (existing.deviceId === record.deviceId && existing.status === "approved" && !existing.revokedAt) {
+        existing.revokedAt = new Date().toISOString();
+        existing.tokenHash = null;
+        existing.pendingToken = null;
+      }
+    }
     const token = randomBytes(32).toString("base64url");
     record.status = "approved";
     record.tokenHash = hash(token);
     record.pendingToken = token;
     record.resolvedAt = new Date().toISOString();
+    record.allowedProfileIds = [profileId];
+    this.persist();
     return this.publicRecord(record);
   }
 
@@ -136,16 +174,22 @@ export class PairingStore {
     return result;
   }
 
-  validateToken(token: string): boolean {
+  validateToken(token: string): CompanionPrincipal | null {
     const candidate = hash(token);
     for (const record of this.records.values()) {
       if (record.status === "approved" && !record.revokedAt && record.tokenHash && hashesMatch(record.tokenHash, candidate)) {
         record.lastUsedAt = new Date().toISOString();
         this.persist();
-        return true;
+        return {
+          kind: "companion",
+          pairingId: record.id,
+          deviceId: record.deviceId,
+          capabilities: record.capabilities,
+          allowedProfileIds: record.allowedProfileIds
+        };
       }
     }
-    return false;
+    return null;
   }
 
   listDevices(): PairingRecord[] {
@@ -160,6 +204,19 @@ export class PairingStore {
     record.pendingToken = null;
     this.persist();
     return this.publicRecord(record);
+  }
+
+  revokeProfile(profileId: string): void {
+    let changed = false;
+    for (const record of this.records.values()) {
+      if (record.status === "approved" && !record.revokedAt && record.allowedProfileIds[0] === profileId) {
+        record.revokedAt = new Date().toISOString();
+        record.tokenHash = null;
+        record.pendingToken = null;
+        changed = true;
+      }
+    }
+    if (changed) this.persist();
   }
 
   private prune(): void {
@@ -181,9 +238,7 @@ export class PairingStore {
   }
 
   private persist(): void {
-    const records = [...this.records.values()].filter(
-      (record) => record.status === "approved" && record.tokenDelivered && record.tokenHash
-    );
+    const records = [...this.records.values()].filter((record) => record.status === "approved" && record.tokenDelivered);
     writeFileSync(this.dataPath, JSON.stringify(records, null, 2), { encoding: "utf8", mode: 0o600 });
   }
 }

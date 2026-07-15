@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from "react";
-import { getPreferredUnit, type BodyCompositionDraft, type MeasurementType, type UnitSystem } from "@local-fitness-advisor/shared";
+import { getPreferredUnit, type BodyCompositionDraft, type MeasurementType, type ProfileListEntry, type UnitSystem } from "@local-fitness-advisor/shared";
 import { api } from "../api.js";
 import type { PairedDevice, PendingPairing } from "../api.js";
 import type { BodyCompositionEditableRow, ImportMode, ManualMarkerRow, ScanKind } from "../types.js";
@@ -43,6 +43,7 @@ export function ImportPage({
   onCommitBodyComp,
   bodyCompInputRef,
   pendingPairings,
+  profiles,
   onApprovePairing,
   onDenyPairing,
   units
@@ -82,7 +83,8 @@ export function ImportPage({
   onCommitBodyComp: (event: React.FormEvent<HTMLFormElement>) => void;
   bodyCompInputRef: React.RefObject<HTMLInputElement | null>;
   pendingPairings: PendingPairing[];
-  onApprovePairing: (id: string) => void;
+  profiles: ProfileListEntry[];
+  onApprovePairing: (id: string, profileId: string) => void;
   onDenyPairing: (id: string) => void;
   units: UnitSystem;
 }) {
@@ -209,6 +211,7 @@ export function ImportPage({
         <div id={fitnessPanelId} role="tabpanel" aria-labelledby={fitnessTabId}>
           <FitnessTrackerImportPanel
             pendingPairings={pendingPairings}
+            profiles={profiles}
             onApprove={onApprovePairing}
             onDeny={onDenyPairing}
           />
@@ -751,14 +754,17 @@ function BodyCompositionImportPanel({
 
 function FitnessTrackerImportPanel({
   pendingPairings,
+  profiles,
   onApprove,
   onDeny
 }: {
   pendingPairings: PendingPairing[];
-  onApprove: (id: string) => void;
+  profiles: ProfileListEntry[];
+  onApprove: (id: string, profileId: string) => void;
   onDeny: (id: string) => void;
 }) {
   const [pairedDevices, setPairedDevices] = useState<PairedDevice[]>([]);
+  const [selectedProfiles, setSelectedProfiles] = useState<Record<string, string>>({});
 
   useEffect(() => {
     void api.pairing.devices().then(setPairedDevices).catch(() => setPairedDevices([]));
@@ -805,11 +811,22 @@ function FitnessTrackerImportPanel({
                 <strong>{req.deviceName}</strong>
                 <span className="muted">Device ID: {req.deviceId.slice(0, 12)}…</span>
                 <span className="muted">Requested: {new Date(req.requestedAt).toLocaleTimeString()}</span>
+                 <label>
+                   Profile
+                   <select
+                     aria-label={`Profile for ${req.deviceName}`}
+                     value={selectedProfiles[req.id] ?? profiles[0]?.id ?? ""}
+                     onChange={(event) => setSelectedProfiles((current) => ({ ...current, [req.id]: event.target.value }))}
+                   >
+                     {profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.displayName}</option>)}
+                   </select>
+                 </label>
               </div>
               <div className="pairing-request-actions">
                 <button
                   type="button"
-                  onClick={() => onApprove(req.id)}
+                  disabled={profiles.length === 0}
+                  onClick={() => onApprove(req.id, selectedProfiles[req.id] ?? profiles[0]?.id ?? "")}
                   aria-label={`Approve pairing request from ${req.deviceName}`}
                 >Approve</button>
                 <button
@@ -837,6 +854,7 @@ function FitnessTrackerImportPanel({
                       ? `Last sync ${new Date(device.lastUsedAt).toLocaleString()}`
                       : "Not synced yet"}
                 </span>
+                <span className="muted">Granted profile: {profiles.find((profile) => profile.id === device.allowedProfileIds[0])?.displayName ?? device.allowedProfileIds[0]}</span>
               </div>
               {!device.revokedAt ? (
                 <button

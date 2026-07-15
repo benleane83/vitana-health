@@ -90,6 +90,18 @@ GET /api/pairing/devices
 ```
 POST /api/pairing/approve/:pairingId
 ```
+**Request body:** `{ "profileId": "<existing profile id>" }`
+
+Approval binds the device to exactly that profile and grants the fixed companion capabilities
+`profiles:list-minimal`, `health-connect:import`, and `pairing:self-revoke`. Re-pairing the
+same device revokes its previous token. Pairing records without these versioned grants are
+invalid and require pairing again.
+
+### Revoke this companion device
+```
+POST /api/pairing/revoke-self
+```
+Requires the companion credential and revokes only that credential.
 **Success `200`:** `{ "ok": true }`
 
 ### Deny a pairing request
@@ -125,7 +137,12 @@ PUT /api/profile
 ```
 GET /api/profiles
 ```
-**Success `200`:** `{ "profiles": Profile[] }`
+**Owner success `200`:** `{ "profiles": Profile[], "activeProfileId": "<id>" }`
+
+Companion credentials are granted access only to this endpoint, Health Connect import, and
+`POST /api/pairing/revoke-self`. A companion receives only its granted profile as
+`{ "profiles": [{ "id": "<id>", "displayName": "<name>" }] }`; no active-profile or health
+metadata is returned. All other authenticated endpoints are owner-only.
 
 ### Create a new profile
 ```
@@ -255,6 +272,11 @@ POST /api/import/health-connect
 **Request body:** Health Connect JSON export (max 10 MB)  
 **Success `200`:** `{ "inserted": <count>, "skipped"?: <count> }`
 
+For companions, `profileId` is required and must equal the paired device's profile grant.
+Missing or mismatched values return `403 PROFILE_ACCESS_DENIED` before store access. Owners may
+continue to omit `profileId` and use the active profile. Missing or invalid credentials return
+`401`; an authenticated companion without the required capability returns `403`.
+
 ---
 
 ## Query / AI
@@ -309,6 +331,8 @@ All error responses follow this shape:
 | `QUERY_UNRECOGNIZED` | 400 | NL query could not be parsed |
 | `QUERY_UNSUPPORTED` | 400 | NL query type not supported |
 | `AUTH_REQUIRED` | 401 | No valid ****** provided |
+| `CAPABILITY_REQUIRED` | 403 | Companion lacks access to this operation |
+| `PROFILE_ACCESS_DENIED` | 403 | Companion profile grant does not match request |
 | `AUTH_LOOPBACK_ONLY` | 403 | Endpoint only accessible from loopback (127.x) |
 | `PAIRING_CODE_INVALID` | 400 | Pairing code missing or expired |
 | `PAIRING_SECRET_REQUIRED` | 400 | LFA_SECRET not configured |

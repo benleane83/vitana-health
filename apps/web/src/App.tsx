@@ -618,9 +618,9 @@ export function App() {
     }
   }
 
-  async function approvePairing(id: string) {
+  async function approvePairing(id: string, profileId: string) {
     try {
-      await api.pairing.approve(id);
+      await api.pairing.approve(id, profileId);
       const result = await api.pairing.pending();
       setPendingPairings(result);
     } catch (error) {
@@ -1032,6 +1032,7 @@ export function App() {
             onCommitBodyComp={commitBodyCompositionReport}
             bodyCompInputRef={bodyCompInputRef}
             pendingPairings={pendingPairings}
+            profiles={profiles}
             onApprovePairing={approvePairing}
             onDenyPairing={denyPairing}
             units={profile?.units ?? "metric"}
