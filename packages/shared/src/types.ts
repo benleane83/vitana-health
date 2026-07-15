@@ -12,18 +12,72 @@ export type SourceKind =
   | "derived";
 
 export type UnitSystem = "metric" | "imperial";
+export type SubjectKind = "adult" | "child" | "pet";
 
 export interface Profile {
   id: string;
   displayName: string;
-  birthYear?: number;
+  subjectKind?: SubjectKind;
+  birthDate?: string;
   sex?: "female" | "male" | "intersex" | "unknown" | "not-specified";
   heightCm?: number;
   bloodType?: BloodType;
   goalSummary?: string;
   cloudAiConsent?: CloudAiConsent;
+  pet?: {
+    species: string;
+    breed?: string;
+    reproductiveStatus?: "intact" | "neutered" | "spayed" | "unknown";
+    microchipId?: string;
+  };
   units: UnitSystem;
   updatedAt: string;
+}
+
+export type HealthEventKind = "immunization" | "medication-administration" | "other";
+export type HealthEventStatus = "completed" | "entered-in-error";
+export interface HealthEventBase {
+  id: string;
+  kind: HealthEventKind;
+  status: HealthEventStatus;
+  occurredAt: string;
+  occurredEnd?: string;
+  source: SourceKind;
+  provider?: string;
+  notes?: string;
+  metadata?: Record<string, unknown>;
+}
+export interface ImmunizationEvent extends HealthEventBase {
+  kind: "immunization";
+  immunization: {
+    vaccine: string; targetDisease?: string; doseNumber?: number; series?: string;
+    manufacturer?: string; lotNumber?: string; expiresAt?: string; route?: string; site?: string; reaction?: string;
+  };
+}
+export interface MedicationAdministrationEvent extends HealthEventBase {
+  kind: "medication-administration";
+  medicationAdministration: { medication: string; activeIngredient?: string; dose: number; unit: string; route?: string };
+}
+export interface OtherHealthEvent extends HealthEventBase { kind: "other"; }
+export type HealthEvent = ImmunizationEvent | MedicationAdministrationEvent | OtherHealthEvent;
+
+export type CareItemStatus = "open" | "completed" | "cancelled" | "skipped";
+export interface CareItem {
+  id: string;
+  kind: string;
+  code?: string;
+  title: string;
+  dueStart?: string;
+  dueEnd?: string;
+  reminderAt?: string;
+  priority: "low" | "normal" | "high";
+  status: CareItemStatus;
+  scheduleProvenance?: string;
+  scheduleVersion?: string;
+  notes?: string;
+  originatingHealthEventId?: string;
+  completedHealthEventId?: string;
+  completedAt?: string;
 }
 
 export interface CloudAiConsent {
@@ -191,12 +245,20 @@ export interface AuditEvent {
     | "export-created"
     | "observation-updated"
     | "observation-deleted"
-    | "observation-type-deleted";
+    | "observation-type-deleted"
+    | "health-event-created"
+    | "health-event-updated"
+    | "health-event-deleted"
+    | "care-item-created"
+    | "care-item-updated"
+    | "care-item-completed"
+    | "care-item-cancelled"
+    | "care-item-deleted";
   detail: string;
 }
 
 export interface HealthStoreData {
-  schemaVersion: 2;
+  schemaVersion: 2 | 3 | 4;
   profile: Profile;
   sourceImports: SourceImport[];
   dataSources: DataSource[];
@@ -206,6 +268,8 @@ export interface HealthStoreData {
   observationGroups: ObservationGroup[];
   timeSeriesSamples: TimeSeriesSample[];
   activitySessions: ActivitySession[];
+  healthEvents?: HealthEvent[];
+  careItems?: CareItem[];
   insights: Insight[];
   auditEvents: AuditEvent[];
 }
@@ -230,6 +294,8 @@ export interface AppBootstrap {
     observations: number;
     samples: number;
     activities: number;
+    healthEvents: number;
+    careItems: number;
   };
 }
 
@@ -240,6 +306,8 @@ export interface AnalyticsSummary {
     samples: number;
     activities: number;
     insights: number;
+    healthEvents: number;
+    careItems: number;
   };
   latestMetrics: Array<{
     code: string;
@@ -391,7 +459,7 @@ export interface HealthDataDetail {
 export interface ClinicianReport {
   generatedAt: string;
   disclaimer: string;
-  patient: Pick<Profile, "displayName" | "birthYear" | "sex" | "heightCm" | "units"> & {
+  patient: Pick<Profile, "displayName" | "subjectKind" | "birthDate" | "sex" | "heightCm" | "units"> & {
     height?: { value: number; unit: string };
   };
   totals: {

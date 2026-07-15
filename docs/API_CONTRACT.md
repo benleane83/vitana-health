@@ -118,7 +118,7 @@ GET /api/profile
 ```
 PUT /api/profile
 ```
-**Request body:** `{ "displayName"?, "sex"?, "birthYear"?, "heightCm"? }`  
+**Request body:** `{ "displayName"?, "subjectKind"?, "birthDate"?, "sex"?, "heightCm"? }`  
 **Success `200`:** `{ "profile": Profile }`
 
 ### List all profiles

@@ -30,7 +30,7 @@ export async function createClinicianReportPdf(report: ClinicianReport): Promise
   document.fontSize(10).font("Helvetica").text(`Generated: ${date(report.generatedAt)}`);
   document.text(`Profile: ${report.patient.displayName}`);
   const patientDetails = [
-    report.patient.birthYear ? `Birth year: ${report.patient.birthYear}` : undefined,
+    report.patient.birthDate ? `Birth date: ${report.patient.birthDate}` : undefined,
     report.patient.sex ? `Sex: ${report.patient.sex}` : undefined,
     report.patient.height ? `Height: ${report.patient.height.value} ${report.patient.height.unit}` : undefined
   ].filter(Boolean);

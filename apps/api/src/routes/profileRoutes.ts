@@ -5,12 +5,22 @@ import type { Profile } from "@local-fitness-advisor/shared";
 
 const profileSchema = z.object({
   displayName: z.string().min(1).max(80),
-  birthYear: z.number().int().min(1900).max(new Date().getFullYear()).optional(),
+  subjectKind: z.enum(["adult", "child", "pet"]).default("adult"),
+  birthDate: z.string().date().optional(),
   sex: z.enum(["female", "male", "intersex", "unknown", "not-specified"]).optional(),
   heightCm: z.number().positive().max(260).optional(),
   bloodType: z.enum(["a-positive", "a-negative", "b-positive", "b-negative", "ab-positive", "ab-negative", "o-positive", "o-negative", "unknown"]).optional(),
   goalSummary: z.string().max(500).optional(),
+  pet: z.object({
+    species: z.string().trim().min(1).max(80), breed: z.string().trim().max(80).optional(),
+    reproductiveStatus: z.enum(["intact", "neutered", "spayed", "unknown"]).optional(),
+    microchipId: z.string().trim().max(100).optional()
+  }).optional(),
   units: z.enum(["metric", "imperial"])
+}).superRefine((profile, context) => {
+  if (profile.subjectKind === "pet" && !profile.pet?.species) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["pet", "species"], message: "Pet profiles require a species." });
+  }
 });
 
 const cloudConsentSchema = z.object({
