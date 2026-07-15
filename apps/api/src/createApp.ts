@@ -284,7 +284,7 @@ export function createApp(
   app.use("/api/profiles", makeProfilesRoutes(storeManager, pairingStore));
   app.use("/api/import", makeImportRoutes(storeManager));
   app.use("/api/query", makeQueryRoutes(storeManager));
-  app.use("/api/llm", makeLlmRoutes(storeManager));
+  app.use("/api/llm", makeLlmRoutes());
   app.use("/api/settings", makeSettingsRoutes({ assertSafeCloudEndpoint: options.assertSafeCloudModelEndpoint }));
   app.use("/api", makeDataRoutes(storeManager));
 

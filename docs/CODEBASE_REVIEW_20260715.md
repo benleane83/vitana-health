@@ -144,7 +144,7 @@ The canonical store now has bounded bootstrap, summary, and detail projections, 
 
 Define retention policy as product behavior, report committed outcomes, and add user-visible warnings before tuning limits. Then move biological age, insights, and clinician reporting to purpose-built projections. Keep the full snapshot only for explicit export and one-time migration.
 
-### P1 — Establish one API contract and structured client errors
+### [DONE] P1 — Establish one API contract and structured client errors
 
 The web client manually re-declares response interfaces and casts JSON directly to `T`. On failure it discards HTTP status, stable server error code, and correlation ID by throwing raw response text (`apps/web/src/api.ts:68-74`). This forces pages to normalize errors inconsistently and makes future mobile dashboard reuse harder.
 
@@ -157,7 +157,7 @@ Move transport-neutral request/response schemas for supported endpoints into the
 
 Do not share route handlers or persistence models with clients. The reusable unit is the public LAN API contract.
 
-### P1 — Make Health Connect collection metadata single-source
+### [DONE] P1 — Make Health Connect collection metadata single-source
 
 `syncHealthConnect.ts` repeats the same collection inventory in the payload interface, permission map, record reader, payload construction, chunk flattening, empty-chunk skeleton, and row counting (`apps/android-companion/src/syncHealthConnect.ts:69-160,390-447,523-553,680-705`). Adding one category therefore requires coordinated edits in many places.
 
@@ -170,7 +170,7 @@ Preserve the explicit wire shape; replacing it with `Record<string, unknown[]>` 
 
 Derive permission completeness checks, reading, chunking, and row counts from that table. Add a test proving every `HEALTH_CONNECT_CATEGORIES` entry has exactly one descriptor. Do not introduce a cross-platform `HealthSyncProvider` until an iOS implementation actually exists; the current Android-specific boundary is appropriate.
 
-### P1 — Remove test-runner configuration drift
+### [DONE] P1 — Remove test-runner configuration drift
 
 Two root Vitest configurations disagree:
 
@@ -179,7 +179,7 @@ Two root Vitest configurations disagree:
 
 This makes `npm test` an unreliable indicator for Android TypeScript tests even though those tests exist. Retain one root configuration, include all four projects, and make CI invoke the same repository command. Native Kotlin pinning tests remain a separate platform gate.
 
-### P2 — Delete or quarantine unused experimental surfaces
+### [DONE] P2 — Delete or quarantine unused experimental surfaces
 
 The normal web and Android apps do not call:
 
@@ -237,15 +237,15 @@ Keep past reviews immutable as historical records. Treat this report and product
 
 ## Recommended simplification sequence
 
-1. **Fix the authorization model** with an owner-default policy and explicit companion capability allowlist.
-2. **Choose and enforce the canonical storage architecture**: preserve a one-time JSON importer, remove JSON runtime fallback and detached warehouse code, and update documentation.
-3. **Remove unused experimental endpoints and web client methods** before building more features on them.
+1. [DONE] **Fix the authorization model** with an owner-default policy and explicit companion capability allowlist.
+2. [DONE] **Choose and enforce the canonical storage architecture**: preserve a one-time JSON importer, remove JSON runtime fallback and detached warehouse code, and update documentation.
+3. [DONE] **Remove unused experimental endpoints and web client methods** before building more features on them.
 4. **Split web feature ownership** out of `App.tsx` and reduce `ImportPage` to composed feature panels.
 5. **Split DuckDB persistence by responsibility** behind the existing repository contract; remove provider checks from orchestration.
 6. **Make imports honest** by returning accepted, duplicate, and evicted counts and exposing retention warnings.
 7. **Replace remaining non-export snapshots** with purpose-built repository projections.
-8. **Create shared API schemas and structured errors** for future web/mobile feature reuse.
-9. **Make Health Connect metadata descriptor-driven** and run Android TypeScript tests in the root test command.
+8. [DONE] **Create shared API schemas and structured errors** for future web/mobile feature reuse.
+9. [DONE] **Make Health Connect metadata descriptor-driven** and run Android TypeScript tests in the root test command.
 10. **Split parser families and catalog behavior**, then address smaller persistence/configuration debt.
 
 ## Explicit non-recommendations

@@ -95,7 +95,7 @@ describe("query endpoint lifecycle", () => {
     expect(askResponse.status).toBe(404);
   });
 
-  it("advertises supported and experimental endpoint lifecycles", async () => {
+  it("exposes only the supported AI query endpoint", async () => {
     const [aiResponse, storeFallbackResponse, diagnosticResponse] = await Promise.all([
       request(app).post("/api/query/ai").set("authorization", ownerAuthorization).send({ question: "x" }),
       request(app).post("/api/query/ask-store").set("authorization", ownerAuthorization).send({ question: "x" }),
@@ -103,8 +103,8 @@ describe("query endpoint lifecycle", () => {
     ]);
 
     expect(aiResponse.headers["x-lfa-lifecycle"]).toBe("supported");
-    expect(storeFallbackResponse.headers["x-lfa-lifecycle"]).toBe("experimental");
-    expect(diagnosticResponse.headers["x-lfa-lifecycle"]).toBe("experimental");
+    expect(storeFallbackResponse.status).toBe(404);
+    expect(diagnosticResponse.status).toBe(404);
   });
 
   it("reports active DuckDB analytics storage without rebuilding data", async () => {

@@ -1,21 +1,49 @@
 import type {
-  AppBootstrap,
-  AnalyticsSummary,
-  BiologicalAgeReport,
-  BodyCompositionDraft,
   BodyCompositionDraftCommitPayload,
-  CloudAiConsent,
   DeleteObservationResponse,
   DeleteObservationsByTypeResponse,
-  HealthDataDetail,
-  HealthDataSummary,
-  HealthStoreData,
-  Insight,
   ManualLabEntryPayload,
   Profile,
   ProfileListEntry,
   UpdateObservationInput,
-  UpdateObservationResponse
+  UpdateObservationResponse,
+  AiQueryResponse as SharedAiQueryResponse,
+  AiSettingsResponse as SharedAiSettingsResponse,
+  ImportMutationResponse as SharedImportMutationResponse,
+  LlmConfigResponse as SharedLlmConfigResponse,
+  ModelValidationResponse as SharedModelValidationResponse,
+  PairedDevice as SharedPairedDevice,
+  PendingPairing as SharedPendingPairing,
+  ProfilesResponse as SharedProfilesResponse
+} from "@local-fitness-advisor/shared";
+import {
+  aiQueryResponseSchema,
+  aiSettingsResponseSchema,
+  analyticsSummaryResponseSchema,
+  apiErrorResponseSchema,
+  appBootstrapResponseSchema,
+  biologicalAgeResponseSchema,
+  bodyCompositionDraftResponseSchema,
+  cloudAiConsentResponseSchema,
+  deleteObservationResponseSchema,
+  deleteObservationsByTypeResponseSchema,
+  healthDataDetailResponseSchema,
+  healthDataSummaryResponseSchema,
+  healthResponseSchema,
+  importMutationResponseSchema,
+  insightResponseSchema,
+  llmConfigResponseSchema,
+  modelValidationResponseSchema,
+  pairedDeviceSchema,
+  pairedDevicesResponseSchema,
+  pairingMutationResponseSchema,
+  pendingPairingsResponseSchema,
+  profileDeleteResponseSchema,
+  profileIdResponseSchema,
+  profileListEntrySchema,
+  profileResponseSchema,
+  profilesResponseSchema,
+  updateObservationResponseSchema
 } from "@local-fitness-advisor/shared";
 
 const ownerTokenKey = "local-fitness-advisor.ownerToken";
@@ -65,201 +93,156 @@ async function promptForOwnerToken(): Promise<string | null> {
   return ownerTokenPromptInFlight;
 }
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetchAsOwner(path, options);
-  if (!response.ok) {
-    throw new Error(await response.text());
+interface ResponseSchema<T> {
+  parse(value: unknown): T;
+}
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code: string,
+    readonly correlationId?: string
+  ) {
+    super(message);
+    this.name = "ApiError";
   }
-  return (await response.json()) as T;
 }
 
-export interface AiQueryRow {
-  [key: string]: unknown;
+async function apiErrorFromResponse(response: Response): Promise<ApiError> {
+  const text = await response.text();
+  const headerCorrelationId = response.headers.get("x-correlation-id") ?? undefined;
+  let payload: unknown;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    payload = undefined;
+  }
+  const parsed = apiErrorResponseSchema.safeParse(payload);
+  return new ApiError(
+    parsed.success ? parsed.data.error : text || response.statusText || "API request failed.",
+    response.status,
+    parsed.success ? parsed.data.code : "HTTP_ERROR",
+    parsed.success ? parsed.data.correlationId ?? headerCorrelationId : headerCorrelationId
+  );
 }
 
-export interface PendingPairing {
-  id: string;
-  deviceId: string;
-  deviceName: string;
-  requestedAt: string;
+async function assertResponseOk(response: Response): Promise<void> {
+  if (!response.ok) throw await apiErrorFromResponse(response);
 }
 
-export interface PairedDevice {
-  id: string;
-  deviceId: string;
-  deviceName: string;
-  requestedAt: string;
-  resolvedAt: string | null;
-  lastUsedAt: string | null;
-  revokedAt: string | null;
-  allowedProfileIds: [string];
+async function request<T>(schema: ResponseSchema<T>, path: string, options?: RequestInit): Promise<T> {
+  const response = await fetchAsOwner(path, options);
+  await assertResponseOk(response);
+  return schema.parse(await response.json());
 }
 
-export interface AiQueryChartSeries {
-  label: string;
-  value: number;
-}
-
-export interface AiQueryChart {
-  type: string;
-  series: AiQueryChartSeries[];
-}
-
-export interface AiQueryResult {
-  question: string;
-  answer: string;
-  limitations: string[];
-  assumptions: string[];
-  confidence: number;
-  plan: unknown;
-  sql: string | null;
-  resolvedTimeRange?: { start: string; end: string; label: string };
-  rowCount?: number;
-  rows: AiQueryRow[];
-  chart: AiQueryChart | null;
-  model?: string;
-  modelError?: string;
-  suggestedRephrase?: string;
-}
-
-export interface LlmConfig {
-  provider: "ollama" | "openai";
-  endpoint: string;
-  model: string;
-  timeoutMs: number;
-}
-
-export interface AiSettings extends LlmConfig {
-  hasApiKey: boolean;
-}
-
-export interface ModelValidation {
-  ok: boolean;
-  provider: "ollama" | "openai";
-  endpoint: string;
-  model: string;
-  timeoutMs: number;
-  elapsedMs: number;
-  text?: string;
-  status?: number;
-  error?: string;
-  bodySnippet?: string;
-}
-
-export interface ProfilesResponse {
-  profiles: ProfileListEntry[];
-  activeProfileId: string;
-}
-
-export interface ImportMutationResponse {
-  import: {
-    id: string;
-    sourceKind: string;
-    fileName: string;
-    importedAt: string;
-    parserVersion: string;
-    checksum: string;
-    rowCount: number;
-    status: string;
-    diagnostics: string[];
-  };
-  changes: {
-    observations: number;
-    observationGroups: number;
-    timeSeriesSamples: number;
-    activitySessions: number;
-  };
-}
+export type AiQueryResult = SharedAiQueryResponse;
+export type AiQueryRow = SharedAiQueryResponse["rows"][number];
+export type AiQueryChart = NonNullable<SharedAiQueryResponse["chart"]>;
+export type AiQueryChartSeries = AiQueryChart["series"][number];
+export type PendingPairing = SharedPendingPairing;
+export type PairedDevice = SharedPairedDevice;
+export type LlmConfig = SharedLlmConfigResponse;
+export type AiSettings = SharedAiSettingsResponse;
+export type ModelValidation = SharedModelValidationResponse;
+export type ProfilesResponse = SharedProfilesResponse;
+export type ImportMutationResponse = SharedImportMutationResponse;
 
 export type DeleteObservationMutationResponse = DeleteObservationResponse;
 export type DeleteObservationsByTypeMutationResponse = DeleteObservationsByTypeResponse;
 export type UpdateObservationMutationResponse = UpdateObservationResponse;
 
 export const api = {
-  health: () => request<{ ok: boolean; uptime: number }>("/api/health"),
-  store: () => request<HealthStoreData>("/api/store"),
-  bootstrap: () => request<AppBootstrap>("/api/bootstrap"),
-  analytics: () => request<AnalyticsSummary>("/api/analytics"),
-  biologicalAge: () => request<BiologicalAgeReport>("/api/biological-age"),
+  health: () => request(healthResponseSchema, "/api/health"),
+  bootstrap: () => request(appBootstrapResponseSchema, "/api/bootstrap"),
+  analytics: () => request(analyticsSummaryResponseSchema, "/api/analytics"),
+  biologicalAge: () => request(biologicalAgeResponseSchema, "/api/biological-age"),
   exportPdf: async () => {
     const response = await fetchAsOwner("/api/export/pdf", { headers: { accept: "application/pdf" } });
-    if (!response.ok) throw new Error(await response.text());
+    await assertResponseOk(response);
     return {
       blob: await response.blob(),
       filename: response.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "health-report.pdf"
     };
   },
-  summary: () => request<HealthDataSummary>("/api/summary"),
+  summary: () => request(healthDataSummaryResponseSchema, "/api/summary"),
   healthDataDetail: (measurementCode: string, page?: { limit?: number; offset?: number }) => {
     const query = new URLSearchParams();
     if (page?.limit !== undefined) query.set("limit", String(page.limit));
     if (page?.offset !== undefined) query.set("offset", String(page.offset));
     const suffix = query.size > 0 ? `?${query.toString()}` : "";
-    return request<HealthDataDetail>(`/api/summary/${encodeURIComponent(measurementCode)}${suffix}`);
+    return request(healthDataDetailResponseSchema, `/api/summary/${encodeURIComponent(measurementCode)}${suffix}`);
   },
   updateObservation: (id: string, input: UpdateObservationInput) =>
-    request<UpdateObservationMutationResponse>(`/api/observations/${encodeURIComponent(id)}`, {
+    request(updateObservationResponseSchema, `/api/observations/${encodeURIComponent(id)}`, {
       method: "PATCH",
       body: JSON.stringify(input)
     }),
-  deleteObservation: (id: string) => request<DeleteObservationMutationResponse>(`/api/observations/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  deleteObservation: (id: string) => request(deleteObservationResponseSchema, `/api/observations/${encodeURIComponent(id)}`, { method: "DELETE" }),
   deleteObservationsByType: (measurementCode: string) =>
-    request<DeleteObservationsByTypeMutationResponse>(`/api/observations/by-type/${encodeURIComponent(measurementCode)}`, { method: "DELETE" }),
+    request(deleteObservationsByTypeResponseSchema, `/api/observations/by-type/${encodeURIComponent(measurementCode)}`, { method: "DELETE" }),
   saveProfile: (profile: Omit<Profile, "id" | "updatedAt">) =>
-    request<Profile>("/api/profile", { method: "PUT", body: JSON.stringify(profile) }),
+    request(profileResponseSchema, "/api/profile", { method: "PUT", body: JSON.stringify(profile) }),
   cloudAiConsent: {
-    get: () => request<CloudAiConsent>("/api/profile/cloud-ai-consent"),
+    get: () => request(cloudAiConsentResponseSchema, "/api/profile/cloud-ai-consent"),
     set: (payload: { enabled: boolean; providerScopeAccepted: boolean; consentVersion?: string }) =>
-      request<CloudAiConsent>("/api/profile/cloud-ai-consent", { method: "PUT", body: JSON.stringify(payload) })
+      request(cloudAiConsentResponseSchema, "/api/profile/cloud-ai-consent", { method: "PUT", body: JSON.stringify(payload) })
   },
-  importBloodTest: (fileName: string, content: string) =>
-    request<{ store: HealthStoreData }>("/api/import/blood-test", { method: "POST", body: JSON.stringify({ fileName, content }) }),
   importObservationCsv: (fileName: string, content: string) =>
-    request<{ store: HealthStoreData }>("/api/import/observations/csv", { method: "POST", body: JSON.stringify({ fileName, content }) }),
+    request(importMutationResponseSchema, "/api/import/observations/csv", { method: "POST", body: JSON.stringify({ fileName, content }) }),
   previewBodyCompositionReport: (payload: { fileName: string; mimeType: string; contentBase64: string }) =>
-    request<BodyCompositionDraft>("/api/import/body-composition/preview", { method: "POST", body: JSON.stringify(payload) }),
+    request(bodyCompositionDraftResponseSchema, "/api/import/body-composition/preview", { method: "POST", body: JSON.stringify(payload) }),
   commitBodyCompositionReport: (payload: BodyCompositionDraftCommitPayload) =>
-    request<{ store: HealthStoreData }>("/api/import/body-composition/commit", { method: "POST", body: JSON.stringify(payload) }),
+    request(importMutationResponseSchema, "/api/import/body-composition/commit", { method: "POST", body: JSON.stringify(payload) }),
   previewBloodTestReport: (payload: { fileName: string; mimeType: string; contentBase64: string }) =>
-    request<BodyCompositionDraft>("/api/import/blood-test/preview", { method: "POST", body: JSON.stringify(payload) }),
+    request(bodyCompositionDraftResponseSchema, "/api/import/blood-test/preview", { method: "POST", body: JSON.stringify(payload) }),
   commitBloodTestReport: (payload: BodyCompositionDraftCommitPayload) =>
-    request<{ store: HealthStoreData }>("/api/import/blood-test/commit", { method: "POST", body: JSON.stringify(payload) }),
+    request(importMutationResponseSchema, "/api/import/blood-test/commit", { method: "POST", body: JSON.stringify(payload) }),
   importManualLabEntry: (payload: ManualLabEntryPayload) =>
-    request<ImportMutationResponse>("/api/import/labs/manual", { method: "POST", body: JSON.stringify(payload) }),
+    request(importMutationResponseSchema, "/api/import/labs/manual", { method: "POST", body: JSON.stringify(payload) }),
   importManualObservations: (payload: { observedAt: string; label: string; sourceName?: string; observations: Array<{ measurementName?: string; measurementCode?: string; value: number; unit?: string }> }) =>
-    request<ImportMutationResponse>("/api/import/observations/manual", { method: "POST", body: JSON.stringify(payload) }),
-  generateInsight: () => request<Insight>("/api/insights/generate", { method: "POST" }),
+    request(importMutationResponseSchema, "/api/import/observations/manual", { method: "POST", body: JSON.stringify(payload) }),
+  generateInsight: () => request(insightResponseSchema, "/api/insights/generate", { method: "POST" }),
   pairing: {
     qr: async () => {
       const response = await fetchAsOwner("/api/pair/qr");
-      if (!response.ok) throw new Error(await response.text());
+      await assertResponseOk(response);
       return response.blob();
     },
-    pending: () => request<PendingPairing[]>("/api/pairing/pending"),
-    devices: () => request<PairedDevice[]>("/api/pairing/devices"),
+    pending: () => request(pendingPairingsResponseSchema, "/api/pairing/pending"),
+    devices: () => request(pairedDevicesResponseSchema, "/api/pairing/devices"),
     approve: (id: string, profileId: string) =>
-      request<{ id: string; status: string }>(`/api/pairing/approve/${id}`, { method: "POST", body: JSON.stringify({ profileId }) }),
-    deny: (id: string) => request<{ id: string; status: string }>(`/api/pairing/deny/${id}`, { method: "POST" }),
-    revoke: (id: string) => request<PairedDevice>(`/api/pairing/revoke/${id}`, { method: "POST" })
+      request(pairingMutationResponseSchema, `/api/pairing/approve/${id}`, { method: "POST", body: JSON.stringify({ profileId }) }),
+    deny: (id: string) => request(pairingMutationResponseSchema, `/api/pairing/deny/${id}`, { method: "POST" }),
+    revoke: (id: string) => request(pairedDeviceSchema, `/api/pairing/revoke/${id}`, { method: "POST" })
   },
   profiles: {
-    list: () => request<ProfilesResponse>("/api/profiles"),
+    list: () => request(profilesResponseSchema, "/api/profiles"),
     create: (displayName: string) =>
-      request<ProfileListEntry>("/api/profiles", { method: "POST", body: JSON.stringify({ displayName }) }),
-    active: () => request<{ profileId: string }>("/api/profiles/active"),
+      request(profileListEntrySchema, "/api/profiles", { method: "POST", body: JSON.stringify({ displayName }) }),
+    active: () => request(profileIdResponseSchema, "/api/profiles/active"),
     setActive: (profileId: string) =>
-      request<{ profileId: string }>("/api/profiles/active", { method: "PUT", body: JSON.stringify({ profileId }) }),
+      request(profileIdResponseSchema, "/api/profiles/active", { method: "PUT", body: JSON.stringify({ profileId }) }),
     remove: (profileId: string) =>
-      request<{ activeProfileId: string; profiles: ProfileListEntry[] }>(`/api/profiles/${encodeURIComponent(profileId)}`, { method: "DELETE" })
+      request(profileDeleteResponseSchema, `/api/profiles/${encodeURIComponent(profileId)}`, { method: "DELETE" })
   },
   query: {
     ai: (question: string, options?: { timezone?: string; debug?: boolean }) =>
-      request<AiQueryResult>("/api/query/ai", {
+      request(aiQueryResponseSchema, "/api/query/ai", {
         method: "POST",
         body: JSON.stringify({ question, ...options })
       })
   },
   llm: {
-    config: () => request<LlmConfig>("/api/llm/config")
+    config: () => request(llmConfigResponseSchema, "/api/llm/config")
+  },
+  settings: {
+    ai: {
+      get: () => request(aiSettingsResponseSchema, "/api/settings/ai"),
+      save: (payload: { provider: "ollama" | "openai"; endpoint: string; apiKey?: string; model: string; timeoutMs: number }) =>
+        request(aiSettingsResponseSchema, "/api/settings/ai", { method: "PUT", body: JSON.stringify(payload) }),
+      validate: () => request(modelValidationResponseSchema, "/api/settings/ai/validate", { method: "POST" })
+    }
   }
 };
