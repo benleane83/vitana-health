@@ -1480,6 +1480,11 @@ label {
   background: var(--surface-2);
 }
 
+.profile-manager-row.active {
+  border-color: color-mix(in srgb, var(--primary) 48%, var(--line));
+  background: color-mix(in srgb, var(--primary) 7%, var(--surface));
+}
+
 .profile-manager-row strong {
   display: block;
   color: var(--text-strong);
@@ -1496,9 +1501,50 @@ label {
   gap: var(--space-2);
 }
 
+.profile-manager-actions button {
+  min-height: 40px;
+  padding: 0.52rem 0.85rem;
+}
+
+.profile-manager-edit {
+  border-color: var(--line-strong);
+  background: var(--surface);
+  color: var(--text-strong);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .profile-manager-edit:hover:not(:disabled) {
+    border-color: var(--primary);
+    background: var(--surface-3);
+    color: var(--primary-strong);
+  }
+}
+
+.profile-create-disclosure {
+  border-top: 1px solid var(--line);
+  padding-top: var(--space-4);
+}
+
+.profile-create-disclosure summary {
+  width: fit-content;
+  color: var(--primary-strong);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.profile-create-disclosure[open] summary {
+  margin-bottom: var(--space-3);
+}
+
 .profile-create-row {
   display: grid;
   gap: var(--space-3);
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.profile-create-row label {
+  grid-column: 1 / -1;
 }
 
 .import-page {
@@ -2090,6 +2136,23 @@ button.stat {
   .trend,
   .query-bar-item {
     grid-template-columns: 1fr;
+  }
+
+  .profile-manager-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .profile-manager-actions button {
+    flex: 1 1 120px;
+  }
+
+  .profile-create-row {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-create-row label {
+    grid-column: auto;
   }
 
   .panel-heading-row {

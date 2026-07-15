@@ -41,6 +41,7 @@ export function ProfileEditDialog({
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const firstFocusRef = useRef<HTMLInputElement>(null);
+  const [subjectKind, setSubjectKind] = useState<NonNullable<Profile["subjectKind"]>>(profile?.subjectKind ?? "adult");
   const [units, setUnits] = useState<Profile["units"]>(profile?.units ?? "metric");
   const [height, setHeight] = useState(
     profile?.heightCm === undefined
@@ -90,7 +91,12 @@ export function ProfileEditDialog({
         />
 
         <label htmlFor="profile-subjectKind">Profile type</label>
-        <select id="profile-subjectKind" name="subjectKind" defaultValue={profile?.subjectKind ?? "adult"}>
+        <select
+          id="profile-subjectKind"
+          name="subjectKind"
+          value={subjectKind}
+          onChange={(event) => setSubjectKind(event.target.value as NonNullable<Profile["subjectKind"]>)}
+        >
           <option value="adult">Adult</option>
           <option value="child">Child</option>
           <option value="pet">Pet</option>
@@ -99,17 +105,18 @@ export function ProfileEditDialog({
         <label htmlFor="profile-birthDate">Birth date</label>
         <input id="profile-birthDate" name="birthDate" type="date" defaultValue={profile?.birthDate ?? ""} />
 
-        <label htmlFor="profile-birthYear">Birth year</label>
-        <input id="profile-birthYear" name="birthYear" type="number" defaultValue={profile?.birthYear ?? ""} />
+        {subjectKind === "pet" ? (
+          <>
+            <label htmlFor="profile-petSpecies">Pet species</label>
+            <input id="profile-petSpecies" name="petSpecies" defaultValue={profile?.pet?.species ?? ""} />
 
-        <label htmlFor="profile-petSpecies">Pet species</label>
-        <input id="profile-petSpecies" name="petSpecies" defaultValue={profile?.pet?.species ?? ""} />
+            <label htmlFor="profile-petBreed">Pet breed</label>
+            <input id="profile-petBreed" name="petBreed" defaultValue={profile?.pet?.breed ?? ""} />
 
-        <label htmlFor="profile-petBreed">Pet breed</label>
-        <input id="profile-petBreed" name="petBreed" defaultValue={profile?.pet?.breed ?? ""} />
-
-        <label htmlFor="profile-petMicrochipId">Microchip ID</label>
-        <input id="profile-petMicrochipId" name="petMicrochipId" defaultValue={profile?.pet?.microchipId ?? ""} />
+            <label htmlFor="profile-petMicrochipId">Microchip ID</label>
+            <input id="profile-petMicrochipId" name="petMicrochipId" defaultValue={profile?.pet?.microchipId ?? ""} />
+          </>
+        ) : null}
 
         <label htmlFor="profile-sex">Sex</label>
         <select id="profile-sex" name="sex" defaultValue={profile?.sex ?? "not-specified"}>
@@ -185,6 +192,7 @@ export function ProfileManagerDialog({
   onNewProfileNameChange,
   onClose,
   onSwitchProfile,
+  onEditProfile,
   onCreateProfile,
   onDeleteActive
 }: {
@@ -196,6 +204,7 @@ export function ProfileManagerDialog({
   onNewProfileNameChange: (value: string) => void;
   onClose: () => void;
   onSwitchProfile: (profileId: string) => void;
+  onEditProfile: (profileId: string) => void;
   onCreateProfile: () => void;
   onDeleteActive: () => void;
 }) {
@@ -227,25 +236,40 @@ export function ProfileManagerDialog({
         <button type="button" onClick={onClose} aria-label="Close profile manager">Close</button>
       </div>
 
-      <p className="profile-dialog-active" title={activeProfile?.id}>
-        Active profile: <strong>{activeProfile?.displayName ?? "Local user"}</strong>
-      </p>
+      <div className="profile-manager-list" role="list" aria-label="Profiles">
+        {profiles.map((entry) => {
+          const isActive = entry.id === activeProfileId;
+          return (
+            <div className={`profile-manager-row ${isActive ? "active" : ""}`} role="listitem" key={entry.id}>
+              <div>
+                <strong>{entry.displayName}</strong>
+                <span>{isActive ? "Active profile" : "Stored locally"}</span>
+              </div>
+              <div className="profile-manager-actions">
+                {!isActive ? (
+                  <button className="profile-manager-switch" type="button" disabled={busy} onClick={() => onSwitchProfile(entry.id)}>
+                    Switch
+                  </button>
+                ) : null}
+                <button className="profile-manager-edit" type="button" disabled={busy} onClick={() => onEditProfile(entry.id)}>
+                  Edit
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
 
-      <div className="profile-switcher-row">
-        <label htmlFor="profile-switch-select">Switch profile</label>
-        <select
-          id="profile-switch-select"
-          value={activeProfileId}
-          disabled={busy}
-          onChange={(event) => onSwitchProfile(event.target.value)}
+      <details className="profile-create-disclosure">
+        <summary>Add profile</summary>
+        <form
+          className="profile-create-row"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onCreateProfile();
+          }}
         >
-          {profiles.map((entry) => (
-            <option key={entry.id} value={entry.id}>{entry.displayName}</option>
-          ))}
-        </select>
-
-        <div className="profile-create-form">
-          <label htmlFor="profile-new-name">Create profile</label>
+          <label htmlFor="profile-new-name">Profile name</label>
           <input
             id="profile-new-name"
             value={newProfileName}
@@ -253,9 +277,9 @@ export function ProfileManagerDialog({
             placeholder="New profile name"
             maxLength={80}
           />
-          <button type="button" disabled={busy} onClick={onCreateProfile}>Create</button>
-        </div>
-      </div>
+          <button disabled={busy}>Create profile</button>
+        </form>
+      </details>
 
       <div className="profile-dialog-actions">
         <button

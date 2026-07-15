@@ -48,7 +48,9 @@ describe("DuckDbRepository fidelity", () => {
         imports: fixture.sourceImports.length,
         observations: fixture.observations.length,
         samples: fixture.timeSeriesSamples.length,
-        activities: fixture.activitySessions.length
+        activities: fixture.activitySessions.length,
+        healthEvents: fixture.healthEvents?.length ?? 0,
+        careItems: fixture.careItems?.length ?? 0
       });
       expect(bootstrap).not.toHaveProperty("observations");
       expect(bootstrap).not.toHaveProperty("sourceImports");
@@ -181,6 +183,7 @@ describe("DuckDbRepository fidelity", () => {
 
     expect(updated.id).toBe(fixture.profile.id);
     expect(updated.displayName).toBe("Updated Profile");
+    expect(updated.birthDate).toBe("1985-04-12");
     expect(updated.units).toBe("imperial");
 
     const reopened = await DuckDbRepository.open(root, databasePath, key, options);
@@ -584,16 +587,28 @@ describe("DuckDbRepository fidelity", () => {
 
     const upgraded = await DuckDbRepository.open(root, databasePath, key, options);
     try {
-      expect(await upgraded.schemaVersions()).toEqual([1, 2]);
+      expect(await upgraded.schemaVersions()).toEqual([1, 2, 3, 4]);
       expect(await upgraded.dailyMetrics()).toEqual([]);
       expect(await upgraded.weeklyMetrics()).toEqual([]);
     } finally {
       await upgraded.close();
     }
 
+    const upgradedHandle = await openEncryptedDuckDbDatabase(root, databasePath, key, options);
+    try {
+      const columns = await querySql(upgradedHandle.connection, `SELECT column_name
+        FROM information_schema.columns
+        WHERE table_catalog = current_database() AND table_name = 'profile'
+        ORDER BY column_name;`);
+      expect(columns.map((row) => row.column_name)).toContain("birth_date");
+      expect(columns.map((row) => row.column_name)).not.toContain("birth_year");
+    } finally {
+      await closeEncryptedDuckDbDatabase(upgradedHandle);
+    }
+
     const reopened = await DuckDbRepository.open(root, databasePath, key, options);
     try {
-      expect(await reopened.schemaVersions()).toEqual([1, 2]);
+      expect(await reopened.schemaVersions()).toEqual([1, 2, 3, 4]);
     } finally {
       await reopened.close();
     }
@@ -623,7 +638,9 @@ describe("DuckDbRepository fidelity", () => {
     await createDuckDbSchema(root, futurePath, key, options, 1);
     const futureHandle = await openEncryptedDuckDbDatabase(root, futurePath, key, options);
     await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (2, CURRENT_TIMESTAMP, 'synthetic');");
-    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (3, CURRENT_TIMESTAMP, 'future');");
+    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (3, CURRENT_TIMESTAMP, 'synthetic');");
+    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (4, CURRENT_TIMESTAMP, 'synthetic');");
+    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (5, CURRENT_TIMESTAMP, 'future');");
     await execSql(futureHandle.connection, "CHECKPOINT;");
     await closeEncryptedDuckDbDatabase(futureHandle);
     const futureHash = hashFile(futurePath);
@@ -635,6 +652,15 @@ describe("DuckDbRepository fidelity", () => {
 function execSql(connection: { exec(sql: string, callback: (error: Error | null) => void): unknown }, sql: string): Promise<void> {
   return new Promise((resolvePromise, reject) => {
     connection.exec(sql, (error) => error ? reject(error) : resolvePromise());
+  });
+}
+
+function querySql(
+  connection: { all(sql: string, callback: (error: Error | null, rows?: unknown[]) => void): unknown },
+  sql: string
+): Promise<Array<Record<string, unknown>>> {
+  return new Promise((resolvePromise, reject) => {
+    connection.all(sql, (error, rows) => error ? reject(error) : resolvePromise((rows ?? []) as Array<Record<string, unknown>>));
   });
 }
 

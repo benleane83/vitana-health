@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { HealthStoreData, InsightModel } from "./types.js";
 import { defaultMeasurementTypes } from "./registry.js";
 
-export const CURRENT_SCHEMA_VERSION = 3 as const;
+export const CURRENT_SCHEMA_VERSION = 4 as const;
 
 const sourceKind = z.enum([
   "health-connect", "manual-entry", "blood-test-csv", "observation-csv",
@@ -12,7 +12,7 @@ const stringRecord = z.record(z.unknown());
 
 export const profileSchema = z.object({
   id: z.string(), displayName: z.string(), subjectKind: z.enum(["adult", "child", "pet"]).default("adult"),
-  birthDate: z.string().date().optional(), birthYear: z.number().optional(),
+  birthDate: z.string().date().optional(),
   sex: z.enum(["female", "male", "intersex", "unknown", "not-specified"]).optional(),
   bloodType: z.enum([
     "a-positive", "a-negative", "b-positive", "b-negative", "ab-positive", "ab-negative",

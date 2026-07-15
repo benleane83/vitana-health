@@ -19,7 +19,6 @@ export interface Profile {
   displayName: string;
   subjectKind?: SubjectKind;
   birthDate?: string;
-  birthYear?: number;
   sex?: "female" | "male" | "intersex" | "unknown" | "not-specified";
   heightCm?: number;
   bloodType?: BloodType;
@@ -259,7 +258,7 @@ export interface AuditEvent {
 }
 
 export interface HealthStoreData {
-  schemaVersion: 2 | 3;
+  schemaVersion: 2 | 3 | 4;
   profile: Profile;
   sourceImports: SourceImport[];
   dataSources: DataSource[];
@@ -460,7 +459,7 @@ export interface HealthDataDetail {
 export interface ClinicianReport {
   generatedAt: string;
   disclaimer: string;
-  patient: Pick<Profile, "displayName" | "subjectKind" | "birthDate" | "birthYear" | "sex" | "heightCm" | "units"> & {
+  patient: Pick<Profile, "displayName" | "subjectKind" | "birthDate" | "sex" | "heightCm" | "units"> & {
     height?: { value: number; unit: string };
   };
   totals: {

@@ -1,12 +1,13 @@
-import type { HealthStoreData } from "@local-fitness-advisor/shared";
+import { CURRENT_SCHEMA_VERSION, type HealthStoreData } from "@local-fitness-advisor/shared";
 
 export function createDuckDbHealthStoreFixture(): HealthStoreData {
   return {
-    schemaVersion: 2,
+    schemaVersion: CURRENT_SCHEMA_VERSION,
     profile: {
       id: "profile-a",
       displayName: "Profile A",
-      birthYear: 1985,
+      subjectKind: "adult",
+      birthDate: "1985-04-12",
       sex: "not-specified",
       heightCm: 172.5,
       bloodType: "unknown",
@@ -115,6 +116,8 @@ export function createDuckDbHealthStoreFixture(): HealthStoreData {
       sourceId: "source-1",
       sourceJson: { route: "fixture" }
     }],
+    healthEvents: [],
+    careItems: [],
     insights: [{
       id: "insight-1",
       createdAt: "2026-07-12T10:03:00.000Z",

@@ -4,6 +4,7 @@ import type duckdb from "duckdb";
 import {
   classifyValue,
   computeAnalyticsFromInput,
+  CURRENT_SCHEMA_VERSION,
   defaultMeasurementTypes,
   healthStoreDataSchema,
   insightSchema,
@@ -304,7 +305,7 @@ export class DuckDbRepository implements ProfileRepository {
     }));
 
     return healthStoreDataSchema.parse({
-      schemaVersion: 3,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       profile,
       sourceImports,
       dataSources,
@@ -438,11 +439,10 @@ export class DuckDbRepository implements ProfileRepository {
       const profileProperties = nextProfile.cloudAiConsent ? json({ cloudAiConsent: nextProfile.cloudAiConsent }) : null;
       await run(
         this.connection,
-        `UPDATE profile SET display_name = ?, birth_year = ?, sex = ?, height_cm = ?, blood_type = ?,
+        `UPDATE profile SET display_name = ?, sex = ?, height_cm = ?, blood_type = ?,
           goal_summary = ?, units = ?, updated_at = ?, custom_properties = ?, subject_kind = ?, birth_date = ?,
           pet_species = ?, pet_breed = ?, pet_reproductive_status = ?, pet_microchip_id = ? WHERE id = ?;`,
         nextProfile.displayName,
-        nextProfile.birthYear ?? null,
         nextProfile.sex ?? null,
         nextProfile.heightCm ?? null,
         nextProfile.bloodType ?? null,
@@ -1167,8 +1167,11 @@ export class DuckDbRepository implements ProfileRepository {
     const profileProperties = store.profile.cloudAiConsent
       ? json({ cloudAiConsent: store.profile.cloudAiConsent })
       : null;
-    await run(this.connection, "INSERT INTO profile VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
-      store.profile.id, store.profile.displayName, store.profile.birthYear ?? null, store.profile.sex ?? null,
+    await run(this.connection, `INSERT INTO profile (
+      id, display_name, sex, height_cm, blood_type, goal_summary, units, updated_at, custom_properties,
+      subject_kind, birth_date, pet_species, pet_breed, pet_reproductive_status, pet_microchip_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      store.profile.id, store.profile.displayName, store.profile.sex ?? null,
       store.profile.heightCm ?? null, store.profile.bloodType ?? null, store.profile.goalSummary ?? null,
       store.profile.units, store.profile.updatedAt, profileProperties, store.profile.subjectKind, store.profile.birthDate ?? null,
       store.profile.pet?.species ?? null, store.profile.pet?.breed ?? null, store.profile.pet?.reproductiveStatus ?? null, store.profile.pet?.microchipId ?? null);
@@ -1344,14 +1347,19 @@ function optionalNumber(value: unknown): number | undefined {
   return value === null || value === undefined ? undefined : Number(value);
 }
 
+function optionalDate(value: unknown): string | undefined {
+  if (value === null || value === undefined) return undefined;
+  const parsed = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString().slice(0, 10);
+}
+
 function profileFromRow(row: Record<string, unknown>): Profile {
   const profileProperties = optionalJson<Record<string, unknown>>(row.custom_properties) ?? {};
   return compact({
     id: row.id,
     displayName: row.display_name,
     subjectKind: row.subject_kind ?? "adult",
-    birthDate: row.birth_date ? String(row.birth_date).slice(0, 10) : undefined,
-    birthYear: optionalNumber(row.birth_year),
+    birthDate: optionalDate(row.birth_date),
     sex: row.sex,
     heightCm: optionalNumber(row.height_cm),
     bloodType: row.blood_type,

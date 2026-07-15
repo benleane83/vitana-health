@@ -92,6 +92,8 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     canonicalUnit: "kg/m2",
     aliases: ["bmi", "body mass index"],
     openMHealthSchema: "body-mass-index",
+    normalLow: 18.5,
+    normalHigh: 24.9,
     aggregation: "latest"
   },
   {
@@ -278,6 +280,8 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     canonicalUnit: "breaths/min",
     aliases: ["respiratory rate", "breathing rate", "respiration rate"],
     openMHealthSchema: "respiratory-rate",
+    normalLow: 12,
+    normalHigh: 20,
     aggregation: "average"
   },
   {
@@ -287,6 +291,8 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "°C",
     aliases: ["body temperature", "temperature"],
+    normalLow: 36.1,
+    normalHigh: 37.2,
     aggregation: "average"
   },
   {
@@ -315,6 +321,8 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     canonicalUnit: "mmHg",
     aliases: ["systolic blood pressure", "systolic", "sbp"],
     openMHealthSchema: "systolic-blood-pressure",
+    normalLow: 90,
+    normalHigh: 120,
     aggregation: "latest"
   },
   {
@@ -325,6 +333,8 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     canonicalUnit: "mmHg",
     aliases: ["diastolic blood pressure", "diastolic", "dbp"],
     openMHealthSchema: "diastolic-blood-pressure",
+    normalLow: 60,
+    normalHigh: 80,
     aggregation: "latest"
   },
   {
@@ -474,6 +484,8 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     canonicalUnit: "g/L",
     aliases: ["albumin", "serum albumin", "alb"],
     loincCode: "1751-7",
+    normalLow: 35,
+    normalHigh: 50,
     aggregation: "latest"
   },
   {
@@ -524,6 +536,8 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     canonicalUnit: "mmol/L",
     aliases: ["calcium", "serum calcium"],
     loincCode: "17861-6",
+    normalLow: 2.1,
+    normalHigh: 2.6,
     aggregation: "latest"
   },
   {
@@ -534,6 +548,8 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     canonicalUnit: "mmol/L",
     aliases: ["chloride", "serum chloride"],
     loincCode: "2075-0",
+    normalLow: 95,
+    normalHigh: 105,
     aggregation: "latest"
   },
   {
@@ -584,6 +600,8 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     canonicalUnit: "µmol/L",
     aliases: ["iron", "serum iron"],
     loincCode: "2498-4",
+    normalLow: 9,
+    normalHigh: 31,
     aggregation: "latest"
   },
   {
@@ -594,6 +612,8 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     canonicalUnit: "mmol/L",
     aliases: ["potassium", "serum potassium"],
     loincCode: "2823-3",
+    normalLow: 3.5,
+    normalHigh: 5,
     aggregation: "latest"
   },
   {
@@ -604,6 +624,8 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     canonicalUnit: "mmol/L",
     aliases: ["sodium", "serum sodium"],
     loincCode: "2951-2",
+    normalLow: 135,
+    normalHigh: 145,
     aggregation: "latest"
   },
   {
@@ -614,6 +636,8 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     canonicalUnit: "g/L",
     aliases: ["total protein", "serum total protein"],
     loincCode: "2885-2",
+    normalLow: 60,
+    normalHigh: 80,
     aggregation: "latest"
   },
   {
@@ -674,6 +698,8 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     canonicalUnit: "×10⁹/L",
     aliases: ["white blood cell count", "white blood cells", "white cell count", "wbc"],
     loincCode: "6690-2",
+    normalLow: 4,
+    normalHigh: 11,
     aggregation: "latest"
   },
   {
@@ -714,6 +740,8 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     canonicalUnit: "fL",
     aliases: ["mean corpuscular volume", "mcv"],
     loincCode: "787-2",
+    normalLow: 80,
+    normalHigh: 100,
     aggregation: "latest"
   },
   {
@@ -724,6 +752,8 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     canonicalUnit: "pg",
     aliases: ["mean corpuscular haemoglobin", "mean corpuscular hemoglobin", "mch"],
     loincCode: "785-6",
+    normalLow: 27,
+    normalHigh: 33,
     aggregation: "latest"
   },
   {
@@ -754,6 +784,8 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     canonicalUnit: "×10⁹/L",
     aliases: ["platelet count", "platelets", "plt"],
     loincCode: "777-3",
+    normalLow: 150,
+    normalHigh: 400,
     aggregation: "latest"
   },
   {
@@ -864,6 +896,8 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     canonicalUnit: "mmol/L",
     aliases: ["phosphate", "phosphorus", "serum phosphate"],
     loincCode: "2777-1",
+    normalLow: 0.8,
+    normalHigh: 1.5,
     aggregation: "latest"
   },
   {

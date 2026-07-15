@@ -16,6 +16,7 @@ import {
 import { dirname, resolve } from "node:path";
 import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync } from "node:crypto";
 import {
+  CURRENT_SCHEMA_VERSION,
   defaultMeasurementTypes,
   computeAnalytics,
   parsePersistedHealthStore,
@@ -870,7 +871,7 @@ function storeCounts(data: HealthStoreData): AppBootstrap["counts"] {
 
 function createEmptyStore(profileId = "self"): HealthStoreData {
   return {
-    schemaVersion: 3,
+    schemaVersion: CURRENT_SCHEMA_VERSION,
     profile: {
       id: normalizeProfileId(profileId),
       displayName: "Local user",

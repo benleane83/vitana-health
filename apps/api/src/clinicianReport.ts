@@ -42,7 +42,6 @@ export function buildClinicianReport(store: HealthStoreData, generatedAt = new D
       displayName: store.profile.displayName,
       subjectKind: store.profile.subjectKind,
       birthDate: store.profile.birthDate,
-      birthYear: store.profile.birthYear,
       sex: store.profile.sex,
       heightCm: store.profile.heightCm,
       units: store.profile.units,

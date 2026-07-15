@@ -65,8 +65,7 @@ function calculatePhenoAge(store: HealthStoreData, generatedAt: string): Biologi
   const observations = Array.isArray(store.observations) ? store.observations : [];
   const candidate = latestInputs(observations);
   const birthDate = store.profile?.birthDate;
-  const birthYear = typeof store.profile?.birthYear === "number" ? store.profile.birthYear : undefined;
-  const chronologicalAge = birthDate ? ageForBirthDate(birthDate, candidate?.collectedAt ?? generatedAt) : ageForDate(birthYear, candidate?.collectedAt ?? generatedAt);
+  const chronologicalAge = birthDate ? ageForBirthDate(birthDate, candidate?.collectedAt ?? generatedAt) : undefined;
 
   const base: Omit<BiologicalAgeModelResult, "status" | "biologicalAge" | "ageAcceleration" | "calculatedAt"> = {
     id: "phenoage-levine-2018",
@@ -77,7 +76,7 @@ function calculatePhenoAge(store: HealthStoreData, generatedAt: string): Biologi
     chronologicalAge,
     chronologicalAgeDetail: chronologicalAge === undefined
       ? "Add a valid birth date to calculate chronological age."
-      : birthDate ? "Calculated from the stored birth date at the selected panel date." : "Estimated from the stored birth year at the selected panel date.",
+      : "Calculated from the stored birth date at the selected panel date.",
     panelCollectedAt: candidate?.collectedAt,
     inputs: candidate?.inputs ?? emptyInputs(),
     limitations: [
@@ -203,12 +202,5 @@ function ageForBirthDate(birthDate: string, date: string): number | undefined {
     reference.getUTCMonth() < birth.getUTCMonth() ||
     (reference.getUTCMonth() === birth.getUTCMonth() && reference.getUTCDate() < birth.getUTCDate())
   ) age -= 1;
-  return age;
-}
-
-function ageForDate(birthYear: number | undefined, date: string): number | undefined {
-  if (!birthYear || !Number.isInteger(birthYear)) return undefined;
-  const year = new Date(date).getUTCFullYear();
-  const age = year - birthYear;
   return Number.isFinite(age) && age >= 18 && age <= 120 ? age : undefined;
 }

@@ -4,7 +4,7 @@ import duckdb from "duckdb";
 import { dailyMetricsViewSql, weeklyMetricsViewSql } from "../analyticalViews.js";
 
 const markerName = ".lfa-duckdb-poc";
-const schemaVersion = 3;
+const schemaVersion = 4;
 
 export interface DuckDbOptions {
   httpfsExtensionPath?: string;
@@ -302,7 +302,7 @@ const schemaVersion1Sql = `
 const schemaVersion2Sql = `
   ${dailyMetricsViewSql};
   ${weeklyMetricsViewSql};
-  INSERT OR IGNORE INTO poc_metadata VALUES (${schemaVersion}, CURRENT_TIMESTAMP, 'Daily and weekly analytical views');
+  INSERT OR IGNORE INTO poc_metadata VALUES (2, CURRENT_TIMESTAMP, 'Daily and weekly analytical views');
 `;
 
 const schemaVersion3Sql = `
@@ -331,11 +331,18 @@ const schemaVersion3Sql = `
   );
   DROP TABLE IF EXISTS medication_events;
   DROP TABLE IF EXISTS symptom_events;
+  DROP TABLE IF EXISTS stress_events;
   INSERT OR IGNORE INTO poc_metadata VALUES (3, CURRENT_TIMESTAMP, 'Profile identity, health events, and care items');
+`;
+
+const schemaVersion4Sql = `
+  ALTER TABLE profile DROP COLUMN IF EXISTS birth_year;
+  INSERT OR IGNORE INTO poc_metadata VALUES (4, CURRENT_TIMESTAMP, 'Remove legacy profile birth year');
 `;
 
 const schemaMigrations = [
   { version: 1, sql: schemaVersion1Sql },
   { version: 2, sql: schemaVersion2Sql },
-  { version: 3, sql: schemaVersion3Sql }
+  { version: 3, sql: schemaVersion3Sql },
+  { version: 4, sql: schemaVersion4Sql }
 ] as const;

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
 import { App } from "../App.js";
 import { defaultMeasurementTypes, safetyNotice, type HealthStoreData } from "@local-fitness-advisor/shared";
 
@@ -380,6 +380,100 @@ describe("App — import tab", () => {
     measurement = screen.getByRole("combobox", { name: /row 1: select known measurement/i });
     expect([...measurement.querySelectorAll("optgroup")].map((group) => group.getAttribute("label")))
       .toEqual(["Activity", "Body", "Cardio", "Derived", "Lab", "Sleep"]);
+  });
+
+  it("shows pet fields only when the Pet profile type is selected", async () => {
+    global.fetch = mockFetch({
+      "/api/store": { ...makeEmptyStore(), measurementTypes: defaultMeasurementTypes },
+      "/api/analytics": makeEmptyAnalytics(),
+      "/api/profiles": { profiles: [], activeProfileId: "self" }
+    });
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: /^edit$/i }));
+
+    const profileType = screen.getByRole("combobox", { name: /profile type/i });
+    expect(profileType).toHaveValue("adult");
+    expect(screen.queryByRole("textbox", { name: /pet species/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: /pet breed/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: /microchip id/i })).not.toBeInTheDocument();
+
+    fireEvent.change(profileType, { target: { value: "pet" } });
+    expect(screen.getByRole("textbox", { name: /pet species/i })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /pet breed/i })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /microchip id/i })).toBeInTheDocument();
+
+    fireEvent.change(profileType, { target: { value: "child" } });
+    expect(screen.queryByRole("textbox", { name: /pet species/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: /pet breed/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: /microchip id/i })).not.toBeInTheDocument();
+  });
+
+  it("uses birth date throughout the dashboard and profile editor", async () => {
+    const store = makeEmptyStore();
+    store.profile.birthDate = "1983-04-05";
+    store.profile.sex = "female";
+    store.profile.subjectKind = "adult";
+    global.fetch = mockFetch({
+      "/api/store": { ...store, measurementTypes: defaultMeasurementTypes },
+      "/api/analytics": makeEmptyAnalytics(),
+      "/api/profiles": { profiles: [], activeProfileId: "self" },
+      "/api/profile": store.profile
+    });
+
+    render(<App />);
+    expect(await screen.findByText("1983-04-05")).toBeInTheDocument();
+    expect(screen.getByText("Birth date")).toBeInTheDocument();
+    expect(screen.getByText("Profile type")).toBeInTheDocument();
+    expect(screen.getByText("Female - Adult")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
+    const birthDate = screen.getByLabelText(/birth date/i);
+    expect(birthDate).toHaveValue("1983-04-05");
+    expect(screen.queryByRole("spinbutton", { name: /birth year/i })).not.toBeInTheDocument();
+
+    fireEvent.change(birthDate, { target: { value: "1983-04-06" } });
+    fireEvent.click(screen.getByRole("button", { name: /save profile/i }));
+
+    await waitFor(() => {
+      const request = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([url, init]) =>
+        url === "/api/profile" && init?.method === "PUT"
+      );
+      const body = JSON.parse(String(request?.[1]?.body));
+      expect(body.birthDate).toBe("1983-04-06");
+      expect(body).not.toHaveProperty("birthYear");
+    });
+  });
+
+  it("presents profile management as contextual actions with progressive profile creation", async () => {
+    const store = makeEmptyStore();
+    const profiles = [
+      { id: "self", displayName: "Local user", updatedAt: "2026-01-01T00:00:00.000Z" },
+      { id: "family", displayName: "Family member", updatedAt: "2026-01-02T00:00:00.000Z" }
+    ];
+    global.fetch = mockFetch({
+      "/api/store": store,
+      "/api/analytics": makeEmptyAnalytics(),
+      "/api/profiles": { profiles, activeProfileId: "self" }
+    });
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: /local user/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /manage profiles/i }));
+
+    const manager = screen.getByRole("dialog", { name: /manage profiles/i });
+    expect(within(manager).queryByRole("combobox", { name: /switch profile/i })).not.toBeInTheDocument();
+    expect(within(manager).getByText("Active profile")).toBeInTheDocument();
+    expect(within(manager).getByRole("button", { name: /switch/i })).toBeInTheDocument();
+    expect(within(manager).getAllByRole("button", { name: /^edit$/i })).toHaveLength(2);
+
+    const addProfile = within(manager).getByText("Add profile").closest("details");
+    expect(addProfile).not.toHaveAttribute("open");
+    fireEvent.click(within(manager).getByText("Add profile"));
+    expect(addProfile).toHaveAttribute("open");
+
+    fireEvent.click(within(manager).getAllByRole("button", { name: /^edit$/i })[0]);
+    expect(screen.getByRole("dialog", { name: /edit profile/i })).toBeInTheDocument();
   });
 
   it("uses imperial units when editing a profile and changing manual measurements", async () => {
