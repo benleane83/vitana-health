@@ -5,6 +5,7 @@ import {
   healthStoreDataSchema,
   type AnalyticsSummary,
   type AppBootstrap,
+  type BiologicalAgeSource,
   type DeleteObservationResponse,
   type DeleteObservationsByTypeResponse,
   type HealthStoreData,
@@ -14,6 +15,7 @@ import {
   type UpdateObservationResponse
 } from "@local-fitness-advisor/shared";
 import type { MeasurementDetailPage } from "../summary.js";
+import type { ClinicianReportSourceImport } from "../clinicianReport.js";
 import {
   closeEncryptedDuckDbDatabase,
   createDuckDbSchema,
@@ -52,6 +54,8 @@ import {
 import {
   analyticsSummary as readAnalyticsSummary,
   appBootstrap as readAppBootstrap,
+  biologicalAgeSource as readBiologicalAgeSource,
+  clinicianReportSourceImports as readClinicianReportSourceImports,
   countActivities as readActivityCounts,
   dailyMetrics as readDailyMetrics,
   latestMeasurement as readLatestMeasurement,
@@ -174,6 +178,21 @@ export class DuckDbRepository implements ProfileRepository {
   async analyticsSummary(): Promise<AnalyticsSummary> {
     this.assertOpen();
     return readAnalyticsSummary(this.connection);
+  }
+
+  async biologicalAgeSource(): Promise<BiologicalAgeSource> {
+    this.assertOpen();
+    return readBiologicalAgeSource(this.connection);
+  }
+
+  async clinicianReportSourceImports(): Promise<ClinicianReportSourceImport[]> {
+    this.assertOpen();
+    return readClinicianReportSourceImports(this.connection);
+  }
+
+  async storageCounts(): Promise<AppBootstrap["counts"]> {
+    this.assertOpen();
+    return readStorageCounts(this.connection);
   }
 
   async getProfile(): Promise<Profile> {

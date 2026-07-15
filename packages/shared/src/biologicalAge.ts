@@ -2,8 +2,8 @@ import type {
   BiologicalAgeInput,
   BiologicalAgeModelResult,
   BiologicalAgeReport,
-  HealthStoreData,
-  Observation
+  Observation,
+  Profile
 } from "./types.js";
 
 const phenoAgeInputs = [
@@ -19,6 +19,13 @@ const phenoAgeInputs = [
 ] as const;
 
 type PhenoAgeCode = (typeof phenoAgeInputs)[number][0];
+
+export const biologicalAgeMeasurementCodes = phenoAgeInputs.map(([code]) => code);
+
+export interface BiologicalAgeSource {
+  profile: Pick<Profile, "subjectKind" | "birthDate">;
+  observations: Observation[];
+}
 
 const plausibleRanges: Record<PhenoAgeCode, readonly [number, number]> = {
   albumin: [10, 70],
@@ -38,7 +45,7 @@ const phenoAgeCitation =
 const disclaimer =
   "This wellness estimate is not a diagnosis, prognosis, or medical advice. Results depend on laboratory methods and complete, contemporaneous inputs; discuss questions or concerning results with a qualified clinician.";
 
-export function calculateBiologicalAge(store: HealthStoreData, generatedAt = new Date().toISOString()): BiologicalAgeReport {
+export function calculateBiologicalAge(store: BiologicalAgeSource, generatedAt = new Date().toISOString()): BiologicalAgeReport {
   if (store.profile.subjectKind && store.profile.subjectKind !== "adult") {
     return {
       generatedAt,
@@ -61,7 +68,7 @@ export function calculateBiologicalAge(store: HealthStoreData, generatedAt = new
   };
 }
 
-function calculatePhenoAge(store: HealthStoreData, generatedAt: string): BiologicalAgeModelResult {
+function calculatePhenoAge(store: BiologicalAgeSource, generatedAt: string): BiologicalAgeModelResult {
   const observations = Array.isArray(store.observations) ? store.observations : [];
   const candidate = latestInputs(observations);
   const birthDate = store.profile?.birthDate;

@@ -33,8 +33,6 @@ const pointSampleSchema = z.object({
   provenance: z.record(z.unknown()).optional()
 });
 
-const densePointSampleLimit = 250_000;
-
 const exerciseSchema = z.object({
   startTime: isoDateString,
   endTime: isoDateString,
@@ -54,32 +52,32 @@ export const healthConnectImportRequestSchema = z.object({
   rangeEnd: isoDateString,
   deviceLabel: z.string().min(1).max(120).optional(),
   batchId: z.string().min(1).max(160).optional(),
-  steps: z.array(stepSchema.extend({ provenance: z.record(z.unknown()).optional() })).max(20_000).default([]),
-  heartRate: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
-  oxygenSaturation: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
-  respiratoryRate: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
-  hrvRmssd: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
-  hrvSdnn: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
-  basalBodyTemperatureC: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
-  basalMetabolicRateKcalDay: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
-  bloodGlucoseMgDl: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
-  bloodPressureSystolicMmHg: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
-  bloodPressureDiastolicMmHg: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
-  bodyTemperatureC: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
-  heightCm: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
-  skinTemperatureC: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
-  vo2MaxMlKgMin: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
-  weightKg: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
-  exerciseSessions: z.array(exerciseSchema).max(5_000).default([]),
-  distanceMeters: z.array(intervalSampleSchema).max(20_000).default([]),
-  floorsClimbed: z.array(intervalSampleSchema).max(20_000).default([]),
-  activeCaloriesKcal: z.array(intervalSampleSchema).max(20_000).default([]),
-  totalCaloriesKcal: z.array(intervalSampleSchema).max(20_000).default([]),
-  sleepSessions: z.array(sleepSessionSchema).max(20_000).default([]),
-  bodyFatPct: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
-  leanBodyMassKg: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
-  bodyWaterMassKg: z.array(pointSampleSchema).max(densePointSampleLimit).default([]),
-  boneMassKg: z.array(pointSampleSchema).max(densePointSampleLimit).default([])
+  steps: z.array(stepSchema.extend({ provenance: z.record(z.unknown()).optional() })).default([]),
+  heartRate: z.array(pointSampleSchema).default([]),
+  oxygenSaturation: z.array(pointSampleSchema).default([]),
+  respiratoryRate: z.array(pointSampleSchema).default([]),
+  hrvRmssd: z.array(pointSampleSchema).default([]),
+  hrvSdnn: z.array(pointSampleSchema).default([]),
+  basalBodyTemperatureC: z.array(pointSampleSchema).default([]),
+  basalMetabolicRateKcalDay: z.array(pointSampleSchema).default([]),
+  bloodGlucoseMgDl: z.array(pointSampleSchema).default([]),
+  bloodPressureSystolicMmHg: z.array(pointSampleSchema).default([]),
+  bloodPressureDiastolicMmHg: z.array(pointSampleSchema).default([]),
+  bodyTemperatureC: z.array(pointSampleSchema).default([]),
+  heightCm: z.array(pointSampleSchema).default([]),
+  skinTemperatureC: z.array(pointSampleSchema).default([]),
+  vo2MaxMlKgMin: z.array(pointSampleSchema).default([]),
+  weightKg: z.array(pointSampleSchema).default([]),
+  exerciseSessions: z.array(exerciseSchema).default([]),
+  distanceMeters: z.array(intervalSampleSchema).default([]),
+  floorsClimbed: z.array(intervalSampleSchema).default([]),
+  activeCaloriesKcal: z.array(intervalSampleSchema).default([]),
+  totalCaloriesKcal: z.array(intervalSampleSchema).default([]),
+  sleepSessions: z.array(sleepSessionSchema).default([]),
+  bodyFatPct: z.array(pointSampleSchema).default([]),
+  leanBodyMassKg: z.array(pointSampleSchema).default([]),
+  bodyWaterMassKg: z.array(pointSampleSchema).default([]),
+  boneMassKg: z.array(pointSampleSchema).default([])
 });
 
 export type HealthConnectImportRequest = z.infer<typeof healthConnectImportRequestSchema>;

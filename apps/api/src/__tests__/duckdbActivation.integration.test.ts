@@ -57,7 +57,7 @@ describe.skipIf(!httpfsExtensionPath)("ProfileStoreManager DuckDB runtime", () =
     try {
       expect(manager.getStorageBackend()).toBe("duckdb");
       expect(manager.listProfiles().map((profile) => profile.id)).toEqual(["self"]);
-      expect((await manager.getActiveStore().snapshot({ includeRaw: false })).observations).toEqual([]);
+      expect((await manager.getActiveStore().storageCounts()).observations).toBe(0);
       expect(readFileSync(legacyJsonPath, "utf8")).toBe("not-a-readable-json-store");
       expect(existsSync(join(duckdbRoot, "databases", "health-store-self.duckdb"))).toBe(true);
     } finally {
@@ -72,7 +72,7 @@ describe.skipIf(!httpfsExtensionPath)("ProfileStoreManager DuckDB runtime", () =
       panelName: "DuckDB fixture",
       markers: [{ markerName: "Weight", value: 81, unit: "kg" }]
     }));
-    expect(describeAnalyticsStorage(manager, await manager.getActiveStore().snapshot({ includeRaw: false }))).toMatchObject({
+    expect(describeAnalyticsStorage(manager, await manager.getActiveStore().storageCounts())).toMatchObject({
       databasePath: "encrypted-profile:self",
       engine: "duckdb",
       counts: { observations: 1 }

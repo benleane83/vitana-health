@@ -2,11 +2,15 @@ import type duckdb from "duckdb";
 import type { SourceImport } from "@local-fitness-advisor/shared";
 import { insertAudit, nextOrdinal } from "./duckdbCommands.js";
 import { storageCounts } from "./duckdbProjections.js";
-import type { ImportMutationResult, ProfileImport } from "./profileRepository.js";
+import type {
+  ImportCategoryOutcome,
+  ImportMutationResult,
+  ImportOutcome,
+  ProfileImport
+} from "./profileRepository.js";
 import {
   all,
   allWithParams,
-  exec,
   insertObservationRows,
   insertRows,
   json,
@@ -18,83 +22,109 @@ export async function mergeImport(
   connection: duckdb.Connection,
   parsed: ProfileImport
 ): Promise<ImportMutationResult> {
-  const sourceImport = sanitizeSourceImport(parsed.sourceImport);
-  await insertImportIfNew(connection, sourceImport);
+  const sourceImport = parsed.sourceImport;
+  const sourceImportOutcome = await measureInsert(connection, "imports", 1, () =>
+    insertImportIfNew(connection, sourceImport));
 
-  await insertRows(connection, "INSERT OR IGNORE INTO sources VALUES (?, ?, ?, ?, ?, ?);", [[
-    await nextOrdinal(connection, "sources"),
-    parsed.dataSource.id,
-    parsed.dataSource.sourceKind,
-    parsed.dataSource.label,
-    parsed.dataSource.importId ?? null,
-    parsed.dataSource.createdAt
-  ]]);
+  const dataSourceOutcome = await measureInsert(connection, "sources", 1, async () =>
+    insertRows(connection, "INSERT OR IGNORE INTO sources VALUES (?, ?, ?, ?, ?, ?);", [[
+      await nextOrdinal(connection, "sources"),
+      parsed.dataSource.id,
+      parsed.dataSource.sourceKind,
+      parsed.dataSource.label,
+      parsed.dataSource.importId ?? null,
+      parsed.dataSource.createdAt
+    ]]));
   const groupFirstOrdinal = await nextOrdinal(connection, "observation_groups");
-  await insertRows(connection, "INSERT OR IGNORE INTO observation_groups VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
-    parsed.observationGroups.map((entry, index) => [
-      groupFirstOrdinal + index,
-      entry.id,
-      entry.kind,
-      entry.label,
-      entry.sourceId ?? null,
-      entry.importId ?? null,
-      entry.startAt ?? null,
-      entry.endAt ?? null,
-      entry.collectedAt ?? null,
-      optionalJsonValue(entry.metadata)
-    ]));
+  const observationGroupsOutcome = await measureInsert(
+    connection,
+    "observation_groups",
+    parsed.observationGroups.length,
+    () => insertRows(connection, "INSERT OR IGNORE INTO observation_groups VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+      parsed.observationGroups.map((entry, index) => [
+        groupFirstOrdinal + index,
+        entry.id,
+        entry.kind,
+        entry.label,
+        entry.sourceId ?? null,
+        entry.importId ?? null,
+        entry.startAt ?? null,
+        entry.endAt ?? null,
+        entry.collectedAt ?? null,
+        optionalJsonValue(entry.metadata)
+      ]))
+  );
 
-  await insertObservationRows(connection, parsed.observations, await nextOrdinal(connection, "observations"));
+  const observationsOutcome = await measureInsert(
+    connection,
+    "observations",
+    parsed.observations.length,
+    async () => insertObservationRows(connection, parsed.observations, await nextOrdinal(connection, "observations"))
+  );
 
   const sampleFirstOrdinal = await nextOrdinal(connection, "time_series_samples");
-  await insertRows(connection, "INSERT OR IGNORE INTO time_series_samples VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
-    parsed.timeSeriesSamples.map((entry, index) => [
-      sampleFirstOrdinal + index,
-      entry.id,
-      entry.measurementCode,
-      entry.startAt,
-      entry.endAt,
-      entry.value,
-      entry.unit,
-      entry.sourceId,
-      entry.deviceId ?? null,
-      entry.sourceJson !== undefined,
-      optionalJsonValue(entry.sourceJson)
-    ]));
+  const timeSeriesSamplesOutcome = await measureInsert(
+    connection,
+    "time_series_samples",
+    parsed.timeSeriesSamples.length,
+    () => insertRows(connection, "INSERT OR IGNORE INTO time_series_samples VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+      parsed.timeSeriesSamples.map((entry, index) => [
+        sampleFirstOrdinal + index,
+        entry.id,
+        entry.measurementCode,
+        entry.startAt,
+        entry.endAt,
+        entry.value,
+        entry.unit,
+        entry.sourceId,
+        entry.deviceId ?? null,
+        entry.sourceJson !== undefined,
+        optionalJsonValue(entry.sourceJson)
+      ]))
+  );
 
   const activityFirstOrdinal = await nextOrdinal(connection, "activities");
-  await insertRows(connection, "INSERT OR IGNORE INTO activities VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
-    parsed.activitySessions.map((entry, index) => [
-      activityFirstOrdinal + index,
-      entry.id,
-      entry.activityType,
-      entry.startAt,
-      entry.endAt ?? null,
-      entry.durationMinutes ?? null,
-      entry.energyKcal ?? null,
-      entry.distanceMeters ?? null,
-      entry.sourceId,
-      entry.sourceJson !== undefined,
-      optionalJsonValue(entry.sourceJson)
-    ]));
+  const activitySessionsOutcome = await measureInsert(
+    connection,
+    "activities",
+    parsed.activitySessions.length,
+    () => insertRows(connection, "INSERT OR IGNORE INTO activities VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+      parsed.activitySessions.map((entry, index) => [
+        activityFirstOrdinal + index,
+        entry.id,
+        entry.activityType,
+        entry.startAt,
+        entry.endAt ?? null,
+        entry.durationMinutes ?? null,
+        entry.energyKcal ?? null,
+        entry.distanceMeters ?? null,
+        entry.sourceId,
+        entry.sourceJson !== undefined,
+        optionalJsonValue(entry.sourceJson)
+      ]))
+  );
 
-  await pruneMeasurementRows(connection, "observations", "observed_at", maxObservations);
-  await pruneMeasurementRows(connection, "time_series_samples", "end_at", maxTimeSeriesSamples);
-  await pruneByNewest(connection, "observation_groups", "COALESCE(collected_at, end_at, start_at)", maxObservationGroups);
-  await pruneByNewest(connection, "activities", "start_at", maxActivitySessions);
+  const outcome: ImportOutcome = {
+    sourceImport: sourceImportOutcome,
+    dataSource: dataSourceOutcome,
+    observations: observationsOutcome,
+    observationGroups: observationGroupsOutcome,
+    timeSeriesSamples: timeSeriesSamplesOutcome,
+    activitySessions: activitySessionsOutcome
+  };
   const auditEvent = await insertAudit(
     connection,
     "import-processed",
-    `${sourceImport.sourceKind} import processed with ${sourceImport.rowCount} source row(s).`
+    importAuditDetail(sourceImport.sourceKind, outcome)
   );
-  return { counts: await storageCounts(connection), auditEvent };
+  return { counts: await storageCounts(connection), outcome, auditEvent };
 }
 
 export async function importObservationRecords(
   connection: duckdb.Connection,
   parsed: Pick<ProfileImport, "sourceImport" | "dataSource" | "observations">
 ): Promise<number> {
-  const sourceImport = sanitizeSourceImport(parsed.sourceImport);
+  const sourceImport = parsed.sourceImport;
   await insertImportIfNew(connection, sourceImport);
 
   const existingSources = await allWithParams(connection, "SELECT 1 AS found FROM sources WHERE id = ? LIMIT 1;", parsed.dataSource.id);
@@ -111,9 +141,6 @@ export async function importObservationRecords(
   const currentIds = new Set(currentRows.map((row) => String(row.id)));
   const incomingById = new Map(parsed.observations.map((entry) => [entry.id, entry]));
   const additions = [...incomingById.values()].filter((entry) => !currentIds.has(entry.id));
-  if (currentIds.size + additions.length > maxObservations) {
-    throw new Error(`DuckDB observation import exceeds the ${maxObservations} row limit.`);
-  }
   await insertObservationRows(connection, additions, await nextOrdinal(connection, "observations"));
   return additions.length;
 }
@@ -146,75 +173,26 @@ async function insertImportIfNew(connection: duckdb.Connection, sourceImport: So
   );
 }
 
-async function pruneMeasurementRows(
+async function measureInsert(
   connection: duckdb.Connection,
-  table: "observations" | "time_series_samples",
-  timestampColumn: "observed_at" | "end_at",
-  maxItems: number
-): Promise<void> {
-  const countRows = await all(connection, `SELECT COUNT(*) AS count FROM ${table};`);
-  if (Number(countRows[0]?.count ?? 0) <= maxItems) return;
-
-  const rankedSql = `
-    SELECT id, measurement_code, ${timestampColumn},
-      ROW_NUMBER() OVER (PARTITION BY measurement_code ORDER BY ${timestampColumn} DESC, id DESC) AS measurement_rank
-    FROM ${table}`;
-  const protectedRows = await all(connection, `
-    WITH ranked AS (${rankedSql})
-    SELECT COUNT(*) AS count FROM ranked WHERE measurement_rank <= ${minPerMeasurementCode};
-  `);
-  const protectedCount = Number(protectedRows[0]?.count ?? 0);
-  const remainingLimit = Math.max(0, maxItems - protectedCount);
-  const retainedSql = remainingLimit === 0
-    ? `
-      WITH ranked AS (${rankedSql})
-      SELECT id FROM (
-        SELECT id FROM ranked WHERE measurement_rank <= ${minPerMeasurementCode}
-        ORDER BY ${timestampColumn} DESC, id DESC
-        LIMIT ${maxItems}
-      )`
-    : `
-      WITH ranked AS (${rankedSql}), retained AS (
-        SELECT id FROM ranked WHERE measurement_rank <= ${minPerMeasurementCode}
-        UNION ALL
-        SELECT id FROM (
-          SELECT id FROM ranked WHERE measurement_rank > ${minPerMeasurementCode}
-          ORDER BY ${timestampColumn} DESC, id DESC
-          LIMIT ${remainingLimit}
-        )
-      )
-      SELECT id FROM retained`;
-  await exec(connection, `DELETE FROM ${table} WHERE id NOT IN (${retainedSql});`);
+  table: "imports" | "sources" | "observations" | "observation_groups" | "time_series_samples" | "activities",
+  attempted: number,
+  insert: () => Promise<void>
+): Promise<ImportCategoryOutcome> {
+  const before = await tableCount(connection, table);
+  await insert();
+  const accepted = (await tableCount(connection, table)) - before;
+  return { attempted, accepted, duplicates: attempted - accepted, evicted: 0 };
 }
 
-async function pruneByNewest(
-  connection: duckdb.Connection,
-  table: "observation_groups" | "activities",
-  timestampExpression: string,
-  maxItems: number
-): Promise<void> {
-  const countRows = await all(connection, `SELECT COUNT(*) AS count FROM ${table};`);
-  if (Number(countRows[0]?.count ?? 0) <= maxItems) return;
-  await exec(connection, `
-    DELETE FROM ${table}
-    WHERE id NOT IN (
-      SELECT id FROM ${table}
-      ORDER BY ${timestampExpression} DESC NULLS LAST, id DESC
-      LIMIT ${maxItems}
-    );
-  `);
+async function tableCount(connection: duckdb.Connection, table: string): Promise<number> {
+  const rows = await all(connection, `SELECT COUNT(*) AS count FROM ${table};`);
+  return Number(rows[0]?.count ?? 0);
 }
 
-function sanitizeSourceImport(sourceImport: SourceImport): SourceImport {
-  if (!sourceImport.rawContent || sourceImport.rawContent.length <= maxRawImportChars) {
-    return sourceImport;
-  }
-  return { ...sourceImport, rawContent: sourceImport.rawContent.slice(0, maxRawImportChars) };
+function importAuditDetail(sourceKind: string, outcome: ImportOutcome): string {
+  const categories = Object.entries(outcome)
+    .map(([category, result]) => `${category}: ${result.accepted} accepted, ${result.duplicates} duplicate(s), 0 evicted`)
+    .join("; ");
+  return `${sourceKind} import committed. ${categories}.`;
 }
-
-export const maxRawImportChars = 1_000_000;
-export const maxObservations = 250_000;
-export const maxTimeSeriesSamples = 10_000;
-export const minPerMeasurementCode = 500;
-export const maxActivitySessions = 75_000;
-export const maxObservationGroups = 20_000;

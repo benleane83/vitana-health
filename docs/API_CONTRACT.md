@@ -182,12 +182,6 @@ Requires owner or companion authentication. Returns an `application/pdf` attachm
 details, data totals, latest measurements, flagged laboratory results, trends, and import provenance. The report is a
 health-data summary for discussion with a clinician and is not diagnostic.
 
-### Get store summary
-```
-GET /api/store
-```
-**Success `200`:** `{ "storage": { "profileId", "observationCount", "lastWrittenAt" } }`
-
 ### Get analytics data
 ```
 GET /api/analytics
@@ -231,25 +225,43 @@ POST /api/insights/generate
 ```
 GET /api/export
 ```
-**Response:** `application/json` download of all profile observations.
+**Response:** `application/json` download of the complete active profile store. This is the only supported complete-store read.
 
 ---
 
 ## Import
+
+Successful import commits return `201` with safe import metadata and transaction-derived outcomes:
+
+```json
+{
+  "import": { "id": "...", "sourceKind": "manual-entry", "fileName": "...", "rowCount": 2, "status": "processed" },
+  "outcome": {
+    "sourceImport": { "attempted": 1, "accepted": 1, "duplicates": 0, "evicted": 0 },
+    "dataSource": { "attempted": 1, "accepted": 1, "duplicates": 0, "evicted": 0 },
+    "observations": { "attempted": 2, "accepted": 2, "duplicates": 0, "evicted": 0 },
+    "observationGroups": { "attempted": 1, "accepted": 1, "duplicates": 0, "evicted": 0 },
+    "timeSeriesSamples": { "attempted": 0, "accepted": 0, "duplicates": 0, "evicted": 0 },
+    "activitySessions": { "attempted": 0, "accepted": 0, "duplicates": 0, "evicted": 0 }
+  }
+}
+```
+
+`accepted` and `duplicates` describe committed database effects, including duplicates within the submitted batch and records already stored. `evicted` is always `0`: imports never remove older records. Raw source content is retained locally but omitted from API responses. Some commit endpoints also include `analyticsStorage` aggregate counts.
 
 ### Import blood test PDF
 ```
 POST /api/import/blood-test
 ```
 **Request body:** `{ "base64": "<pdf-data-uri>", "panelName"?, "labName"?, "collectedAt"? }`  
-**Success `200`:** `{ "inserted": <count>, "skipped"?: <count> }`
+**Success `201`:** committed import response described above.
 
 ### Submit manual lab markers
 ```
 POST /api/import/labs/manual
 ```
 **Request body:** `{ "rows": [{ "markerName", "value", "unit" }], "panelName"?, "labName"?, "collectedAt"? }`  
-**Success `200`:** `{ "inserted": <count> }`
+**Success `201`:** committed import response described above.
 
 ### Preview body composition file
 ```
@@ -263,14 +275,14 @@ POST /api/import/body-composition/preview
 POST /api/import/body-composition/commit
 ```
 **Request body:** `{ "rows": BodyCompositionRow[] }`  
-**Success `200`:** `{ "inserted": <count> }`
+**Success `201`:** committed import response described above, including `analyticsStorage`.
 
 ### Import Health Connect data
 ```
 POST /api/import/health-connect
 ```
 **Request body:** Health Connect JSON export (max 10 MB)  
-**Success `200`:** `{ "inserted": <count>, "skipped"?: <count> }`
+**Success `201`:** committed import response described above, including `analyticsStorage`.
 
 For companions, `profileId` is required and must equal the paired device's profile grant.
 Missing or mismatched values return `403 PROFILE_ACCESS_DENIED` before store access. Owners may

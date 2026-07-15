@@ -8,7 +8,7 @@ I'm only testing on Windows x64 currently, but I intend to support Linux and Mac
 
 ## Database design
 
-Currently uses DuckDB as a local database, although considering SQLite as an alternative if transactional performance suffers. When working on database changes, please consider this and use abstractions over DuckDB where relevant to make swapping DB providers easier later. JSON profile support was in an earlier prototype but has been retired and should not be used actively.
+Currently uses DuckDB as a local database, although considering SQLite as an alternative if transactional performance suffers. When working on database changes, please consider this and use abstractions over DuckDB where relevant to make swapping DB providers easier later. JSON profile support was in an earlier prototype but has been retired and should not be used actively. Earlier prototypes also performed full profile reads, but this is now discouraged for performance reasons.
 
 ## Mobile app design
 

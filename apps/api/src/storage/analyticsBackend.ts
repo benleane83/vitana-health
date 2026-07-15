@@ -1,11 +1,10 @@
 import type {
+  AppBootstrap,
   DeleteObservationResponse,
   DeleteObservationsByTypeResponse,
-  HealthStoreData,
   UpdateObservationResponse
 } from "@local-fitness-advisor/shared";
 import type { ProfileStoreManager } from "./profileStoreManager.js";
-import type { ImportMutationResult } from "./profileRepository.js";
 import type { QueryDSL } from "../aiQueryPlanner.js";
 import {
   duckDbAnalyticsQueryCompiler,
@@ -26,17 +25,9 @@ export interface AnalyticsStorageDescription {
 
 export function describeAnalyticsStorage(
   storeManager: ProfileStoreManager,
-  source: HealthStoreData | ImportMutationResult | UpdateObservationResponse | DeleteObservationResponse | DeleteObservationsByTypeResponse,
+  counts: AppBootstrap["counts"] | UpdateObservationResponse["counts"] | DeleteObservationResponse["counts"] | DeleteObservationsByTypeResponse["counts"],
   profileId = storeManager.getActiveProfileId()
 ): AnalyticsStorageDescription {
-  const counts = "sourceImports" in source
-    ? {
-        imports: source.sourceImports.length,
-        observations: source.observations.length,
-        samples: source.timeSeriesSamples.length,
-        activities: source.activitySessions.length
-      }
-    : source.counts;
   return {
     databasePath: `encrypted-profile:${profileId}`,
     engine: "duckdb",

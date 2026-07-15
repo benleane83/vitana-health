@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildClinicianReport } from "../clinicianReport.js";
-import type { HealthStoreData } from "@local-fitness-advisor/shared";
+import { computeAnalytics, type HealthStoreData } from "@local-fitness-advisor/shared";
 
 function store(): HealthStoreData {
   return {
@@ -19,7 +19,12 @@ function store(): HealthStoreData {
 
 describe("buildClinicianReport", () => {
   it("derives a deterministic, privacy-scoped report without raw import content", () => {
-    const report = buildClinicianReport(store(), "2026-01-03T00:00:00.000Z");
+    const data = store();
+    const report = buildClinicianReport({
+      profile: data.profile,
+      analytics: computeAnalytics(data),
+      sourceImports: data.sourceImports
+    }, "2026-01-03T00:00:00.000Z");
 
     expect(report).toMatchObject({
       generatedAt: "2026-01-03T00:00:00.000Z",
@@ -34,8 +39,9 @@ describe("buildClinicianReport", () => {
   it("uses the profile's preferred unit for height", () => {
     const data = store();
     data.profile = { ...data.profile, units: "imperial", heightCm: 180 };
+    const input = { profile: data.profile, analytics: computeAnalytics(data), sourceImports: data.sourceImports };
 
-    expect(buildClinicianReport(data).patient.height).toMatchObject({ unit: "in" });
-    expect(buildClinicianReport(data).patient.height?.value).toBeCloseTo(70.87, 2);
+    expect(buildClinicianReport(input).patient.height).toMatchObject({ unit: "in" });
+    expect(buildClinicianReport(input).patient.height?.value).toBeCloseTo(70.87, 2);
   });
 });

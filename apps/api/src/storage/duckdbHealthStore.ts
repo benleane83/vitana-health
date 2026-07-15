@@ -69,10 +69,6 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
     return new DuckDbHealthStore(repository, options);
   }
 
-  async snapshot(options: { includeRaw?: boolean } = {}): Promise<HealthStoreData> {
-    return this.repository.snapshot(options);
-  }
-
   getProfile() {
     return this.repository.getProfile();
   }
@@ -83,6 +79,18 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
 
   analyticsSummary() {
     return this.repository.analyticsSummary();
+  }
+
+  biologicalAgeSource() {
+    return this.repository.biologicalAgeSource();
+  }
+
+  clinicianReportSourceImports() {
+    return this.repository.clinicianReportSourceImports();
+  }
+
+  storageCounts() {
+    return this.repository.storageCounts();
   }
 
   summary() {

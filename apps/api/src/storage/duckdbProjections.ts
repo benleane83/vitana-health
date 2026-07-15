@@ -1,14 +1,17 @@
 import type duckdb from "duckdb";
 import {
+  biologicalAgeMeasurementCodes,
   classifyValue,
   computeAnalyticsFromInput,
   type AnalyticsSummary,
   type AppBootstrap,
+  type BiologicalAgeSource,
   type HealthDataDetailEntry,
   type HealthDataSummaryTypeRow,
   type MeasurementType,
   type ObservationGroup
 } from "@local-fitness-advisor/shared";
+import type { ClinicianReportSourceImport } from "../clinicianReport.js";
 import {
   type MeasurementDetailPage,
   summarizeMeasurementEntries,
@@ -121,6 +124,48 @@ export async function analyticsSummary(connection: duckdb.Connection): Promise<A
     measurementTypes: measurementRows.map(measurementTypeFromRow),
     observations: observationRows.map(observationFromRow)
   });
+}
+
+export async function biologicalAgeSource(connection: duckdb.Connection): Promise<BiologicalAgeSource> {
+  const [profileRows, observationRows] = await Promise.all([
+    all(connection, "SELECT * FROM profile;"),
+    allWithParams(connection, `
+      SELECT * EXCLUDE (measurement_rank) FROM (
+        SELECT
+          o.* EXCLUDE (ordinal),
+          ROW_NUMBER() OVER (
+            PARTITION BY o.measurement_code
+            ORDER BY o.observed_at DESC, o.id DESC
+          ) AS measurement_rank
+        FROM observations o
+        WHERE o.measurement_code IN (${biologicalAgeMeasurementCodes.map(() => "?").join(", ")})
+      )
+      WHERE measurement_rank = 1
+      ORDER BY measurement_code;
+    `, ...biologicalAgeMeasurementCodes)
+  ]);
+  if (profileRows.length !== 1) {
+    throw new Error("DuckDB expected exactly one profile row.");
+  }
+  return {
+    profile: profileFromRow(profileRows[0]),
+    observations: observationRows.map(observationFromRow)
+  };
+}
+
+export async function clinicianReportSourceImports(connection: duckdb.Connection): Promise<ClinicianReportSourceImport[]> {
+  const rows = await all(connection, `
+    SELECT file_name, source_kind, imported_at, status, row_count
+    FROM imports
+    ORDER BY imported_at DESC, file_name, ordinal;
+  `);
+  return rows.map((row) => ({
+    fileName: String(row.file_name),
+    sourceKind: String(row.source_kind) as ClinicianReportSourceImport["sourceKind"],
+    importedAt: isoTimestamp(row.imported_at),
+    status: String(row.status) as ClinicianReportSourceImport["status"],
+    rowCount: Number(row.row_count)
+  }));
 }
 
 export async function summary(connection: duckdb.Connection) {

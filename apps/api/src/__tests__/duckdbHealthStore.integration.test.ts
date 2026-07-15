@@ -18,7 +18,7 @@ afterEach(() => {
 });
 
 describe("DuckDbHealthStore lifecycle", () => {
-  it.skipIf(!httpfsExtensionPath)("serializes mutations, maintains cached snapshots, and reopens encrypted state", async () => {
+  it.skipIf(!httpfsExtensionPath)("serializes mutations and reopens encrypted state", async () => {
     const fixture = createDuckDbHealthStoreFixture();
     const databasePath = join(root, "databases", "health-store-self.duckdb");
     const options = {
@@ -31,8 +31,17 @@ describe("DuckDbHealthStore lifecycle", () => {
     };
     const store = await DuckDbHealthStore.hydrate(options, fixture);
     try {
-      expect(await store.snapshot({ includeRaw: true })).toEqual(fixture);
-      expect((await store.snapshot({ includeRaw: false })).sourceImports[0]?.rawContent).toBeUndefined();
+      expect(await store.exportData()).toMatchObject({
+        profile: fixture.profile,
+        sourceImports: fixture.sourceImports
+      });
+      expect(await store.clinicianReportSourceImports()).toEqual([{
+        fileName: fixture.sourceImports[0].fileName,
+        sourceKind: fixture.sourceImports[0].sourceKind,
+        importedAt: fixture.sourceImports[0].importedAt,
+        status: fixture.sourceImports[0].status,
+        rowCount: fixture.sourceImports[0].rowCount
+      }]);
       const importResult = await store.mergeImport({
         sourceImport: { ...fixture.sourceImports[0], id: "adapter-import", fileName: "adapter.csv", checksum: "adapter-checksum" },
         dataSource: { ...fixture.dataSources[0], id: "adapter-source", importId: "adapter-import" },
@@ -54,8 +63,8 @@ describe("DuckDbHealthStore lifecycle", () => {
 
     const reopened = await DuckDbHealthStore.open(options);
     try {
-      expect((await reopened.snapshot({ includeRaw: false })).insights[0]?.id).toBe("adapter-insight");
-      expect((await reopened.snapshot({ includeRaw: false })).observations.some((entry) => entry.id === "observation-z")).toBe(false);
+      expect((await reopened.appBootstrap()).latestInsight?.id).toBe("adapter-insight");
+      expect((await reopened.storageCounts()).observations).toBe(2);
     } finally {
       await reopened.close();
     }

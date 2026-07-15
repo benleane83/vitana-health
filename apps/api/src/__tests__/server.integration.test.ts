@@ -141,7 +141,10 @@ describe("POST /api/import/health-connect — auth middleware", () => {
         });
       expect(manual.status).toBe(201);
       expect(manual.body).toMatchObject({
-        changes: { observations: 1, observationGroups: 1 },
+        outcome: {
+          observations: { attempted: 1, accepted: 1, duplicates: 0, evicted: 0 },
+          observationGroups: { attempted: 1, accepted: 1, duplicates: 0, evicted: 0 }
+        },
         import: { sourceKind: "manual-entry" }
       });
       expect(manual.body.store).toBeUndefined();
@@ -157,11 +160,25 @@ describe("POST /api/import/health-connect — auth middleware", () => {
   });
 
   it("allows the owner credential", async () => {
-    const res = await request(app)
+    const first = await request(app)
       .post("/api/import/health-connect")
       .set("authorization", ownerAuthorization)
       .send(minimalHealthConnectPayload);
-    expect(res.status).toBe(201);
+    expect(first.status).toBe(201);
+    expect(first.body.outcome).toMatchObject({
+      sourceImport: { attempted: 1, accepted: 1, duplicates: 0, evicted: 0 },
+      dataSource: { attempted: 1, accepted: 1, duplicates: 0, evicted: 0 }
+    });
+
+    const repeated = await request(app)
+      .post("/api/import/health-connect")
+      .set("authorization", ownerAuthorization)
+      .send(minimalHealthConnectPayload);
+    expect(repeated.status).toBe(201);
+    expect(repeated.body.outcome).toMatchObject({
+      sourceImport: { attempted: 1, accepted: 0, duplicates: 1, evicted: 0 },
+      dataSource: { attempted: 1, accepted: 0, duplicates: 1, evicted: 0 }
+    });
   });
 
   it("accepts a valid single-delivery companion token", async () => {
@@ -182,7 +199,7 @@ describe("POST /api/import/health-connect — auth middleware", () => {
 
 describe("central owner authorization", () => {
   it("protects data and model routes", async () => {
-    const paths = ["/api/store", "/api/profile", "/api/export"];
+    const paths = ["/api/profile", "/api/export"];
     for (const path of paths) {
       expect((await request(app).get(path)).status).toBe(401);
     }
@@ -315,7 +332,7 @@ describe("central owner authorization", () => {
     const token = pairingStore.getStatus(requested.record.id, requested.pollingSecret)!.token!;
 
     const denied = [
-      ["/api/store", "get"], ["/api/profile", "get"], ["/api/export", "get"], ["/api/pairing/devices", "get"],
+      ["/api/profile", "get"], ["/api/export", "get"], ["/api/pairing/devices", "get"],
       ["/api/settings/ai", "get"], ["/api/settings/ai", "put"], ["/api/query/ai", "post"], ["/api/observations/missing", "delete"]
     ] as const;
     for (const [path, method] of denied) {
@@ -428,8 +445,8 @@ describe("profile lifecycle routes", () => {
       .set("authorization", ownerAuthorization)
       .send({ ...minimalHealthConnectPayload, profileId: "shabnam" });
     expect(res.status).toBe(201);
-    expect((await storeManager.getStore("shabnam").snapshot({ includeRaw: false })).sourceImports).toHaveLength(1);
-    expect((await storeManager.getStore("self").snapshot({ includeRaw: false })).sourceImports).toHaveLength(0);
+    expect((await storeManager.getStore("shabnam").storageCounts()).imports).toBe(1);
+    expect((await storeManager.getStore("self").storageCounts()).imports).toBe(0);
   });
 });
 
@@ -503,13 +520,13 @@ describe("DELETE /api/observations/:id", () => {
     const store = storeManager.getActiveStore();
     await store.mergeImport(parsed);
 
-    const observationId = (await store.snapshot({ includeRaw: false })).observations[0]?.id;
+    const observationId = parsed.observations[0]?.id;
     expect(observationId).toBeDefined();
 
     const res = await request(app).delete(`/api/observations/${observationId}`).set("authorization", ownerAuthorization);
     expect(res.status).toBe(200);
     expect(res.body.deletedCount).toBe(1);
-    expect((await store.snapshot({ includeRaw: false })).observations.find((o) => o.id === observationId)).toBeUndefined();
+    expect((await store.storageCounts()).observations).toBe(0);
   });
 });
 
@@ -533,7 +550,7 @@ describe("PATCH /api/observations/:id", () => {
     );
     const store = storeManager.getActiveStore();
     await store.mergeImport(parsed);
-    const before = (await store.snapshot({ includeRaw: false })).observations[0];
+    const before = parsed.observations[0];
     expect(before).toBeDefined();
 
     const res = await request(app)

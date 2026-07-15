@@ -10,7 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { computeAnalytics, defaultMeasurementTypes } from "@local-fitness-advisor/shared";
+import { calculateBiologicalAge, computeAnalytics, defaultMeasurementTypes } from "@local-fitness-advisor/shared";
 import {
   closeEncryptedDuckDbDatabase,
   createDuckDbSchema,
@@ -19,6 +19,7 @@ import {
 } from "../storage/duckdbRuntime.js";
 import { createDuckDbHealthStoreFixture } from "./support/duckdbFixture.js";
 import { DuckDbRepository, digestHealthStoreData } from "../storage/duckdbRepository.js";
+import { buildClinicianReport } from "../clinicianReport.js";
 
 const httpfsExtensionPath = findPreparedExtension();
 const key = Buffer.alloc(32, 7).toString("base64");
@@ -53,7 +54,27 @@ describe("DuckDbRepository fidelity", () => {
       });
       expect(bootstrap).not.toHaveProperty("observations");
       expect(bootstrap).not.toHaveProperty("sourceImports");
-      expect(await repository.analyticsSummary()).toEqual(computeAnalytics(fixture));
+      const analytics = await repository.analyticsSummary();
+      expect(analytics).toEqual(computeAnalytics(fixture));
+      const generatedAt = "2026-07-15T00:00:00.000Z";
+      const biologicalAgeSource = await repository.biologicalAgeSource();
+      expect(calculateBiologicalAge(biologicalAgeSource, generatedAt)).toEqual(calculateBiologicalAge(fixture, generatedAt));
+      expect(new Set(biologicalAgeSource.observations.map((entry) => entry.measurementCode)).size)
+        .toBe(biologicalAgeSource.observations.length);
+
+      const sourceImports = await repository.clinicianReportSourceImports();
+      expect(sourceImports).toEqual(fixture.sourceImports.map(({ fileName, sourceKind, importedAt, status, rowCount }) => ({
+        fileName, sourceKind, importedAt, status, rowCount
+      })));
+      expect(JSON.stringify(sourceImports)).not.toContain("rawContent");
+      expect(buildClinicianReport({ profile: bootstrap.profile, analytics, sourceImports }, generatedAt)).toMatchObject({
+        patient: { displayName: fixture.profile.displayName },
+        totals: {
+          observations: fixture.observations.length,
+          samples: fixture.timeSeriesSamples.length,
+          activities: fixture.activitySessions.length
+        }
+      });
     } finally {
       await repository.close();
     }
@@ -369,9 +390,27 @@ describe("DuckDbRepository fidelity", () => {
       const repeatedImportResult = await repository.mergeImport(parsedImport);
       expect(firstImportResult).toMatchObject({
         counts: { imports: 2, observations: 3, samples: 2, activities: 2 },
+        outcome: {
+          sourceImport: { attempted: 1, accepted: 1, duplicates: 0, evicted: 0 },
+          dataSource: { attempted: 1, accepted: 1, duplicates: 0, evicted: 0 },
+          observations: { attempted: 2, accepted: 1, duplicates: 1, evicted: 0 },
+          observationGroups: { attempted: 1, accepted: 1, duplicates: 0, evicted: 0 },
+          timeSeriesSamples: { attempted: 1, accepted: 1, duplicates: 0, evicted: 0 },
+          activitySessions: { attempted: 1, accepted: 1, duplicates: 0, evicted: 0 }
+        },
         auditEvent: { eventType: "import-processed" }
       });
       expect(repeatedImportResult.counts).toEqual(firstImportResult.counts);
+      expect(repeatedImportResult.outcome).toEqual({
+        sourceImport: { attempted: 1, accepted: 0, duplicates: 1, evicted: 0 },
+        dataSource: { attempted: 1, accepted: 0, duplicates: 1, evicted: 0 },
+        observations: { attempted: 2, accepted: 0, duplicates: 2, evicted: 0 },
+        observationGroups: { attempted: 1, accepted: 0, duplicates: 1, evicted: 0 },
+        timeSeriesSamples: { attempted: 1, accepted: 0, duplicates: 1, evicted: 0 },
+        activitySessions: { attempted: 1, accepted: 0, duplicates: 1, evicted: 0 }
+      });
+      expect(firstImportResult.auditEvent.detail).toContain("observations: 1 accepted, 1 duplicate(s), 0 evicted");
+      expect(repeatedImportResult.auditEvent.detail).toContain("observations: 0 accepted, 2 duplicate(s), 0 evicted");
       expect(firstImportResult).not.toHaveProperty("observations");
       expect(firstImportResult).not.toHaveProperty("sourceImports");
       await repository.addInsight(addedInsight);
@@ -407,7 +446,7 @@ describe("DuckDbRepository fidelity", () => {
     try {
       const snapshot = await reopened.snapshot();
       expect(snapshot.sourceImports.map((entry) => entry.id)).toEqual(["import-1", "import-2"]);
-      expect(snapshot.sourceImports[1].rawContent).toHaveLength(1_000_000);
+      expect(snapshot.sourceImports[1].rawContent).toHaveLength(1_000_005);
       expect(snapshot.dataSources.map((entry) => entry.id)).toEqual(["source-1", "source-2"]);
       expect(snapshot.observationGroups.map((entry) => entry.id)).toEqual(["group-1", "group-2"]);
       expect(snapshot.timeSeriesSamples.map((entry) => entry.id)).toEqual(["sample-1", "sample-2"]);
@@ -426,6 +465,56 @@ describe("DuckDbRepository fidelity", () => {
       await reopened.close();
     }
   }, 30_000);
+
+  it.skipIf(!httpfsExtensionPath)("retains samples beyond the former ceiling across later imports", async () => {
+    const databasePath = join(root, "databases", "health-store-unlimited-samples.duckdb-poc");
+    const fixture = createDuckDbHealthStoreFixture();
+    const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
+    const sampleCount = 10_001;
+    const samples = Array.from({ length: sampleCount }, (_, index) => ({
+      ...fixture.timeSeriesSamples[0],
+      id: `unlimited-sample-${index}`,
+      startAt: new Date(Date.UTC(2025, 0, 1, 0, index)).toISOString(),
+      endAt: new Date(Date.UTC(2025, 0, 1, 0, index, 30)).toISOString()
+    }));
+    try {
+      const first = await repository.mergeImport({
+        sourceImport: {
+          id: "unlimited-import-1", sourceKind: "manual-entry", fileName: "unlimited-1.json",
+          importedAt: "2026-07-15T00:00:00.000Z", parserVersion: "test", checksum: "unlimited-1",
+          rowCount: sampleCount, status: "processed", diagnostics: []
+        },
+        dataSource: {
+          id: "unlimited-source", sourceKind: "manual-entry", label: "Unlimited fixture",
+          importId: "unlimited-import-1", createdAt: "2026-07-15T00:00:00.000Z"
+        },
+        observations: [], observationGroups: [], timeSeriesSamples: samples, activitySessions: []
+      });
+      expect(first.outcome.timeSeriesSamples).toEqual({
+        attempted: sampleCount, accepted: sampleCount, duplicates: 0, evicted: 0
+      });
+      expect(first.counts.samples).toBe(sampleCount + fixture.timeSeriesSamples.length);
+
+      const second = await repository.mergeImport({
+        sourceImport: {
+          id: "unlimited-import-2", sourceKind: "manual-entry", fileName: "unlimited-2.json",
+          importedAt: "2026-07-16T00:00:00.000Z", parserVersion: "test", checksum: "unlimited-2",
+          rowCount: 1, status: "processed", diagnostics: []
+        },
+        dataSource: {
+          id: "unlimited-source", sourceKind: "manual-entry", label: "Unlimited fixture",
+          importId: "unlimited-import-2", createdAt: "2026-07-16T00:00:00.000Z"
+        },
+        observations: [], observationGroups: [],
+        timeSeriesSamples: [{ ...samples[0], id: "unlimited-sample-later", startAt: "2026-07-16T00:00:00.000Z", endAt: "2026-07-16T00:01:00.000Z" }],
+        activitySessions: []
+      });
+      expect(second.outcome.timeSeriesSamples).toEqual({ attempted: 1, accepted: 1, duplicates: 0, evicted: 0 });
+      expect(second.counts.samples).toBe(sampleCount + fixture.timeSeriesSamples.length + 1);
+    } finally {
+      await repository.close();
+    }
+  }, 60_000);
 
   it.skipIf(!httpfsExtensionPath)("isolates profiles across concurrently open encrypted databases", async () => {
     const options = { httpfsExtensionPath };

@@ -57,7 +57,7 @@ These failures describe the review environment, not confirmed repository defects
 
 The central API middleware allows any valid companion token to access every authenticated route except a short owner-only list (`apps/api/src/createApp.ts:46-55,239-258`). The feature routers are then mounted without distinguishing credential type (`apps/api/src/createApp.ts:260-275`).
 
-This keeps the previous review's highest-risk finding open. A companion can still reach complete-store reads, exports, profile mutation, observation mutation, analytics/query routes, and other endpoints not explicitly denied. The test suite currently codifies access to `/api/store` (`apps/api/src/__tests__/server.test.ts:310-314`).
+This previously kept the prior review's highest-risk finding open: a companion could reach complete-store reads, exports, profile mutation, observation mutation, analytics/query routes, and other endpoints not explicitly denied. Capability allowlisting now blocks those route families, and the redundant `/api/store` endpoint has since been removed.
 
 This is also unnecessary complexity: each new route must be remembered in a security denylist. Make owner access the default and grant companions only the minimum named capabilities required for:
 
@@ -137,7 +137,11 @@ The file's size is a symptom of these responsibilities, not of DuckDB itself. Av
 
 `ProfileRepository` should remain the application-facing contract. Database-specific details should stay behind it so a future SQLite evaluation changes adapters rather than route/domain code. Current `ProfileStoreManager` methods such as `runActiveDuckDbQuery` and concrete `instanceof` checks leak the provider into orchestration (`apps/api/src/store.ts:469-477`); replace these with capability methods on the repository boundary.
 
-### P1 — Stop silent retention and reduce remaining full snapshots
+### [DONE] P1 — Stop silent retention and reduce remaining full snapshots
+
+Implemented on 2026-07-15. Canonical profile databases now have no application-defined row ceilings, automatic pruning, or raw-source truncation. Import transactions report `attempted`, `accepted`, `duplicates`, and `evicted` for every persisted category; `evicted` is fixed at zero, repeated imports report zero accepted rows, and audit detail is generated from the same committed outcome. Real database or filesystem failures roll back and surface as failed imports.
+
+Routine reads no longer reconstruct the complete store. Storage diagnostics use aggregate counts; biological age selects only the latest observation for each required marker; insights use profile metadata plus the bounded analytics summary; clinician reports use that summary plus raw-content-free import metadata. The unused `GET /api/store` endpoint and application-facing `snapshot()` capability were removed. Full reconstruction remains only for explicit JSON export and one-time hydration/migration parity validation.
 
 Imports enforce hard-coded limits and then return only final aggregate counts (`apps/api/src/storage/duckdbRepository.ts:435-530`). There is no accepted/duplicate/evicted breakdown, so a successful import can silently discard older health records. Audit text reports parsed source rows, not committed changes (`apps/api/src/storage/duckdbRepository.ts:525-529`).
 
@@ -250,8 +254,8 @@ Keep past reviews immutable as historical records. Treat this report and product
 3. [DONE] **Remove unused experimental endpoints and web client methods** before building more features on them.
 4. [DONE] **Split web feature ownership** out of `App.tsx` and reduce `ImportPage` to composed feature panels.
 5. [DONE] **Split DuckDB persistence by responsibility** behind the existing repository contract; remove provider checks from orchestration.
-6. **Make imports honest** by returning accepted, duplicate, and evicted counts and exposing retention warnings.
-7. **Replace remaining non-export snapshots** with purpose-built repository projections.
+6. [DONE] **Make imports honest** by returning accepted, duplicate, and evicted counts and exposing retention warnings.
+7. [DONE] **Replace remaining non-export snapshots** with purpose-built repository projections.
 8. [DONE] **Create shared API schemas and structured errors** for future web/mobile feature reuse.
 9. [DONE] **Make Health Connect metadata descriptor-driven** and run Android TypeScript tests in the root test command.
 10. [DONE] **Split parser families and catalog behavior**, then address smaller persistence/configuration debt.

@@ -138,6 +138,13 @@ export const profileDeleteResponseSchema = z.object({
 }).strict();
 export const pairingMutationResponseSchema = z.object({ id: z.string(), status: z.string() }).strict();
 
+export const importCategoryOutcomeSchema = z.object({
+  attempted: z.number().int().nonnegative(),
+  accepted: z.number().int().nonnegative(),
+  duplicates: z.number().int().nonnegative(),
+  evicted: z.literal(0)
+}).strict();
+
 export const importMutationResponseSchema = z.object({
   import: z.object({
     id: z.string(),
@@ -150,11 +157,13 @@ export const importMutationResponseSchema = z.object({
     status: z.string(),
     diagnostics: z.array(z.string())
   }).passthrough(),
-  changes: z.object({
-    observations: z.number(),
-    observationGroups: z.number(),
-    timeSeriesSamples: z.number(),
-    activitySessions: z.number()
+  outcome: z.object({
+    sourceImport: importCategoryOutcomeSchema,
+    dataSource: importCategoryOutcomeSchema,
+    observations: importCategoryOutcomeSchema,
+    observationGroups: importCategoryOutcomeSchema,
+    timeSeriesSamples: importCategoryOutcomeSchema,
+    activitySessions: importCategoryOutcomeSchema
   }).strict(),
   analyticsStorage: z.unknown().optional()
 }).passthrough();
