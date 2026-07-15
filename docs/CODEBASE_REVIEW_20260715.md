@@ -90,7 +90,11 @@ Recommended simplification:
 
 This is the largest safe deletion opportunity in the repository and aligns with the stated lack of public backward-compatibility requirements.
 
-### P1 — Decompose web orchestration by feature, without adding a state framework
+### [DONE] P1 — Decompose web orchestration by feature, without adding a state framework
+
+Implemented on 2026-07-15 without adding a state framework or global context. `App.tsx` is now 411 lines with seven local state hooks limited to routing, the profile menu, top-level notices, and confirmation state. `ImportPage` now composes feature-owned manual, CSV, scan, and pairing workflows through eight runtime props rather than receiving each workflow's state and setters.
+
+Profile bootstrap, analytics, profile-list, and active-profile responses are committed as one lifecycle snapshot. Dashboard, Track, Insights, and Export own their remote data and mutation state; repeated busy/error/data transitions use cohesive state objects, and Track mutations share one post-mutation refresh path.
 
 `App.tsx` is again 1,303 lines despite the earlier page extraction. It contains roughly 49 `useState` calls covering navigation, profiles, imports, body-composition parsing, summary/detail views, AI, export, consent, pairing, and dialogs (`apps/web/src/App.tsx:41-104`). It also owns loading, mutation, and refresh behavior for every page.
 
@@ -240,7 +244,7 @@ Keep past reviews immutable as historical records. Treat this report and product
 1. [DONE] **Fix the authorization model** with an owner-default policy and explicit companion capability allowlist.
 2. [DONE] **Choose and enforce the canonical storage architecture**: preserve a one-time JSON importer, remove JSON runtime fallback and detached warehouse code, and update documentation.
 3. [DONE] **Remove unused experimental endpoints and web client methods** before building more features on them.
-4. **Split web feature ownership** out of `App.tsx` and reduce `ImportPage` to composed feature panels.
+4. [DONE] **Split web feature ownership** out of `App.tsx` and reduce `ImportPage` to composed feature panels.
 5. **Split DuckDB persistence by responsibility** behind the existing repository contract; remove provider checks from orchestration.
 6. **Make imports honest** by returning accepted, duplicate, and evicted counts and exposing retention warnings.
 7. **Replace remaining non-export snapshots** with purpose-built repository projections.

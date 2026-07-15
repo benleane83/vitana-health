@@ -1,93 +1,32 @@
 import { useEffect, useId, useState } from "react";
-import { getPreferredUnit, type BodyCompositionDraft, type MeasurementType, type ProfileListEntry, type UnitSystem } from "@local-fitness-advisor/shared";
+import { getPreferredUnit, type AppBootstrap, type BodyCompositionDraft, type MeasurementType, type ProfileListEntry, type UnitSystem } from "@local-fitness-advisor/shared";
 import { api } from "../api.js";
 import type { PairedDevice, PendingPairing } from "../api.js";
 import type { BodyCompositionEditableRow, ImportMode, ManualMarkerRow, ScanKind } from "../types.js";
 import { formatBytes } from "../utils.js";
+import { ManualImportFeature } from "../features/import/ManualImportFeature.js";
+import { ScanImportFeature } from "../features/import/ScanImportFeature.js";
+import { CsvImportFeature } from "../features/import/CsvImportFeature.js";
 
 // ─── Tab IDs for tablist/tabpanel ARIA wiring ─────────────────────────────────
 
 export function ImportPage({
-  busy,
   mode,
   onModeChange,
-  scanKind,
-  onScanKindChange,
-  observationGroup,
-  observationGroupOptions,
-  manualMeasurementTypes,
-  labName,
-  collectedAt,
-  rows,
-  onObservationGroupChange,
-  onCustomObservationGroupChange,
-  onLabNameChange,
-  onCollectedAtChange,
-  onRowChange,
-  onAddRow,
-  onRemoveRow,
-  onSubmitManual,
-  onSubmitUpload,
-  onUploadFileChange,
-  uploadInputRef,
-  bodyCompFile,
-  bodyCompDraft,
-  bodyCompRows,
-  bodyCompReportDate,
-  onBodyCompFileChange,
-  onBodyCompReportDateChange,
-  onBodyCompRowChange,
-  onBodyCompAddRow,
-  measurementTypes,
-  onPreviewBodyComp,
-  onCommitBodyComp,
-  bodyCompInputRef,
-  pendingPairings,
+  bootstrap,
+  onDataChanged,
+  onNotice,
   profiles,
   activeProfileId,
-  onApprovePairing,
-  onDenyPairing,
   units
 }: {
-  busy: boolean;
   mode: ImportMode;
   onModeChange: (mode: ImportMode) => void;
-  scanKind: ScanKind;
-  onScanKindChange: (kind: ScanKind) => void;
-  observationGroup: string;
-  observationGroupOptions: string[];
-  manualMeasurementTypes: MeasurementType[];
-  labName: string;
-  collectedAt: string;
-  rows: ManualMarkerRow[];
-  onObservationGroupChange: (value: string) => void;
-  onCustomObservationGroupChange: (value: string) => void;
-  onLabNameChange: (value: string) => void;
-  onCollectedAtChange: (value: string) => void;
-  onRowChange: (id: string, patch: Partial<ManualMarkerRow>) => void;
-  onAddRow: () => void;
-  onRemoveRow: (id: string) => void;
-  onSubmitManual: (event: React.FormEvent<HTMLFormElement>) => void;
-  onSubmitUpload: (event: React.FormEvent<HTMLFormElement>) => void;
-  onUploadFileChange: (file?: File) => void;
-  uploadInputRef: React.RefObject<HTMLInputElement | null>;
-  bodyCompFile?: File;
-  bodyCompDraft?: BodyCompositionDraft;
-  bodyCompRows: BodyCompositionEditableRow[];
-  bodyCompReportDate: string;
-  onBodyCompFileChange: (file?: File) => void;
-  onBodyCompReportDateChange: (value: string) => void;
-  onBodyCompRowChange: (id: string, patch: Partial<BodyCompositionEditableRow>) => void;
-  onBodyCompAddRow: () => void;
-  measurementTypes: MeasurementType[];
-  onPreviewBodyComp: (event: React.FormEvent<HTMLFormElement>) => void;
-  onCommitBodyComp: (event: React.FormEvent<HTMLFormElement>) => void;
-  bodyCompInputRef: React.RefObject<HTMLInputElement | null>;
-  pendingPairings: PendingPairing[];
+  bootstrap?: AppBootstrap;
+  onDataChanged: () => Promise<void>;
+  onNotice: (message: string) => void;
   profiles: ProfileListEntry[];
   activeProfileId?: string;
-  onApprovePairing: (id: string, profileId: string) => void;
-  onDenyPairing: (id: string) => void;
   units: UnitSystem;
 }) {
   const manualTabId = "import-tab-manual";
@@ -161,81 +100,37 @@ export function ImportPage({
 
       {mode === "manual" ? (
         <div id={manualPanelId} role="tabpanel" aria-labelledby={manualTabId}>
-          <ManualEntryForm
-            busy={busy}
-            observationGroup={observationGroup}
-            observationGroupOptions={observationGroupOptions}
-            labName={labName}
-            collectedAt={collectedAt}
-            rows={rows}
-            measurementTypes={manualMeasurementTypes}
-            onObservationGroupChange={onObservationGroupChange}
-            onCustomObservationGroupChange={onCustomObservationGroupChange}
-            onLabNameChange={onLabNameChange}
-            onCollectedAtChange={onCollectedAtChange}
-            onRowChange={onRowChange}
-            onAddRow={onAddRow}
-            onRemoveRow={onRemoveRow}
+          <ManualImportFeature
+            bootstrap={bootstrap}
             units={units}
-            onSubmit={onSubmitManual}
+            onImported={onDataChanged}
+            onNotice={onNotice}
           />
         </div>
       ) : mode === "upload" ? (
         <div id={uploadPanelId} role="tabpanel" aria-labelledby={uploadTabId}>
-          <form className="labs-upload-form" onSubmit={onSubmitUpload}>
-            <label htmlFor="csv-upload">Select observation CSV</label>
-            <input id="csv-upload" ref={uploadInputRef} type="file" accept=".csv,text/csv" aria-describedby="csv-upload-help" onChange={(event) => onUploadFileChange(event.target.files?.[0])} />
-            <p id="csv-upload-help" className="empty">Use columns: observedAt, measurement, value, unit, label, sourceName.</p>
-            <div className="labs-upload-actions">
-              <button disabled={busy} type="submit">Upload CSV</button>
-              <button type="button" onClick={() => downloadObservationCsvTemplate(units)}>Download CSV Template</button>
-            </div>
-          </form>
+          <CsvImportFeature units={units} onImported={onDataChanged} onNotice={onNotice} />
         </div>
       ) : mode === "scan" ? (
         <div id={scanPanelId} role="tabpanel" aria-labelledby={scanTabId}>
-          <section className="panel labs-panel">
-            <label htmlFor="scan-kind">Report type</label>
-            <select id="scan-kind" value={scanKind} onChange={(event) => onScanKindChange(event.target.value as ScanKind)}>
-              <option value="body-composition">Body composition</option>
-              <option value="blood-test">Lab results</option>
-            </select>
-            <BodyCompositionImportPanel
-              busy={busy} file={bodyCompFile} draft={bodyCompDraft} rows={bodyCompRows} reportDate={bodyCompReportDate}
-              measurementTypes={measurementTypes}
-              units={units}
-              inputRef={bodyCompInputRef} onFileChange={onBodyCompFileChange} onReportDateChange={onBodyCompReportDateChange}
-              onRowChange={onBodyCompRowChange} onAddRow={onBodyCompAddRow} onPreview={onPreviewBodyComp} onCommit={onCommitBodyComp}
-            />
-          </section>
+          <ScanImportFeature
+            measurementTypes={bootstrap?.measurementTypes ?? []}
+            units={units}
+            onImported={onDataChanged}
+            onNotice={onNotice}
+          />
         </div>
       ) : (
         <div id={fitnessPanelId} role="tabpanel" aria-labelledby={fitnessTabId}>
           <FitnessTrackerImportPanel
-            pendingPairings={pendingPairings}
             profiles={profiles}
             activeProfileId={activeProfileId}
-            onApprove={onApprovePairing}
-            onDeny={onDenyPairing}
+            onNotice={onNotice}
           />
         </div>
       )}
     </section>
   );
-}
-
-function downloadObservationCsvTemplate(units: UnitSystem) {
-  const template = [
-    "observedAt,measurement,value,unit,label,sourceName",
-    `2026-07-11T08:30:00Z,glucose,${units === "imperial" ? "95,mg/dL" : "5.3,mmol/L"},Morning check,Home lab`
-  ].join("\n");
-  const blob = new Blob([template], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = "observation-template.csv";
-  anchor.click();
-  URL.revokeObjectURL(url);
 }
 
 // ─── Manual lab entry form ────────────────────────────────────────────────────
@@ -250,7 +145,7 @@ const measurementCategoryLabels: Record<MeasurementType["category"], string> = {
   sleep: "Sleep"
 };
 
-function ManualEntryForm({
+export function ManualEntryForm({
   busy,
   observationGroup,
   observationGroupOptions,
@@ -521,7 +416,7 @@ function ManualMeasurementRow({
 
 // ─── Body composition import panel ────────────────────────────────────────────
 
-function BodyCompositionImportPanel({
+export function BodyCompositionImportPanel({
   busy,
   file,
   draft,
@@ -756,18 +651,15 @@ function BodyCompositionImportPanel({
 // ─── Fitness tracker pairing panel ────────────────────────────────────────────
 
 function FitnessTrackerImportPanel({
-  pendingPairings,
   profiles,
   activeProfileId,
-  onApprove,
-  onDeny
+  onNotice
 }: {
-  pendingPairings: PendingPairing[];
   profiles: ProfileListEntry[];
   activeProfileId?: string;
-  onApprove: (id: string, profileId: string) => void;
-  onDeny: (id: string) => void;
+  onNotice: (message: string) => void;
 }) {
+  const [pendingPairings, setPendingPairings] = useState<PendingPairing[]>([]);
   const [pairedDevices, setPairedDevices] = useState<PairedDevice[]>([]);
   const [selectedProfiles, setSelectedProfiles] = useState<Record<string, string>>({});
   const activeProfileExists = activeProfileId !== undefined && profiles.some((profile) => profile.id === activeProfileId);
@@ -776,6 +668,44 @@ function FitnessTrackerImportPanel({
   useEffect(() => {
     void api.pairing.devices().then(setPairedDevices).catch(() => setPairedDevices([]));
   }, [pendingPairings]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout>;
+    async function poll() {
+      if (cancelled) return;
+      try {
+        const result = await api.pairing.pending();
+        if (!cancelled) setPendingPairings(result);
+      } catch {
+        // Pairing is optional and polling resumes on the next interval.
+      }
+      if (!cancelled) timeoutId = setTimeout(poll, 5000);
+    }
+    void poll();
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
+  }, []);
+
+  async function approve(id: string, profileId: string) {
+    try {
+      await api.pairing.approve(id, profileId);
+      setPendingPairings(await api.pairing.pending());
+    } catch (error) {
+      onNotice(error instanceof Error ? error.message : "Could not approve pairing request.");
+    }
+  }
+
+  async function deny(id: string) {
+    try {
+      await api.pairing.deny(id);
+      setPendingPairings(await api.pairing.pending());
+    } catch (error) {
+      onNotice(error instanceof Error ? error.message : "Could not deny pairing request.");
+    }
+  }
 
   async function revokeDevice(id: string) {
     await api.pairing.revoke(id);
@@ -835,13 +765,13 @@ function FitnessTrackerImportPanel({
                   disabled={profiles.length === 0}
                   onClick={() => {
                     const profileId = selectedProfiles[req.id] ?? defaultProfileId;
-                    if (profileId) onApprove(req.id, profileId);
+                    if (profileId) void approve(req.id, profileId);
                   }}
                   aria-label={`Approve pairing request from ${req.deviceName}`}
                 >Approve</button>
                 <button
                   type="button"
-                  onClick={() => onDeny(req.id)}
+                  onClick={() => { void deny(req.id); }}
                   aria-label={`Deny pairing request from ${req.deviceName}`}
                 >Deny</button>
               </div>
