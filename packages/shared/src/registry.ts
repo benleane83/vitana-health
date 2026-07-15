@@ -278,6 +278,8 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     canonicalUnit: "breaths/min",
     aliases: ["respiratory rate", "breathing rate", "respiration rate"],
     openMHealthSchema: "respiratory-rate",
+    normalLow: 12,
+    normalHigh: 20,
     aggregation: "average"
   },
   {
@@ -594,6 +596,8 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     canonicalUnit: "mmol/L",
     aliases: ["potassium", "serum potassium"],
     loincCode: "2823-3",
+    normalLow: 3.5,
+    normalHigh: 5,
     aggregation: "latest"
   },
   {
@@ -604,6 +608,8 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     canonicalUnit: "mmol/L",
     aliases: ["sodium", "serum sodium"],
     loincCode: "2951-2",
+    normalLow: 135,
+    normalHigh: 145,
     aggregation: "latest"
   },
   {
@@ -1050,6 +1056,12 @@ export const defaultMeasurementTypes: MeasurementType[] = [
   }
 ];
 
+const normalRangeSources: Readonly<Record<string, string>> = {
+  respiratory_rate: "Royal College of Physicians, National Early Warning Score (NEWS2), 2017",
+  potassium: "Tietz Fundamentals of Clinical Chemistry and Molecular Diagnostics, 8th ed.",
+  sodium: "Spasovski et al., European Clinical Practice Guideline on Hyponatraemia, 2014"
+};
+
 for (const type of defaultMeasurementTypes) {
   type.preferredUnits = preferredUnitsFor(type);
   type.unitAliases = unitAliasesFor(type);
@@ -1057,7 +1069,8 @@ for (const type of defaultMeasurementTypes) {
     type.referenceRanges = [{
       ...(type.normalLow === undefined ? {} : { low: type.normalLow }),
       ...(type.normalHigh === undefined ? {} : { high: type.normalHigh }),
-      unit: type.canonicalUnit
+      unit: type.canonicalUnit,
+      ...(normalRangeSources[type.code] === undefined ? {} : { source: normalRangeSources[type.code] })
     }];
   }
 }
