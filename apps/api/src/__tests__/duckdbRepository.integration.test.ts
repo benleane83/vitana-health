@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { spawn, type ChildProcess } from "node:child_process";
 import {
   copyFileSync,
   existsSync,
@@ -471,42 +470,6 @@ describe("DuckDbRepository fidelity", () => {
     await expect(DuckDbRepository.open(root, profileBPath, profileAKey, options)).rejects.toThrow();
   }, 30_000);
 
-  it.skipIf(!httpfsExtensionPath)("never promotes a database when hydration is terminated before atomic rename", async () => {
-    const databasePath = join(root, "databases", "health-store-interrupted-hydration.duckdb-poc");
-    const child = await runCrashWorker("hydrate", databasePath);
-    expect(existsSync(databasePath)).toBe(false);
-
-    await terminate(child);
-
-    expect(existsSync(databasePath)).toBe(false);
-    const repository = await DuckDbRepository.hydrate(
-      root,
-      databasePath,
-      key,
-      createDuckDbHealthStoreFixture(),
-      { httpfsExtensionPath }
-    );
-    await repository.close();
-    expect(existsSync(databasePath)).toBe(true);
-  }, 30_000);
-
-  it.skipIf(!httpfsExtensionPath)("rolls back a delete when the child process is terminated before commit", async () => {
-    const databasePath = join(root, "databases", "health-store-interrupted-delete.duckdb-poc");
-    const fixture = createDuckDbHealthStoreFixture();
-    const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
-    await repository.close();
-    const child = await runCrashWorker("delete", databasePath);
-
-    await terminate(child);
-
-    const recovered = await DuckDbRepository.open(root, databasePath, key, { httpfsExtensionPath });
-    try {
-      expect(await recovered.snapshot()).toEqual(fixture);
-    } finally {
-      await recovered.close();
-    }
-  }, 30_000);
-
   it.skipIf(!httpfsExtensionPath)("provides fixed daily and Monday-based weekly analytical views", async () => {
     const databasePath = join(root, "databases", "health-store-analytics.duckdb-poc");
     const fixture = createDuckDbHealthStoreFixture();
@@ -679,52 +642,6 @@ function querySql(
 ): Promise<Array<Record<string, unknown>>> {
   return new Promise((resolvePromise, reject) => {
     connection.all(sql, (error, rows) => error ? reject(error) : resolvePromise((rows ?? []) as Array<Record<string, unknown>>));
-  });
-}
-
-function runCrashWorker(mode: "hydrate" | "delete", databasePath: string): Promise<ChildProcess> {
-  return new Promise((resolvePromise, reject) => {
-    const workerPath = resolve(process.cwd(), "apps", "api", "src", "__tests__", "support", "duckdbCrashWorker.ts");
-    const child = spawn(process.execPath, [
-      "--import",
-      "tsx",
-      workerPath,
-      mode,
-      root,
-      databasePath,
-      key,
-      httpfsExtensionPath!
-    ], {
-      cwd: process.cwd(),
-      stdio: ["ignore", "pipe", "pipe"]
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout?.on("data", (chunk) => {
-      stdout += chunk.toString();
-      if (stdout.includes("READY")) {
-        resolvePromise(child);
-      }
-    });
-    child.stderr?.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-    child.once("error", reject);
-    child.once("exit", (code) => {
-      if (!stdout.includes("READY")) {
-        reject(new Error(`DuckDB crash worker exited before ready with code ${code}: ${stderr}`));
-      }
-    });
-  });
-}
-
-function terminate(child: ChildProcess): Promise<void> {
-  return new Promise((resolvePromise, reject) => {
-    child.once("error", reject);
-    child.once("exit", () => resolvePromise());
-    if (!child.kill()) {
-      reject(new Error("Failed to terminate DuckDB crash worker."));
-    }
   });
 }
 

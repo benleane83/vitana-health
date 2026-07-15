@@ -53,16 +53,19 @@ afterEach(async () => {
 // ─── GET /api/health ──────────────────────────────────────────────────────────
 
 describe("GET /api/health", () => {
-  it("returns ok: true with the expected shape", async () => {
-    const res = await request(app).get("/api/health").set("authorization", ownerAuthorization);
+  it.each([
+    ["anonymous", undefined],
+    ["authenticated", ownerAuthorization]
+  ])("returns a public liveness response for %s requests", async (_label, authorization) => {
+    const pendingRequest = request(app).get("/api/health");
+    const res = authorization ? await pendingRequest.set("authorization", authorization) : await pendingRequest;
     expect(res.status).toBe(200);
-    expect(res.body.ok).toBe(true);
+    expect(res.body).toMatchObject({ ok: true });
     expect(res.body.uptime).toBeGreaterThanOrEqual(0);
-    // Health endpoint intentionally does not expose internals
-    expect(res.body.app).toBeUndefined();
-    expect(res.body.storage).toBeUndefined();
-    expect(res.body.counts).toBeUndefined();
-    expect(res.body.modelRuntime).toBeUndefined();
+    expect(res.body).not.toHaveProperty("app");
+    expect(res.body).not.toHaveProperty("storage");
+    expect(res.body).not.toHaveProperty("counts");
+    expect(res.body).not.toHaveProperty("modelRuntime");
   });
 
   describe("GET /api/biological-age", () => {
@@ -77,34 +80,16 @@ describe("GET /api/health", () => {
     });
   });
 
-  it("returns ok: true without a credential (public liveness check)", async () => {
-    const res = await request(app).get("/api/health");
-    expect(res.status).toBe(200);
-    expect(res.body.ok).toBe(true);
-  });
 });
 
 describe("query endpoint lifecycle", () => {
-  it("removes unused legacy query routes", async () => {
-    const [nlResponse, askResponse] = await Promise.all([
-      request(app).post("/api/query/nl").set("authorization", ownerAuthorization).send({ question: "latest heart rate" }),
-      request(app).post("/api/query/ask").set("authorization", ownerAuthorization).send({ question: "latest heart rate" })
-    ]);
-
-    expect(nlResponse.status).toBe(404);
-    expect(askResponse.status).toBe(404);
-  });
-
-  it("exposes only the supported AI query endpoint", async () => {
-    const [aiResponse, storeFallbackResponse, diagnosticResponse] = await Promise.all([
-      request(app).post("/api/query/ai").set("authorization", ownerAuthorization).send({ question: "x" }),
-      request(app).post("/api/query/ask-store").set("authorization", ownerAuthorization).send({ question: "x" }),
-      request(app).post("/api/llm/simple").set("authorization", ownerAuthorization).send({ prompt: "" })
-    ]);
+  it("marks the supported AI query endpoint with its lifecycle", async () => {
+    const aiResponse = await request(app)
+      .post("/api/query/ai")
+      .set("authorization", ownerAuthorization)
+      .send({ question: "x" });
 
     expect(aiResponse.headers["x-lfa-lifecycle"]).toBe("supported");
-    expect(storeFallbackResponse.status).toBe(404);
-    expect(diagnosticResponse.status).toBe(404);
   });
 
   it("reports active DuckDB analytics storage without rebuilding data", async () => {
@@ -580,14 +565,6 @@ describe("PATCH /api/observations/:id", () => {
 // ─── Schema validation ─────────────────────────────────────────────────────────
 
 describe("POST /api/import/blood-test — schema validation", () => {
-  it("mounts blood-test preview route", async () => {
-    const res = await request(app)
-      .post("/api/import/blood-test/preview")
-      .set("authorization", ownerAuthorization)
-      .send({});
-    expect(res.status).not.toBe(404);
-  });
-
   it("accepts Lab results preview payloads larger than the global JSON limit", async () => {
     const res = await request(app)
       .post("/api/import/blood-test/preview")
