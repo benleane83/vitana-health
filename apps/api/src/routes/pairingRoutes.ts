@@ -87,7 +87,7 @@ export function makePairingRoutes(
   router.post("/approve/:pairingId", (request, response) => {
     const parsed = approvalSchema.safeParse(request.body ?? {});
     if (!parsed.success) {
-      response.status(400).json({ error: "A valid profile grant is required.", code: "VALIDATION_ERROR" });
+      response.status(400).json({ error: "Request body must include a valid profileId.", code: "VALIDATION_ERROR" });
       return;
     }
     if (!options.profileExists(parsed.data.profileId)) {
@@ -123,7 +123,7 @@ export function makePairingRoutes(
   router.post("/revoke-self", (_request, response) => {
     const principal = response.locals.principal as AuthorizationPrincipal;
     if (principal.kind !== "companion") {
-      response.status(403).json({ error: "Companion credential required.", code: "CAPABILITY_REQUIRED" });
+      response.status(403).json({ error: "This operation requires a companion credential.", code: "CAPABILITY_REQUIRED" });
       return;
     }
     const record = pairingStore.revoke(principal.pairingId);
