@@ -110,7 +110,7 @@ export default function App() {
       });
       if (!response.ok) throw new Error("The server did not revoke this device.");
     } catch {
-      setStatus("Could not revoke this device. Keep this connection and try again.");
+      setStatus("Unable to disconnect from the server. Check your connection and try again.");
       return;
     }
     await clearConnection();

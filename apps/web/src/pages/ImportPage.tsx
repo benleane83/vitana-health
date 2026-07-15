@@ -770,7 +770,8 @@ function FitnessTrackerImportPanel({
 }) {
   const [pairedDevices, setPairedDevices] = useState<PairedDevice[]>([]);
   const [selectedProfiles, setSelectedProfiles] = useState<Record<string, string>>({});
-  const defaultProfileId = profiles.some((profile) => profile.id === activeProfileId) ? activeProfileId! : profiles[0]?.id ?? "";
+  const activeProfileExists = activeProfileId !== undefined && profiles.some((profile) => profile.id === activeProfileId);
+  const defaultProfileId = activeProfileExists ? activeProfileId : profiles[0]?.id ?? "";
 
   useEffect(() => {
     void api.pairing.devices().then(setPairedDevices).catch(() => setPairedDevices([]));
@@ -863,7 +864,7 @@ function FitnessTrackerImportPanel({
                       ? `Last sync ${new Date(device.lastUsedAt).toLocaleString()}`
                       : "Not synced yet"}
                 </span>
-                <span className="muted">Granted profile: {profiles.find((profile) => profile.id === device.allowedProfileIds[0])?.displayName ?? device.allowedProfileIds[0]}</span>
+                <span className="muted">Granted profile: {profiles.find((profile) => profile.id === device.allowedProfileIds[0])?.displayName ?? "Unknown profile"}</span>
               </div>
               {!device.revokedAt ? (
                 <button

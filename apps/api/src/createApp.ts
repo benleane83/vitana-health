@@ -53,6 +53,19 @@ function isOpenRouterCallback(request: express.Request): boolean {
   return request.method === "GET" && request.path === "/settings/ai/openrouter/callback";
 }
 
+function companionCapabilityFor(request: express.Request): import("./pairing.js").CompanionCapability | null {
+  switch (`${request.method} ${request.path}`) {
+    case "GET /profiles":
+      return "profiles:list-minimal";
+    case "POST /import/health-connect":
+      return "health-connect:import";
+    case "POST /pairing/revoke-self":
+      return "pairing:self-revoke";
+    default:
+      return null;
+  }
+}
+
 export function createApp(
   storeManager: ProfileStoreManager,
   pairingStore: PairingStore,
@@ -245,14 +258,7 @@ export function createApp(
       response.status(401).json({ error: "Valid owner or companion credential required.", code: "AUTH_REQUIRED" });
       return;
     }
-    const capability =
-      request.method === "GET" && request.path === "/profiles"
-        ? "profiles:list-minimal"
-        : request.method === "POST" && request.path === "/import/health-connect"
-          ? "health-connect:import"
-          : request.method === "POST" && request.path === "/pairing/revoke-self"
-            ? "pairing:self-revoke"
-            : null;
+    const capability = companionCapabilityFor(request);
     if (capability && principal.capabilities.includes(capability)) {
       response.locals.principal = principal;
       next();

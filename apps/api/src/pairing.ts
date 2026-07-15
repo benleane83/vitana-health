@@ -240,6 +240,7 @@ export class PairingStore {
   }
 
   private persist(): void {
+    // Retain revoked records so device management can show their state and prevent token reuse.
     const records = [...this.records.values()].filter((record) => record.status === "approved" && record.tokenDelivered);
     writeFileSync(this.dataPath, JSON.stringify(records, null, 2), { encoding: "utf8", mode: 0o600 });
   }
