@@ -1033,6 +1033,7 @@ export function App() {
             bodyCompInputRef={bodyCompInputRef}
             pendingPairings={pendingPairings}
             profiles={profiles}
+            activeProfileId={profile?.id}
             onApprovePairing={approvePairing}
             onDenyPairing={denyPairing}
             units={profile?.units ?? "metric"}

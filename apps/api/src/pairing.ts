@@ -25,7 +25,7 @@ export interface PairingRecord {
   tokenDelivered: boolean;
   authorizationSchemaVersion: number;
   capabilities: CompanionCapability[];
-  allowedProfileIds: [string];
+  allowedProfileIds: [] | [string];
 }
 
 interface InternalPairingRecord extends PairingRecord {
@@ -119,7 +119,7 @@ export class PairingStore {
       tokenDelivered: false,
       authorizationSchemaVersion,
       capabilities: [...companionCapabilities],
-      allowedProfileIds: [""] as [string],
+      allowedProfileIds: [],
       pollingSecretHash: hash(pollingSecret),
       tokenHash: null,
       pendingToken: null
@@ -180,12 +180,14 @@ export class PairingStore {
       if (record.status === "approved" && !record.revokedAt && record.tokenHash && hashesMatch(record.tokenHash, candidate)) {
         record.lastUsedAt = new Date().toISOString();
         this.persist();
+        const profileId = record.allowedProfileIds[0];
+        if (!profileId) continue;
         return {
           kind: "companion",
           pairingId: record.id,
           deviceId: record.deviceId,
           capabilities: record.capabilities,
-          allowedProfileIds: record.allowedProfileIds
+          allowedProfileIds: [profileId]
         };
       }
     }

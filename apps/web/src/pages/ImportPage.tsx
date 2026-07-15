@@ -44,6 +44,7 @@ export function ImportPage({
   bodyCompInputRef,
   pendingPairings,
   profiles,
+  activeProfileId,
   onApprovePairing,
   onDenyPairing,
   units
@@ -84,6 +85,7 @@ export function ImportPage({
   bodyCompInputRef: React.RefObject<HTMLInputElement | null>;
   pendingPairings: PendingPairing[];
   profiles: ProfileListEntry[];
+  activeProfileId?: string;
   onApprovePairing: (id: string, profileId: string) => void;
   onDenyPairing: (id: string) => void;
   units: UnitSystem;
@@ -212,6 +214,7 @@ export function ImportPage({
           <FitnessTrackerImportPanel
             pendingPairings={pendingPairings}
             profiles={profiles}
+            activeProfileId={activeProfileId}
             onApprove={onApprovePairing}
             onDeny={onDenyPairing}
           />
@@ -755,16 +758,19 @@ function BodyCompositionImportPanel({
 function FitnessTrackerImportPanel({
   pendingPairings,
   profiles,
+  activeProfileId,
   onApprove,
   onDeny
 }: {
   pendingPairings: PendingPairing[];
   profiles: ProfileListEntry[];
+  activeProfileId?: string;
   onApprove: (id: string, profileId: string) => void;
   onDeny: (id: string) => void;
 }) {
   const [pairedDevices, setPairedDevices] = useState<PairedDevice[]>([]);
   const [selectedProfiles, setSelectedProfiles] = useState<Record<string, string>>({});
+  const defaultProfileId = profiles.some((profile) => profile.id === activeProfileId) ? activeProfileId! : profiles[0]?.id ?? "";
 
   useEffect(() => {
     void api.pairing.devices().then(setPairedDevices).catch(() => setPairedDevices([]));
@@ -815,7 +821,7 @@ function FitnessTrackerImportPanel({
                    Profile
                    <select
                      aria-label={`Profile for ${req.deviceName}`}
-                     value={selectedProfiles[req.id] ?? profiles[0]?.id ?? ""}
+                     value={selectedProfiles[req.id] ?? defaultProfileId}
                      onChange={(event) => setSelectedProfiles((current) => ({ ...current, [req.id]: event.target.value }))}
                    >
                      {profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.displayName}</option>)}
@@ -826,7 +832,10 @@ function FitnessTrackerImportPanel({
                 <button
                   type="button"
                   disabled={profiles.length === 0}
-                  onClick={() => onApprove(req.id, selectedProfiles[req.id] ?? profiles[0]?.id ?? "")}
+                  onClick={() => {
+                    const profileId = selectedProfiles[req.id] ?? defaultProfileId;
+                    if (profileId) onApprove(req.id, profileId);
+                  }}
                   aria-label={`Approve pairing request from ${req.deviceName}`}
                 >Approve</button>
                 <button
