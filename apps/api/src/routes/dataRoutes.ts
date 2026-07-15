@@ -81,7 +81,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.get("/store", async (_request, response, next) => {
     try {
-      response.json(await activeStore().readSnapshot());
+      response.json(await activeStore().snapshot({ includeRaw: false }));
     } catch (error) {
       next(error);
     }
@@ -105,7 +105,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.get("/biological-age", async (_request, response, next) => {
     try {
-      response.json(calculateBiologicalAge(await activeStore().readSnapshot()));
+      response.json(calculateBiologicalAge(await activeStore().snapshot({ includeRaw: false })));
     } catch (error) {
       next(error);
     }
@@ -113,7 +113,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.get("/summary", async (_request, response, next) => {
     try {
-      response.json(await activeStore().getSummary());
+      response.json(await activeStore().summary());
     } catch (error) {
       next(error);
     }
@@ -123,7 +123,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
     try {
       const measurementCode = measurementCodeParamSchema.parse(request.params.measurementCode);
       const page = detailPageQuerySchema.parse(request.query);
-      response.json(await activeStore().getMeasurementDetail(measurementCode, page));
+      response.json(await activeStore().measurementDetail(measurementCode, page));
     } catch (error) {
       next(error);
     }
@@ -176,7 +176,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.get("/analytics/storage", async (_request, response, next) => {
     try {
-      const result = describeAnalyticsStorage(storeManager, await activeStore().readSnapshot());
+      const result = describeAnalyticsStorage(storeManager, await activeStore().snapshot({ includeRaw: false }));
       response.json(result);
     } catch (error) {
       next(error);
@@ -186,7 +186,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
   router.post("/insights/generate", async (_request, response, next) => {
     try {
       const store = activeStore();
-      const insight = await generateInsight(await store.readSnapshot());
+      const insight = await generateInsight(await store.snapshot({ includeRaw: false }));
       response.status(201).json(await store.addInsight(insight));
     } catch (error) {
       next(error);
@@ -204,7 +204,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.get("/export/pdf", async (_request, response, next) => {
     try {
-      const report = buildClinicianReport(await activeStore().readSnapshot());
+      const report = buildClinicianReport(await activeStore().snapshot({ includeRaw: false }));
       const pdf = await createClinicianReportPdf(report);
       response.setHeader("content-type", "application/pdf");
       response.setHeader("content-disposition", `attachment; filename="${reportFilename(report.patient.displayName)}"`);

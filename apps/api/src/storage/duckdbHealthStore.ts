@@ -13,7 +13,12 @@ import {
 import type { DuckDbOptions } from "./duckdbRuntime.js";
 import type { MeasurementDetailPage } from "../summary.js";
 import { deriveProfileStorageKey } from "./profileKey.js";
-import type { ImportMutationResult, ProfileImport, ProfileRepository } from "./profileRepository.js";
+import type {
+  ImportMutationResult,
+  ManagedProfileRepository,
+  ProfileImport,
+  ProfileRepository
+} from "./profileRepository.js";
 
 export interface DuckDbHealthStoreOptions {
   root: string;
@@ -24,7 +29,7 @@ export interface DuckDbHealthStoreOptions {
   duckdb?: DuckDbOptions;
 }
 
-export class DuckDbHealthStore {
+export class DuckDbHealthStore implements ManagedProfileRepository {
   readonly profileId: string;
   readonly securityMode: StoreSecurityMode;
 
@@ -64,7 +69,7 @@ export class DuckDbHealthStore {
     return new DuckDbHealthStore(repository, options);
   }
 
-  async readSnapshot(options: { includeRaw?: boolean } = {}): Promise<HealthStoreData> {
+  async snapshot(options: { includeRaw?: boolean } = {}): Promise<HealthStoreData> {
     return this.repository.snapshot(options);
   }
 
@@ -80,12 +85,12 @@ export class DuckDbHealthStore {
     return this.repository.analyticsSummary();
   }
 
-  getSummary() {
+  summary() {
     return this.repository.summary();
   }
 
-  getMeasurementDetail(measurementCode: string, page?: MeasurementDetailPage) {
-    return this.repository.measurementDetail(measurementCode, page ?? { offset: 0, limit: 100 });
+  measurementDetail(measurementCode: string, page: MeasurementDetailPage = { offset: 0, limit: 100 }) {
+    return this.repository.measurementDetail(measurementCode, page);
   }
 
   replaceProfile(profile: HealthStoreData["profile"]): Promise<HealthStoreData["profile"]> {

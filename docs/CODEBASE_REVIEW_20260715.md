@@ -110,7 +110,11 @@ Do not add Redux, Zustand, or a global context merely to hide these dependencies
 
 Also consolidate the repeated busy/error/data triplets and post-mutation refresh sequences. Today related responses are applied through several separate setters (`apps/web/src/App.tsx:277-305,355-366`), which increases the number of transient states and makes mutation behavior hard to reason about.
 
-### P1 — Split the database repository by responsibility, not by database technology
+### [DONE] P1 — Split the database repository by responsibility, not by database technology
+
+Implemented on 2026-07-15 without an ORM, query builder, or generic provider framework. `DuckDbRepository` is now a 322-line facade that owns encrypted connection lifecycle, open/close state, hydration promotion, and transaction boundaries. Explicit DuckDB SQL is grouped into concrete collaborators for schema reconciliation, import persistence and retention, profile/observation commands, summary and analytics projections, and full export; shared DuckDB row conversion and callback utilities are isolated separately.
+
+`DuckDbHealthStore` now implements the application-facing `ProfileRepository` contract, with a small managed extension for profile identity. `ProfileStoreManager` returns that contract to route orchestration, and the provider-named `runActiveDuckDbQuery` capability was replaced with `runActiveCompiledQuery`. No concrete provider checks or legacy store aliases remain in API orchestration.
 
 `DuckDbRepository` combines:
 
@@ -245,7 +249,7 @@ Keep past reviews immutable as historical records. Treat this report and product
 2. [DONE] **Choose and enforce the canonical storage architecture**: preserve a one-time JSON importer, remove JSON runtime fallback and detached warehouse code, and update documentation.
 3. [DONE] **Remove unused experimental endpoints and web client methods** before building more features on them.
 4. [DONE] **Split web feature ownership** out of `App.tsx` and reduce `ImportPage` to composed feature panels.
-5. **Split DuckDB persistence by responsibility** behind the existing repository contract; remove provider checks from orchestration.
+5. [DONE] **Split DuckDB persistence by responsibility** behind the existing repository contract; remove provider checks from orchestration.
 6. **Make imports honest** by returning accepted, duplicate, and evicted counts and exposing retention warnings.
 7. **Replace remaining non-export snapshots** with purpose-built repository projections.
 8. [DONE] **Create shared API schemas and structured errors** for future web/mobile feature reuse.

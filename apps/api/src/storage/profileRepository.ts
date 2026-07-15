@@ -45,3 +45,7 @@ export interface ProfileRepository {
   runCompiledQuery(sql: string): Promise<Array<Record<string, unknown>>>;
   close(): Promise<void>;
 }
+
+export interface ManagedProfileRepository extends ProfileRepository {
+  readonly profileId: string;
+}

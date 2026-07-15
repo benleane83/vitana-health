@@ -443,8 +443,8 @@ describe("profile lifecycle routes", () => {
       .set("authorization", ownerAuthorization)
       .send({ ...minimalHealthConnectPayload, profileId: "shabnam" });
     expect(res.status).toBe(201);
-    expect((await storeManager.getStore("shabnam").readSnapshot()).sourceImports).toHaveLength(1);
-    expect((await storeManager.getStore("self").readSnapshot()).sourceImports).toHaveLength(0);
+    expect((await storeManager.getStore("shabnam").snapshot({ includeRaw: false })).sourceImports).toHaveLength(1);
+    expect((await storeManager.getStore("self").snapshot({ includeRaw: false })).sourceImports).toHaveLength(0);
   });
 });
 
@@ -518,13 +518,13 @@ describe("DELETE /api/observations/:id", () => {
     const store = storeManager.getActiveStore();
     await store.mergeImport(parsed);
 
-    const observationId = (await store.readSnapshot()).observations[0]?.id;
+    const observationId = (await store.snapshot({ includeRaw: false })).observations[0]?.id;
     expect(observationId).toBeDefined();
 
     const res = await request(app).delete(`/api/observations/${observationId}`).set("authorization", ownerAuthorization);
     expect(res.status).toBe(200);
     expect(res.body.deletedCount).toBe(1);
-    expect((await store.readSnapshot()).observations.find((o) => o.id === observationId)).toBeUndefined();
+    expect((await store.snapshot({ includeRaw: false })).observations.find((o) => o.id === observationId)).toBeUndefined();
   });
 });
 
@@ -548,7 +548,7 @@ describe("PATCH /api/observations/:id", () => {
     );
     const store = storeManager.getActiveStore();
     await store.mergeImport(parsed);
-    const before = (await store.readSnapshot()).observations[0];
+    const before = (await store.snapshot({ includeRaw: false })).observations[0];
     expect(before).toBeDefined();
 
     const res = await request(app)

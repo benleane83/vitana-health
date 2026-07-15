@@ -20,6 +20,7 @@ import {
 } from "@local-fitness-advisor/shared";
 import { initializeDuckDbRoot, type DuckDbOptions } from "./duckdbRuntime.js";
 import { DuckDbHealthStore } from "./duckdbHealthStore.js";
+import type { ManagedProfileRepository } from "./profileRepository.js";
 
 export type StoreSecurityMode = "env-secret" | "generated-local-key" | "os-secure-storage";
 
@@ -80,11 +81,11 @@ export class ProfileStoreManager {
     return this.activeProfileId;
   }
 
-  getActiveStore(): DuckDbHealthStore {
+  getActiveStore(): ManagedProfileRepository {
     return this.getStore(this.activeProfileId);
   }
 
-  getStore(profileId: string): DuckDbHealthStore {
+  getStore(profileId: string): ManagedProfileRepository {
     const normalizedId = normalizeProfileId(profileId);
     const store = this.stores.get(normalizedId);
     if (!store) {
@@ -97,7 +98,7 @@ export class ProfileStoreManager {
     return "duckdb";
   }
 
-  runActiveDuckDbQuery(sql: string): Promise<Array<Record<string, unknown>>> {
+  runActiveCompiledQuery(sql: string): Promise<Array<Record<string, unknown>>> {
     return this.getActiveStore().runCompiledQuery(sql);
   }
 

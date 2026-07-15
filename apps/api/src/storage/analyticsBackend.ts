@@ -48,7 +48,7 @@ export function runAnalyticsQuery(
   storeManager: ProfileStoreManager,
   sql: string
 ): Promise<Array<Record<string, unknown>>> {
-  return storeManager.runActiveDuckDbQuery(sql);
+  return storeManager.runActiveCompiledQuery(sql);
 }
 
 export function compileAnalyticsQuery(
