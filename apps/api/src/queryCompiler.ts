@@ -117,7 +117,7 @@ const DISALLOWED_TOKENS = [
 /** Maximum row limit enforced regardless of DSL request. */
 const MAX_ROW_LIMIT = 200;
 
-/** Maximum allowed time window in days for warehouse queries. */
+/** Maximum allowed time window in days for analytics queries. */
 const MAX_TIME_WINDOW_DAYS = 366;
 
 // ─── Compile result ────────────────────────────────────────────────────────────

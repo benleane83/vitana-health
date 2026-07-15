@@ -28,6 +28,12 @@ Avoid medical-diagnosis vibes, hospital portal aesthetics, generic SaaS dashboar
 4. Separate signal from suggestion: distinguish deterministic observations from AI-generated interpretation and clinical follow-up prompts.
 5. Design for repeat review: favor stable layouts, predictable controls, and quick comparison across time, source, and measurement type.
 
+## Data Retention
+
+Each profile's encrypted local database has no application-defined record ceiling and no automatic eviction policy. Successful imports retain all accepted observations, samples, groups, activities, and source content until the user explicitly deletes data or the profile. A real filesystem or database capacity failure fails and rolls back the import rather than silently discarding older records.
+
+Request byte limits, field validation, paginated reads, bounded query results, and transport chunking remain operational safeguards. They limit individual operations and responses; they do not cap cumulative profile growth.
+
 ## Accessibility & Inclusion
 
 Target WCAG AA for contrast, keyboard access, focus visibility, and semantic structure. Respect reduced-motion preferences, keep health-state color meanings text-backed, and favor high legibility for dense personal data.

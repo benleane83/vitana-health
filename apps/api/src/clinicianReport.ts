@@ -1,20 +1,29 @@
 import {
-  computeAnalytics,
   convertMeasurementValue,
   defaultMeasurementTypes,
   getPreferredUnit,
   safetyNotice,
+  type AnalyticsSummary,
   type ClinicianReport,
-  type HealthStoreData
+  type Profile,
+  type SourceImport
 } from "@local-fitness-advisor/shared";
 
-export function buildClinicianReport(store: HealthStoreData, generatedAt = new Date().toISOString()): ClinicianReport {
-  const analytics = computeAnalytics(store);
+export type ClinicianReportSourceImport = Pick<SourceImport, "fileName" | "sourceKind" | "importedAt" | "status" | "rowCount">;
+
+export interface ClinicianReportInput {
+  profile: Profile;
+  analytics: AnalyticsSummary;
+  sourceImports: ClinicianReportSourceImport[];
+}
+
+export function buildClinicianReport(input: ClinicianReportInput, generatedAt = new Date().toISOString()): ClinicianReport {
+  const { profile, analytics, sourceImports } = input;
   const heightType = defaultMeasurementTypes.find((type) => type.code === "height");
-  const heightUnit = heightType ? getPreferredUnit(heightType, store.profile.units) : "cm";
-  const height = store.profile.heightCm === undefined || !heightType
+  const heightUnit = heightType ? getPreferredUnit(heightType, profile.units) : "cm";
+  const height = profile.heightCm === undefined || !heightType
     ? undefined
-    : { value: convertMeasurementValue(store.profile.heightCm, heightType, "cm", heightUnit) ?? store.profile.heightCm, unit: heightUnit };
+    : { value: convertMeasurementValue(profile.heightCm, heightType, "cm", heightUnit) ?? profile.heightCm, unit: heightUnit };
   const latestMeasurements = analytics.latestMetrics
     .map((metric) => ({
       displayName: metric.label,
@@ -39,18 +48,18 @@ export function buildClinicianReport(store: HealthStoreData, generatedAt = new D
     generatedAt,
     disclaimer: safetyNotice,
     patient: {
-      displayName: store.profile.displayName,
-      subjectKind: store.profile.subjectKind,
-      birthDate: store.profile.birthDate,
-      sex: store.profile.sex,
-      heightCm: store.profile.heightCm,
-      units: store.profile.units,
+      displayName: profile.displayName,
+      subjectKind: profile.subjectKind,
+      birthDate: profile.birthDate,
+      sex: profile.sex,
+      heightCm: profile.heightCm,
+      units: profile.units,
       height
     },
     totals: {
-      observations: store.observations.length,
-      samples: store.timeSeriesSamples.length,
-      activities: store.activitySessions.length
+      observations: analytics.counts.observations,
+      samples: analytics.counts.samples,
+      activities: analytics.counts.activities
     },
     latestMeasurements,
     flaggedLabs,
@@ -60,7 +69,7 @@ export function buildClinicianReport(store: HealthStoreData, generatedAt = new D
       direction: trend.direction,
       summary: trend.summary
     })),
-    sources: store.sourceImports
+    sources: sourceImports
       .map((source) => ({
         fileName: source.fileName,
         sourceKind: source.sourceKind,

@@ -17,7 +17,7 @@ import { timingSafeEqual } from "node:crypto";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { PairingStore } from "./pairing.js";
-import { ProfileStoreManager } from "./store.js";
+import { ProfileStoreManager } from "./storage/profileStoreManager.js";
 import { isLoopbackAddress } from "./netutil.js";
 import { log, generateCorrelationId } from "./logger.js";
 import { makePairingRoutes } from "./routes/pairingRoutes.js";
@@ -284,7 +284,7 @@ export function createApp(
   app.use("/api/profiles", makeProfilesRoutes(storeManager, pairingStore));
   app.use("/api/import", makeImportRoutes(storeManager));
   app.use("/api/query", makeQueryRoutes(storeManager));
-  app.use("/api/llm", makeLlmRoutes(storeManager));
+  app.use("/api/llm", makeLlmRoutes());
   app.use("/api/settings", makeSettingsRoutes({ assertSafeCloudEndpoint: options.assertSafeCloudModelEndpoint }));
   app.use("/api", makeDataRoutes(storeManager));
 

@@ -1,32 +1,33 @@
 import type {
+  AppBootstrap,
   DeleteObservationResponse,
   DeleteObservationsByTypeResponse,
-  HealthStoreData,
   UpdateObservationResponse
 } from "@local-fitness-advisor/shared";
-import type { ProfileStoreManager } from "../store.js";
-import type { ImportMutationResult } from "./profileRepository.js";
+import type { ProfileStoreManager } from "./profileStoreManager.js";
 import type { QueryDSL } from "../aiQueryPlanner.js";
 import {
   duckDbAnalyticsQueryCompiler,
   type CompileOutcome,
   type SqlValidationResult
 } from "../queryCompiler.js";
-import type { WarehouseBuildResult } from "../warehouse.js";
 
-export async function refreshAnalyticsStorage(
+export interface AnalyticsStorageDescription {
+  databasePath: string;
+  engine: "duckdb";
+  counts: {
+    imports: number;
+    observations: number;
+    samples: number;
+    activities: number;
+  };
+}
+
+export function describeAnalyticsStorage(
   storeManager: ProfileStoreManager,
-  source: HealthStoreData | ImportMutationResult | UpdateObservationResponse | DeleteObservationResponse | DeleteObservationsByTypeResponse,
+  counts: AppBootstrap["counts"] | UpdateObservationResponse["counts"] | DeleteObservationResponse["counts"] | DeleteObservationsByTypeResponse["counts"],
   profileId = storeManager.getActiveProfileId()
-): Promise<WarehouseBuildResult> {
-  const counts = "sourceImports" in source
-    ? {
-        imports: source.sourceImports.length,
-        observations: source.observations.length,
-        samples: source.timeSeriesSamples.length,
-        activities: source.activitySessions.length
-      }
-    : source.counts;
+): AnalyticsStorageDescription {
   return {
     databasePath: `encrypted-profile:${profileId}`,
     engine: "duckdb",
@@ -38,7 +39,7 @@ export function runAnalyticsQuery(
   storeManager: ProfileStoreManager,
   sql: string
 ): Promise<Array<Record<string, unknown>>> {
-  return storeManager.runActiveDuckDbQuery(sql);
+  return storeManager.runActiveCompiledQuery(sql);
 }
 
 export function compileAnalyticsQuery(

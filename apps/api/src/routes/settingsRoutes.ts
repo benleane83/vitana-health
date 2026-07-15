@@ -1,17 +1,9 @@
 import { randomBytes } from "node:crypto";
 import express from "express";
-import { z } from "zod";
+import { aiSettingsRequestSchema } from "@local-fitness-advisor/shared";
 import { getAiSettings, saveAiSettings, toPublicAiSettings, type AiSettings } from "../aiSettings.js";
 import { callConfiguredModel } from "../modelClient.js";
 import { assertSafeCloudModelEndpoint, ModelEndpointPolicyError, validateModelEndpoint } from "../modelEndpointPolicy.js";
-
-const settingsSchema = z.object({
-  provider: z.enum(["ollama", "openai"]),
-  endpoint: z.string().url().max(2048),
-  apiKey: z.string().max(2048).optional(),
-  model: z.string().trim().min(1).max(120),
-  timeoutMs: z.number().int().min(1000).max(180000).default(30000)
-});
 
 const pendingOpenRouterStates = new Map<string, number>();
 const openRouterEndpoint = "https://openrouter.ai/api/v1/chat/completions";
@@ -29,7 +21,7 @@ export function makeSettingsRoutes(options: {
 
   router.put("/ai", async (request, response, next) => {
     try {
-      const parsed = settingsSchema.parse(request.body ?? {});
+      const parsed = aiSettingsRequestSchema.parse(request.body ?? {});
       const endpoint = validateModelEndpoint(parsed.provider, parsed.endpoint).toString();
       if (parsed.provider === "openai") await assertSafeCloudEndpoint(endpoint);
       const current = getAiSettings();
@@ -51,7 +43,14 @@ export function makeSettingsRoutes(options: {
 
   router.post("/ai/validate", async (_request, response) => {
     const result = await callConfiguredModel("Reply with exactly: local model ok");
-    response.status(result.ok ? 200 : 400).json(result);
+    if (!result.ok) {
+      response.status(400).json({
+        error: result.error || "Model validation failed.",
+        code: "MODEL_VALIDATION_FAILED"
+      });
+      return;
+    }
+    response.json(result);
   });
 
   router.get("/ai/openrouter/connect", (request, response) => {

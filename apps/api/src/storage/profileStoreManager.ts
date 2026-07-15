@@ -1,0 +1,467 @@
+import {
+  closeSync,
+  existsSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync
+} from "node:fs";
+import { createHash, randomBytes } from "node:crypto";
+import { dirname, resolve } from "node:path";
+import {
+  CURRENT_SCHEMA_VERSION,
+  defaultMeasurementTypes,
+  type HealthStoreData,
+  type Profile,
+  type ProfileListEntry
+} from "@local-fitness-advisor/shared";
+import { initializeDuckDbRoot, type DuckDbOptions } from "./duckdbRuntime.js";
+import { DuckDbHealthStore } from "./duckdbHealthStore.js";
+import type { ManagedProfileRepository } from "./profileRepository.js";
+
+export type StoreSecurityMode = "env-secret" | "generated-local-key" | "os-secure-storage";
+
+export interface StoreSecurityConfig {
+  passphrase: string;
+  securityMode: StoreSecurityMode;
+}
+
+export interface DuckDbActivationOptions {
+  httpfsExtensionPath: string;
+  root?: string;
+}
+
+export interface OpenProfileStoreManagerOptions {
+  security?: StoreSecurityConfig;
+  storageBackend: "duckdb";
+  duckdb: DuckDbActivationOptions;
+}
+
+interface StorageBackendManifest {
+  version: 1;
+  backend: "duckdb";
+  activatedAt: string;
+  profiles: Array<{ profileId: string; databaseFile: string }>;
+}
+
+const windowsX64HttpfsSha256 = "21eea4547cf5aa5231f4838906e8935067c956f56a5efd09035a51189af8a77b";
+
+export class ProfileStoreManager {
+  readonly securityMode: StoreSecurityMode;
+
+  private readonly passphrase: string;
+  private stores = new Map<string, DuckDbHealthStore>();
+  private profiles: ProfileListEntry[] = [];
+  private activeProfileId = "self";
+  private manifest: StorageBackendManifest | undefined;
+  private root: string | undefined;
+  private duckdbOptions: DuckDbOptions | undefined;
+
+  private constructor(security?: StoreSecurityConfig) {
+    mkdirSync(resolveDataDir(), { recursive: true });
+    const resolvedSecurity = security ?? resolveStoreSecurityConfig();
+    this.passphrase = resolvedSecurity.passphrase;
+    this.securityMode = resolvedSecurity.securityMode;
+  }
+
+  static async open(options: OpenProfileStoreManagerOptions): Promise<ProfileStoreManager> {
+    const manager = new ProfileStoreManager(options.security);
+    await manager.openDuckDb(options.duckdb);
+    return manager;
+  }
+
+  listProfiles(): ProfileListEntry[] {
+    return [...this.profiles];
+  }
+
+  getActiveProfileId(): string {
+    return this.activeProfileId;
+  }
+
+  getActiveStore(): ManagedProfileRepository {
+    return this.getStore(this.activeProfileId);
+  }
+
+  getStore(profileId: string): ManagedProfileRepository {
+    const normalizedId = normalizeProfileId(profileId);
+    const store = this.stores.get(normalizedId);
+    if (!store) {
+      throw new Error(`DuckDB profile ${normalizedId} is not registered.`);
+    }
+    return store;
+  }
+
+  getStorageBackend(): "duckdb" {
+    return "duckdb";
+  }
+
+  runActiveCompiledQuery(sql: string): Promise<Array<Record<string, unknown>>> {
+    return this.getActiveStore().runCompiledQuery(sql);
+  }
+
+  async createProfile(displayName: string): Promise<ProfileListEntry> {
+    const manifest = this.requireOpenStorage();
+    const name = displayName.trim() || "Local user";
+    const id = generateProfileId(name, new Set(this.profiles.map((entry) => entry.id)));
+    const databaseFile = `health-store-${id}.duckdb`;
+    const databasePath = resolve(this.root!, "databases", databaseFile);
+    let store: DuckDbHealthStore | undefined;
+
+    try {
+      store = await DuckDbHealthStore.hydrate(this.storeOptions(id, databasePath), createEmptyStore(id, name));
+      const entry = profileListEntryFromProfile(await store.getProfile());
+      const nextProfiles = [...this.profiles, entry];
+      const nextManifest = { ...manifest, profiles: [...manifest.profiles, { profileId: id, databaseFile }] };
+      persistProfileRegistry(nextProfiles);
+      try {
+        persistStorageBackendManifest(nextManifest);
+      } catch (error) {
+        persistProfileRegistry(this.profiles);
+        throw error;
+      }
+      this.profiles = nextProfiles;
+      this.manifest = nextManifest;
+      this.stores.set(id, store);
+      return entry;
+    } catch (error) {
+      await store?.close().catch(() => undefined);
+      removeDuckDbProfileFiles(databasePath);
+      throw error;
+    }
+  }
+
+  setActiveProfile(profileId: string): string {
+    const normalizedId = normalizeProfileId(profileId);
+    if (!this.profiles.some((entry) => entry.id === normalizedId)) {
+      throw new Error("Profile not found.");
+    }
+    this.activeProfileId = normalizedId;
+    this.persistActiveProfile();
+    return normalizedId;
+  }
+
+  async deleteProfile(profileId: string): Promise<{ activeProfileId: string }> {
+    const normalizedId = normalizeProfileId(profileId);
+    if (this.profiles.length <= 1) {
+      throw new Error("Cannot delete the last remaining profile.");
+    }
+    const manifest = this.requireOpenStorage();
+    const manifestEntry = manifest.profiles.find((entry) => entry.profileId === normalizedId);
+    const store = this.stores.get(normalizedId);
+    if (!manifestEntry || !store) {
+      throw new Error("Profile not found.");
+    }
+
+    const nextProfiles = this.profiles.filter((entry) => entry.id !== normalizedId);
+    const nextManifest = {
+      ...manifest,
+      profiles: manifest.profiles.filter((entry) => entry.profileId !== normalizedId)
+    };
+    persistProfileRegistry(nextProfiles);
+    try {
+      persistStorageBackendManifest(nextManifest);
+    } catch (error) {
+      persistProfileRegistry(this.profiles);
+      throw error;
+    }
+    this.profiles = nextProfiles;
+    this.manifest = nextManifest;
+    this.stores.delete(normalizedId);
+    if (this.activeProfileId === normalizedId) {
+      this.activeProfileId = this.profiles[0].id;
+      this.persistActiveProfile();
+    }
+    await store.close();
+    removeDuckDbProfileFiles(resolve(this.root!, "databases", manifestEntry.databaseFile));
+    return { activeProfileId: this.activeProfileId };
+  }
+
+  syncProfileEntry(profile: Profile): void {
+    const normalizedId = normalizeProfileId(profile.id);
+    const index = this.profiles.findIndex((entry) => entry.id === normalizedId);
+    if (index < 0) {
+      throw new Error(`DuckDB profile ${normalizedId} is not registered.`);
+    }
+    this.profiles[index] = profileListEntryFromProfile(profile);
+    persistProfileRegistry(this.profiles);
+  }
+
+  async closeAll(): Promise<void> {
+    await Promise.all([...this.stores.values()].map((store) => store.close()));
+    this.stores.clear();
+  }
+
+  private async openDuckDb(options: DuckDbActivationOptions): Promise<void> {
+    validateDuckDbRuntime(options);
+    this.root = initializeDuckDbRoot(options.root ?? duckdbStorageRoot());
+    this.duckdbOptions = { httpfsExtensionPath: options.httpfsExtensionPath, memoryLimit: "256MB" };
+    const existingManifest = loadStorageBackendManifest();
+    const manifest = existingManifest ?? createInitialManifest();
+    const opened = new Map<string, DuckDbHealthStore>();
+
+    try {
+      for (const entry of manifest.profiles) {
+        const databasePath = resolve(this.root, "databases", entry.databaseFile);
+        if (existingManifest && !existsSync(databasePath)) {
+          throw new Error(`DuckDB database is missing for profile ${entry.profileId}: ${databasePath}`);
+        }
+        const store = existingManifest
+          ? await DuckDbHealthStore.open(this.storeOptions(entry.profileId, databasePath))
+          : await DuckDbHealthStore.hydrate(
+              this.storeOptions(entry.profileId, databasePath),
+              createEmptyStore(entry.profileId)
+            );
+        opened.set(entry.profileId, store);
+      }
+      if (!existingManifest) {
+        persistStorageBackendManifest(manifest);
+      }
+      this.stores = opened;
+      this.manifest = manifest;
+      this.profiles = await Promise.all(
+        [...opened.values()].map(async (store) => profileListEntryFromProfile(await store.getProfile()))
+      );
+      persistProfileRegistry(this.profiles);
+      const selectedProfileId = loadActiveProfileId();
+      this.activeProfileId = selectedProfileId && opened.has(selectedProfileId)
+        ? selectedProfileId
+        : this.profiles[0].id;
+      this.persistActiveProfile();
+    } catch (error) {
+      await Promise.all([...opened.values()].map((store) => store.close().catch(() => undefined)));
+      throw error;
+    }
+  }
+
+  private storeOptions(profileId: string, databasePath: string) {
+    return {
+      root: this.root!,
+      databasePath,
+      profileId,
+      passphrase: this.passphrase,
+      securityMode: this.securityMode,
+      duckdb: this.duckdbOptions!
+    };
+  }
+
+  private requireOpenStorage(): StorageBackendManifest {
+    if (!this.manifest || !this.root || !this.duckdbOptions) {
+      throw new Error("DuckDB storage is not open.");
+    }
+    return this.manifest;
+  }
+
+  private persistActiveProfile(): void {
+    atomicWriteJson(activeProfilePath(), { profileId: this.activeProfileId });
+  }
+}
+
+function createEmptyStore(profileId = "self", displayName = "Local user"): HealthStoreData {
+  return {
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    profile: {
+      id: normalizeProfileId(profileId),
+      displayName,
+      subjectKind: "adult",
+      units: "metric",
+      updatedAt: new Date().toISOString()
+    },
+    sourceImports: [],
+    dataSources: [],
+    devices: [],
+    measurementTypes: defaultMeasurementTypes,
+    observations: [],
+    observationGroups: [],
+    timeSeriesSamples: [],
+    activitySessions: [],
+    healthEvents: [],
+    careItems: [],
+    insights: [],
+    auditEvents: []
+  };
+}
+
+function createInitialManifest(): StorageBackendManifest {
+  return {
+    version: 1,
+    backend: "duckdb",
+    activatedAt: new Date().toISOString(),
+    profiles: [{ profileId: "self", databaseFile: "health-store-self.duckdb" }]
+  };
+}
+
+function validateDuckDbRuntime(options: DuckDbActivationOptions): void {
+  if (process.platform !== "win32" || process.arch !== "x64") {
+    throw new Error("DuckDB storage productionization is currently approved only for Windows x64.");
+  }
+  if (!existsSync(options.httpfsExtensionPath)) {
+    throw new Error(`Pinned DuckDB extension is unavailable at ${options.httpfsExtensionPath}.`);
+  }
+  const digest = createHash("sha256").update(readFileSync(options.httpfsExtensionPath)).digest("hex");
+  if (digest !== windowsX64HttpfsSha256) {
+    throw new Error("Pinned DuckDB extension failed SHA-256 verification.");
+  }
+}
+
+function loadStorageBackendManifest(): StorageBackendManifest | undefined {
+  const path = storageBackendManifestPath();
+  if (!existsSync(path)) {
+    return undefined;
+  }
+  const parsed = JSON.parse(readFileSync(path, "utf8")) as StorageBackendManifest;
+  if (
+    parsed.version !== 1 ||
+    parsed.backend !== "duckdb" ||
+    typeof parsed.activatedAt !== "string" ||
+    !Array.isArray(parsed.profiles) ||
+    parsed.profiles.length === 0 ||
+    parsed.profiles.some((entry) =>
+      !entry ||
+      typeof entry.profileId !== "string" ||
+      normalizeProfileId(entry.profileId) !== entry.profileId ||
+      typeof entry.databaseFile !== "string" ||
+      !isDirectChildFileName(entry.databaseFile)
+    )
+  ) {
+    throw new Error("Storage backend manifest is invalid.");
+  }
+  return {
+    version: 1,
+    backend: "duckdb",
+    activatedAt: parsed.activatedAt,
+    profiles: parsed.profiles.map(({ profileId, databaseFile }) => ({ profileId, databaseFile }))
+  };
+}
+
+function persistStorageBackendManifest(manifest: StorageBackendManifest): void {
+  atomicWriteJson(storageBackendManifestPath(), manifest);
+}
+
+function persistProfileRegistry(profiles: ProfileListEntry[]): void {
+  atomicWriteJson(profilesPath(), { profiles });
+}
+
+function atomicWriteJson(path: string, value: unknown): void {
+  const temporaryPath = `${path}.tmp-${process.pid}-${Date.now()}-${randomBytes(4).toString("hex")}`;
+  try {
+    writeFileSync(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+    fsyncPath(temporaryPath);
+    renameSync(temporaryPath, path);
+    fsyncPath(path);
+    fsyncPath(dirname(path));
+  } finally {
+    rmSync(temporaryPath, { force: true });
+  }
+}
+
+function loadActiveProfileId(): string | undefined {
+  if (!existsSync(activeProfilePath())) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(readFileSync(activeProfilePath(), "utf8")) as { profileId?: string };
+    return typeof parsed.profileId === "string" ? normalizeProfileId(parsed.profileId) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeProfileId(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "self";
+}
+
+function generateProfileId(displayName: string, existing: Set<string>): string {
+  const base = normalizeProfileId(displayName);
+  if (!existing.has(base)) {
+    return base;
+  }
+  let suffix = 2;
+  while (existing.has(`${base}-${suffix}`)) {
+    suffix += 1;
+  }
+  return `${base}-${suffix}`;
+}
+
+function profileListEntryFromProfile(profile: Profile): ProfileListEntry {
+  return { id: normalizeProfileId(profile.id), displayName: profile.displayName, updatedAt: profile.updatedAt };
+}
+
+function isDirectChildFileName(value: string): boolean {
+  return value.length > 0 && value !== "." && value !== ".." && !/[\\/]/.test(value);
+}
+
+function removeDuckDbProfileFiles(databasePath: string): void {
+  rmSync(databasePath, { force: true });
+  rmSync(`${databasePath}.wal`, { force: true });
+}
+
+export function resolveStoreSecurityConfig(): StoreSecurityConfig {
+  const configuredSecret = process.env.LFA_SECRET;
+  if (configuredSecret && configuredSecret.length >= 16) {
+    return { passphrase: configuredSecret, securityMode: "env-secret" };
+  }
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Production health storage requires LFA_SECRET or an OS-secure key injected by the desktop host.");
+  }
+  return { passphrase: getOrCreateLocalKey(), securityMode: "generated-local-key" };
+}
+
+function getOrCreateLocalKey(): string {
+  const keyPath = localKeyPath();
+  mkdirSync(dirname(keyPath), { recursive: true });
+  if (existsSync(keyPath)) {
+    return readFileSync(keyPath, "utf8").trim();
+  }
+  const key = randomBytes(32).toString("base64url");
+  writeFileSync(keyPath, key, { encoding: "utf8", mode: 0o600 });
+  return key;
+}
+
+export function hasDuckDbActivationManifest(): boolean {
+  return existsSync(storageBackendManifestPath());
+}
+
+function resolveDataDir(): string {
+  if (process.env.LFA_DATA_DIR) {
+    return resolve(process.env.LFA_DATA_DIR);
+  }
+  const candidates = [resolve(process.cwd(), "..", "..", "data"), resolve(process.cwd(), "data")];
+  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
+}
+
+function profilesPath(): string {
+  return resolve(resolveDataDir(), "profiles.json");
+}
+
+function activeProfilePath(): string {
+  return resolve(resolveDataDir(), "active-profile.json");
+}
+
+function localKeyPath(): string {
+  return resolve(resolveDataDir(), "local.key");
+}
+
+function duckdbStorageRoot(): string {
+  return resolve(resolveDataDir(), "duckdb-storage");
+}
+
+function storageBackendManifestPath(): string {
+  return resolve(resolveDataDir(), "storage-backend.json");
+}
+
+function fsyncPath(path: string): void {
+  let descriptor: number | undefined;
+  try {
+    descriptor = openSync(path, "r");
+    fsyncSync(descriptor);
+  } catch {
+    // Best-effort durability on filesystems that do not support fsync for every path type.
+  } finally {
+    if (descriptor !== undefined) {
+      closeSync(descriptor);
+    }
+  }
+}

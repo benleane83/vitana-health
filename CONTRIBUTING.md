@@ -42,7 +42,7 @@ npm install
 # Run API and web UI together
 npm run dev
 
-# Run all tests
+# Run the fast core suite
 npm test
 
 # Type-check everything
@@ -51,12 +51,32 @@ npm run typecheck
 
 The API binds to `127.0.0.1:4317` and the web UI to `127.0.0.1:5173`.
 
+## Test suites
+
+Tests are separated by runtime cost and failure mode:
+
+```powershell
+# Fast unit, transformation, mocked, and component tests
+npm run test:core
+
+# Serial full-App, Express, DuckDB lifecycle, and certificate tests
+npm run test:integration
+
+# Process-termination and interrupted-transaction recovery tests
+npm run test:durability
+
+# Electron packaging configuration and secure-store tests
+npm run test:desktop
+```
+
+Core and desktop tests run in the regular CI workflow. Integration tests run on `main` and on pull requests that change API, web, shared, or test-runner files. Durability tests run nightly, for prerelease tags, and on demand.
+
 See [`.env.example`](.env.example) for environment variable documentation, and [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md) for the API reference.
 
 ## Submitting a pull request
 
 1. **Fork** the repository and create a branch from `main`.
-2. **Write or update tests** for any behaviour you change. All existing tests must pass: `npm test`.
+2. **Write or update tests** for any behaviour you change. Run `npm test` and the integration or durability suite when your change touches those boundaries.
 3. **Type-check** before submitting: `npm run typecheck`.
 4. **Keep commits focused.** One logical change per commit makes review easier.
 5. **Describe what and why** in the PR description, not just what changed. Link any related issues.

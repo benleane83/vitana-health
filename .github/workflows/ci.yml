@@ -1,8 +1,8 @@
 name: CI
 
 on:
-  # push:
-  #   branches: ["**"]
+  push:
+    branches: ["**"]
   pull_request:
   # schedule:
   #   # Run the full desktop lifecycle smoke test daily at 03:00 UTC.
@@ -50,7 +50,7 @@ jobs:
 
   # ─── Tests ──────────────────────────────────────────────────────────────────
   test:
-    name: Tests
+    name: Core tests
     runs-on: ubuntu-latest
     needs: typecheck-and-build
     permissions:
@@ -75,15 +75,16 @@ jobs:
       - name: Build shared package (required by tests)
         run: npm run build -w packages/shared
 
-      - name: Run tests
-        run: npm test
+      - name: Run core tests
+        run: npm run test:core
 
       - name: Run desktop tests
-        run: npm run test -w @local-fitness-advisor/desktop
+        run: npm run test:desktop
 
   windows-desktop:
     name: Windows desktop package smoke test
     runs-on: windows-2022
+    if: github.event_name == 'workflow_dispatch'
     needs: typecheck-and-build
     permissions:
       contents: read

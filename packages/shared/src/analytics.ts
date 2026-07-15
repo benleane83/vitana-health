@@ -1,5 +1,5 @@
 import type { AnalyticsSummary, HealthStoreData, MeasurementType, Observation, UnitSystem } from "./types.js";
-import { classifyValue, getReferenceRange, toPreferredMeasurementValue } from "./registry.js";
+import { classifyValue, getReferenceRange, toPreferredMeasurementValue } from "./measurementRegistry.js";
 
 export function computeAnalytics(store: HealthStoreData): AnalyticsSummary {
   const counts = {

@@ -53,11 +53,11 @@ These failures describe the review environment, not confirmed repository defects
 
 ## Priority findings
 
-### P0 — Replace companion authorization denylisting with explicit capabilities
+### [DONE] P0 — Replace companion authorization denylisting with explicit capabilities
 
 The central API middleware allows any valid companion token to access every authenticated route except a short owner-only list (`apps/api/src/createApp.ts:46-55,239-258`). The feature routers are then mounted without distinguishing credential type (`apps/api/src/createApp.ts:260-275`).
 
-This keeps the previous review's highest-risk finding open. A companion can still reach complete-store reads, exports, profile mutation, observation mutation, analytics/query routes, and other endpoints not explicitly denied. The test suite currently codifies access to `/api/store` (`apps/api/src/__tests__/server.test.ts:310-314`).
+This previously kept the prior review's highest-risk finding open: a companion could reach complete-store reads, exports, profile mutation, observation mutation, analytics/query routes, and other endpoints not explicitly denied. Capability allowlisting now blocks those route families, and the redundant `/api/store` endpoint has since been removed.
 
 This is also unnecessary complexity: each new route must be remembered in a security denylist. Make owner access the default and grant companions only the minimum named capabilities required for:
 
@@ -67,7 +67,7 @@ This is also unnecessary complexity: each new route must be remembered in a secu
 
 Bind the token to its device and permitted profile set. Add negative tests for every owner-only route family. This produces a smaller and safer authorization model than continuing to expand `isOwnerOnlyPath`.
 
-### P1 — Complete the storage migration and remove superseded runtime paths
+### [DONE] P1 — Complete the storage migration and remove superseded runtime paths
 
 The current storage design contains three overlapping eras:
 
@@ -90,7 +90,11 @@ Recommended simplification:
 
 This is the largest safe deletion opportunity in the repository and aligns with the stated lack of public backward-compatibility requirements.
 
-### P1 — Decompose web orchestration by feature, without adding a state framework
+### [DONE] P1 — Decompose web orchestration by feature, without adding a state framework
+
+Implemented on 2026-07-15 without adding a state framework or global context. `App.tsx` is now 411 lines with seven local state hooks limited to routing, the profile menu, top-level notices, and confirmation state. `ImportPage` now composes feature-owned manual, CSV, scan, and pairing workflows through eight runtime props rather than receiving each workflow's state and setters.
+
+Profile bootstrap, analytics, profile-list, and active-profile responses are committed as one lifecycle snapshot. Dashboard, Track, Insights, and Export own their remote data and mutation state; repeated busy/error/data transitions use cohesive state objects, and Track mutations share one post-mutation refresh path.
 
 `App.tsx` is again 1,303 lines despite the earlier page extraction. It contains roughly 49 `useState` calls covering navigation, profiles, imports, body-composition parsing, summary/detail views, AI, export, consent, pairing, and dialogs (`apps/web/src/App.tsx:41-104`). It also owns loading, mutation, and refresh behavior for every page.
 
@@ -106,7 +110,11 @@ Do not add Redux, Zustand, or a global context merely to hide these dependencies
 
 Also consolidate the repeated busy/error/data triplets and post-mutation refresh sequences. Today related responses are applied through several separate setters (`apps/web/src/App.tsx:277-305,355-366`), which increases the number of transient states and makes mutation behavior hard to reason about.
 
-### P1 — Split the database repository by responsibility, not by database technology
+### [DONE] P1 — Split the database repository by responsibility, not by database technology
+
+Implemented on 2026-07-15 without an ORM, query builder, or generic provider framework. `DuckDbRepository` is now a 322-line facade that owns encrypted connection lifecycle, open/close state, hydration promotion, and transaction boundaries. Explicit DuckDB SQL is grouped into concrete collaborators for schema reconciliation, import persistence and retention, profile/observation commands, summary and analytics projections, and full export; shared DuckDB row conversion and callback utilities are isolated separately.
+
+`DuckDbHealthStore` now implements the application-facing `ProfileRepository` contract, with a small managed extension for profile identity. `ProfileStoreManager` returns that contract to route orchestration, and the provider-named `runActiveDuckDbQuery` capability was replaced with `runActiveCompiledQuery`. No concrete provider checks or legacy store aliases remain in API orchestration.
 
 `DuckDbRepository` combines:
 
@@ -129,7 +137,11 @@ The file's size is a symptom of these responsibilities, not of DuckDB itself. Av
 
 `ProfileRepository` should remain the application-facing contract. Database-specific details should stay behind it so a future SQLite evaluation changes adapters rather than route/domain code. Current `ProfileStoreManager` methods such as `runActiveDuckDbQuery` and concrete `instanceof` checks leak the provider into orchestration (`apps/api/src/store.ts:469-477`); replace these with capability methods on the repository boundary.
 
-### P1 — Stop silent retention and reduce remaining full snapshots
+### [DONE] P1 — Stop silent retention and reduce remaining full snapshots
+
+Implemented on 2026-07-15. Canonical profile databases now have no application-defined row ceilings, automatic pruning, or raw-source truncation. Import transactions report `attempted`, `accepted`, `duplicates`, and `evicted` for every persisted category; `evicted` is fixed at zero, repeated imports report zero accepted rows, and audit detail is generated from the same committed outcome. Real database or filesystem failures roll back and surface as failed imports.
+
+Routine reads no longer reconstruct the complete store. Storage diagnostics use aggregate counts; biological age selects only the latest observation for each required marker; insights use profile metadata plus the bounded analytics summary; clinician reports use that summary plus raw-content-free import metadata. The unused `GET /api/store` endpoint and application-facing `snapshot()` capability were removed. Full reconstruction remains only for explicit JSON export and one-time hydration/migration parity validation.
 
 Imports enforce hard-coded limits and then return only final aggregate counts (`apps/api/src/storage/duckdbRepository.ts:435-530`). There is no accepted/duplicate/evicted breakdown, so a successful import can silently discard older health records. Audit text reports parsed source rows, not committed changes (`apps/api/src/storage/duckdbRepository.ts:525-529`).
 
@@ -144,7 +156,7 @@ The canonical store now has bounded bootstrap, summary, and detail projections, 
 
 Define retention policy as product behavior, report committed outcomes, and add user-visible warnings before tuning limits. Then move biological age, insights, and clinician reporting to purpose-built projections. Keep the full snapshot only for explicit export and one-time migration.
 
-### P1 — Establish one API contract and structured client errors
+### [DONE] P1 — Establish one API contract and structured client errors
 
 The web client manually re-declares response interfaces and casts JSON directly to `T`. On failure it discards HTTP status, stable server error code, and correlation ID by throwing raw response text (`apps/web/src/api.ts:68-74`). This forces pages to normalize errors inconsistently and makes future mobile dashboard reuse harder.
 
@@ -157,7 +169,7 @@ Move transport-neutral request/response schemas for supported endpoints into the
 
 Do not share route handlers or persistence models with clients. The reusable unit is the public LAN API contract.
 
-### P1 — Make Health Connect collection metadata single-source
+### [DONE] P1 — Make Health Connect collection metadata single-source
 
 `syncHealthConnect.ts` repeats the same collection inventory in the payload interface, permission map, record reader, payload construction, chunk flattening, empty-chunk skeleton, and row counting (`apps/android-companion/src/syncHealthConnect.ts:69-160,390-447,523-553,680-705`). Adding one category therefore requires coordinated edits in many places.
 
@@ -170,7 +182,7 @@ Preserve the explicit wire shape; replacing it with `Record<string, unknown[]>` 
 
 Derive permission completeness checks, reading, chunking, and row counts from that table. Add a test proving every `HEALTH_CONNECT_CATEGORIES` entry has exactly one descriptor. Do not introduce a cross-platform `HealthSyncProvider` until an iOS implementation actually exists; the current Android-specific boundary is appropriate.
 
-### P1 — Remove test-runner configuration drift
+### [DONE] P1 — Remove test-runner configuration drift
 
 Two root Vitest configurations disagree:
 
@@ -179,7 +191,7 @@ Two root Vitest configurations disagree:
 
 This makes `npm test` an unreliable indicator for Android TypeScript tests even though those tests exist. Retain one root configuration, include all four projects, and make CI invoke the same repository command. Native Kotlin pinning tests remain a separate platform gate.
 
-### P2 — Delete or quarantine unused experimental surfaces
+### [DONE] P2 — Delete or quarantine unused experimental surfaces
 
 The normal web and Android apps do not call:
 
@@ -193,7 +205,7 @@ These paths increase authorization, documentation, testing, and maintenance surf
 
 The supported `/api/query/ai` path already has deterministic fallback behavior, so the store-backed query prototype is especially redundant (`apps/api/src/routes/queryRoutes.ts:56-110,112-229`).
 
-### P2 — Separate parser families and registry behavior from catalog data
+### [DONE] P2 — Separate parser families and registry behavior from catalog data
 
 `packages/shared/src/parsers.ts` contains CSV parsing, manual imports, body-composition extraction, blood-test extraction, date parsing, unit normalization, and identifier creation. These are cohesive at package level but not at file level. Split by input family while retaining common primitives for dates, CSV, units, and stable IDs.
 
@@ -237,16 +249,16 @@ Keep past reviews immutable as historical records. Treat this report and product
 
 ## Recommended simplification sequence
 
-1. **Fix the authorization model** with an owner-default policy and explicit companion capability allowlist.
-2. **Choose and enforce the canonical storage architecture**: preserve a one-time JSON importer, remove JSON runtime fallback and detached warehouse code, and update documentation.
-3. **Remove unused experimental endpoints and web client methods** before building more features on them.
-4. **Split web feature ownership** out of `App.tsx` and reduce `ImportPage` to composed feature panels.
-5. **Split DuckDB persistence by responsibility** behind the existing repository contract; remove provider checks from orchestration.
-6. **Make imports honest** by returning accepted, duplicate, and evicted counts and exposing retention warnings.
-7. **Replace remaining non-export snapshots** with purpose-built repository projections.
-8. **Create shared API schemas and structured errors** for future web/mobile feature reuse.
-9. **Make Health Connect metadata descriptor-driven** and run Android TypeScript tests in the root test command.
-10. **Split parser families and catalog behavior**, then address smaller persistence/configuration debt.
+1. [DONE] **Fix the authorization model** with an owner-default policy and explicit companion capability allowlist.
+2. [DONE] **Choose and enforce the canonical storage architecture**: preserve a one-time JSON importer, remove JSON runtime fallback and detached warehouse code, and update documentation.
+3. [DONE] **Remove unused experimental endpoints and web client methods** before building more features on them.
+4. [DONE] **Split web feature ownership** out of `App.tsx` and reduce `ImportPage` to composed feature panels.
+5. [DONE] **Split DuckDB persistence by responsibility** behind the existing repository contract; remove provider checks from orchestration.
+6. [DONE] **Make imports honest** by returning accepted, duplicate, and evicted counts and exposing retention warnings.
+7. [DONE] **Replace remaining non-export snapshots** with purpose-built repository projections.
+8. [DONE] **Create shared API schemas and structured errors** for future web/mobile feature reuse.
+9. [DONE] **Make Health Connect metadata descriptor-driven** and run Android TypeScript tests in the root test command.
+10. [DONE] **Split parser families and catalog behavior**, then address smaller persistence/configuration debt.
 
 ## Explicit non-recommendations
 

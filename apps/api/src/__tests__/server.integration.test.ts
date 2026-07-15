@@ -1,18 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import request from "supertest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { ProfileStoreManager } from "../store.js";
+import { join, resolve } from "node:path";
+import { ProfileStoreManager } from "../storage/profileStoreManager.js";
 import { PairingStore } from "../pairing.js";
 import { createApp } from "../createApp.js";
 import { buildManualLabEntryImport } from "@local-fitness-advisor/shared";
-
-// Mock the DuckDB warehouse so tests don't need the native binary.
-vi.mock("../warehouse.js", () => ({
-  rebuildWarehouseFromStore: vi.fn().mockResolvedValue({ tables: [], rowCounts: {} }),
-  runWarehouseQuery: vi.fn().mockResolvedValue([])
-}));
 
 let tempDir: string;
 let storeManager: ProfileStoreManager;
@@ -22,20 +16,33 @@ let app: any;
 const ownerToken = "test-owner-token-for-server-tests";
 const ownerAuthorization = "Bearer " + ownerToken;
 
-beforeEach(() => {
+const httpfsExtensionPath = [
+  process.env.LFA_DUCKDB_HTTPFS_EXTENSION,
+  resolve(process.cwd(), "apps", "desktop", "build", "duckdb-extensions", "httpfs.duckdb_extension"),
+  resolve(process.cwd(), "..", "desktop", "build", "duckdb-extensions", "httpfs.duckdb_extension")
+].find((candidate): candidate is string => Boolean(candidate && existsSync(candidate)));
+
+beforeEach(async () => {
   tempDir = mkdtempSync(join(tmpdir(), "lfa-server-test-"));
   process.env.LFA_DATA_DIR = tempDir;
   process.env.LFA_SECRET = "test-secret-for-server-tests-1234";
   process.env.LFA_OWNER_TOKEN = ownerToken;
 
-  storeManager = new ProfileStoreManager();
+  if (!httpfsExtensionPath) {
+    throw new Error("Prepared DuckDB httpfs extension is required for API tests.");
+  }
+  storeManager = await ProfileStoreManager.open({
+    storageBackend: "duckdb",
+    duckdb: { httpfsExtensionPath, root: join(tempDir, "duckdb-storage") }
+  });
   pairingStore = new PairingStore();
   app = createApp(storeManager, pairingStore, {
     assertSafeCloudModelEndpoint: async () => "openai"
   });
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await storeManager?.closeAll();
   delete process.env.LFA_DATA_DIR;
   delete process.env.LFA_SECRET;
   delete process.env.LFA_OWNER_TOKEN;
@@ -46,16 +53,19 @@ afterEach(() => {
 // ─── GET /api/health ──────────────────────────────────────────────────────────
 
 describe("GET /api/health", () => {
-  it("returns ok: true with the expected shape", async () => {
-    const res = await request(app).get("/api/health").set("authorization", ownerAuthorization);
+  it.each([
+    ["anonymous", undefined],
+    ["authenticated", ownerAuthorization]
+  ])("returns a public liveness response for %s requests", async (_label, authorization) => {
+    const pendingRequest = request(app).get("/api/health");
+    const res = authorization ? await pendingRequest.set("authorization", authorization) : await pendingRequest;
     expect(res.status).toBe(200);
-    expect(res.body.ok).toBe(true);
+    expect(res.body).toMatchObject({ ok: true });
     expect(res.body.uptime).toBeGreaterThanOrEqual(0);
-    // Health endpoint intentionally does not expose internals
-    expect(res.body.app).toBeUndefined();
-    expect(res.body.storage).toBeUndefined();
-    expect(res.body.counts).toBeUndefined();
-    expect(res.body.modelRuntime).toBeUndefined();
+    expect(res.body).not.toHaveProperty("app");
+    expect(res.body).not.toHaveProperty("storage");
+    expect(res.body).not.toHaveProperty("counts");
+    expect(res.body).not.toHaveProperty("modelRuntime");
   });
 
   describe("GET /api/biological-age", () => {
@@ -70,36 +80,29 @@ describe("GET /api/health", () => {
     });
   });
 
-  it("returns ok: true without a credential (public liveness check)", async () => {
-    const res = await request(app).get("/api/health");
-    expect(res.status).toBe(200);
-    expect(res.body.ok).toBe(true);
-  });
 });
 
 describe("query endpoint lifecycle", () => {
-  it("removes unused legacy query routes", async () => {
-    const [nlResponse, askResponse] = await Promise.all([
-      request(app).post("/api/query/nl").set("authorization", ownerAuthorization).send({ question: "latest heart rate" }),
-      request(app).post("/api/query/ask").set("authorization", ownerAuthorization).send({ question: "latest heart rate" })
-    ]);
-
-    expect(nlResponse.status).toBe(404);
-    expect(askResponse.status).toBe(404);
-  });
-
-  it("advertises supported and experimental endpoint lifecycles", async () => {
-    const [aiResponse, storeFallbackResponse, diagnosticResponse, rebuildResponse] = await Promise.all([
-      request(app).post("/api/query/ai").set("authorization", ownerAuthorization).send({ question: "x" }),
-      request(app).post("/api/query/ask-store").set("authorization", ownerAuthorization).send({ question: "x" }),
-      request(app).post("/api/llm/simple").set("authorization", ownerAuthorization).send({ prompt: "" }),
-      request(app).post("/api/warehouse/rebuild").set("authorization", ownerAuthorization).send({})
-    ]);
+  it("marks the supported AI query endpoint with its lifecycle", async () => {
+    const aiResponse = await request(app)
+      .post("/api/query/ai")
+      .set("authorization", ownerAuthorization)
+      .send({ question: "x" });
 
     expect(aiResponse.headers["x-lfa-lifecycle"]).toBe("supported");
-    expect(storeFallbackResponse.headers["x-lfa-lifecycle"]).toBe("experimental");
-    expect(diagnosticResponse.headers["x-lfa-lifecycle"]).toBe("experimental");
-    expect(rebuildResponse.headers["x-lfa-lifecycle"]).toBe("experimental");
+  });
+
+  it("reports active DuckDB analytics storage without rebuilding data", async () => {
+    const response = await request(app)
+      .get("/api/analytics/storage")
+      .set("authorization", ownerAuthorization);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      databasePath: "encrypted-profile:self",
+      engine: "duckdb",
+      counts: { imports: 0, observations: 0, samples: 0, activities: 0 }
+    });
   });
 });
 
@@ -138,7 +141,10 @@ describe("POST /api/import/health-connect — auth middleware", () => {
         });
       expect(manual.status).toBe(201);
       expect(manual.body).toMatchObject({
-        changes: { observations: 1, observationGroups: 1 },
+        outcome: {
+          observations: { attempted: 1, accepted: 1, duplicates: 0, evicted: 0 },
+          observationGroups: { attempted: 1, accepted: 1, duplicates: 0, evicted: 0 }
+        },
         import: { sourceKind: "manual-entry" }
       });
       expect(manual.body.store).toBeUndefined();
@@ -154,11 +160,25 @@ describe("POST /api/import/health-connect — auth middleware", () => {
   });
 
   it("allows the owner credential", async () => {
-    const res = await request(app)
+    const first = await request(app)
       .post("/api/import/health-connect")
       .set("authorization", ownerAuthorization)
       .send(minimalHealthConnectPayload);
-    expect(res.status).toBe(201);
+    expect(first.status).toBe(201);
+    expect(first.body.outcome).toMatchObject({
+      sourceImport: { attempted: 1, accepted: 1, duplicates: 0, evicted: 0 },
+      dataSource: { attempted: 1, accepted: 1, duplicates: 0, evicted: 0 }
+    });
+
+    const repeated = await request(app)
+      .post("/api/import/health-connect")
+      .set("authorization", ownerAuthorization)
+      .send(minimalHealthConnectPayload);
+    expect(repeated.status).toBe(201);
+    expect(repeated.body.outcome).toMatchObject({
+      sourceImport: { attempted: 1, accepted: 0, duplicates: 1, evicted: 0 },
+      dataSource: { attempted: 1, accepted: 0, duplicates: 1, evicted: 0 }
+    });
   });
 
   it("accepts a valid single-delivery companion token", async () => {
@@ -179,7 +199,7 @@ describe("POST /api/import/health-connect — auth middleware", () => {
 
 describe("central owner authorization", () => {
   it("protects data and model routes", async () => {
-    const paths = ["/api/store", "/api/profile", "/api/export"];
+    const paths = ["/api/profile", "/api/export"];
     for (const path of paths) {
       expect((await request(app).get(path)).status).toBe(401);
     }
@@ -312,7 +332,7 @@ describe("central owner authorization", () => {
     const token = pairingStore.getStatus(requested.record.id, requested.pollingSecret)!.token!;
 
     const denied = [
-      ["/api/store", "get"], ["/api/profile", "get"], ["/api/export", "get"], ["/api/pairing/devices", "get"],
+      ["/api/profile", "get"], ["/api/export", "get"], ["/api/pairing/devices", "get"],
       ["/api/settings/ai", "get"], ["/api/settings/ai", "put"], ["/api/query/ai", "post"], ["/api/observations/missing", "delete"]
     ] as const;
     for (const [path, method] of denied) {
@@ -425,8 +445,8 @@ describe("profile lifecycle routes", () => {
       .set("authorization", ownerAuthorization)
       .send({ ...minimalHealthConnectPayload, profileId: "shabnam" });
     expect(res.status).toBe(201);
-    expect((await storeManager.getStore("shabnam").readSnapshot()).sourceImports).toHaveLength(1);
-    expect((await storeManager.getStore("self").readSnapshot()).sourceImports).toHaveLength(0);
+    expect((await storeManager.getStore("shabnam").storageCounts()).imports).toBe(1);
+    expect((await storeManager.getStore("self").storageCounts()).imports).toBe(0);
   });
 });
 
@@ -500,13 +520,13 @@ describe("DELETE /api/observations/:id", () => {
     const store = storeManager.getActiveStore();
     await store.mergeImport(parsed);
 
-    const observationId = (await store.readSnapshot()).observations[0]?.id;
+    const observationId = parsed.observations[0]?.id;
     expect(observationId).toBeDefined();
 
     const res = await request(app).delete(`/api/observations/${observationId}`).set("authorization", ownerAuthorization);
     expect(res.status).toBe(200);
     expect(res.body.deletedCount).toBe(1);
-    expect((await store.readSnapshot()).observations.find((o) => o.id === observationId)).toBeUndefined();
+    expect((await store.storageCounts()).observations).toBe(0);
   });
 });
 
@@ -530,7 +550,7 @@ describe("PATCH /api/observations/:id", () => {
     );
     const store = storeManager.getActiveStore();
     await store.mergeImport(parsed);
-    const before = (await store.readSnapshot()).observations[0];
+    const before = parsed.observations[0];
     expect(before).toBeDefined();
 
     const res = await request(app)
@@ -562,14 +582,6 @@ describe("PATCH /api/observations/:id", () => {
 // ─── Schema validation ─────────────────────────────────────────────────────────
 
 describe("POST /api/import/blood-test — schema validation", () => {
-  it("mounts blood-test preview route", async () => {
-    const res = await request(app)
-      .post("/api/import/blood-test/preview")
-      .set("authorization", ownerAuthorization)
-      .send({});
-    expect(res.status).not.toBe(404);
-  });
-
   it("accepts Lab results preview payloads larger than the global JSON limit", async () => {
     const res = await request(app)
       .post("/api/import/blood-test/preview")

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import type { AiSettings, ModelValidation } from "../api.js";
+import { api } from "../api.js";
+import type { AiSettings } from "../api.js";
 
 export function SettingsPage() {
   const [settings, setSettings] = useState<AiSettings>();
@@ -9,7 +10,7 @@ export function SettingsPage() {
 
   async function load() {
     try {
-      setSettings(await fetchSettings());
+      setSettings(await api.settings.ai.get());
     } catch {
       setMessage("Unable to load AI settings.");
     }
@@ -46,8 +47,7 @@ export function SettingsPage() {
     setMessage(undefined);
     try {
       await persistSettings();
-      const response = await fetch("/api/settings/ai/validate", { method: "POST", credentials: "include" });
-      const result = (await response.json()) as ModelValidation;
+      const result = await api.settings.ai.validate();
       setMessage(result.ok ? `Connection validated in ${result.elapsedMs} ms.` : result.error ?? "Validation failed.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to validate AI settings.");
@@ -58,9 +58,12 @@ export function SettingsPage() {
 
   async function persistSettings() {
     if (!settings) throw new Error("AI settings are unavailable");
-    const saved = await fetchSettings("/api/settings/ai", {
-      method: "PUT",
-      body: JSON.stringify({ ...settings, apiKey: apiKey || undefined })
+    const saved = await api.settings.ai.save({
+      provider: settings.provider,
+      endpoint: settings.endpoint,
+      apiKey: apiKey || undefined,
+      model: settings.model,
+      timeoutMs: settings.timeoutMs
     });
     setSettings(saved);
     setApiKey("");
@@ -99,13 +102,4 @@ export function SettingsPage() {
       {message ? <p role="status" aria-live="polite">{message}</p> : null}
     </section>
   );
-}
-
-async function fetchSettings(path = "/api/settings/ai", options?: RequestInit): Promise<AiSettings> {
-  const response = await fetch(path, { ...options, credentials: "include", headers: { "content-type": "application/json", ...options?.headers } });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => undefined) as { error?: unknown } | undefined;
-    throw new Error(typeof payload?.error === "string" ? payload.error : "AI settings request failed.");
-  }
-  return response.json() as Promise<AiSettings>;
 }

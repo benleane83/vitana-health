@@ -1,34 +1,15 @@
 import express from "express";
-import { z } from "zod";
-import { safetyNotice } from "@local-fitness-advisor/shared";
-import type { ProfileStoreManager } from "../store.js";
+import { aiQueryRequestSchema, safetyNotice } from "@local-fitness-advisor/shared";
+import type { ProfileStoreManager } from "../storage/profileStoreManager.js";
 import {
   compileAnalyticsQuery,
   runAnalyticsQuery,
   validateAnalyticsQuery
 } from "../storage/analyticsBackend.js";
-import { callConfiguredModel, currentModelConfig, resolvedModelProvider } from "../modelClient.js";
-import { planStoreAnswer } from "../askStore.js";
+import { callConfiguredModel, currentModelConfig } from "../modelClient.js";
 import { planAiQuery } from "../aiQueryPlanner.js";
 import type { QueryDSL } from "../aiQueryPlanner.js";
 import { hasCloudAiConsent, sanitizeQuestionForModel, sanitizeRowsForPrompt } from "../privacy.js";
-
-const llmSimpleSchema = z.object({
-  prompt: z.string().min(1).max(4000).default("Reply with exactly: local model ok"),
-  model: z.string().min(1).max(120).optional(),
-  timeoutMs: z.number().int().min(1000).max(180000).optional(),
-  provider: z.enum(["ollama", "openai"]).optional()
-});
-
-const askSchema = z.object({
-  question: z.string().min(3).max(500)
-});
-
-const aiQuerySchema = z.object({
-  question: z.string().min(3).max(500),
-  timezone: z.string().max(80).optional(),
-  debug: z.boolean().optional().default(false)
-});
 
 export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Router {
   const router = express.Router();
@@ -53,62 +34,6 @@ export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Rout
     return false;
   }
 
-  // Store-backed ask retained as an experimental warehouse-unavailable fallback.
-  router.post("/ask-store", async (request, response, next) => {
-    try {
-      response.setHeader("x-lfa-lifecycle", "experimental");
-      if (!await ensureCloudConsent(response)) {
-        return;
-      }
-      const parsed = askSchema.parse(request.body ?? {});
-      const plan = planStoreAnswer(parsed.question, await activeStore().readSnapshot());
-      if (!plan) {
-        response.status(400).json({
-          error: "Question is not yet supported by the store ask planner.",
-          code: "QUERY_UNSUPPORTED",
-          supportedExamples: ["What was the last heart rate recorded?", "What was my latest oxygen saturation?"]
-        });
-        return;
-      }
-
-      if (plan.rows.length === 0) {
-        response.json({
-          question: parsed.question,
-          plan: plan.answerLead,
-          rowCount: 0,
-          rows: [],
-          answer: "I could not find matching data in your datastore yet."
-        });
-        return;
-      }
-
-      const prompt = [
-        "Answer the question using only the supplied datastore rows.",
-        "Return one concise sentence and do not add medical advice.",
-        `Question: ${sanitizeQuestionForModel(parsed.question)}`,
-        `Datastore rows JSON: ${JSON.stringify(sanitizeRowsForPrompt(plan.rows))}`
-      ].join("\n");
-
-      const modelResult = await callConfiguredModel(prompt, {
-        allowCloud: hasCloudAiConsent(await activeStore().getProfile())
-      });
-      response.json({
-        question: parsed.question,
-        plan: plan.answerLead,
-        rowCount: plan.rows.length,
-        rows: plan.rows,
-        answer:
-          modelResult.ok && modelResult.text
-            ? modelResult.text
-            : "I found the data, but model wording was unavailable.",
-        model: modelResult.ok ? `${modelResult.provider}:${modelResult.model}` : "deterministic-fallback",
-        modelError: modelResult.ok ? undefined : modelResult.error
-      });
-    } catch (error) {
-      next(error);
-    }
-  });
-
   // AI-planned query pipeline (primary query path for the web UI)
   router.post("/ai", async (request, response, next) => {
     try {
@@ -116,7 +41,7 @@ export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Rout
       if (!await ensureCloudConsent(response)) {
         return;
       }
-      const parsed = aiQuerySchema.parse(request.body ?? {});
+      const parsed = aiQueryRequestSchema.parse(request.body ?? {});
 
       const plannerOutcome = await planAiQuery(parsed.question, {
         timezone: parsed.timezone,
@@ -174,9 +99,9 @@ export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Rout
         response.json({
           question: parsed.question,
           answer:
-            "No data found for this query in your local warehouse. Import more data or adjust the time range.",
+            "No data found for this query in your local profile. Import more data or adjust the time range.",
           limitations: [
-            "No rows returned. The warehouse may not contain data for the requested metric and time range.",
+            "No rows returned. The profile may not contain data for the requested metric and time range.",
             ...plannerOutcome.limitations
           ],
           assumptions: plannerOutcome.assumptions,
@@ -235,52 +160,11 @@ export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Rout
   return router;
 }
 
-export function makeLlmRoutes(storeManager: ProfileStoreManager): express.Router {
+export function makeLlmRoutes(): express.Router {
   const router = express.Router();
-
-  function activeStore() {
-    return storeManager.getActiveStore();
-  }
 
   router.get("/config", (_request, response) => {
     response.json(currentModelConfig());
-  });
-
-  router.post("/simple", async (request, response, next) => {
-    try {
-      response.setHeader("x-lfa-lifecycle", "experimental");
-      const parsed = llmSimpleSchema.parse(request.body ?? {});
-      const provider = resolvedModelProvider(parsed.provider);
-      if (provider === "openai" && !hasCloudAiConsent(await activeStore().getProfile())) {
-        response.status(403).json({
-          ok: false,
-          provider,
-          endpoint: "",
-          model: parsed.model ?? "",
-          timeoutMs: parsed.timeoutMs ?? 30000,
-          elapsedMs: 0,
-          error: "CLOUD_CONSENT_REQUIRED",
-          code: "CLOUD_CONSENT_REQUIRED",
-          message: "Use /api/profile/cloud-ai-consent to grant explicit cloud prompt consent before using cloud models."
-        });
-        return;
-      }
-      const result = await callConfiguredModel(parsed.prompt, {
-        model: parsed.model,
-        timeoutMs: parsed.timeoutMs,
-        provider: parsed.provider,
-        allowCloud: hasCloudAiConsent(await activeStore().getProfile())
-      });
-      if (!result.ok) {
-        response
-          .status(result.error?.includes("timed out") ? 504 : 502)
-          .json(result);
-        return;
-      }
-      response.json(result);
-    } catch (error) {
-      next(error);
-    }
   });
 
   return router;

@@ -1,9 +1,19 @@
-import { buildInsightPrompt, computeAnalytics, safetyNotice, type HealthStoreData, type Insight } from "@local-fitness-advisor/shared";
+import {
+  buildInsightPrompt,
+  safetyNotice,
+  type AnalyticsSummary,
+  type Insight,
+  type Profile
+} from "@local-fitness-advisor/shared";
 import { callConfiguredModel } from "./modelClient.js";
 import { hasCloudAiConsent, redactFreeText } from "./privacy.js";
 
-export async function generateInsight(store: HealthStoreData): Promise<Insight> {
-  const analytics = computeAnalytics(store);
+export interface InsightGenerationInput {
+  profile: Profile;
+  analytics: AnalyticsSummary;
+}
+
+export async function generateInsight({ profile, analytics }: InsightGenerationInput): Promise<Insight> {
   const evidence = [
     ...analytics.evidenceDigest,
     ...analytics.latestMetrics.slice(0, 6).map((metric) => `${metric.label}: ${metric.value} ${metric.unit} on ${metric.observedAt.slice(0, 10)} (${metric.status}).`),
@@ -11,7 +21,7 @@ export async function generateInsight(store: HealthStoreData): Promise<Insight> 
   ];
 
   const modelResult = await callConfiguredModel(buildInsightPrompt(evidence.map((item) => redactFreeText(item))), {
-    allowCloud: hasCloudAiConsent(store.profile)
+    allowCloud: hasCloudAiConsent(profile)
   });
   if (modelResult.ok && modelResult.text) {
     return {

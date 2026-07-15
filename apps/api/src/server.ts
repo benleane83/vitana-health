@@ -7,7 +7,7 @@ import {
   hasDuckDbActivationManifest,
   ProfileStoreManager,
   type StoreSecurityConfig
-} from "./store.js";
+} from "./storage/profileStoreManager.js";
 import { createApp } from "./createApp.js";
 import { configureRuntimeSecurity } from "./security.js";
 import { validateEnv } from "./env.js";
@@ -46,9 +46,9 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
   if (!env.LFA_DUCKDB_HTTPFS_EXTENSION) {
     throw new Error("LFA_DUCKDB_HTTPFS_EXTENSION is required for DuckDB storage.");
   }
-  const activationState: "initial-activation" | "reopen" = hasDuckDbActivationManifest()
+  const activationState: "initialization" | "reopen" = hasDuckDbActivationManifest()
     ? "reopen"
-    : "initial-activation";
+    : "initialization";
   const storeManager = await ProfileStoreManager.open({
     security: options.storeSecurity,
     storageBackend: "duckdb",

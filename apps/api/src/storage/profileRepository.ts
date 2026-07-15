@@ -1,6 +1,7 @@
 import type {
   AppBootstrap,
   AnalyticsSummary,
+  BiologicalAgeSource,
   DataSource,
   DeleteObservationResponse,
   DeleteObservationsByTypeResponse,
@@ -13,6 +14,7 @@ import type {
   UpdateObservationResponse
 } from "@local-fitness-advisor/shared";
 import type { MeasurementDetailPage } from "../summary.js";
+import type { ClinicianReportSourceImport } from "../clinicianReport.js";
 
 export interface ProfileImport {
   sourceImport: SourceImport;
@@ -23,15 +25,34 @@ export interface ProfileImport {
   activitySessions: HealthStoreData["activitySessions"];
 }
 
+export interface ImportCategoryOutcome {
+  attempted: number;
+  accepted: number;
+  duplicates: number;
+  evicted: 0;
+}
+
+export interface ImportOutcome {
+  sourceImport: ImportCategoryOutcome;
+  dataSource: ImportCategoryOutcome;
+  observations: ImportCategoryOutcome;
+  observationGroups: ImportCategoryOutcome;
+  timeSeriesSamples: ImportCategoryOutcome;
+  activitySessions: ImportCategoryOutcome;
+}
+
 export interface ImportMutationResult {
   counts: AppBootstrap["counts"];
+  outcome: ImportOutcome;
   auditEvent: HealthStoreData["auditEvents"][number];
 }
 
 export interface ProfileRepository {
-  snapshot(options?: { includeRaw?: boolean }): Promise<HealthStoreData>;
   appBootstrap(): Promise<AppBootstrap>;
   analyticsSummary(): Promise<AnalyticsSummary>;
+  biologicalAgeSource(): Promise<BiologicalAgeSource>;
+  clinicianReportSourceImports(): Promise<ClinicianReportSourceImport[]>;
+  storageCounts(): Promise<AppBootstrap["counts"]>;
   getProfile(): Promise<Profile>;
   replaceProfile(profile: Profile): Promise<Profile>;
   mergeImport(imported: ProfileImport): Promise<ImportMutationResult>;
@@ -44,4 +65,8 @@ export interface ProfileRepository {
   measurementDetail(measurementCode: string, page: MeasurementDetailPage): Promise<HealthDataDetail>;
   runCompiledQuery(sql: string): Promise<Array<Record<string, unknown>>>;
   close(): Promise<void>;
+}
+
+export interface ManagedProfileRepository extends ProfileRepository {
+  readonly profileId: string;
 }

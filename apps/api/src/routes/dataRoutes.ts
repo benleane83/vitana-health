@@ -6,8 +6,8 @@ import {
   type DeleteObservationsByTypeResponse,
   type UpdateObservationResponse
 } from "@local-fitness-advisor/shared";
-import type { ProfileStoreManager } from "../store.js";
-import { refreshAnalyticsStorage } from "../storage/analyticsBackend.js";
+import type { ProfileStoreManager } from "../storage/profileStoreManager.js";
+import { describeAnalyticsStorage } from "../storage/analyticsBackend.js";
 import { generateInsight } from "../insights.js";
 import { buildClinicianReport } from "../clinicianReport.js";
 import { createClinicianReportPdf } from "../pdfReport.js";
@@ -41,25 +41,25 @@ const updateObservationBodySchema = z.object({
 
 function buildDeleteObservationResponse(
   deleted: DeleteObservationResponse,
-  warehouse: unknown
+  analyticsStorage: unknown
 ): unknown {
   return {
     ...deleted,
-    warehouse
+    analyticsStorage
   };
 }
 
-function buildUpdateObservationResponse(updated: UpdateObservationResponse, warehouse: unknown): unknown {
-  return { ...updated, warehouse };
+function buildUpdateObservationResponse(updated: UpdateObservationResponse, analyticsStorage: unknown): unknown {
+  return { ...updated, analyticsStorage };
 }
 
 function buildDeleteObservationsByTypeResponse(
   deleted: DeleteObservationsByTypeResponse,
-  warehouse: unknown
+  analyticsStorage: unknown
 ): unknown {
   return {
     ...deleted,
-    warehouse
+    analyticsStorage
   };
 }
 
@@ -79,14 +79,6 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
     return storeManager.getActiveStore();
   }
 
-  router.get("/store", async (_request, response, next) => {
-    try {
-      response.json(await activeStore().readSnapshot());
-    } catch (error) {
-      next(error);
-    }
-  });
-
   router.get("/bootstrap", async (_request, response, next) => {
     try {
       response.json(await activeStore().appBootstrap());
@@ -105,7 +97,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.get("/biological-age", async (_request, response, next) => {
     try {
-      response.json(calculateBiologicalAge(await activeStore().readSnapshot()));
+      response.json(calculateBiologicalAge(await activeStore().biologicalAgeSource()));
     } catch (error) {
       next(error);
     }
@@ -113,7 +105,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.get("/summary", async (_request, response, next) => {
     try {
-      response.json(await activeStore().getSummary());
+      response.json(await activeStore().summary());
     } catch (error) {
       next(error);
     }
@@ -123,7 +115,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
     try {
       const measurementCode = measurementCodeParamSchema.parse(request.params.measurementCode);
       const page = detailPageQuerySchema.parse(request.query);
-      response.json(await activeStore().getMeasurementDetail(measurementCode, page));
+      response.json(await activeStore().measurementDetail(measurementCode, page));
     } catch (error) {
       next(error);
     }
@@ -139,8 +131,8 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
         response.status(404).json({ error: "Observation not found.", code: "OBSERVATION_NOT_FOUND" });
         return;
       }
-      const warehouse = await refreshAnalyticsStorage(storeManager, updated);
-      response.json(buildUpdateObservationResponse(updated, warehouse));
+      const analyticsStorage = describeAnalyticsStorage(storeManager, updated.counts);
+      response.json(buildUpdateObservationResponse(updated, analyticsStorage));
     } catch (error) {
       next(error);
     }
@@ -155,8 +147,8 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
         response.status(404).json({ error: "Observation not found.", code: "OBSERVATION_NOT_FOUND" });
         return;
       }
-      const warehouse = await refreshAnalyticsStorage(storeManager, deleted);
-      response.json(buildDeleteObservationResponse(deleted, warehouse));
+      const analyticsStorage = describeAnalyticsStorage(storeManager, deleted.counts);
+      response.json(buildDeleteObservationResponse(deleted, analyticsStorage));
     } catch (error) {
       next(error);
     }
@@ -167,18 +159,17 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
       const measurementCode = measurementCodeParamSchema.parse(request.params.measurementCode);
       const store = activeStore();
       const deleted = await store.deleteObservationsByMeasurementCode(measurementCode);
-      const warehouse = await refreshAnalyticsStorage(storeManager, deleted);
-      response.json(buildDeleteObservationsByTypeResponse(deleted, warehouse));
+      const analyticsStorage = describeAnalyticsStorage(storeManager, deleted.counts);
+      response.json(buildDeleteObservationsByTypeResponse(deleted, analyticsStorage));
     } catch (error) {
       next(error);
     }
   });
 
-  router.post("/warehouse/rebuild", async (_request, response, next) => {
+  router.get("/analytics/storage", async (_request, response, next) => {
     try {
-      response.setHeader("x-lfa-lifecycle", "experimental");
-      const result = await refreshAnalyticsStorage(storeManager, await activeStore().readSnapshot());
-      response.status(201).json(result);
+      const result = describeAnalyticsStorage(storeManager, await activeStore().storageCounts());
+      response.json(result);
     } catch (error) {
       next(error);
     }
@@ -187,7 +178,8 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
   router.post("/insights/generate", async (_request, response, next) => {
     try {
       const store = activeStore();
-      const insight = await generateInsight(await store.readSnapshot());
+      const [profile, analytics] = await Promise.all([store.getProfile(), store.analyticsSummary()]);
+      const insight = await generateInsight({ profile, analytics });
       response.status(201).json(await store.addInsight(insight));
     } catch (error) {
       next(error);
@@ -205,7 +197,13 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.get("/export/pdf", async (_request, response, next) => {
     try {
-      const report = buildClinicianReport(await activeStore().readSnapshot());
+      const store = activeStore();
+      const [profile, analytics, sourceImports] = await Promise.all([
+        store.getProfile(),
+        store.analyticsSummary(),
+        store.clinicianReportSourceImports()
+      ]);
+      const report = buildClinicianReport({ profile, analytics, sourceImports });
       const pdf = await createClinicianReportPdf(report);
       response.setHeader("content-type", "application/pdf");
       response.setHeader("content-disposition", `attachment; filename="${reportFilename(report.patient.displayName)}"`);

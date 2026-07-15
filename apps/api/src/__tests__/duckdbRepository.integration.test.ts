@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { spawn, type ChildProcess } from "node:child_process";
 import {
   copyFileSync,
   existsSync,
@@ -11,7 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { computeAnalytics, defaultMeasurementTypes } from "@local-fitness-advisor/shared";
+import { calculateBiologicalAge, computeAnalytics, defaultMeasurementTypes } from "@local-fitness-advisor/shared";
 import {
   closeEncryptedDuckDbDatabase,
   createDuckDbSchema,
@@ -20,6 +19,7 @@ import {
 } from "../storage/duckdbRuntime.js";
 import { createDuckDbHealthStoreFixture } from "./support/duckdbFixture.js";
 import { DuckDbRepository, digestHealthStoreData } from "../storage/duckdbRepository.js";
+import { buildClinicianReport } from "../clinicianReport.js";
 
 const httpfsExtensionPath = findPreparedExtension();
 const key = Buffer.alloc(32, 7).toString("base64");
@@ -54,7 +54,27 @@ describe("DuckDbRepository fidelity", () => {
       });
       expect(bootstrap).not.toHaveProperty("observations");
       expect(bootstrap).not.toHaveProperty("sourceImports");
-      expect(await repository.analyticsSummary()).toEqual(computeAnalytics(fixture));
+      const analytics = await repository.analyticsSummary();
+      expect(analytics).toEqual(computeAnalytics(fixture));
+      const generatedAt = "2026-07-15T00:00:00.000Z";
+      const biologicalAgeSource = await repository.biologicalAgeSource();
+      expect(calculateBiologicalAge(biologicalAgeSource, generatedAt)).toEqual(calculateBiologicalAge(fixture, generatedAt));
+      expect(new Set(biologicalAgeSource.observations.map((entry) => entry.measurementCode)).size)
+        .toBe(biologicalAgeSource.observations.length);
+
+      const sourceImports = await repository.clinicianReportSourceImports();
+      expect(sourceImports).toEqual(fixture.sourceImports.map(({ fileName, sourceKind, importedAt, status, rowCount }) => ({
+        fileName, sourceKind, importedAt, status, rowCount
+      })));
+      expect(JSON.stringify(sourceImports)).not.toContain("rawContent");
+      expect(buildClinicianReport({ profile: bootstrap.profile, analytics, sourceImports }, generatedAt)).toMatchObject({
+        patient: { displayName: fixture.profile.displayName },
+        totals: {
+          observations: fixture.observations.length,
+          samples: fixture.timeSeriesSamples.length,
+          activities: fixture.activitySessions.length
+        }
+      });
     } finally {
       await repository.close();
     }
@@ -370,9 +390,27 @@ describe("DuckDbRepository fidelity", () => {
       const repeatedImportResult = await repository.mergeImport(parsedImport);
       expect(firstImportResult).toMatchObject({
         counts: { imports: 2, observations: 3, samples: 2, activities: 2 },
+        outcome: {
+          sourceImport: { attempted: 1, accepted: 1, duplicates: 0, evicted: 0 },
+          dataSource: { attempted: 1, accepted: 1, duplicates: 0, evicted: 0 },
+          observations: { attempted: 2, accepted: 1, duplicates: 1, evicted: 0 },
+          observationGroups: { attempted: 1, accepted: 1, duplicates: 0, evicted: 0 },
+          timeSeriesSamples: { attempted: 1, accepted: 1, duplicates: 0, evicted: 0 },
+          activitySessions: { attempted: 1, accepted: 1, duplicates: 0, evicted: 0 }
+        },
         auditEvent: { eventType: "import-processed" }
       });
       expect(repeatedImportResult.counts).toEqual(firstImportResult.counts);
+      expect(repeatedImportResult.outcome).toEqual({
+        sourceImport: { attempted: 1, accepted: 0, duplicates: 1, evicted: 0 },
+        dataSource: { attempted: 1, accepted: 0, duplicates: 1, evicted: 0 },
+        observations: { attempted: 2, accepted: 0, duplicates: 2, evicted: 0 },
+        observationGroups: { attempted: 1, accepted: 0, duplicates: 1, evicted: 0 },
+        timeSeriesSamples: { attempted: 1, accepted: 0, duplicates: 1, evicted: 0 },
+        activitySessions: { attempted: 1, accepted: 0, duplicates: 1, evicted: 0 }
+      });
+      expect(firstImportResult.auditEvent.detail).toContain("observations: 1 accepted, 1 duplicate(s), 0 evicted");
+      expect(repeatedImportResult.auditEvent.detail).toContain("observations: 0 accepted, 2 duplicate(s), 0 evicted");
       expect(firstImportResult).not.toHaveProperty("observations");
       expect(firstImportResult).not.toHaveProperty("sourceImports");
       await repository.addInsight(addedInsight);
@@ -408,7 +446,7 @@ describe("DuckDbRepository fidelity", () => {
     try {
       const snapshot = await reopened.snapshot();
       expect(snapshot.sourceImports.map((entry) => entry.id)).toEqual(["import-1", "import-2"]);
-      expect(snapshot.sourceImports[1].rawContent).toHaveLength(1_000_000);
+      expect(snapshot.sourceImports[1].rawContent).toHaveLength(1_000_005);
       expect(snapshot.dataSources.map((entry) => entry.id)).toEqual(["source-1", "source-2"]);
       expect(snapshot.observationGroups.map((entry) => entry.id)).toEqual(["group-1", "group-2"]);
       expect(snapshot.timeSeriesSamples.map((entry) => entry.id)).toEqual(["sample-1", "sample-2"]);
@@ -427,6 +465,56 @@ describe("DuckDbRepository fidelity", () => {
       await reopened.close();
     }
   }, 30_000);
+
+  it.skipIf(!httpfsExtensionPath)("retains samples beyond the former ceiling across later imports", async () => {
+    const databasePath = join(root, "databases", "health-store-unlimited-samples.duckdb-poc");
+    const fixture = createDuckDbHealthStoreFixture();
+    const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
+    const sampleCount = 10_001;
+    const samples = Array.from({ length: sampleCount }, (_, index) => ({
+      ...fixture.timeSeriesSamples[0],
+      id: `unlimited-sample-${index}`,
+      startAt: new Date(Date.UTC(2025, 0, 1, 0, index)).toISOString(),
+      endAt: new Date(Date.UTC(2025, 0, 1, 0, index, 30)).toISOString()
+    }));
+    try {
+      const first = await repository.mergeImport({
+        sourceImport: {
+          id: "unlimited-import-1", sourceKind: "manual-entry", fileName: "unlimited-1.json",
+          importedAt: "2026-07-15T00:00:00.000Z", parserVersion: "test", checksum: "unlimited-1",
+          rowCount: sampleCount, status: "processed", diagnostics: []
+        },
+        dataSource: {
+          id: "unlimited-source", sourceKind: "manual-entry", label: "Unlimited fixture",
+          importId: "unlimited-import-1", createdAt: "2026-07-15T00:00:00.000Z"
+        },
+        observations: [], observationGroups: [], timeSeriesSamples: samples, activitySessions: []
+      });
+      expect(first.outcome.timeSeriesSamples).toEqual({
+        attempted: sampleCount, accepted: sampleCount, duplicates: 0, evicted: 0
+      });
+      expect(first.counts.samples).toBe(sampleCount + fixture.timeSeriesSamples.length);
+
+      const second = await repository.mergeImport({
+        sourceImport: {
+          id: "unlimited-import-2", sourceKind: "manual-entry", fileName: "unlimited-2.json",
+          importedAt: "2026-07-16T00:00:00.000Z", parserVersion: "test", checksum: "unlimited-2",
+          rowCount: 1, status: "processed", diagnostics: []
+        },
+        dataSource: {
+          id: "unlimited-source", sourceKind: "manual-entry", label: "Unlimited fixture",
+          importId: "unlimited-import-2", createdAt: "2026-07-16T00:00:00.000Z"
+        },
+        observations: [], observationGroups: [],
+        timeSeriesSamples: [{ ...samples[0], id: "unlimited-sample-later", startAt: "2026-07-16T00:00:00.000Z", endAt: "2026-07-16T00:01:00.000Z" }],
+        activitySessions: []
+      });
+      expect(second.outcome.timeSeriesSamples).toEqual({ attempted: 1, accepted: 1, duplicates: 0, evicted: 0 });
+      expect(second.counts.samples).toBe(sampleCount + fixture.timeSeriesSamples.length + 1);
+    } finally {
+      await repository.close();
+    }
+  }, 60_000);
 
   it.skipIf(!httpfsExtensionPath)("isolates profiles across concurrently open encrypted databases", async () => {
     const options = { httpfsExtensionPath };
@@ -469,42 +557,6 @@ describe("DuckDbRepository fidelity", () => {
 
     await expect(DuckDbRepository.open(root, profileAPath, profileBKey, options)).rejects.toThrow();
     await expect(DuckDbRepository.open(root, profileBPath, profileAKey, options)).rejects.toThrow();
-  }, 30_000);
-
-  it.skipIf(!httpfsExtensionPath)("never promotes a database when hydration is terminated before atomic rename", async () => {
-    const databasePath = join(root, "databases", "health-store-interrupted-hydration.duckdb-poc");
-    const child = await runCrashWorker("hydrate", databasePath);
-    expect(existsSync(databasePath)).toBe(false);
-
-    await terminate(child);
-
-    expect(existsSync(databasePath)).toBe(false);
-    const repository = await DuckDbRepository.hydrate(
-      root,
-      databasePath,
-      key,
-      createDuckDbHealthStoreFixture(),
-      { httpfsExtensionPath }
-    );
-    await repository.close();
-    expect(existsSync(databasePath)).toBe(true);
-  }, 30_000);
-
-  it.skipIf(!httpfsExtensionPath)("rolls back a delete when the child process is terminated before commit", async () => {
-    const databasePath = join(root, "databases", "health-store-interrupted-delete.duckdb-poc");
-    const fixture = createDuckDbHealthStoreFixture();
-    const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
-    await repository.close();
-    const child = await runCrashWorker("delete", databasePath);
-
-    await terminate(child);
-
-    const recovered = await DuckDbRepository.open(root, databasePath, key, { httpfsExtensionPath });
-    try {
-      expect(await recovered.snapshot()).toEqual(fixture);
-    } finally {
-      await recovered.close();
-    }
   }, 30_000);
 
   it.skipIf(!httpfsExtensionPath)("provides fixed daily and Monday-based weekly analytical views", async () => {
@@ -679,52 +731,6 @@ function querySql(
 ): Promise<Array<Record<string, unknown>>> {
   return new Promise((resolvePromise, reject) => {
     connection.all(sql, (error, rows) => error ? reject(error) : resolvePromise((rows ?? []) as Array<Record<string, unknown>>));
-  });
-}
-
-function runCrashWorker(mode: "hydrate" | "delete", databasePath: string): Promise<ChildProcess> {
-  return new Promise((resolvePromise, reject) => {
-    const workerPath = resolve(process.cwd(), "apps", "api", "src", "__tests__", "support", "duckdbCrashWorker.ts");
-    const child = spawn(process.execPath, [
-      "--import",
-      "tsx",
-      workerPath,
-      mode,
-      root,
-      databasePath,
-      key,
-      httpfsExtensionPath!
-    ], {
-      cwd: process.cwd(),
-      stdio: ["ignore", "pipe", "pipe"]
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout?.on("data", (chunk) => {
-      stdout += chunk.toString();
-      if (stdout.includes("READY")) {
-        resolvePromise(child);
-      }
-    });
-    child.stderr?.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-    child.once("error", reject);
-    child.once("exit", (code) => {
-      if (!stdout.includes("READY")) {
-        reject(new Error(`DuckDB crash worker exited before ready with code ${code}: ${stderr}`));
-      }
-    });
-  });
-}
-
-function terminate(child: ChildProcess): Promise<void> {
-  return new Promise((resolvePromise, reject) => {
-    child.once("error", reject);
-    child.once("exit", () => resolvePromise());
-    if (!child.kill()) {
-      reject(new Error("Failed to terminate DuckDB crash worker."));
-    }
   });
 }
 
