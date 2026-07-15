@@ -1,4 +1,4 @@
-This application (working title Local Fitness Advisor) is a local-first, single-user application that stores personal health data in an encrypted local database.
+This application (working title Local Fitness Advisor) is a local-first, single-user application that stores personal health data in an encrypted local database. It started as a single-user application, but has been expanded to support multiple family member profiles including pets and children.
 
 ## Application status
 
@@ -8,7 +8,7 @@ I'm only testing on Windows x64 currently, but I intend to support Linux and Mac
 
 ## Database design
 
-I'm currently using DuckDB as a local database, but considering SQLite as an alternative if transactional performance suffers. When working on database changes, please consider this and use abstractions over DuckDB where relevant to make swapping DB providers easier later.
+Currently uses DuckDB as a local database, although considering SQLite as an alternative if transactional performance suffers. When working on database changes, please consider this and use abstractions over DuckDB where relevant to make swapping DB providers easier later. JSON profile support was in an earlier prototype but has been retired and should not be used actively.
 
 ## Mobile app design
 

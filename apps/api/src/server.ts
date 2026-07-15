@@ -2,7 +2,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { createServer as createHttpServer, type Server } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
 import path from "node:path";
-import { Bonjour } from "bonjour-service";
 import { PairingStore } from "./pairing.js";
 import {
   hasDuckDbActivationManifest,
@@ -100,13 +99,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
       const lanIp = getLanIp();
       if (lanIp) {
         log.info(`LAN address for companion pairing: ${scheme}://${lanIp}:${port}`);
-      }
-      try {
-        const bonjour = new Bonjour();
-        bonjour.publish({ name: "Local Fitness Advisor", type: "local-fitness-advisor", port });
-        process.on("exit", () => bonjour.destroy());
-      } catch (bonjourError) {
-        log.warn(`mDNS service discovery is unavailable: ${bonjourError instanceof Error ? bonjourError.message : String(bonjourError)}`);
       }
       resolve();
     });
