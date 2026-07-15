@@ -2,6 +2,8 @@ import express from "express";
 import { z } from "zod";
 import type { ProfileStoreManager } from "../store.js";
 import type { Profile } from "@local-fitness-advisor/shared";
+import type { PairingStore } from "../pairing.js";
+import type { AuthorizationPrincipal } from "../createApp.js";
 
 const profileSchema = z.object({
   displayName: z.string().min(1).max(80),
@@ -126,10 +128,16 @@ export function makeProfileRoutes(storeManager: ProfileStoreManager): express.Ro
   return router;
 }
 
-export function makeProfilesRoutes(storeManager: ProfileStoreManager): express.Router {
+export function makeProfilesRoutes(storeManager: ProfileStoreManager, pairingStore: PairingStore): express.Router {
   const router = express.Router();
 
   router.get("/", (_request, response) => {
+    const principal = response.locals.principal as AuthorizationPrincipal;
+    if (principal.kind === "companion") {
+      const profile = storeManager.listProfiles().find((entry) => entry.id === principal.allowedProfileIds[0]);
+      response.json({ profiles: profile ? [{ id: profile.id, displayName: profile.displayName }] : [] });
+      return;
+    }
     response.json({
       profiles: storeManager.listProfiles(),
       activeProfileId: storeManager.getActiveProfileId()
@@ -160,6 +168,7 @@ export function makeProfilesRoutes(storeManager: ProfileStoreManager): express.R
     try {
       const profileId = profileIdSchema.parse(request.params.id);
       const result = await storeManager.deleteProfile(profileId);
+      pairingStore.revokeProfile(profileId);
       response.json({
         deletedProfileId: profileId,
         activeProfileId: result.activeProfileId,

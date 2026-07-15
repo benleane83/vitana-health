@@ -15,6 +15,7 @@ import { healthConnectImportRequestSchema, parseHealthConnectImport } from "../h
 import { refreshAnalyticsStorage } from "../storage/analyticsBackend.js";
 import { extractBodyCompositionText } from "../bodyCompositionExtract.js";
 import { parseBodyCompositionText } from "@local-fitness-advisor/shared";
+import type { AuthorizationPrincipal } from "../createApp.js";
 
 function compactImportResponse(imported: ReturnType<typeof buildManualObservationImport>) {
   return {
@@ -232,6 +233,11 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
   router.post("/health-connect", async (request, response, next) => {
     try {
       const parsed = healthConnectImportRequestSchema.parse(request.body ?? {});
+      const principal = response.locals.principal as AuthorizationPrincipal;
+      if (principal.kind === "companion" && parsed.profileId !== principal.allowedProfileIds[0]) {
+        response.status(403).json({ error: "The requested profile is not authorized for this device.", code: "PROFILE_ACCESS_DENIED" });
+        return;
+      }
       const targetProfileId = parsed.profileId ?? storeManager.getActiveProfileId();
       const targetStore = storeManager.getStore(targetProfileId);
       const imported = parseHealthConnectImport(parsed);

@@ -28,6 +28,12 @@ import { makeDataRoutes } from "./routes/dataRoutes.js";
 import { makeSettingsRoutes } from "./routes/settingsRoutes.js";
 import { z } from "zod";
 
+export interface OwnerPrincipal {
+  kind: "owner";
+}
+
+export type AuthorizationPrincipal = OwnerPrincipal | import("./pairing.js").CompanionPrincipal;
+
 export interface AppOptions {
   publicKeyHash?: string | null;
   webRoot?: string;
@@ -43,19 +49,21 @@ function decodeCookieToken(value: string | undefined): string {
   }
 }
 
-function isOwnerOnlyPath(requestPath: string): boolean {
-  return (
-    requestPath === "/settings" ||
-    requestPath.startsWith("/settings/") ||
-    requestPath === "/pair/qr" ||
-    requestPath === "/pairing/pending" ||
-    requestPath === "/pairing/devices" ||
-    /^\/pairing\/(approve|deny|revoke)\//.test(requestPath)
-  );
-}
-
 function isOpenRouterCallback(request: express.Request): boolean {
   return request.method === "GET" && request.path === "/settings/ai/openrouter/callback";
+}
+
+function companionCapabilityFor(request: express.Request): import("./pairing.js").CompanionCapability | null {
+  switch (`${request.method} ${request.path}`) {
+    case "GET /profiles":
+      return "profiles:list-minimal";
+    case "POST /import/health-connect":
+      return "health-connect:import";
+    case "POST /pairing/revoke-self":
+      return "pairing:self-revoke";
+    default:
+      return null;
+  }
 }
 
 export function createApp(
@@ -240,21 +248,23 @@ export function createApp(
   app.use("/api", (request, response, next) => {
     const companionToken = request.headers["x-companion-token"];
     if (ownerTokenIsValid(request) || isOpenRouterCallback(request)) {
+      response.locals.principal = { kind: "owner" } satisfies OwnerPrincipal;
       next();
       return;
     }
-    const ownerOnly = isOwnerOnlyPath(request.path);
-    if (!ownerOnly && typeof companionToken === "string" && pairingStore.validateToken(companionToken)) {
+    const principal = typeof companionToken === "string" ? pairingStore.validateToken(companionToken) : null;
+    if (!principal) {
+      response.setHeader("www-authenticate", ['Bearer', 'realm="Local Fitness Advisor"'].join(" "));
+      response.status(401).json({ error: "Valid owner or companion credential required.", code: "AUTH_REQUIRED" });
+      return;
+    }
+    const capability = companionCapabilityFor(request);
+    if (capability && principal.capabilities.includes(capability)) {
+      response.locals.principal = principal;
       next();
       return;
     }
-    response.setHeader("www-authenticate", ['Bearer', 'realm="Local Fitness Advisor"'].join(" "));
-    response.status(401).json({
-      error: ownerOnly
-        ? "Owner credential required."
-        : "Valid owner or companion credential required.",
-      code: "AUTH_REQUIRED"
-    });
+    response.status(403).json({ error: "This companion is not authorized for this operation.", code: "CAPABILITY_REQUIRED" });
   });
 
   // Authenticated pairing management (owner only)
@@ -263,14 +273,15 @@ export function createApp(
   const pairingRouter = makePairingRoutes(pairingStore, {
     publicKeyHash: options.publicKeyHash,
     port: pairingPort,
-    scheme: pairingScheme
+    scheme: pairingScheme,
+    profileExists: (profileId) => storeManager.listProfiles().some((profile) => profile.id === profileId)
   });
   app.use("/api/pair", pairingRouter);
   app.use("/api/pairing", pairingRouter);
 
   // Feature route modules
   app.use("/api/profile", makeProfileRoutes(storeManager));
-  app.use("/api/profiles", makeProfilesRoutes(storeManager));
+  app.use("/api/profiles", makeProfilesRoutes(storeManager, pairingStore));
   app.use("/api/import", makeImportRoutes(storeManager));
   app.use("/api/query", makeQueryRoutes(storeManager));
   app.use("/api/llm", makeLlmRoutes(storeManager));

@@ -99,6 +99,20 @@ export default function App() {
   }
 
   async function handleDisconnect(): Promise<void> {
+    if (!connection?.token) {
+      setStatus("Cannot disconnect safely without a paired device token.");
+      return;
+    }
+    try {
+      const response = await pinnedFetch(`${connection.url.replace(/\/+$/, "")}/api/pairing/revoke-self`, connection.publicKeyHash, {
+        method: "POST",
+        headers: { "x-companion-token": connection.token }
+      });
+      if (!response.ok) throw new Error("The server did not revoke this device.");
+    } catch {
+      setStatus("Unable to disconnect from the server. Check your connection and try again.");
+      return;
+    }
     await clearConnection();
     await clearSelectedProfileId();
     setConnection(null);
@@ -113,7 +127,7 @@ export default function App() {
       const response = await pinnedFetch(`${connectionDetails.url.replace(/\/+$/, "")}/api/profiles`, connectionDetails.publicKeyHash, {
         headers: connectionDetails.token ? { "x-companion-token": connectionDetails.token } : undefined
       });
-      const payload = (await response.json().catch(() => ({}))) as { profiles?: ProfileListEntry[]; activeProfileId?: string };
+      const payload = (await response.json().catch(() => ({}))) as { profiles?: ProfileListEntry[] };
       if (!response.ok || !Array.isArray(payload.profiles) || payload.profiles.length === 0) {
         setProfiles([]);
         setSelectedProfileId(null);
@@ -122,7 +136,6 @@ export default function App() {
       const stored = await loadSelectedProfileId();
       const resolved =
         (stored && payload.profiles.some((entry) => entry.id === stored) ? stored : undefined) ??
-        payload.activeProfileId ??
         payload.profiles[0]?.id ??
         null;
       setProfiles(payload.profiles);
