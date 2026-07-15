@@ -42,6 +42,7 @@ import { log } from "./logger.js";
 import { initializeDuckDbRoot, type DuckDbOptions } from "./storage/duckdbRuntime.js";
 import { DuckDbHealthStore } from "./storage/duckdbHealthStore.js";
 import { digestHealthStoreData } from "./storage/duckdbRepository.js";
+import { mergeDefaultMeasurementType } from "./measurementRegistry.js";
 
 interface EncryptedEnvelope {
   version: 1;
@@ -899,13 +900,22 @@ function normalizeGroupLabel(label: string): string {
 }
 
 function reconcileDefaultMeasurementTypes(data: HealthStoreData): boolean {
+  const defaultsByCode = new Map(defaultMeasurementTypes.map((type) => [type.code, type]));
+  let changed = false;
+  data.measurementTypes = data.measurementTypes.map((type) => {
+    const defaults = defaultsByCode.get(type.code);
+    if (!defaults) return type;
+    const merged = mergeDefaultMeasurementType(type, defaults);
+    changed ||= merged !== type;
+    return merged;
+  });
   const existingCodes = new Set(data.measurementTypes.map((type) => type.code));
   const missingTypes = defaultMeasurementTypes.filter((type) => !existingCodes.has(type.code));
-  if (missingTypes.length === 0) {
-    return false;
+  if (missingTypes.length > 0) {
+    data.measurementTypes.push(...missingTypes);
+    changed = true;
   }
-  data.measurementTypes.push(...missingTypes);
-  return true;
+  return changed;
 }
 
 function redactRawImport(sourceImport: SourceImport, includeRaw: boolean): SourceImport {

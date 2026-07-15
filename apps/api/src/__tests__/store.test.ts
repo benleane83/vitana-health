@@ -63,6 +63,24 @@ describe("HealthStore — initialisation", () => {
     const store = makeStore();
     expect(store.securityMode).toBe("env-secret");
   });
+
+  it("refreshes existing default measurement metadata from the registry", () => {
+    const initial = makeStore().snapshot({ includeRaw: true });
+    const dataPath = join(tempDir, "health-store-self.enc");
+    writeEncryptedFixture(dataPath, {
+      ...initial,
+      measurementTypes: initial.measurementTypes.map((type) => type.code === "bmi"
+        ? { ...type, normalLow: undefined, normalHigh: undefined, referenceRanges: undefined }
+        : type)
+    });
+
+    const bmi = makeStore().snapshot().measurementTypes.find((type) => type.code === "bmi");
+    expect(bmi).toMatchObject({
+      normalLow: 18.5,
+      normalHigh: 24.9,
+      referenceRanges: [{ low: 18.5, high: 24.9, unit: "kg/m2" }]
+    });
+  });
 });
 
 describe("HealthStore — mergeImport deduplication", () => {

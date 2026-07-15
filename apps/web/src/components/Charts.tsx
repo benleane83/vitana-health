@@ -190,13 +190,60 @@ export function DetailTrendChart({ detail }: { detail: HealthDataDetail }) {
     return <p className="empty">No numeric points are available for charting.</p>;
   }
 
+  const referenceRange = compatibleReferenceRange(visiblePoints);
+  const unitLabel = [...new Set(visiblePoints.map((point) => point.unit).filter(Boolean))].join(", ");
+  const referenceLabel = referenceRange
+    ? `Reference range: ${referenceRange.low ?? "—"}–${referenceRange.high ?? "—"} ${referenceRange.unit}`
+    : undefined;
+
+  const rangeControls = (
+    <div className="summary-detail-chart-toolbar" role="group" aria-label="Trend time range">
+      {trendRanges.map((range) => (
+        <button
+          type="button"
+          key={range.value}
+          className={selectedRange === range.value ? "active" : ""}
+          aria-pressed={selectedRange === range.value}
+          onClick={() => {
+            setSelectedRange(range.value);
+            setActivePoint(undefined);
+          }}
+        >
+          {range.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (visiblePoints.length === 1) {
+    const point = visiblePoints[0];
+    return (
+      <div className="summary-detail-chart">
+        <div className="summary-detail-section-heading summary-detail-chart-heading">
+          <h3>Trend</h3>
+          {rangeControls}
+        </div>
+        <div className="summary-detail-single-reading" role="img" aria-label={`${detail.measurement.displayName} trend: 1 reading`}>
+          <div>
+            <strong>Not enough data for a trend yet</strong>
+            <span>A second reading will reveal change over time.</span>
+          </div>
+          <p>
+            <span>{formatTimestamp(point.timestamp)}</span>
+            <strong>{formatDetailValue(point.value)} {point.unit}</strong>
+          </p>
+        </div>
+        {referenceLabel ? <span className="sr-only">{referenceLabel}</span> : null}
+      </div>
+    );
+  }
+
   const timestamps = visiblePoints.map((p) => new Date(p.timestamp).getTime());
   const values = visiblePoints.map((p) => p.value);
   const xMin = Math.min(...timestamps);
   const xMax = Math.max(...timestamps);
   const rawMin = Math.min(...values);
   const rawMax = Math.max(...values);
-  const referenceRange = compatibleReferenceRange(visiblePoints);
   const referenceValues = [referenceRange?.low, referenceRange?.high].filter((value): value is number => value !== undefined);
   const combinedMin = Math.min(rawMin, ...referenceValues);
   const combinedMax = Math.max(rawMax, ...referenceValues);
@@ -209,7 +256,6 @@ export function DetailTrendChart({ detail }: { detail: HealthDataDetail }) {
   const yMax = combinedMax + yPadding;
   const xRange = xMax - xMin || 1;
   const yRange = yMax - yMin || 1;
-  const unitLabel = [...new Set(visiblePoints.map((p) => p.unit).filter(Boolean))].join(", ");
   const yTicks = chartTicks(yMin, yMax);
   const axisTimes = [xMin, xMin + xRange / 3, xMin + (xRange * 2) / 3, xMax];
   const chartLeft = 64;
@@ -228,21 +274,9 @@ export function DetailTrendChart({ detail }: { detail: HealthDataDetail }) {
 
   return (
     <div className="summary-detail-chart">
-      <div className="summary-detail-chart-toolbar" role="group" aria-label="Trend time range">
-        {trendRanges.map((range) => (
-          <button
-            type="button"
-            key={range.value}
-            className={selectedRange === range.value ? "active" : ""}
-            aria-pressed={selectedRange === range.value}
-            onClick={() => {
-              setSelectedRange(range.value);
-              setActivePoint(undefined);
-            }}
-          >
-            {range.label}
-          </button>
-        ))}
+      <div className="summary-detail-section-heading summary-detail-chart-heading">
+        <h3>Trend</h3>
+        {rangeControls}
       </div>
       <svg
         viewBox="0 0 760 320"
@@ -277,24 +311,34 @@ export function DetailTrendChart({ detail }: { detail: HealthDataDetail }) {
           </g>
         ) : null)}
         <path d={path} fill="none" stroke="currentColor" strokeWidth="2.5" className="summary-detail-chart-line" />
-        {visiblePoints.map((point) => {
+        {visiblePoints.map((point, index) => {
           const x = pointX(point);
           const y = pointY(point.value);
           const pointLabel = `${detailKindLabel(point.kind)} • ${formatTimestamp(point.timestamp)} • ${formatDetailValue(point.value)} ${point.unit}`;
           return (
-            <circle
-              key={`${point.kind}-${point.timestamp}-${point.value}`}
-              cx={x}
-              cy={y}
-              r="5"
-              className="summary-detail-chart-dot"
-              tabIndex={0}
-              aria-label={pointLabel}
-              onMouseEnter={() => setActivePoint(point)}
-              onFocus={() => setActivePoint(point)}
-            >
-              <title>{pointLabel}</title>
-            </circle>
+            <g key={`${point.kind}-${point.timestamp}-${point.value}-${index}`}>
+              <circle cx={x} cy={y} r="5" className="summary-detail-chart-dot" aria-hidden="true" />
+              <circle
+                cx={x}
+                cy={y}
+                r="22"
+                className="summary-detail-chart-hit-target"
+                tabIndex={0}
+                role="button"
+                aria-label={pointLabel}
+                onMouseEnter={() => setActivePoint(point)}
+                onFocus={() => setActivePoint(point)}
+                onClick={() => setActivePoint(point)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setActivePoint(point);
+                  }
+                }}
+              >
+                <title>{pointLabel}</title>
+              </circle>
+            </g>
           );
         })}
         {axisTimes.map((time, index) => (
@@ -310,11 +354,11 @@ export function DetailTrendChart({ detail }: { detail: HealthDataDetail }) {
         ))}
       </svg>
       <div className="summary-detail-chart-meta">
-        <span>{unitLabel || "Value"}{referenceRange ? ` • Reference range: ${referenceRange.low ?? "—"}–${referenceRange.high ?? "—"} ${referenceRange.unit}` : ""}</span>
+        <span className="sr-only">{unitLabel || "Value"}{referenceLabel ? ` • ${referenceLabel}` : ""}</span>
         <span className="summary-detail-chart-tooltip" aria-live="polite">
           {activePoint
             ? `${detailKindLabel(activePoint.kind)} · ${formatTimestamp(activePoint.timestamp)} · ${formatDetailValue(activePoint.value)} ${activePoint.unit}`
-            : "Hover or focus a point for details."}
+            : "Hover, focus, or select a point for details."}
         </span>
       </div>
     </div>

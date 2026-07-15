@@ -633,6 +633,12 @@ describe("App — measurement detail", () => {
     expect(await screen.findByText("Manual observations: Lab")).toBeInTheDocument();
     expect(screen.queryByText(/lab-2026-07-14\.manual-entry/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Manual observation from Lab/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/measurement overview/i)).toHaveTextContent(/latest reading.*5.2.*mmol\/l/i);
+    expect(screen.getByRole("img", { name: /glucose trend: 1 reading/i })).toHaveTextContent(/not enough data for a trend yet/i);
+    expect(screen.getByRole("columnheader", { name: "Value" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Unit" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Kind" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /delete 1 observation record/i })).toBeInTheDocument();
   });
 
   it("edits a single observation from its detail row", async () => {

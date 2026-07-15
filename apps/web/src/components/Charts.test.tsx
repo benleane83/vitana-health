@@ -51,11 +51,27 @@ describe("DetailTrendChart", () => {
     expect(screen.getByText(/ref\. low 3.9/i)).toBeInTheDocument();
     expect(screen.getByText(/ref\. high 5.5/i)).toBeInTheDocument();
 
-    const chartPoints = document.querySelectorAll<SVGCircleElement>(".summary-detail-chart-dot");
+    const chartPoints = document.querySelectorAll<SVGCircleElement>(".summary-detail-chart-hit-target");
     fireEvent.focus(chartPoints[2]!);
     expect(document.querySelector(".summary-detail-chart-tooltip")).toHaveTextContent(/observation .* 5.2 mmol\/l/i);
 
+    fireEvent.click(chartPoints[1]!);
+    expect(document.querySelector(".summary-detail-chart-tooltip")).toHaveTextContent(/observation .* 5.8 mmol\/l/i);
+
     fireEvent.click(screen.getByRole("button", { name: "1M" }));
-    expect(screen.getByRole("img", { name: /1 readings/i })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /1 reading/i })).toBeInTheDocument();
+    expect(screen.getByText(/not enough data for a trend yet/i)).toBeInTheDocument();
+    expect(screen.queryByText(/hover, focus, or select/i)).not.toBeInTheDocument();
+  });
+
+  it("renders duplicate readings as separate selectable points", () => {
+    const duplicateDetail: HealthDataDetail = {
+      ...detail,
+      chartPoints: [detail.chartPoints[2]!, detail.chartPoints[2]!]
+    };
+
+    render(<DetailTrendChart detail={duplicateDetail} />);
+
+    expect(document.querySelectorAll(".summary-detail-chart-hit-target")).toHaveLength(2);
   });
 });
