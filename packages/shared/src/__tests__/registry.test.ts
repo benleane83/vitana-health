@@ -105,6 +105,18 @@ describe("defaultMeasurementTypes", () => {
     expect(defaultMeasurementTypes.find((type) => type.code === "total_cholesterol")?.canonicalUnit).toBe("mmol/L");
   });
 
+  it("includes sourced consensus ranges that are not demographic or assay dependent", () => {
+    expect(defaultMeasurementTypes.find((type) => type.code === "respiratory_rate")?.referenceRanges).toEqual([
+      expect.objectContaining({ low: 12, high: 20, unit: "breaths/min", source: expect.any(String) })
+    ]);
+    expect(defaultMeasurementTypes.find((type) => type.code === "potassium")?.referenceRanges).toEqual([
+      expect.objectContaining({ low: 3.5, high: 5, unit: "mmol/L", source: expect.any(String) })
+    ]);
+    expect(defaultMeasurementTypes.find((type) => type.code === "sodium")?.referenceRanges).toEqual([
+      expect.objectContaining({ low: 135, high: 145, unit: "mmol/L", source: expect.any(String) })
+    ]);
+  });
+
   describe("measurement units", () => {
     const weight = defaultMeasurementTypes.find((type) => type.code === "weight")!;
     const glucose = defaultMeasurementTypes.find((type) => type.code === "glucose")!;
