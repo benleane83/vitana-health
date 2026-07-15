@@ -1,12 +1,15 @@
 import { describe, it, expect } from "vitest";
 import {
+  defaultMeasurementTypes
+} from "../registry.js";
+import {
   classifyValue,
   convertMeasurementValue,
-  defaultMeasurementTypes,
   findMeasurementType,
   getPreferredUnit,
-  getReferenceRange
-} from "../registry.js";
+  getReferenceRange,
+  normalizeMeasurementUnit
+} from "../measurementRegistry.js";
 import type { MeasurementType } from "../types.js";
 
 describe("classifyValue", () => {
@@ -98,6 +101,57 @@ describe("findMeasurementType", () => {
 });
 
 describe("defaultMeasurementTypes", () => {
+  describe("catalog integrity", () => {
+    const normalizeLookup = (value: string) => value.trim().toLowerCase().replaceAll("_", " ");
+
+    it("has unique, non-empty measurement codes", () => {
+      const codes = defaultMeasurementTypes.map((type) => type.code.trim());
+      expect(codes.every(Boolean)).toBe(true);
+      expect(new Set(codes.map(normalizeLookup)).size).toBe(codes.length);
+    });
+
+    it("has non-empty aliases that resolve unambiguously to their owner", () => {
+      const owners = new Map<string, Set<string>>();
+      for (const type of defaultMeasurementTypes) {
+        expect(type.aliases.length, `${type.code} has no aliases`).toBeGreaterThan(0);
+        for (const alias of type.aliases) {
+          expect(alias.trim(), `${type.code} has an empty alias`).not.toBe("");
+          const normalized = normalizeLookup(alias);
+          const aliasOwners = owners.get(normalized) ?? new Set<string>();
+          aliasOwners.add(type.code);
+          owners.set(normalized, aliasOwners);
+          expect(findMeasurementType(alias)?.code, `${type.code} alias "${alias}" does not resolve to its owner`).toBe(type.code);
+        }
+      }
+      expect([...owners.entries()].filter(([, aliasOwners]) => aliasOwners.size > 1)).toEqual([]);
+    });
+
+    it("supports every declared preferred-unit conversion in both directions", () => {
+      for (const type of defaultMeasurementTypes) {
+        for (const preferredUnit of Object.values(type.preferredUnits ?? {})) {
+          expect(preferredUnit?.trim(), `${type.code} has an empty preferred unit`).not.toBe("");
+          if (!preferredUnit || normalizeMeasurementUnit(type, preferredUnit) === normalizeMeasurementUnit(type, type.canonicalUnit)) continue;
+          expect(convertMeasurementValue(1, type, type.canonicalUnit, preferredUnit), `${type.code}: ${type.canonicalUnit} -> ${preferredUnit}`).toEqual(expect.any(Number));
+          expect(convertMeasurementValue(1, type, preferredUnit, type.canonicalUnit), `${type.code}: ${preferredUnit} -> ${type.canonicalUnit}`).toEqual(expect.any(Number));
+        }
+      }
+    });
+
+    it("has finite, ordered reference ranges in supported units", () => {
+      for (const type of defaultMeasurementTypes) {
+        for (const range of type.referenceRanges ?? []) {
+          expect(range.unit.trim(), `${type.code} has an empty reference-range unit`).not.toBe("");
+          if (range.low !== undefined) expect(Number.isFinite(range.low), `${type.code} has an invalid low bound`).toBe(true);
+          if (range.high !== undefined) expect(Number.isFinite(range.high), `${type.code} has an invalid high bound`).toBe(true);
+          if (range.low !== undefined && range.high !== undefined) expect(range.low, `${type.code} has an inverted reference range`).toBeLessThanOrEqual(range.high);
+          const sameUnit = normalizeMeasurementUnit(type, range.unit) === normalizeMeasurementUnit(type, type.canonicalUnit);
+          const supportsUnit = sameUnit || convertMeasurementValue(1, type, type.canonicalUnit, range.unit) !== undefined;
+          expect(supportsUnit, `${type.code} reference range uses unsupported unit ${range.unit}`).toBe(true);
+        }
+      }
+    });
+  });
+
   it("uses EU/UK canonical units for common blood biomarkers", () => {
     expect(defaultMeasurementTypes.find((type) => type.code === "glucose")?.canonicalUnit).toBe("mmol/L");
     expect(defaultMeasurementTypes.find((type) => type.code === "hba1c")?.canonicalUnit).toBe("mmol/mol");

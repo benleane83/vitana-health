@@ -201,7 +201,7 @@ These paths increase authorization, documentation, testing, and maintenance surf
 
 The supported `/api/query/ai` path already has deterministic fallback behavior, so the store-backed query prototype is especially redundant (`apps/api/src/routes/queryRoutes.ts:56-110,112-229`).
 
-### P2 — Separate parser families and registry behavior from catalog data
+### [DONE] P2 — Separate parser families and registry behavior from catalog data
 
 `packages/shared/src/parsers.ts` contains CSV parsing, manual imports, body-composition extraction, blood-test extraction, date parsing, unit normalization, and identifier creation. These are cohesive at package level but not at file level. Split by input family while retaining common primitives for dates, CSV, units, and stable IDs.
 
@@ -254,7 +254,7 @@ Keep past reviews immutable as historical records. Treat this report and product
 7. **Replace remaining non-export snapshots** with purpose-built repository projections.
 8. [DONE] **Create shared API schemas and structured errors** for future web/mobile feature reuse.
 9. [DONE] **Make Health Connect metadata descriptor-driven** and run Android TypeScript tests in the root test command.
-10. **Split parser families and catalog behavior**, then address smaller persistence/configuration debt.
+10. [DONE] **Split parser families and catalog behavior**, then address smaller persistence/configuration debt.
 
 ## Explicit non-recommendations
 
