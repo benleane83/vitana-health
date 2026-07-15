@@ -6,12 +6,52 @@
  * - <title> elements on SVG data points
  * - A visually-hidden <details> fallback for screen readers
  */
+import { useMemo, useState } from "react";
 import type { AiQueryChartSeries } from "../api.js";
-import type { HealthDataDetail, HealthDataDetailEntry } from "@local-fitness-advisor/shared";
-import { formatChartTimestamp, formatDetailValue } from "../utils.js";
+import type { HealthDataDetail, HealthDataDetailChartPoint, HealthDataDetailEntry, ReferenceRange } from "@local-fitness-advisor/shared";
+import { formatChartTimestamp, formatDetailValue, formatTimestamp } from "../utils.js";
 
 const flatChartPaddingRatio = 0.05;
 const minimumFlatChartPadding = 1;
+const dayMs = 24 * 60 * 60 * 1000;
+
+type TrendRange = "all" | "1y" | "3m" | "1m";
+
+const trendRanges: Array<{ value: TrendRange; label: string; duration?: number }> = [
+  { value: "all", label: "All" },
+  { value: "1y", label: "1Y", duration: 365 * dayMs },
+  { value: "3m", label: "3M", duration: 90 * dayMs },
+  { value: "1m", label: "1M", duration: 30 * dayMs }
+];
+
+function niceStep(range: number): number {
+  const magnitude = 10 ** Math.floor(Math.log10(range || 1));
+  const normalized = range / magnitude;
+  const factor = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+  return factor * magnitude;
+}
+
+function chartTicks(minimum: number, maximum: number, count = 5): number[] {
+  const step = niceStep((maximum - minimum) / Math.max(1, count - 1));
+  const first = Math.floor(minimum / step) * step;
+  const last = Math.ceil(maximum / step) * step;
+  const ticks: number[] = [];
+  for (let tick = first; tick <= last + step / 1000; tick += step) {
+    if (tick >= minimum && tick <= maximum) {
+      ticks.push(Number(tick.toPrecision(12)));
+    }
+  }
+  return ticks;
+}
+
+function compatibleReferenceRange(points: HealthDataDetailChartPoint[]): ReferenceRange | undefined {
+  const unit = points[0]?.unit;
+  return points.find((point) =>
+    point.referenceRange &&
+    point.referenceRange.unit === unit &&
+    (point.referenceRange.low !== undefined || point.referenceRange.high !== undefined)
+  )?.referenceRange;
+}
 
 function detailKindLabel(kind: HealthDataDetailEntry["kind"]): string {
   return { observation: "Observation", sample: "Sample", activity: "Activity" }[kind];
@@ -137,76 +177,145 @@ export function QueryChart({ chart }: { chart: { type: string; series: AiQueryCh
 
 export function DetailTrendChart({ detail }: { detail: HealthDataDetail }) {
   const points = detail.chartPoints;
+  const [selectedRange, setSelectedRange] = useState<TrendRange>("all");
+  const [activePoint, setActivePoint] = useState<HealthDataDetailChartPoint | undefined>();
+  const visiblePoints = useMemo(() => {
+    if (points.length === 0) return [];
+    const latestTimestamp = Math.max(...points.map((point) => new Date(point.timestamp).getTime()));
+    const duration = trendRanges.find((range) => range.value === selectedRange)?.duration;
+    return duration ? points.filter((point) => new Date(point.timestamp).getTime() >= latestTimestamp - duration) : points;
+  }, [points, selectedRange]);
+
   if (points.length === 0) {
     return <p className="empty">No numeric points are available for charting.</p>;
   }
 
-  const timestamps = points.map((p) => new Date(p.timestamp).getTime());
-  const values = points.map((p) => p.value);
+  const timestamps = visiblePoints.map((p) => new Date(p.timestamp).getTime());
+  const values = visiblePoints.map((p) => p.value);
   const xMin = Math.min(...timestamps);
   const xMax = Math.max(...timestamps);
   const rawMin = Math.min(...values);
   const rawMax = Math.max(...values);
+  const referenceRange = compatibleReferenceRange(visiblePoints);
+  const referenceValues = [referenceRange?.low, referenceRange?.high].filter((value): value is number => value !== undefined);
+  const combinedMin = Math.min(rawMin, ...referenceValues);
+  const combinedMax = Math.max(rawMax, ...referenceValues);
   const flatPadding =
-    rawMin === rawMax
-      ? Math.max(Math.abs(rawMin) * flatChartPaddingRatio, minimumFlatChartPadding)
+    combinedMin === combinedMax
+      ? Math.max(Math.abs(combinedMin) * flatChartPaddingRatio, minimumFlatChartPadding)
       : 0;
-  const yMin = rawMin - flatPadding;
-  const yMax = rawMax + flatPadding;
+  const yPadding = flatPadding || (combinedMax - combinedMin) * flatChartPaddingRatio;
+  const yMin = combinedMin - yPadding;
+  const yMax = combinedMax + yPadding;
   const xRange = xMax - xMin || 1;
   const yRange = yMax - yMin || 1;
-  const unitLabel = [...new Set(points.map((p) => p.unit).filter(Boolean))].join(", ");
-  const axisTimes = [xMin, xMin + xRange / 2, xMax];
+  const unitLabel = [...new Set(visiblePoints.map((p) => p.unit).filter(Boolean))].join(", ");
+  const yTicks = chartTicks(yMin, yMax);
+  const axisTimes = [xMin, xMin + xRange / 3, xMin + (xRange * 2) / 3, xMax];
+  const chartLeft = 64;
+  const chartRight = 736;
+  const chartTop = 24;
+  const chartBottom = 266;
+  const pointX = (point: HealthDataDetailChartPoint) =>
+    chartLeft + ((new Date(point.timestamp).getTime() - xMin) / xRange) * (chartRight - chartLeft);
+  const pointY = (value: number) => chartBottom - ((value - yMin) / yRange) * (chartBottom - chartTop);
 
-  const path = points
-    .map((point, index) => {
-      const time = new Date(point.timestamp).getTime();
-      const x = 24 + ((time - xMin) / xRange) * 272;
-      const y = 108 - ((point.value - yMin) / yRange) * 84;
-      return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
-    })
+  const path = visiblePoints
+    .map((point, index) => `${index === 0 ? "M" : "L"} ${pointX(point).toFixed(2)} ${pointY(point.value).toFixed(2)}`)
     .join(" ");
 
-  const ariaLabel = `${detail.measurement.displayName} trend: ${points.length} readings, ${unitLabel || "value"} ${rawMin.toFixed(1)}–${rawMax.toFixed(1)}, from ${formatChartTimestamp(xMin, xRange)} to ${formatChartTimestamp(xMax, xRange)}`;
+  const ariaLabel = `${detail.measurement.displayName} trend: ${visiblePoints.length} readings, ${unitLabel || "value"} ${rawMin.toFixed(1)}–${rawMax.toFixed(1)}, from ${formatChartTimestamp(xMin, xRange)} to ${formatChartTimestamp(xMax, xRange)}`;
 
   return (
     <div className="summary-detail-chart">
+      <div className="summary-detail-chart-toolbar" role="group" aria-label="Trend time range">
+        {trendRanges.map((range) => (
+          <button
+            type="button"
+            key={range.value}
+            className={selectedRange === range.value ? "active" : ""}
+            aria-pressed={selectedRange === range.value}
+            onClick={() => {
+              setSelectedRange(range.value);
+              setActivePoint(undefined);
+            }}
+          >
+            {range.label}
+          </button>
+        ))}
+      </div>
       <svg
-        viewBox="0 0 320 150"
+        viewBox="0 0 760 320"
         role="img"
         aria-label={ariaLabel}
         className="summary-detail-chart-svg"
       >
         <title>{ariaLabel}</title>
-        <line x1="24" y1="24" x2="24" y2="108" className="summary-detail-axis" />
-        <line x1="24" y1="108" x2="296" y2="108" className="summary-detail-axis" />
+        {referenceRange?.low !== undefined && referenceRange?.high !== undefined ? (
+          <rect
+            x={chartLeft}
+            y={pointY(referenceRange.high)}
+            width={chartRight - chartLeft}
+            height={pointY(referenceRange.low) - pointY(referenceRange.high)}
+            className="summary-detail-reference-band"
+          />
+        ) : null}
+        {yTicks.map((tick) => (
+          <g key={tick}>
+            <line x1={chartLeft} y1={pointY(tick)} x2={chartRight} y2={pointY(tick)} className="summary-detail-gridline" />
+            <text x={chartLeft - 10} y={pointY(tick) + 4} textAnchor="end" className="summary-detail-y-label">{formatDetailValue(tick)}</text>
+          </g>
+        ))}
+        <line x1={chartLeft} y1={chartTop} x2={chartLeft} y2={chartBottom} className="summary-detail-axis" />
+        <line x1={chartLeft} y1={chartBottom} x2={chartRight} y2={chartBottom} className="summary-detail-axis" />
+        {[referenceRange?.low, referenceRange?.high].map((value, index) => value !== undefined ? (
+          <g key={value}>
+            <line x1={chartLeft} y1={pointY(value)} x2={chartRight} y2={pointY(value)} className="summary-detail-reference-line" />
+            <text x={chartRight - 4} y={pointY(value) - 5} textAnchor="end" className="summary-detail-reference-label">
+              {index === 0 ? "Ref. low" : "Ref. high"} {formatDetailValue(value)}
+            </text>
+          </g>
+        ) : null)}
         <path d={path} fill="none" stroke="currentColor" strokeWidth="2.5" className="summary-detail-chart-line" />
-        {points.map((point) => {
-          const time = new Date(point.timestamp).getTime();
-          const x = 24 + ((time - xMin) / xRange) * 272;
-          const y = 108 - ((point.value - yMin) / yRange) * 84;
+        {visiblePoints.map((point) => {
+          const x = pointX(point);
+          const y = pointY(point.value);
+          const pointLabel = `${detailKindLabel(point.kind)} • ${formatTimestamp(point.timestamp)} • ${formatDetailValue(point.value)} ${point.unit}`;
           return (
             <circle
               key={`${point.kind}-${point.timestamp}-${point.value}`}
               cx={x}
               cy={y}
-              r="3.5"
+              r="5"
               className="summary-detail-chart-dot"
+              tabIndex={0}
+              aria-label={pointLabel}
+              onMouseEnter={() => setActivePoint(point)}
+              onFocus={() => setActivePoint(point)}
             >
-              <title>{`${detailKindLabel(point.kind)} • ${point.timestamp} • ${formatDetailValue(point.value)} ${point.unit}`}</title>
+              <title>{pointLabel}</title>
             </circle>
           );
         })}
-        <text x="12" y="28" className="summary-detail-y-label">{formatDetailValue(yMax)}</text>
-        <text x="12" y="112" className="summary-detail-y-label">{formatDetailValue(yMin)}</text>
+        {axisTimes.map((time, index) => (
+          <text
+            key={`${time}-${index}`}
+            x={chartLeft + ((time - xMin) / xRange) * (chartRight - chartLeft)}
+            y={chartBottom + 24}
+            textAnchor={index === 0 ? "start" : index === axisTimes.length - 1 ? "end" : "middle"}
+            className="summary-detail-x-label"
+          >
+            {formatChartTimestamp(time, xRange)}
+          </text>
+        ))}
       </svg>
       <div className="summary-detail-chart-meta">
-        <span>{unitLabel || "Value"}</span>
-        <div className="summary-detail-chart-labels" aria-hidden="true">
-          {axisTimes.map((time, index) => (
-            <span key={`${time}-${index}`}>{formatChartTimestamp(time, xRange)}</span>
-          ))}
-        </div>
+        <span>{unitLabel || "Value"}{referenceRange ? ` • Reference range: ${referenceRange.low ?? "—"}–${referenceRange.high ?? "—"} ${referenceRange.unit}` : ""}</span>
+        <span className="summary-detail-chart-tooltip" aria-live="polite">
+          {activePoint
+            ? `${detailKindLabel(activePoint.kind)} · ${formatTimestamp(activePoint.timestamp)} · ${formatDetailValue(activePoint.value)} ${activePoint.unit}`
+            : "Hover or focus a point for details."}
+        </span>
       </div>
     </div>
   );

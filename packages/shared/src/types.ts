@@ -366,6 +366,7 @@ export interface HealthDataDetailChartPoint {
   timestamp: string;
   value: number;
   unit: string;
+  referenceRange?: ReferenceRange;
 }
 
 export interface HealthDataDetail {

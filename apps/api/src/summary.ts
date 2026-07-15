@@ -277,7 +277,8 @@ export function chartPointsForEntries(entries: HealthDataDetailEntry[]): HealthD
       kind: entry.kind,
       timestamp: entry.timestamp,
       value: entry.value,
-      unit: entry.unit
+      unit: entry.unit,
+      referenceRange: entry.referenceRange
     }));
 }
 
