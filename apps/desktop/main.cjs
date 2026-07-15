@@ -1,4 +1,4 @@
-const { app, BrowserWindow, safeStorage, session } = require("electron");
+const { app, BrowserWindow, dialog, safeStorage, session } = require("electron");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { loadOrCreateSecureStoreKey } = require("./secure-store-key.cjs");
@@ -62,6 +62,10 @@ async function launch() {
 
 app.whenReady().then(launch).catch((error) => {
   console.error(error);
+  dialog.showErrorBox(
+    "Local Fitness Advisor could not start",
+    error instanceof Error ? error.message : String(error)
+  );
   app.quit();
 });
 

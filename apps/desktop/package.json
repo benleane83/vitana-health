@@ -31,7 +31,13 @@
     "files": [
       "main.cjs",
       "secure-store-key.cjs",
-      "package.json"
+      "package.json",
+      "!**/node_modules/duckdb/src{,/**}",
+      "!**/node_modules/duckdb/test{,/**}",
+      "!**/node_modules/duckdb/examples{,/**}",
+      "!**/node_modules/duckdb/scripts{,/**}",
+      "!**/node_modules/duckdb/.github{,/**}",
+      "!**/node_modules/duckdb/{binding.gyp,binding.gyp.in,Makefile,tsconfig.json,vendor.py,.mocharc.json}"
     ],
     "extraResources": [
       {

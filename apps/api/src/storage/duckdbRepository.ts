@@ -1269,6 +1269,8 @@ function normalizeGroupLabel(label: string): string {
 
 function measurementTypeProperties(entry: MeasurementType): Record<string, unknown> {
   return compact({
+    preferredUnits: entry.preferredUnits,
+    unitAliases: entry.unitAliases,
     fhirCode: entry.fhirCode,
     loincCode: entry.loincCode,
     openMHealthSchema: entry.openMHealthSchema,

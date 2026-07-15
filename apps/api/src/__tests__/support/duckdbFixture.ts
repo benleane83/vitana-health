@@ -51,6 +51,8 @@ export function createDuckDbHealthStoreFixture(): HealthStoreData {
       category: "body",
       kind: "point",
       canonicalUnit: "kg",
+      preferredUnits: { metric: "kg", imperial: "lb" },
+      unitAliases: { kg: ["kilogram", "kilograms"], lb: ["pound", "pounds"] },
       aliases: ["body weight"],
       fhirCode: "29463-7",
       loincCode: "29463-7",
