@@ -4,7 +4,7 @@ import type {
   HealthStoreData,
   UpdateObservationResponse
 } from "@local-fitness-advisor/shared";
-import type { ProfileStoreManager } from "../store.js";
+import type { ProfileStoreManager } from "./profileStoreManager.js";
 import type { ImportMutationResult } from "./profileRepository.js";
 import type { QueryDSL } from "../aiQueryPlanner.js";
 import {
@@ -12,13 +12,23 @@ import {
   type CompileOutcome,
   type SqlValidationResult
 } from "../queryCompiler.js";
-import type { WarehouseBuildResult } from "../warehouse.js";
 
-export async function refreshAnalyticsStorage(
+export interface AnalyticsStorageDescription {
+  databasePath: string;
+  engine: "duckdb";
+  counts: {
+    imports: number;
+    observations: number;
+    samples: number;
+    activities: number;
+  };
+}
+
+export function describeAnalyticsStorage(
   storeManager: ProfileStoreManager,
   source: HealthStoreData | ImportMutationResult | UpdateObservationResponse | DeleteObservationResponse | DeleteObservationsByTypeResponse,
   profileId = storeManager.getActiveProfileId()
-): Promise<WarehouseBuildResult> {
+): AnalyticsStorageDescription {
   const counts = "sourceImports" in source
     ? {
         imports: source.sourceImports.length,

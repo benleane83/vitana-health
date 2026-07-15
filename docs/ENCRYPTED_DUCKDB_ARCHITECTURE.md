@@ -2,33 +2,28 @@
 
 ## Decision
 
-Local Fitness Advisor uses one encrypted DuckDB database per profile as the primary Windows x64 data architecture. The same database is the canonical health store and analytics engine. It replaces whole-store encrypted JSON rewrites and the derived plaintext analytics warehouse during normal operation.
+Local Fitness Advisor uses one encrypted DuckDB database per profile as the Windows x64 data architecture. The same database is the canonical health store and analytics engine.
 
-DuckDB is the only runtime backend. Existing encrypted JSON profiles are accepted only as a one-time migration source when no DuckDB manifest exists. There is no JSON runtime or rollback mode.
+DuckDB is the only runtime backend. Existing encrypted JSON profiles are not loaded or migrated by the application. JSON is available only as an explicit export format for future backup and restore work.
 
 ## Storage layout
 
 Each profile has:
 
 - `duckdb-storage/databases/health-store-<profile-id>.duckdb`: canonical AES-256-GCM DuckDB database.
-- One entry in `storage-backend.json`, containing the profile ID and database filename. Existing entries may retain historical source hashes and baseline digests, but runtime reopen does not depend on those files.
+- One entry in `storage-backend.json`, containing the profile ID and database filename.
 
 `profiles.json` and `active-profile.json` remain small routing metadata files. Profile databases contain normalized imports, sources, devices, measurement types, observations, groups, time-series samples, activities, insights, and audit events. Daily and weekly analytics views are compiled into the encrypted schema.
 
-Successful DuckDB migration removes legacy `health-warehouse*.duckdb` and WAL artifacts.
+## Initialization and reopen
 
-## Activation and reopen
-
-Initial activation is side by side:
+Initial startup:
 
 1. Verify Windows x64 and the pinned core-signed DuckDB 1.4.4 `httpfs` extension.
-2. Read each encrypted JSON source without modifying it.
-3. Hydrate a temporary encrypted DuckDB database.
-4. Compare the complete canonical digest after round trip.
-5. Recheck the source-file SHA-256.
-6. Atomically promote the database and write `storage-backend.json`.
+2. Create an empty encrypted `self` profile directly in DuckDB.
+3. Write `storage-backend.json`, `profiles.json`, and `active-profile.json`.
 
-Startup fails closed if the extension, key, manifest, schema, or profile identity is invalid. Reopen reads canonical encrypted databases directly and does not require retained JSON sources.
+Startup fails closed if the extension, key, manifest, schema, profile identity, or manifest-listed database is invalid. Reopen reads canonical encrypted databases directly and never consults legacy JSON files.
 
 Profile creation builds an empty in-memory seed, hydrates the encrypted database atomically, and then publishes registry and manifest metadata. It does not create an encrypted JSON store. Profile deletion removes the profile from registry and manifest, closes the database, and removes its database files. Restart reconciliation uses the manifest and successfully opened databases as the committed profile set.
 

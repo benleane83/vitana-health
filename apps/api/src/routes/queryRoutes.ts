@@ -1,7 +1,7 @@
 import express from "express";
 import { z } from "zod";
 import { safetyNotice } from "@local-fitness-advisor/shared";
-import type { ProfileStoreManager } from "../store.js";
+import type { ProfileStoreManager } from "../storage/profileStoreManager.js";
 import {
   compileAnalyticsQuery,
   runAnalyticsQuery,
@@ -53,7 +53,7 @@ export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Rout
     return false;
   }
 
-  // Store-backed ask retained as an experimental warehouse-unavailable fallback.
+  // Store-backed ask retained as an experimental planner fallback.
   router.post("/ask-store", async (request, response, next) => {
     try {
       response.setHeader("x-lfa-lifecycle", "experimental");
@@ -174,9 +174,9 @@ export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Rout
         response.json({
           question: parsed.question,
           answer:
-            "No data found for this query in your local warehouse. Import more data or adjust the time range.",
+            "No data found for this query in your local profile. Import more data or adjust the time range.",
           limitations: [
-            "No rows returned. The warehouse may not contain data for the requested metric and time range.",
+            "No rows returned. The profile may not contain data for the requested metric and time range.",
             ...plannerOutcome.limitations
           ],
           assumptions: plannerOutcome.assumptions,

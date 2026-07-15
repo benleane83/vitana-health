@@ -6,7 +6,7 @@ import type {
   UpdateObservationInput,
   UpdateObservationResponse
 } from "@local-fitness-advisor/shared";
-import type { StoreSecurityMode } from "../store.js";
+import type { StoreSecurityMode } from "./profileStoreManager.js";
 import {
   DuckDbRepository
 } from "./duckdbRepository.js";

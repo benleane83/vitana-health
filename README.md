@@ -197,13 +197,13 @@ Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:4317/api/import/health-con
 
 Encrypted DuckDB is both the canonical profile store and analytics engine on Windows x64. Queries read the active encrypted profile directly through normalized tables and daily/weekly views.
 
-In explicit JSON fallback mode, build a query-friendly derived warehouse after importing data:
+Inspect the active analytics storage metadata and row counts with:
 
 ```powershell
-Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:4317/api/warehouse/rebuild" -ContentType "application/json" -Body "{}"
+Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:4317/api/analytics/storage"
 ```
 
-This creates `data\health-warehouse.duckdb` with normalized tables and daily/weekly metric views. In encrypted DuckDB mode, the same route reports `encrypted-profile:<profile-id>` and never creates the shared plaintext warehouse. Successful activation removes legacy `health-warehouse*.duckdb` artifacts.
+The application does not create a separate plaintext analytics warehouse. JSON remains available as an explicit data export format, but it is not a runtime storage backend or profile migration source.
 
 ## AI-Powered Natural Language Query (`/api/query/ai`)
 

@@ -53,7 +53,7 @@ These failures describe the review environment, not confirmed repository defects
 
 ## Priority findings
 
-### P0 — Replace companion authorization denylisting with explicit capabilities
+### [DONE] P0 — Replace companion authorization denylisting with explicit capabilities
 
 The central API middleware allows any valid companion token to access every authenticated route except a short owner-only list (`apps/api/src/createApp.ts:46-55,239-258`). The feature routers are then mounted without distinguishing credential type (`apps/api/src/createApp.ts:260-275`).
 
@@ -67,7 +67,7 @@ This is also unnecessary complexity: each new route must be remembered in a secu
 
 Bind the token to its device and permitted profile set. Add negative tests for every owner-only route family. This produces a smaller and safer authorization model than continuing to expand `isOwnerOnlyPath`.
 
-### P1 — Complete the storage migration and remove superseded runtime paths
+### [DONE] P1 — Complete the storage migration and remove superseded runtime paths
 
 The current storage design contains three overlapping eras:
 

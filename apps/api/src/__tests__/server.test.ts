@@ -1,18 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import request from "supertest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { ProfileStoreManager } from "../store.js";
+import { join, resolve } from "node:path";
+import { ProfileStoreManager } from "../storage/profileStoreManager.js";
 import { PairingStore } from "../pairing.js";
 import { createApp } from "../createApp.js";
 import { buildManualLabEntryImport } from "@local-fitness-advisor/shared";
-
-// Mock the DuckDB warehouse so tests don't need the native binary.
-vi.mock("../warehouse.js", () => ({
-  rebuildWarehouseFromStore: vi.fn().mockResolvedValue({ tables: [], rowCounts: {} }),
-  runWarehouseQuery: vi.fn().mockResolvedValue([])
-}));
 
 let tempDir: string;
 let storeManager: ProfileStoreManager;
@@ -22,20 +16,33 @@ let app: any;
 const ownerToken = "test-owner-token-for-server-tests";
 const ownerAuthorization = "Bearer " + ownerToken;
 
-beforeEach(() => {
+const httpfsExtensionPath = [
+  process.env.LFA_DUCKDB_HTTPFS_EXTENSION,
+  resolve(process.cwd(), "apps", "desktop", "build", "duckdb-extensions", "httpfs.duckdb_extension"),
+  resolve(process.cwd(), "..", "desktop", "build", "duckdb-extensions", "httpfs.duckdb_extension")
+].find((candidate): candidate is string => Boolean(candidate && existsSync(candidate)));
+
+beforeEach(async () => {
   tempDir = mkdtempSync(join(tmpdir(), "lfa-server-test-"));
   process.env.LFA_DATA_DIR = tempDir;
   process.env.LFA_SECRET = "test-secret-for-server-tests-1234";
   process.env.LFA_OWNER_TOKEN = ownerToken;
 
-  storeManager = new ProfileStoreManager();
+  if (!httpfsExtensionPath) {
+    throw new Error("Prepared DuckDB httpfs extension is required for API tests.");
+  }
+  storeManager = await ProfileStoreManager.open({
+    storageBackend: "duckdb",
+    duckdb: { httpfsExtensionPath, root: join(tempDir, "duckdb-storage") }
+  });
   pairingStore = new PairingStore();
   app = createApp(storeManager, pairingStore, {
     assertSafeCloudModelEndpoint: async () => "openai"
   });
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await storeManager?.closeAll();
   delete process.env.LFA_DATA_DIR;
   delete process.env.LFA_SECRET;
   delete process.env.LFA_OWNER_TOKEN;
@@ -89,17 +96,28 @@ describe("query endpoint lifecycle", () => {
   });
 
   it("advertises supported and experimental endpoint lifecycles", async () => {
-    const [aiResponse, storeFallbackResponse, diagnosticResponse, rebuildResponse] = await Promise.all([
+    const [aiResponse, storeFallbackResponse, diagnosticResponse] = await Promise.all([
       request(app).post("/api/query/ai").set("authorization", ownerAuthorization).send({ question: "x" }),
       request(app).post("/api/query/ask-store").set("authorization", ownerAuthorization).send({ question: "x" }),
-      request(app).post("/api/llm/simple").set("authorization", ownerAuthorization).send({ prompt: "" }),
-      request(app).post("/api/warehouse/rebuild").set("authorization", ownerAuthorization).send({})
+      request(app).post("/api/llm/simple").set("authorization", ownerAuthorization).send({ prompt: "" })
     ]);
 
     expect(aiResponse.headers["x-lfa-lifecycle"]).toBe("supported");
     expect(storeFallbackResponse.headers["x-lfa-lifecycle"]).toBe("experimental");
     expect(diagnosticResponse.headers["x-lfa-lifecycle"]).toBe("experimental");
-    expect(rebuildResponse.headers["x-lfa-lifecycle"]).toBe("experimental");
+  });
+
+  it("reports active DuckDB analytics storage without rebuilding data", async () => {
+    const response = await request(app)
+      .get("/api/analytics/storage")
+      .set("authorization", ownerAuthorization);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      databasePath: "encrypted-profile:self",
+      engine: "duckdb",
+      counts: { imports: 0, observations: 0, samples: 0, activities: 0 }
+    });
   });
 });
 

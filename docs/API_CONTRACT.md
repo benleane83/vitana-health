@@ -213,13 +213,13 @@ DELETE /api/observations/by-type/:measurementCode
 ```
 **Success `200`:** `{ "deleted": <count> }`
 
-### Rebuild analytics warehouse
+### Inspect analytics storage
 ```
-POST /api/warehouse/rebuild
+GET /api/analytics/storage
 ```
-**Success `200`:** `{ "ok": true, "tookMs": <number> }`
+**Success `200`:** `{ "databasePath": "encrypted-profile:<profile-id>", "engine": "duckdb", "counts": { ... } }`
 
-**Lifecycle:** Experimental operator maintenance endpoint. Normal imports and observation deletions rebuild the warehouse automatically; this route is intended for recovery and development.
+Returns metadata and row counts for the active encrypted profile. It does not rebuild or create a separate analytics database.
 
 ### Generate AI health insights
 ```

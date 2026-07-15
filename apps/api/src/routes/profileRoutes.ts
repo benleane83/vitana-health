@@ -1,6 +1,6 @@
 import express from "express";
 import { z } from "zod";
-import type { ProfileStoreManager } from "../store.js";
+import type { ProfileStoreManager } from "../storage/profileStoreManager.js";
 import type { Profile } from "@local-fitness-advisor/shared";
 import type { PairingStore } from "../pairing.js";
 import type { AuthorizationPrincipal } from "../createApp.js";

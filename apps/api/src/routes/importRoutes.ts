@@ -10,9 +10,9 @@ import {
   parseObservationCsv,
   type BodyCompositionDraftRow
 } from "@local-fitness-advisor/shared";
-import type { ProfileStoreManager } from "../store.js";
+import type { ProfileStoreManager } from "../storage/profileStoreManager.js";
 import { healthConnectImportRequestSchema, parseHealthConnectImport } from "../healthConnectImport.js";
-import { refreshAnalyticsStorage } from "../storage/analyticsBackend.js";
+import { describeAnalyticsStorage } from "../storage/analyticsBackend.js";
 import { extractBodyCompositionText } from "../bodyCompositionExtract.js";
 import { parseBodyCompositionText } from "@local-fitness-advisor/shared";
 import type { AuthorizationPrincipal } from "../createApp.js";
@@ -181,8 +181,8 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
       const imported = buildBloodTestImportFromDraft({ ...parsed, rows: parsed.rows as BodyCompositionDraftRow[] });
       const store = activeStore();
       const merged = await store.mergeImport(imported);
-      const warehouse = await refreshAnalyticsStorage(storeManager, merged);
-      response.status(201).json({ ...compactImportResponse(imported), warehouse });
+      const analyticsStorage = describeAnalyticsStorage(storeManager, merged);
+      response.status(201).json({ ...compactImportResponse(imported), analyticsStorage });
     } catch (error) {
       next(error);
     }
@@ -220,10 +220,10 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
       });
       const store = activeStore();
       const merged = await store.mergeImport(imported);
-      const warehouse = await refreshAnalyticsStorage(storeManager, merged);
+      const analyticsStorage = describeAnalyticsStorage(storeManager, merged);
       response.status(201).json({
         ...compactImportResponse(imported),
-        warehouse
+        analyticsStorage
       });
     } catch (error) {
       next(error);
@@ -242,10 +242,10 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
       const targetStore = storeManager.getStore(targetProfileId);
       const imported = parseHealthConnectImport(parsed);
       const merged = await targetStore.mergeImport(imported);
-      const warehouse = await refreshAnalyticsStorage(storeManager, merged, targetProfileId);
+      const analyticsStorage = describeAnalyticsStorage(storeManager, merged, targetProfileId);
       response.status(201).json({
         ...compactImportResponse(imported),
-        warehouse
+        analyticsStorage
       });
     } catch (error) {
       next(error);

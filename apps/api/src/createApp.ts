@@ -17,7 +17,7 @@ import { timingSafeEqual } from "node:crypto";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { PairingStore } from "./pairing.js";
-import { ProfileStoreManager } from "./store.js";
+import { ProfileStoreManager } from "./storage/profileStoreManager.js";
 import { isLoopbackAddress } from "./netutil.js";
 import { log, generateCorrelationId } from "./logger.js";
 import { makePairingRoutes } from "./routes/pairingRoutes.js";
