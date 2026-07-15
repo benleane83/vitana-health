@@ -26,6 +26,7 @@ import {
   type UpdateObservationInput,
   type UpdateObservationResponse
 } from "@local-fitness-advisor/shared";
+import { mergeDefaultMeasurementType } from "../measurementRegistry.js";
 import {
   type MeasurementDetailPage,
   summarizeMeasurementEntries,
@@ -133,11 +134,22 @@ export class DuckDbRepository implements ProfileRepository {
     const referencedCodes = new Set(referencedRows.map((row) => String(row.measurement_code)));
     const referencedDefaultTypes = defaultMeasurementTypes.filter((type) => referencedCodes.has(type.code));
     const missingTypes = referencedDefaultTypes.filter((type) => !existingByCode.has(type.code));
+    const refreshedTypes = defaultMeasurementTypes.flatMap((entry) => {
+      const existingRow = existingByCode.get(entry.code);
+      if (!existingRow) return [];
+      const existing = measurementTypeFromRow(existingRow);
+      const merged = mergeDefaultMeasurementType(existing, entry);
+      return merged === existing ? [] : [merged];
+    });
     const retiredTypes = defaultMeasurementTypes.filter((type) => {
       const existing = existingByCode.get(type.code);
       return String(existing?.category) === "metabolic";
     });
-    if (missingTypes.length === 0 && retiredTypes.length === 0) {
+    const updatedTypes = new Map(refreshedTypes.map((type) => [type.code, type]));
+    for (const type of retiredTypes) {
+      updatedTypes.set(type.code, type);
+    }
+    if (missingTypes.length === 0 && updatedTypes.size === 0) {
       return;
     }
     await this.transaction(async () => {
@@ -159,7 +171,7 @@ export class DuckDbRepository implements ProfileRepository {
         );
         ordinal += 1;
       }
-      for (const entry of retiredTypes) {
+      for (const entry of updatedTypes.values()) {
         await run(
           this.connection,
           `UPDATE measurement_types

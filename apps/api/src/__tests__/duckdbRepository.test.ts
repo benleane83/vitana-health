@@ -77,9 +77,16 @@ describe("DuckDbRepository fidelity", () => {
       value: 5.2,
       unit: "mmol/L"
     };
+    const bmiObservation = {
+      ...fixture.observations[0],
+      id: "legacy-bmi",
+      measurementCode: "bmi",
+      value: 21.1,
+      unit: "kg/m2"
+    };
     const fixtureWithGlucose = {
       ...fixture,
-      observations: [...fixture.observations, glucoseObservation]
+      observations: [...fixture.observations, glucoseObservation, bmiObservation]
     };
 
     const hydrated = await DuckDbRepository.hydrate(root, databasePath, key, fixtureWithGlucose, { httpfsExtensionPath });
@@ -90,6 +97,9 @@ describe("DuckDbRepository fidelity", () => {
       SET category = 'metabolic', canonical_unit = 'mg/dL',
           custom_properties = '{"fhirCode":"2345-7","loincCode":"2345-7","normalLow":70,"normalHigh":99}'
       WHERE code = 'glucose';
+      UPDATE measurement_types
+      SET custom_properties = '{}'
+      WHERE code = 'bmi';
       CHECKPOINT;
     `);
     await closeEncryptedDuckDbDatabase(legacyHandle);
@@ -103,6 +113,14 @@ describe("DuckDbRepository fidelity", () => {
           canonicalUnit: "mmol/L",
           normalLow: 3.9,
           normalHigh: 5.5
+        })
+      ]));
+      expect((await repository.appBootstrap()).measurementTypes).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          code: "bmi",
+          normalLow: 18.5,
+          normalHigh: 24.9,
+          referenceRanges: [{ low: 18.5, high: 24.9, unit: "kg/m2" }]
         })
       ]));
       const summary = await repository.summary();

@@ -249,6 +249,11 @@ export function ObservationTypeDetailPage({
 }) {
   const deleteAllCount = detail?.deletion.observationEntries ?? 0;
   const primaryTile = detail ? primaryCountTile(detail.counts) : { label: "Entries", value: 0 };
+  const latestEntry = detail?.entries.reduce<HealthDataDetailEntry | undefined>((latest, entry) =>
+    !latest || entry.timestamp > latest.timestamp ? entry : latest
+  , undefined);
+  const entryKinds = new Set(detail?.entries.map((entry) => entry.kind) ?? []);
+  const showKind = entryKinds.size > 1;
 
   return (
     <section className="panel summary-panel">
@@ -261,38 +266,49 @@ export function ObservationTypeDetailPage({
           <h2>{detail?.measurement.displayName ?? "Measurement detail"}</h2>
           <p className="summary-detail-code">{detail?.measurement.code ?? "Loading…"}</p>
         </div>
-        <div className="summary-detail-actions">
-          <button
-            type="button"
-            onClick={() => void onDeleteAll()}
-            disabled={loading || actionBusy || deleteAllCount === 0}
-            aria-label={deleteAllCount > 0 ? `Delete ${deleteAllCount} observation record(s) for ${detail?.measurement.displayName ?? "this measurement"}` : "No observations to delete"}
-          >
-            {actionBusy ? "Deleting…" : `Delete observations${deleteAllCount > 0 ? ` (${deleteAllCount})` : ""}`}
-          </button>
-          {detail && detail.deletion.observationEntries === 0 && detail.counts.total > 0 ? (
-            <span className="summary-detail-hint">Only observation rows can be deleted from this screen.</span>
-          ) : null}
-        </div>
       </div>
 
       {/* Live status region */}
       <div aria-live="polite" aria-atomic="true">
-        {loading ? <p className="empty" role="status">Loading detail…</p> : null}
+        {loading ? <span className="sr-only" role="status">Loading detail…</span> : null}
         {error ? <p className="empty" role="alert">{error}</p> : null}
       </div>
 
+      {loading && !detail ? (
+        <div className="summary-detail-skeleton" aria-hidden="true">
+          <div className="summary-detail-overview summary-detail-overview-skeleton">
+            <span className="skeleton-line skeleton-value" />
+            <span className="skeleton-line" />
+            <span className="skeleton-line skeleton-short" />
+          </div>
+          <div className="skeleton-section">
+            <span className="skeleton-line skeleton-heading" />
+            <span className="skeleton-block" />
+          </div>
+          <div className="skeleton-section">
+            <span className="skeleton-line skeleton-heading" />
+            <span className="skeleton-block skeleton-table" />
+          </div>
+        </div>
+      ) : null}
+
       {detail ? (
         <>
-          <div className="summary-totals summary-detail-stats">
-            <Stat label={primaryTile.label} value={primaryTile.value} />
-            <div className="stat" aria-label={`Latest: ${detail.measurement.lastMeasuredAt ? formatShortTimestamp(detail.measurement.lastMeasuredAt) : "—"}`}>
+          <div className="summary-detail-overview" aria-label="Measurement overview">
+            <div className="summary-detail-latest">
+              <span>Latest reading</span>
               <strong>
-                {detail.measurement.lastMeasuredAt
-                  ? formatShortTimestamp(detail.measurement.lastMeasuredAt)
-                  : "—"}
+                {latestEntry ? formatDetailValue(latestEntry.value) : "—"}
+                {latestEntry?.unit ? <small>{latestEntry.unit}</small> : null}
               </strong>
-              <span>Latest</span>
+            </div>
+            <div className="summary-detail-overview-item">
+              <span>Measured</span>
+              <strong>{detail.measurement.lastMeasuredAt ? formatShortTimestamp(detail.measurement.lastMeasuredAt) : "—"}</strong>
+            </div>
+            <div className="summary-detail-overview-item">
+              <span>{primaryTile.label}</span>
+              <strong>{primaryTile.value}</strong>
             </div>
           </div>
 
@@ -302,22 +318,36 @@ export function ObservationTypeDetailPage({
             <>
               {detail.chartPoints.length > 0 ? (
                 <div className="summary-detail-chart-panel">
-                  <h3>Trend</h3>
                   <DetailTrendChart detail={detail} />
                 </div>
               ) : null}
 
               <div className="summary-detail-table">
-                <h3>Entries</h3>
+                <div className="summary-detail-section-heading">
+                  <div>
+                    <h3>Entries</h3>
+                    {detail.deletion.observationEntries === 0 && detail.counts.total > 0 ? (
+                      <span className="summary-detail-hint">These records are read-only.</span>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    className="summary-delete-all"
+                    onClick={() => void onDeleteAll()}
+                    disabled={loading || actionBusy || deleteAllCount === 0}
+                    aria-label={deleteAllCount > 0 ? `Delete ${deleteAllCount} observation record(s) for ${detail.measurement.displayName}` : "No observations to delete"}
+                  >
+                    {actionBusy ? "Deleting…" : `Delete observations${deleteAllCount > 0 ? ` (${deleteAllCount})` : ""}`}
+                  </button>
+                </div>
                 <div className="query-table-scroll">
                   <table>
                     <caption className="sr-only">{detail.measurement.displayName} entries</caption>
                     <thead>
                       <tr>
                         <th scope="col">Timestamp</th>
-                        <th scope="col">Kind</th>
-                        <th scope="col">Value</th>
-                        <th scope="col">Unit</th>
+                        {showKind ? <th scope="col">Kind</th> : null}
+                        <th scope="col" className="summary-value-column">Value</th>
                         <th scope="col">Source / note</th>
                         <th scope="col">Action</th>
                       </tr>
@@ -325,12 +355,14 @@ export function ObservationTypeDetailPage({
                     <tbody>
                       {detail.entries.map((entry) => (
                         <tr key={`${entry.kind}-${entry.id}`}>
-                          <td>{formatTimestamp(entry.timestamp)}</td>
-                          <td>{detailKindLabel(entry.kind)}</td>
-                          <td>{formatDetailValue(entry.value)}</td>
-                          <td>{entry.unit}</td>
-                          <td>{renderEntryContext(entry)}</td>
-                          <td>
+                          <td data-label="Timestamp">{formatTimestamp(entry.timestamp)}</td>
+                          {showKind ? <td data-label="Kind">{detailKindLabel(entry.kind)}</td> : null}
+                          <td data-label="Value" className="summary-entry-value">
+                            <strong>{formatDetailValue(entry.value)}</strong>
+                            {entry.unit ? <span>{entry.unit}</span> : null}
+                          </td>
+                          <td data-label="Source / note" className="summary-entry-context">{renderEntryContext(entry)}</td>
+                          <td data-label="Action" className="summary-entry-action">
                             {entry.canDelete ? (
                               <div className="summary-row-actions">
                                 <button
