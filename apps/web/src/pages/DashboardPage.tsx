@@ -1,7 +1,7 @@
 import type { AnalyticsSummary, Insight, Profile } from "@local-fitness-advisor/shared";
 import { safetyNotice } from "@local-fitness-advisor/shared";
 import { MiniChart, DensityBar } from "../components/Charts.js";
-import { formatBloodType, formatProfileSex } from "../utils.js";
+import { formatBloodType, formatProfileSex, formatProfileType } from "../utils.js";
 
 function Stat({ label, value }: { label: string; value: number }) {
   return (
@@ -89,8 +89,8 @@ export function DashboardPage({
           </div>
           <dl className="profile-summary">
             <div><dt>Name</dt><dd>{profile?.displayName ?? "Local user"}</dd></div>
-            <div><dt>Birth year</dt><dd>{profile?.birthYear ?? "Not set"}</dd></div>
-            <div><dt>Sex</dt><dd>{formatProfileSex(profile?.sex)}</dd></div>
+            <div><dt>Birth date</dt><dd>{profile?.birthDate ?? "Not set"}</dd></div>
+            <div><dt>Profile type</dt><dd>{formatProfileSex(profile?.sex)} - {formatProfileType(profile?.subjectKind)}</dd></div>
             <div><dt>Height</dt><dd>{profile?.heightCm ? `${profile.heightCm} cm` : "Not set"}</dd></div>
             <div><dt>Units</dt><dd>{profile?.units === "imperial" ? "Imperial" : "Metric"}</dd></div>
             <div><dt>Blood type</dt><dd>{formatBloodType(profile?.bloodType)}</dd></div>

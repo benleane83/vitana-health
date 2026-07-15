@@ -352,14 +352,16 @@ export function App() {
     }
   }
 
-  async function run(success: string, task: () => Promise<void>) {
+  async function run(success: string, task: () => Promise<void>): Promise<boolean> {
     setBusy(true);
     setMessage(undefined);
     try {
       await task();
       setMessage(success);
+      return true;
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unexpected local error.");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -397,11 +399,17 @@ export function App() {
     await run("Profile saved locally.", async () => {
       await api.saveProfile({
         displayName: String(form.get("displayName") || "Local user"),
-        birthYear: numberOrUndefined(form.get("birthYear")),
+        subjectKind: String(form.get("subjectKind") || "adult") as NonNullable<Profile["subjectKind"]>,
+        birthDate: String(form.get("birthDate") || "") || undefined,
         sex: String(form.get("sex") || "not-specified") as Profile["sex"],
         heightCm: height === undefined ? undefined : units === "imperial" ? height * 2.54 : height,
         bloodType: String(form.get("bloodType") || "unknown") as Profile["bloodType"],
         goalSummary: String(form.get("goalSummary") || ""),
+        pet: String(form.get("subjectKind")) === "pet" ? {
+          species: String(form.get("petSpecies") || ""),
+          breed: String(form.get("petBreed") || "") || undefined,
+          microchipId: String(form.get("petMicrochipId") || "") || undefined
+        } : undefined,
         units
       });
       await refreshForCurrentRoute();
@@ -419,6 +427,18 @@ export function App() {
       await refreshForCurrentRoute();
       setProfileManagerOpen(false);
     });
+  }
+
+  async function editProfile(profileId: string) {
+    if (profileId !== activeProfileId) {
+      const switched = await run("Profile switched.", async () => {
+        await api.profiles.setActive(profileId);
+        await refreshForCurrentRoute();
+      });
+      if (!switched) return;
+    }
+    setProfileManagerOpen(false);
+    setProfileEditorOpen(true);
   }
 
   async function createProfile() {
@@ -1125,6 +1145,7 @@ export function App() {
           onNewProfileNameChange={setNewProfileName}
           onClose={() => setProfileManagerOpen(false)}
           onSwitchProfile={(profileId) => { void switchProfile(profileId); }}
+          onEditProfile={(profileId) => { void editProfile(profileId); }}
           onCreateProfile={() => { void createProfile(); }}
           onDeleteActive={() => {
             if (activeProfileId) void deleteProfile(activeProfileId);

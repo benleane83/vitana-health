@@ -47,6 +47,11 @@ export function formatProfileSex(value?: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+export function formatProfileType(value?: string): string {
+  if (!value) return "Adult";
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 export function formatBloodType(value?: string): string {
   if (!value || value === "unknown") return "Unknown";
   return value

@@ -4,6 +4,7 @@ import type duckdb from "duckdb";
 import {
   classifyValue,
   computeAnalyticsFromInput,
+  CURRENT_SCHEMA_VERSION,
   defaultMeasurementTypes,
   healthStoreDataSchema,
   insightSchema,
@@ -18,6 +19,8 @@ import {
   type MeasurementType,
   type Observation,
   type ObservationGroup,
+  type HealthEvent,
+  type CareItem,
   type Profile,
   type SourceImport,
   type UpdateObservationInput,
@@ -266,6 +269,24 @@ export class DuckDbRepository implements ProfileRepository {
       distanceMeters: optionalNumber(row.distance_meters),
       sourceId: row.source_id
     }), row.source_json_present, row.source_json));
+    const eventRows = await orderedRows(this.connection, "health_events");
+    const immunizations = new Map((await all(this.connection, "SELECT * FROM immunizations;")).map((row) => [String(row.health_event_id), row]));
+    const medications = new Map((await all(this.connection, "SELECT * FROM medication_administrations;")).map((row) => [String(row.health_event_id), row]));
+    const healthEvents = eventRows.map((row) => {
+      const base = compact({ id: row.id, kind: row.kind, status: row.status, occurredAt: isoTimestamp(row.occurred_at),
+        occurredEnd: optionalTimestamp(row.occurred_end), source: row.source, provider: row.provider, notes: row.notes, metadata: optionalJson(row.metadata) });
+      const immunization = immunizations.get(String(row.id));
+      const medication = medications.get(String(row.id));
+      if (immunization) return { ...base, kind: "immunization", immunization: compact({ vaccine: immunization.vaccine, targetDisease: immunization.target_disease, doseNumber: optionalNumber(immunization.dose_number), series: immunization.series, manufacturer: immunization.manufacturer, lotNumber: immunization.lot_number, expiresAt: immunization.expires_at ? String(immunization.expires_at).slice(0, 10) : undefined, route: immunization.route, site: immunization.site, reaction: immunization.reaction }) };
+      if (medication) return { ...base, kind: "medication-administration", medicationAdministration: compact({ medication: medication.medication, activeIngredient: medication.active_ingredient, dose: Number(medication.dose), unit: medication.unit, route: medication.route }) };
+      return { ...base, kind: "other" };
+    });
+    const careItems = (await orderedRows(this.connection, "care_items")).map((row) => compact({
+      id: row.id, kind: row.kind, code: row.code, title: row.title, dueStart: optionalTimestamp(row.due_start), dueEnd: optionalTimestamp(row.due_end),
+      reminderAt: optionalTimestamp(row.reminder_at), priority: row.priority, status: row.status, scheduleProvenance: row.schedule_provenance,
+      scheduleVersion: row.schedule_version, notes: row.notes, originatingHealthEventId: row.originating_health_event_id,
+      completedHealthEventId: row.completed_health_event_id, completedAt: optionalTimestamp(row.completed_at)
+    }));
     const insights = (await orderedRows(this.connection, "insights")).map((row) => compact({
       id: row.id,
       createdAt: isoTimestamp(row.created_at),
@@ -284,7 +305,7 @@ export class DuckDbRepository implements ProfileRepository {
     }));
 
     return healthStoreDataSchema.parse({
-      schemaVersion: 2,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       profile,
       sourceImports,
       dataSources,
@@ -294,6 +315,8 @@ export class DuckDbRepository implements ProfileRepository {
       observationGroups,
       timeSeriesSamples,
       activitySessions,
+      healthEvents,
+      careItems,
       insights,
       auditEvents
     }) as HealthStoreData;
@@ -374,7 +397,9 @@ export class DuckDbRepository implements ProfileRepository {
           (SELECT COUNT(*) FROM observations) AS observations,
           (SELECT COUNT(*) FROM time_series_samples) AS samples,
           (SELECT COUNT(*) FROM activities) AS activities,
-          (SELECT COUNT(*) FROM insights) AS insights;
+          (SELECT COUNT(*) FROM insights) AS insights,
+          (SELECT COUNT(*) FROM health_events) AS health_events,
+          (SELECT COUNT(*) FROM care_items) AS care_items;
       `)
     ]);
     const counts = countRows[0] ?? {};
@@ -384,7 +409,9 @@ export class DuckDbRepository implements ProfileRepository {
         observations: Number(counts.observations ?? 0),
         samples: Number(counts.samples ?? 0),
         activities: Number(counts.activities ?? 0),
-        insights: Number(counts.insights ?? 0)
+        insights: Number(counts.insights ?? 0),
+        healthEvents: Number(counts.health_events ?? 0),
+        careItems: Number(counts.care_items ?? 0)
       },
       measurementTypes: measurementRows.map(measurementTypeFromRow),
       observations: observationRows.map(observationFromRow)
@@ -409,15 +436,13 @@ export class DuckDbRepository implements ProfileRepository {
         id: current.id,
         updatedAt: new Date().toISOString()
       });
-      const profileProperties = nextProfile.cloudAiConsent
-        ? json({ cloudAiConsent: nextProfile.cloudAiConsent })
-        : null;
+      const profileProperties = nextProfile.cloudAiConsent ? json({ cloudAiConsent: nextProfile.cloudAiConsent }) : null;
       await run(
         this.connection,
-        `UPDATE profile SET display_name = ?, birth_year = ?, sex = ?, height_cm = ?, blood_type = ?,
-          goal_summary = ?, units = ?, updated_at = ?, custom_properties = ? WHERE id = ?;`,
+        `UPDATE profile SET display_name = ?, sex = ?, height_cm = ?, blood_type = ?,
+          goal_summary = ?, units = ?, updated_at = ?, custom_properties = ?, subject_kind = ?, birth_date = ?,
+          pet_species = ?, pet_breed = ?, pet_reproductive_status = ?, pet_microchip_id = ? WHERE id = ?;`,
         nextProfile.displayName,
-        nextProfile.birthYear ?? null,
         nextProfile.sex ?? null,
         nextProfile.heightCm ?? null,
         nextProfile.bloodType ?? null,
@@ -425,6 +450,12 @@ export class DuckDbRepository implements ProfileRepository {
         nextProfile.units,
         nextProfile.updatedAt,
         profileProperties,
+        nextProfile.subjectKind,
+        nextProfile.birthDate ?? null,
+        nextProfile.pet?.species ?? null,
+        nextProfile.pet?.breed ?? null,
+        nextProfile.pet?.reproductiveStatus ?? null,
+        nextProfile.pet?.microchipId ?? null,
         current.id
       );
       await this.insertAudit("profile-updated", "Profile details updated locally.");
@@ -1022,14 +1053,18 @@ export class DuckDbRepository implements ProfileRepository {
         (SELECT COUNT(*) FROM imports) AS imports,
         (SELECT COUNT(*) FROM observations) AS observations,
         (SELECT COUNT(*) FROM time_series_samples) AS samples,
-        (SELECT COUNT(*) FROM activities) AS activities;
+        (SELECT COUNT(*) FROM activities) AS activities,
+        (SELECT COUNT(*) FROM health_events) AS health_events,
+        (SELECT COUNT(*) FROM care_items) AS care_items;
     `);
     const counts = rows[0] ?? {};
     return {
       imports: Number(counts.imports ?? 0),
       observations: Number(counts.observations ?? 0),
       samples: Number(counts.samples ?? 0),
-      activities: Number(counts.activities ?? 0)
+      activities: Number(counts.activities ?? 0),
+      healthEvents: Number(counts.health_events ?? 0),
+      careItems: Number(counts.care_items ?? 0)
     };
   }
 
@@ -1132,10 +1167,14 @@ export class DuckDbRepository implements ProfileRepository {
     const profileProperties = store.profile.cloudAiConsent
       ? json({ cloudAiConsent: store.profile.cloudAiConsent })
       : null;
-    await run(this.connection, "INSERT INTO profile VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
-      store.profile.id, store.profile.displayName, store.profile.birthYear ?? null, store.profile.sex ?? null,
+    await run(this.connection, `INSERT INTO profile (
+      id, display_name, sex, height_cm, blood_type, goal_summary, units, updated_at, custom_properties,
+      subject_kind, birth_date, pet_species, pet_breed, pet_reproductive_status, pet_microchip_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      store.profile.id, store.profile.displayName, store.profile.sex ?? null,
       store.profile.heightCm ?? null, store.profile.bloodType ?? null, store.profile.goalSummary ?? null,
-      store.profile.units, store.profile.updatedAt, profileProperties);
+      store.profile.units, store.profile.updatedAt, profileProperties, store.profile.subjectKind, store.profile.birthDate ?? null,
+      store.profile.pet?.species ?? null, store.profile.pet?.breed ?? null, store.profile.pet?.reproductiveStatus ?? null, store.profile.pet?.microchipId ?? null);
 
     await insertRows(this.connection, "INSERT INTO imports VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
       store.sourceImports.map((entry, ordinal) => [ordinal, entry.id, entry.sourceKind, entry.fileName, entry.importedAt,
@@ -1158,6 +1197,9 @@ export class DuckDbRepository implements ProfileRepository {
       store.activitySessions.map((entry, ordinal) => [ordinal, entry.id, entry.activityType, entry.startAt, entry.endAt ?? null,
         entry.durationMinutes ?? null, entry.energyKcal ?? null, entry.distanceMeters ?? null, entry.sourceId,
         entry.sourceJson !== undefined, optionalJsonValue(entry.sourceJson)]));
+    await insertHealthEventRows(this.connection, store.healthEvents ?? []);
+    await insertRows(this.connection, "INSERT INTO care_items VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+      (store.careItems ?? []).map((entry, ordinal) => [ordinal, entry.id, entry.kind, entry.code ?? null, entry.title, entry.dueStart ?? null, entry.dueEnd ?? null, entry.reminderAt ?? null, entry.priority, entry.status, entry.scheduleProvenance ?? null, entry.scheduleVersion ?? null, entry.notes ?? null, entry.originatingHealthEventId ?? null, entry.completedHealthEventId ?? null, entry.completedAt ?? null]));
     await insertRows(this.connection, "INSERT INTO insights VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);",
       store.insights.map((entry, ordinal) => [ordinal, entry.id, entry.createdAt, entry.title, entry.body,
         json(entry.evidence), entry.confidence, entry.model, entry.safetyNotice]));
@@ -1307,16 +1349,24 @@ function optionalNumber(value: unknown): number | undefined {
   return value === null || value === undefined ? undefined : Number(value);
 }
 
+function optionalDate(value: unknown): string | undefined {
+  if (value === null || value === undefined) return undefined;
+  const parsed = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString().slice(0, 10);
+}
+
 function profileFromRow(row: Record<string, unknown>): Profile {
   const profileProperties = optionalJson<Record<string, unknown>>(row.custom_properties) ?? {};
   return compact({
     id: row.id,
     displayName: row.display_name,
-    birthYear: optionalNumber(row.birth_year),
+    subjectKind: row.subject_kind ?? "adult",
+    birthDate: optionalDate(row.birth_date),
     sex: row.sex,
     heightCm: optionalNumber(row.height_cm),
     bloodType: row.blood_type,
     goalSummary: row.goal_summary,
+    pet: row.pet_species ? compact({ species: row.pet_species, breed: row.pet_breed, reproductiveStatus: row.pet_reproductive_status, microchipId: row.pet_microchip_id }) : undefined,
     ...profileProperties,
     units: row.units,
     updatedAt: isoTimestamp(row.updated_at)
@@ -1477,6 +1527,24 @@ async function insertObservationRows(
       JSON.stringify(chunk)
     );
   }
+}
+
+async function insertHealthEventRows(connection: duckdb.Connection, events: HealthEvent[]): Promise<void> {
+    await insertRows(connection, "INSERT INTO health_events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", events.map((event, ordinal) => [
+      ordinal, event.id, event.kind, event.status, event.occurredAt, event.occurredEnd ?? null, event.source,
+      event.provider ?? null, event.notes ?? null, optionalJsonValue(event.metadata)
+    ]));
+    await insertRows(connection, "INSERT INTO immunizations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+      events.filter((event): event is Extract<HealthEvent, { kind: "immunization" }> => event.kind === "immunization").map((event) => [
+        event.id, event.immunization.vaccine, event.immunization.targetDisease ?? null, event.immunization.doseNumber ?? null,
+        event.immunization.series ?? null, event.immunization.manufacturer ?? null, event.immunization.lotNumber ?? null,
+        event.immunization.expiresAt ?? null, event.immunization.route ?? null, event.immunization.site ?? null, event.immunization.reaction ?? null
+      ]));
+    await insertRows(connection, "INSERT INTO medication_administrations VALUES (?, ?, ?, ?, ?, ?);",
+      events.filter((event): event is Extract<HealthEvent, { kind: "medication-administration" }> => event.kind === "medication-administration").map((event) => [
+        event.id, event.medicationAdministration.medication, event.medicationAdministration.activeIngredient ?? null,
+        event.medicationAdministration.dose, event.medicationAdministration.unit, event.medicationAdministration.route ?? null
+      ]));
 }
 
 function exec(connection: duckdb.Connection, sql: string): Promise<void> {

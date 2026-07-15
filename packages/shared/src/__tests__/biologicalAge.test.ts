@@ -19,7 +19,7 @@ function makeStore(overrides: Partial<HealthStoreData> = {}): HealthStoreData {
   const groupId = "panel-1";
   return {
     schemaVersion: 2,
-    profile: { id: "self", displayName: "Test", birthYear: 1976, units: "metric", updatedAt: "2026-01-01T00:00:00Z" },
+    profile: { id: "self", displayName: "Test", birthDate: "1976-06-01", units: "metric", updatedAt: "2026-01-01T00:00:00Z" },
     sourceImports: [],
     dataSources: [],
     devices: [],
@@ -45,6 +45,15 @@ describe("calculateBiologicalAge", () => {
     expect(result.ageAcceleration).toBeCloseTo(-5.34, 2);
     expect(result.inputs.every((input) => input.status === "used")).toBe(true);
     expect(result.inputs.find((input) => input.code === "glucose")?.normalizedValue).toBeCloseTo(5.55, 3);
+  });
+
+  it("uses the full birth date at the selected panel date", () => {
+    const store = makeStore();
+    store.profile.birthDate = "1976-06-02";
+
+    const result = calculateBiologicalAge(store, "2026-06-02T00:00:00Z").models[0];
+
+    expect(result.chronologicalAge).toBe(49);
   });
 
   it("uses the most recent present biomarker values even across separate panels", () => {
@@ -84,7 +93,7 @@ describe("calculateBiologicalAge", () => {
 
   it("calls unsupported units invalid and requires a plausible adult chronological age", () => {
     const store = makeStore();
-    store.profile.birthYear = 2020;
+    store.profile.birthDate = "2020-01-01";
     store.observations.find((observation) => observation.measurementCode === "creatinine")!.unit = "mg/L";
     const result = calculateBiologicalAge(store).models[0];
     expect(result.status).toBe("incomplete");
