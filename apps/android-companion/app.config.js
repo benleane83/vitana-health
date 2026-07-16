@@ -67,9 +67,7 @@ module.exports = {
         }
       }]
     ],
-    runtimeVersion: {
-      policy: "appVersion"
-    },
+    runtimeVersion: "1.0.0",
     updates: {
       url: "https://u.expo.dev/2cc5cf1b-57e8-4e6f-8709-662259497a57",
       fallbackToCacheTimeout: 0

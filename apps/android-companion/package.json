@@ -37,6 +37,7 @@
     "web": "expo start --web",
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit",
+    "eas-build-post-install": "npm run build -w @local-fitness-advisor/shared && npm run build -w @local-fitness-advisor/api-client",
     "build:android:preview": "npx -y eas-cli@20.5.1 build --platform android --profile preview",
     "build:android:development": "npx -y eas-cli@20.5.1 build --platform android --profile development",
     "build:android:production": "npx -y eas-cli@20.5.1 build --platform android --profile production",
