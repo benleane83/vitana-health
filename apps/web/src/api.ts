@@ -1,10 +1,14 @@
 import type {
   BodyCompositionDraftCommitPayload,
+  BackupCreateRequest,
+  BackupInspectResponse,
+  BackupRestoreResponse,
   DeleteObservationResponse,
   DeleteObservationsByTypeResponse,
   ManualLabEntryPayload,
   Profile,
   ProfileListEntry,
+  RestoreDecision,
   UpdateObservationInput,
   UpdateObservationResponse,
   AiQueryResponse as SharedAiQueryResponse,
@@ -22,6 +26,8 @@ import {
   analyticsSummaryResponseSchema,
   apiErrorResponseSchema,
   appBootstrapResponseSchema,
+  backupInspectResponseSchema,
+  backupRestoreResponseSchema,
   biologicalAgeResponseSchema,
   bodyCompositionDraftResponseSchema,
   cloudAiConsentResponseSchema,
@@ -165,6 +171,42 @@ export const api = {
       blob: await response.blob(),
       filename: response.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "health-report.pdf"
     };
+  },
+  backups: {
+    create: async (payload: BackupCreateRequest) => {
+      const response = await fetchAsOwner("/api/backups/create", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+      await assertResponseOk(response);
+      return {
+        blob: await response.blob(),
+        filename: response.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "backup.lfa-backup"
+      };
+    },
+    inspect: (file: Blob, passphrase: string): Promise<BackupInspectResponse> =>
+      request(backupInspectResponseSchema, "/api/backups/inspect", {
+        method: "POST",
+        headers: {
+          "content-type": "application/octet-stream",
+          "x-backup-passphrase": passphrase
+        },
+        body: file
+      }),
+    restore: (file: Blob, passphrase: string, decisions: Array<{
+      profileId: string;
+      decision: RestoreDecision;
+      acknowledgeReplacement?: string;
+    }>): Promise<BackupRestoreResponse> =>
+      request(backupRestoreResponseSchema, "/api/backups/restore", {
+        method: "POST",
+        headers: {
+          "content-type": "application/octet-stream",
+          "x-backup-passphrase": passphrase,
+          "x-restore-decisions": JSON.stringify(decisions)
+        },
+        body: file
+      })
   },
   summary: () => request(healthDataSummaryResponseSchema, "/api/summary"),
   healthDataDetail: (measurementCode: string, page?: { limit?: number; offset?: number }) => {

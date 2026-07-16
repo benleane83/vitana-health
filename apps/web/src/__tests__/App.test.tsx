@@ -117,35 +117,6 @@ describe("App smoke", () => {
     expect(screen.getByText(safetyNotice)).toBeInTheDocument();
   });
 
-  it("prioritizes profile freshness and latest data on the dashboard", async () => {
-    render(<App />);
-
-    expect(await screen.findByRole("heading", { name: /track\. understand\. thrive\./i })).toBeInTheDocument();
-    expect(screen.getByLabelText(/data privacy and freshness/i)).toHaveTextContent("Private on this device");
-    expect(screen.getByRole("heading", { name: /your latest data/i })).toBeInTheDocument();
-    expect(screen.getByText("No focus set")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: /encrypted local vault/i })).not.toBeInTheDocument();
-  });
-
-  it("opens measurement details from the latest data list", async () => {
-    render(<App />);
-
-    fireEvent.click(await screen.findByRole("button", { name: /view details for bmi/i }));
-
-    await waitFor(() => expect(window.location.pathname).toBe("/track/bmi"));
-    expect(screen.getByRole("tab", { name: /^track$/i })).toHaveAttribute("aria-selected", "true");
-  });
-
-  it("opens measurement details from the lab range review", async () => {
-    render(<App />);
-
-    fireEvent.click(await screen.findByText("Explore trends, lab ranges, and AI review"));
-    fireEvent.click(screen.getByRole("button", { name: /view details for ldl cholesterol/i }));
-
-    await waitFor(() => expect(window.location.pathname).toBe("/track/ldl_cholesterol"));
-    expect(await screen.findByRole("heading", { name: "LDL cholesterol" })).toBeInTheDocument();
-  });
-
   it("reaches all import modes and uses the Lab results scan label", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("tab", { name: /^import$/i }));

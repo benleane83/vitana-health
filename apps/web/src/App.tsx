@@ -337,7 +337,7 @@ export function App() {
         hidden={route !== "export"}
       >
         {route === "export" ? (
-          <ExportRoute bootstrap={bootstrap} />
+          <ExportRoute bootstrap={bootstrap} onProfilesChanged={profileLifecycle.refresh} />
         ) : null}
       </div>
 

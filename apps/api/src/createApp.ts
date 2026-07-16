@@ -26,6 +26,7 @@ import { makeImportRoutes } from "./routes/importRoutes.js";
 import { makeQueryRoutes, makeLlmRoutes } from "./routes/queryRoutes.js";
 import { makeDataRoutes } from "./routes/dataRoutes.js";
 import { makeSettingsRoutes } from "./routes/settingsRoutes.js";
+import { makeBackupRoutes, isInMaintenanceMode } from "./routes/backupRoutes.js";
 import { z } from "zod";
 
 export interface OwnerPrincipal {
@@ -153,6 +154,19 @@ export function createApp(
   app.use("/api/llm", rateLimit(10, 60_000));
   app.use("/api/settings", rateLimit(30, 60_000));
   app.use("/api/query", rateLimit(30, 60_000));
+  app.use("/api/backups", rateLimit(5, 60_000));
+
+  // Maintenance mode middleware — returns 503 during restore except /api/health
+  app.use((request, response, next) => {
+    if (isInMaintenanceMode() && request.originalUrl !== "/api/health") {
+      response.status(503).json({
+        error: "Service temporarily unavailable during restore operation.",
+        code: "MAINTENANCE_MODE"
+      });
+      return;
+    }
+    next();
+  });
 
   function ownerTokenIsValid(request: express.Request): boolean {
     const configured = process.env.LFA_OWNER_TOKEN ?? "";
@@ -290,6 +304,7 @@ export function createApp(
     assertSafeCloudEndpoint: options.assertSafeCloudModelEndpoint,
     openRouterCallbackOrigin: options.openRouterCallbackOrigin
   }));
+  app.use("/api/backups", makeBackupRoutes(storeManager, pairingStore));
   app.use("/api", makeDataRoutes(storeManager));
 
   // Static web serving
