@@ -18,10 +18,13 @@ import {
   SCRYPT_P,
   SCRYPT_KEY_LENGTH,
   BACKUP_DECRYPTION_ERROR,
+  healthStoreDataSchema,
   type BackupPayload,
   type BackupProfileEntry,
   type HealthStoreData
 } from "@local-fitness-advisor/shared";
+
+const BACKUP_MAX_DECOMPRESSED_SIZE_BYTES = 256 * 1024 * 1024;
 
 /**
  * Compute canonical SHA-256 digest of a HealthStoreData object.
@@ -128,10 +131,40 @@ export async function decryptBackup(buffer: Buffer, passphrase: string): Promise
     decipher.setAAD(header);
     decipher.setAuthTag(Buffer.from(tag));
     const decrypted = Buffer.concat([decipher.update(Buffer.from(ciphertext)), decipher.final()]);
-    const json = gunzipSync(decrypted).toString("utf8");
-    return JSON.parse(json) as BackupPayload;
+    const json = gunzipSync(decrypted, { maxOutputLength: BACKUP_MAX_DECOMPRESSED_SIZE_BYTES }).toString("utf8");
+    return validateBackupPayload(JSON.parse(json));
   } catch {
     throw new Error(BACKUP_DECRYPTION_ERROR);
+  }
+
+  function validateBackupPayload(value: unknown): BackupPayload {
+    if (!value || typeof value !== "object") throw new Error(BACKUP_DECRYPTION_ERROR);
+    const payload = value as Partial<BackupPayload>;
+    if (
+      payload.formatVersion !== 1 ||
+      typeof payload.createdAt !== "string" ||
+      (payload.scope !== "active" && payload.scope !== "all") ||
+      !Array.isArray(payload.profiles) ||
+      payload.profiles.length === 0
+    ) {
+      throw new Error(BACKUP_DECRYPTION_ERROR);
+    }
+    const ids = new Set<string>();
+    for (const profile of payload.profiles) {
+      if (
+        !profile ||
+        typeof profile.profileId !== "string" ||
+        typeof profile.displayName !== "string" ||
+        typeof profile.digest !== "string" ||
+        ids.has(profile.profileId) ||
+        !healthStoreDataSchema.safeParse(profile.data).success ||
+        profile.data.profile.id !== profile.profileId
+      ) {
+        throw new Error(BACKUP_DECRYPTION_ERROR);
+      }
+      ids.add(profile.profileId);
+    }
+    return payload as BackupPayload;
   }
 }
 

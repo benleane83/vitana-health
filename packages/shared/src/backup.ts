@@ -39,16 +39,15 @@ export interface BackupProfileEntry {
 export interface BackupPayload {
   formatVersion: 1;
   createdAt: string;
-  scope: "all" | "selected";
+  scope: "active" | "all";
   profiles: BackupProfileEntry[];
 }
 
 // --- API request/response contracts ---
 
 export const backupCreateRequestSchema = z.object({
-  passphrase: z.string().min(8).max(256),
-  scope: z.enum(["all", "selected"]).default("all"),
-  profileIds: z.array(z.string().min(1).max(120)).optional()
+  passphrase: z.string().min(12).max(256),
+  scope: z.enum(["active", "all"]).default("all")
 }).strict();
 export type BackupCreateRequest = z.infer<typeof backupCreateRequestSchema>;
 
@@ -84,7 +83,7 @@ export const restoreProfileDecisionSchema = z.object({
 });
 
 export const backupRestoreRequestSchema = z.object({
-  passphrase: z.string().min(8).max(256),
+  passphrase: z.string().min(12).max(256),
   decisions: z.array(restoreProfileDecisionSchema).min(1)
 }).strict();
 export type BackupRestoreRequest = z.infer<typeof backupRestoreRequestSchema>;

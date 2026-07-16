@@ -56,10 +56,10 @@ export function makeBackupRoutes(
       return;
     }
 
-    const { passphrase, scope, profileIds } = parsed.data;
+    const { passphrase, scope } = parsed.data;
     const allProfiles = storeManager.listProfiles();
-    const targetIds = scope === "selected" && profileIds?.length
-      ? profileIds.filter(id => allProfiles.some(p => p.id === id))
+    const targetIds = scope === "active"
+      ? [storeManager.getActiveProfileId()]
       : allProfiles.map(p => p.id);
 
     if (targetIds.length === 0) {
@@ -79,7 +79,7 @@ export function makeBackupRoutes(
       const payload: BackupPayload = {
         formatVersion: 1,
         createdAt: new Date().toISOString(),
-        scope: scope === "selected" ? "selected" : "all",
+        scope,
         profiles
       };
 
@@ -106,8 +106,8 @@ export function makeBackupRoutes(
     }
 
     const passphrase = req.headers["x-backup-passphrase"];
-    if (typeof passphrase !== "string" || passphrase.length < 8) {
-      res.status(400).json({ error: "x-backup-passphrase header required (min 8 chars).", code: "PASSPHRASE_REQUIRED" });
+    if (typeof passphrase !== "string" || passphrase.length < 12) {
+      res.status(400).json({ error: "x-backup-passphrase header required (min 12 chars).", code: "PASSPHRASE_REQUIRED" });
       return;
     }
 
@@ -151,8 +151,8 @@ export function makeBackupRoutes(
     }
 
     const passphrase = req.headers["x-backup-passphrase"];
-    if (typeof passphrase !== "string" || passphrase.length < 8) {
-      res.status(400).json({ error: "x-backup-passphrase header required (min 8 chars).", code: "PASSPHRASE_REQUIRED" });
+    if (typeof passphrase !== "string" || passphrase.length < 12) {
+      res.status(400).json({ error: "x-backup-passphrase header required (min 12 chars).", code: "PASSPHRASE_REQUIRED" });
       return;
     }
 

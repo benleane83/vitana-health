@@ -69,18 +69,17 @@ describe("backup contracts", () => {
       expect(result.success).toBe(true);
     });
 
-    it("validates a selected-scope request with profileIds", () => {
+    it("validates an active-profile request", () => {
       const result = backupCreateRequestSchema.safeParse({
         passphrase: "strong-passphrase",
-        scope: "selected",
-        profileIds: ["user-1", "user-2"]
+        scope: "active"
       });
       expect(result.success).toBe(true);
     });
 
-    it("rejects passphrase shorter than 8 chars", () => {
+    it("rejects passphrase shorter than 12 chars", () => {
       const result = backupCreateRequestSchema.safeParse({
-        passphrase: "short",
+        passphrase: "short-pass",
         scope: "all"
       });
       expect(result.success).toBe(false);
