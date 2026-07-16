@@ -54,7 +54,9 @@ export function DashboardScreen() {
         <View>
           <Text style={styles.eyebrow}>Assigned profile</Text>
           <Text style={styles.title}>{bootstrap.profile.displayName}</Text>
-          <Text style={styles.online}>● Online · refreshed just now</Text>
+          <Text style={connectionState === "online" ? styles.online : styles.offline}>
+            ● {connectionState === "online" ? "Online · refreshed just now" : `${connectionState.replaceAll("-", " ")} · showing in-memory data`}
+          </Text>
         </View>
         <View style={styles.grid}>
           {[
@@ -102,6 +104,7 @@ const styles = StyleSheet.create({
   eyebrow: { color: colors.muted, fontSize: 12, fontWeight: "700", textTransform: "uppercase" },
   title: { color: colors.text, fontSize: 26, fontWeight: "800" },
   online: { color: colors.success, marginTop: spacing.xs },
+  offline: { color: colors.warning, marginTop: spacing.xs, textTransform: "capitalize" },
   grid: { gap: spacing.sm },
   count: { color: colors.text, fontSize: 24, fontWeight: "800" },
   label: { color: colors.muted, fontSize: 13 },

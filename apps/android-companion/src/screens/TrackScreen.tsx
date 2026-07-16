@@ -10,7 +10,7 @@ import { colors, spacing } from "../ui/theme";
 
 export function TrackScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { summary, trackLoading, error, refreshTrack } = useMobileApi();
+  const { connectionState, summary, trackLoading, error, refreshTrack } = useMobileApi();
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SummarySort>("recency");
   useFocusEffect(useCallback(() => { void refreshTrack(); }, [refreshTrack]));
@@ -28,6 +28,9 @@ export function TrackScreen() {
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={trackLoading} onRefresh={() => { void refreshTrack(); }} />}
       >
+        {connectionState !== "online" ? (
+          <Message title={connectionState.replaceAll("-", " ")} detail={error ?? "Reconnect to refresh Track data."} />
+        ) : null}
         <TextInput
           accessibilityLabel="Search metrics"
           onChangeText={setSearch}
