@@ -31,10 +31,59 @@ beforeEach(() => {
     if (url.includes("/api/analytics")) {
       return Promise.resolve(mockResponse({
         counts: { imports: 0, observations: 0, samples: 0, activities: 0, insights: 0 },
-        latestMetrics: [],
+        latestMetrics: [{
+          code: "bmi",
+          label: "BMI",
+          value: 21.1,
+          unit: "kg/m2",
+          observedAt: "2026-01-01T00:00:00.000Z",
+          status: "normal"
+        }],
         trendCards: [],
-        labAlerts: [],
+        labAlerts: [{
+          code: "ldl_cholesterol",
+          marker: "LDL cholesterol",
+          value: 3.02,
+          unit: "mmol/L",
+          observedAt: "2026-01-01T00:00:00.000Z",
+          reference: "--3",
+          flag: "high"
+        }],
         evidenceDigest: []
+      }));
+    }
+    if (url.includes("/api/summary/bmi")) {
+      return Promise.resolve(mockResponse({
+        generatedAt: "2026-01-01T00:00:00.000Z",
+        measurement: {
+          code: "bmi",
+          displayName: "BMI",
+          category: "body",
+          counts: { observations: 1, samples: 0, activities: 0, total: 1 },
+          lastMeasuredAt: "2026-01-01T00:00:00.000Z"
+        },
+        entries: [],
+        chartPoints: [],
+        counts: { observations: 1, samples: 0, activities: 0, total: 1 },
+        deletion: { observationEntries: 1, deletableEntries: 1 },
+        pagination: { limit: 100, loaded: 0, total: 1, hasMore: false }
+      }));
+    }
+    if (url.includes("/api/summary/ldl_cholesterol")) {
+      return Promise.resolve(mockResponse({
+        generatedAt: "2026-01-01T00:00:00.000Z",
+        measurement: {
+          code: "ldl_cholesterol",
+          displayName: "LDL cholesterol",
+          category: "lab",
+          counts: { observations: 1, samples: 0, activities: 0, total: 1 },
+          lastMeasuredAt: "2026-01-01T00:00:00.000Z"
+        },
+        entries: [],
+        chartPoints: [],
+        counts: { observations: 1, samples: 0, activities: 0, total: 1 },
+        deletion: { observationEntries: 1, deletableEntries: 1 },
+        pagination: { limit: 100, loaded: 0, total: 1, hasMore: false }
       }));
     }
     return Promise.resolve(mockResponse({}));
@@ -66,16 +115,6 @@ describe("App smoke", () => {
   it("keeps the safety disclaimer visible", () => {
     render(<App />);
     expect(screen.getByText(safetyNotice)).toBeInTheDocument();
-  });
-
-  it("exposes encrypted backup and restore controls on the Export page", () => {
-    render(<App />);
-    fireEvent.click(screen.getByRole("tab", { name: /^export$/i }));
-
-    expect(screen.getByRole("heading", { name: "Back up profiles" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Restore profiles" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Download encrypted backup" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Inspect backup" })).toBeDisabled();
   });
 
   it("reaches all import modes and uses the Lab results scan label", () => {

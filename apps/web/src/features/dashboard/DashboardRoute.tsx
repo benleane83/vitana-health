@@ -11,6 +11,7 @@ export function DashboardRoute({
   onEditProfile,
   onManageProfiles,
   onNavigateSummary,
+  onNavigateMeasurement,
   onDataChanged,
   onNotice
 }: {
@@ -21,6 +22,7 @@ export function DashboardRoute({
   onEditProfile: () => void;
   onManageProfiles: () => void;
   onNavigateSummary: () => void;
+  onNavigateMeasurement: (measurementCode: string) => void;
   onDataChanged: () => Promise<void>;
   onNotice: (message: string) => void;
 }) {
@@ -56,6 +58,7 @@ export function DashboardRoute({
       onEditProfile={onEditProfile}
       onManageProfiles={onManageProfiles}
       onNavigateSummary={onNavigateSummary}
+      onNavigateMeasurement={onNavigateMeasurement}
       onGenerateInsight={() => { void generateInsight(); }}
     />
   );

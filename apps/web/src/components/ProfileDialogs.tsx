@@ -13,6 +13,17 @@ import type { Profile, ProfileListEntry } from "@local-fitness-advisor/shared";
 const FOCUSABLE =
   'button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
+const PET_SPECIES = [
+  { value: "dog", label: "Dog" },
+  { value: "cat", label: "Cat" },
+  { value: "bird", label: "Bird" },
+  { value: "fish", label: "Fish" },
+  { value: "rabbit", label: "Rabbit" },
+  { value: "horse", label: "Horse" },
+  { value: "reptile", label: "Reptile" },
+  { value: "other", label: "Other" }
+];
+
 function trapFocus(event: React.KeyboardEvent<HTMLElement>, container: HTMLElement | null) {
   if (event.key !== "Tab" || !container) return;
   const els = Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE));
@@ -41,6 +52,8 @@ export function ProfileEditDialog({
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const firstFocusRef = useRef<HTMLInputElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   const [subjectKind, setSubjectKind] = useState<NonNullable<Profile["subjectKind"]>>(profile?.subjectKind ?? "adult");
   const [units, setUnits] = useState<Profile["units"]>(profile?.units ?? "metric");
   const [height, setHeight] = useState(
@@ -59,6 +72,8 @@ export function ProfileEditDialog({
   const heightBounds = units === "imperial"
     ? { min: centimetersToInches(heightBoundsCm.min), max: centimetersToInches(heightBoundsCm.max) }
     : heightBoundsCm;
+  const petSpecies = profile?.pet?.species ?? "";
+  const hasCustomPetSpecies = petSpecies !== "" && !PET_SPECIES.some((species) => species.value === petSpecies);
 
   function changeUnits(nextUnits: Profile["units"]) {
     const numericHeight = Number(height);
@@ -73,10 +88,10 @@ export function ProfileEditDialog({
     if (!dialog) return;
     if (!dialog.open) dialog.showModal();
     firstFocusRef.current?.focus();
-    const handleCancel = (e: Event) => { e.preventDefault(); onClose(); };
+    const handleCancel = (e: Event) => { e.preventDefault(); onCloseRef.current(); };
     dialog.addEventListener("cancel", handleCancel);
     return () => dialog.removeEventListener("cancel", handleCancel);
-  }, [onClose]);
+  }, []);
 
   return (
     <dialog
@@ -122,19 +137,6 @@ export function ProfileEditDialog({
           defaultValue={profile?.birthDate ?? ""}
         />
 
-        {subjectKind === "pet" ? (
-          <>
-            <label htmlFor="profile-petSpecies">Pet species</label>
-            <input id="profile-petSpecies" name="petSpecies" defaultValue={profile?.pet?.species ?? ""} />
-
-            <label htmlFor="profile-petBreed">Pet breed</label>
-            <input id="profile-petBreed" name="petBreed" defaultValue={profile?.pet?.breed ?? ""} />
-
-            <label htmlFor="profile-petMicrochipId">Microchip ID</label>
-            <input id="profile-petMicrochipId" name="petMicrochipId" defaultValue={profile?.pet?.microchipId ?? ""} />
-          </>
-        ) : null}
-
         <label htmlFor="profile-sex">Sex</label>
         <select id="profile-sex" name="sex" defaultValue={profile?.sex ?? "not-specified"}>
           <option value="not-specified">Prefer not to say</option>
@@ -144,17 +146,38 @@ export function ProfileEditDialog({
           <option value="unknown">Unknown</option>
         </select>
 
-        <label htmlFor="profile-height">Height {units === "imperial" ? "in" : "cm"}</label>
-        <input
-          id="profile-height"
-          name="height"
-          type="number"
-          step="0.1"
-          min={heightBounds.min}
-          max={heightBounds.max}
-          value={height}
-          onChange={(event) => setHeight(event.target.value)}
-        />
+        {subjectKind === "pet" ? (
+          <>
+            <label htmlFor="profile-petSpecies">Pet species</label>
+            <select id="profile-petSpecies" name="petSpecies" defaultValue={petSpecies} required>
+              <option value="">Select species</option>
+              {hasCustomPetSpecies ? <option value={petSpecies}>{petSpecies}</option> : null}
+              {PET_SPECIES.map((species) => <option value={species.value} key={species.value}>{species.label}</option>)}
+            </select>
+
+            <label htmlFor="profile-petBreed">Pet breed</label>
+            <input id="profile-petBreed" name="petBreed" defaultValue={profile?.pet?.breed ?? ""} />
+
+            <label htmlFor="profile-petMicrochipId">Microchip ID</label>
+            <input id="profile-petMicrochipId" name="petMicrochipId" defaultValue={profile?.pet?.microchipId ?? ""} />
+          </>
+        ) : null}
+
+        {subjectKind !== "pet" ? (
+          <>
+            <label htmlFor="profile-height">Height {units === "imperial" ? "in" : "cm"}</label>
+            <input
+              id="profile-height"
+              name="height"
+              type="number"
+              step="0.1"
+              min={heightBounds.min}
+              max={heightBounds.max}
+              value={height}
+              onChange={(event) => setHeight(event.target.value)}
+            />
+          </>
+        ) : null}
 
         <label htmlFor="profile-units">Units</label>
         <select
@@ -167,18 +190,21 @@ export function ProfileEditDialog({
           <option value="imperial">Imperial</option>
         </select>
 
-        <label htmlFor="profile-bloodType">Blood type</label>
-        <select id="profile-bloodType" name="bloodType" defaultValue={profile?.bloodType ?? "unknown"}>
-          <option value="unknown">Unknown</option>
-          <option value="a-positive">A+</option>
-          <option value="a-negative">A-</option>
-          <option value="b-positive">B+</option>
-          <option value="b-negative">B-</option>
-          <option value="ab-positive">AB+</option>
-          <option value="ab-negative">AB-</option>
-          <option value="o-positive">O+</option>
-          <option value="o-negative">O-</option>
-        </select>
+        {subjectKind !== "pet" ? (
+          <>
+            <label htmlFor="profile-bloodType">Blood type</label>
+            <select id="profile-bloodType" name="bloodType" defaultValue={profile?.bloodType ?? "unknown"}>
+              <option value="unknown">Unknown</option>
+              <option value="a-positive">A+</option>
+              <option value="a-negative">A-</option>
+              <option value="b-positive">B+</option>
+              <option value="ab-positive">AB+</option>
+              <option value="ab-negative">AB-</option>
+              <option value="o-positive">O+</option>
+              <option value="o-negative">O-</option>
+            </select>
+          </>
+        ) : null}
 
         <label htmlFor="profile-goalSummary" className="wide">Goals</label>
         <textarea
@@ -228,6 +254,8 @@ export function ProfileManagerDialog({
   onDeleteActive: () => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -235,10 +263,10 @@ export function ProfileManagerDialog({
     if (!dialog.open) dialog.showModal();
     const focusable = dialog.querySelectorAll<HTMLElement>(FOCUSABLE);
     focusable[0]?.focus();
-    const handleCancel = (e: Event) => { e.preventDefault(); onClose(); };
+    const handleCancel = (e: Event) => { e.preventDefault(); onCloseRef.current(); };
     dialog.addEventListener("cancel", handleCancel);
     return () => dialog.removeEventListener("cancel", handleCancel);
-  }, [onClose]);
+  }, []);
 
   return (
     <dialog
