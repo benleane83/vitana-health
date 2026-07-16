@@ -1,0 +1,399 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import express from "express";
+import { makeBackupRoutes, isInMaintenanceMode } from "../routes/backupRoutes.js";
+import {
+  BACKUP_DECRYPTION_ERROR,
+  CURRENT_SCHEMA_VERSION,
+  defaultMeasurementTypes,
+  type HealthStoreData,
+  type BackupPayload
+} from "@local-fitness-advisor/shared";
+import { encryptBackup, buildBackupProfileEntry } from "../backupCrypto.js";
+import type { ProfileStoreManager } from "../storage/profileStoreManager.js";
+import type { PairingStore } from "../pairing.js";
+
+function createTestStoreData(profileId = "test-user", displayName = "Test User"): HealthStoreData {
+  return {
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    profile: { id: profileId, displayName, subjectKind: "adult", units: "metric", updatedAt: "2024-01-01T00:00:00.000Z" },
+    sourceImports: [],
+    dataSources: [],
+    devices: [],
+    measurementTypes: defaultMeasurementTypes,
+    observations: [
+      { id: "obs-1", measurementCode: "body-weight", observedAt: "2024-01-15T10:00:00.000Z", value: 75.5, unit: "kg", sourceId: "src-1" }
+    ],
+    observationGroups: [],
+    timeSeriesSamples: [],
+    activitySessions: [],
+    healthEvents: [],
+    careItems: [],
+    insights: [],
+    auditEvents: []
+  };
+}
+
+function createMockStoreManager(): ProfileStoreManager {
+  const testData = createTestStoreData();
+  const mockStore = {
+    profileId: "test-user",
+    exportData: vi.fn().mockResolvedValue(testData),
+    getProfile: vi.fn().mockResolvedValue(testData.profile),
+    replaceProfile: vi.fn().mockResolvedValue(testData.profile),
+    mergeImport: vi.fn().mockResolvedValue({ counts: {}, outcome: {} })
+  };
+
+  return {
+    listProfiles: vi.fn().mockReturnValue([{ id: "test-user", displayName: "Test User", updatedAt: "2024-01-01T00:00:00.000Z" }]),
+    getActiveProfileId: vi.fn().mockReturnValue("test-user"),
+    getStore: vi.fn().mockReturnValue(mockStore),
+    getActiveStore: vi.fn().mockReturnValue(mockStore),
+    createProfile: vi.fn().mockResolvedValue({ id: "test-user-copy", displayName: "Test User (restored)", updatedAt: "2024-01-01T00:00:00.000Z" })
+  } as unknown as ProfileStoreManager;
+}
+
+function createMockPairingStore(): PairingStore {
+  return {} as unknown as PairingStore;
+}
+
+function createTestApp(storeManager?: ProfileStoreManager) {
+  const app = express();
+  const sm = storeManager ?? createMockStoreManager();
+  const ps = createMockPairingStore();
+
+  // Simulate auth middleware setting owner principal
+  app.use((req, res, next) => {
+    res.locals.principal = { kind: "owner" };
+    next();
+  });
+
+  app.use("/api/backups", makeBackupRoutes(sm, ps));
+  return { app, storeManager: sm };
+}
+
+// We use node:http directly for binary tests since supertest may not be available
+import { createServer, type Server } from "node:http";
+
+function listen(app: express.Application): Promise<{ server: Server; port: number }> {
+  return new Promise((resolve) => {
+    const server = createServer(app);
+    server.listen(0, "127.0.0.1", () => {
+      const addr = server.address() as { port: number };
+      resolve({ server, port: addr.port });
+    });
+  });
+}
+
+async function httpRequest(port: number, path: string, options: {
+  method?: string;
+  headers?: Record<string, string>;
+  body?: Buffer | string;
+}): Promise<{ status: number; headers: Record<string, string>; body: Buffer }> {
+  return new Promise((resolve, reject) => {
+    const http = require("node:http") as typeof import("node:http");
+    const req = http.request({
+      hostname: "127.0.0.1",
+      port,
+      path,
+      method: options.method ?? "POST",
+      headers: {
+        ...options.headers,
+        ...(options.body ? { "content-length": String(Buffer.byteLength(options.body)) } : {})
+      }
+    }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (chunk: Buffer) => chunks.push(chunk));
+      res.on("end", () => {
+        const body = Buffer.concat(chunks);
+        const headers: Record<string, string> = {};
+        for (const [k, v] of Object.entries(res.headers)) {
+          if (typeof v === "string") headers[k] = v;
+        }
+        resolve({ status: res.statusCode ?? 500, headers, body });
+      });
+    });
+    req.on("error", reject);
+    if (options.body) req.write(options.body);
+    req.end();
+  });
+}
+
+describe("backupRoutes", () => {
+  describe("POST /api/backups/create", () => {
+    it("creates an encrypted backup binary", async () => {
+      const { app } = createTestApp();
+      const { server, port } = await listen(app);
+
+      try {
+        const res = await httpRequest(port, "/api/backups/create", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ passphrase: "my-strong-passphrase", scope: "all" })
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.headers["content-type"]).toBe("application/octet-stream");
+        expect(res.headers["content-disposition"]).toContain(".lfa-backup");
+        // Verify magic bytes
+        expect(res.body[0]).toBe(0x4c);
+        expect(res.body[1]).toBe(0x46);
+        expect(res.body[2]).toBe(0x41);
+        expect(res.body[3]).toBe(0x00);
+        expect(res.body[4]).toBe(1);
+      } finally {
+        server.close();
+      }
+    }, 30_000);
+
+    it("rejects short passphrases", async () => {
+      const { app } = createTestApp();
+      const { server, port } = await listen(app);
+
+      try {
+        const res = await httpRequest(port, "/api/backups/create", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ passphrase: "short", scope: "all" })
+        });
+
+        expect(res.status).toBe(400);
+        const body = JSON.parse(res.body.toString());
+        expect(body.code).toBe("VALIDATION_ERROR");
+      } finally {
+        server.close();
+      }
+    });
+  });
+
+  describe("POST /api/backups/inspect", () => {
+    it("inspects a valid backup", async () => {
+      const { app } = createTestApp();
+      const { server, port } = await listen(app);
+
+      const testData = createTestStoreData();
+      const payload: BackupPayload = {
+        formatVersion: 1,
+        createdAt: "2024-06-01T00:00:00.000Z",
+        scope: "all",
+        profiles: [buildBackupProfileEntry(testData)]
+      };
+      const encrypted = await encryptBackup(payload, "inspect-passphrase!");
+
+      try {
+        const res = await httpRequest(port, "/api/backups/inspect", {
+          method: "POST",
+          headers: {
+            "content-type": "application/octet-stream",
+            "x-backup-passphrase": "inspect-passphrase!"
+          },
+          body: encrypted
+        });
+
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body.toString());
+        expect(body.formatVersion).toBe(1);
+        expect(body.profiles).toHaveLength(1);
+        expect(body.profiles[0].profileId).toBe("test-user");
+        expect(body.profiles[0].digestValid).toBe(true);
+        expect(body.profiles[0].existsLocally).toBe(true);
+        expect(body.profiles[0].observationCount).toBe(1);
+      } finally {
+        server.close();
+      }
+    }, 30_000);
+
+    it("rejects wrong passphrase on inspect", async () => {
+      const { app } = createTestApp();
+      const { server, port } = await listen(app);
+
+      const testData = createTestStoreData();
+      const payload: BackupPayload = {
+        formatVersion: 1,
+        createdAt: "2024-06-01T00:00:00.000Z",
+        scope: "all",
+        profiles: [buildBackupProfileEntry(testData)]
+      };
+      const encrypted = await encryptBackup(payload, "correct-passphrase!");
+
+      try {
+        const res = await httpRequest(port, "/api/backups/inspect", {
+          method: "POST",
+          headers: {
+            "content-type": "application/octet-stream",
+            "x-backup-passphrase": "wrong-passphrase!!"
+          },
+          body: encrypted
+        });
+
+        expect(res.status).toBe(400);
+        const body = JSON.parse(res.body.toString());
+        expect(body.error).toBe(BACKUP_DECRYPTION_ERROR);
+        expect(body.code).toBe("DECRYPT_FAILED");
+      } finally {
+        server.close();
+      }
+    }, 30_000);
+  });
+
+  describe("POST /api/backups/restore", () => {
+    it("restores a profile with create-copy decision", async () => {
+      const sm = createMockStoreManager();
+      const { app } = createTestApp(sm);
+      const { server, port } = await listen(app);
+
+      const testData = createTestStoreData();
+      const payload: BackupPayload = {
+        formatVersion: 1,
+        createdAt: "2024-06-01T00:00:00.000Z",
+        scope: "all",
+        profiles: [buildBackupProfileEntry(testData)]
+      };
+      const encrypted = await encryptBackup(payload, "restore-passphrase!");
+
+      const decisions = [
+        { profileId: "test-user", decision: "create-copy" }
+      ];
+
+      try {
+        const res = await httpRequest(port, "/api/backups/restore", {
+          method: "POST",
+          headers: {
+            "content-type": "application/octet-stream",
+            "x-backup-passphrase": "restore-passphrase!",
+            "x-restore-decisions": JSON.stringify(decisions)
+          },
+          body: encrypted
+        });
+
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body.toString());
+        expect(body.restored).toHaveLength(1);
+        expect(body.restored[0].decision).toBe("create-copy");
+        expect(body.restored[0].success).toBe(true);
+        expect(body.restored[0].newProfileId).toBe("test-user-copy");
+        expect(body.activeProfileId).toBe("test-user");
+      } finally {
+        server.close();
+      }
+    }, 30_000);
+
+    it("requires acknowledgment for replace decision", async () => {
+      const { app } = createTestApp();
+      const { server, port } = await listen(app);
+
+      const testData = createTestStoreData();
+      const payload: BackupPayload = {
+        formatVersion: 1,
+        createdAt: "2024-06-01T00:00:00.000Z",
+        scope: "all",
+        profiles: [buildBackupProfileEntry(testData)]
+      };
+      const encrypted = await encryptBackup(payload, "restore-passphrase!");
+
+      const decisions = [
+        { profileId: "test-user", decision: "replace" }
+      ];
+
+      try {
+        const res = await httpRequest(port, "/api/backups/restore", {
+          method: "POST",
+          headers: {
+            "content-type": "application/octet-stream",
+            "x-backup-passphrase": "restore-passphrase!",
+            "x-restore-decisions": JSON.stringify(decisions)
+          },
+          body: encrypted
+        });
+
+        expect(res.status).toBe(400);
+        const body = JSON.parse(res.body.toString());
+        expect(body.code).toBe("VALIDATION_ERROR");
+      } finally {
+        server.close();
+      }
+    }, 30_000);
+
+    it("accepts replace decision with acknowledgment", async () => {
+      const sm = createMockStoreManager();
+      const { app } = createTestApp(sm);
+      const { server, port } = await listen(app);
+
+      const testData = createTestStoreData();
+      const payload: BackupPayload = {
+        formatVersion: 1,
+        createdAt: "2024-06-01T00:00:00.000Z",
+        scope: "all",
+        profiles: [buildBackupProfileEntry(testData)]
+      };
+      const encrypted = await encryptBackup(payload, "restore-passphrase!");
+
+      const decisions = [
+        { profileId: "test-user", decision: "replace", acknowledgeReplacement: "REPLACE_CONFIRMED" }
+      ];
+
+      try {
+        const res = await httpRequest(port, "/api/backups/restore", {
+          method: "POST",
+          headers: {
+            "content-type": "application/octet-stream",
+            "x-backup-passphrase": "restore-passphrase!",
+            "x-restore-decisions": JSON.stringify(decisions)
+          },
+          body: encrypted
+        });
+
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body.toString());
+        expect(body.restored).toHaveLength(1);
+        expect(body.restored[0].decision).toBe("replace");
+        expect(body.restored[0].success).toBe(true);
+      } finally {
+        server.close();
+      }
+    }, 30_000);
+
+    it("skips profiles with skip decision", async () => {
+      const { app } = createTestApp();
+      const { server, port } = await listen(app);
+
+      const testData = createTestStoreData();
+      const payload: BackupPayload = {
+        formatVersion: 1,
+        createdAt: "2024-06-01T00:00:00.000Z",
+        scope: "all",
+        profiles: [buildBackupProfileEntry(testData)]
+      };
+      const encrypted = await encryptBackup(payload, "restore-passphrase!");
+
+      const decisions = [
+        { profileId: "test-user", decision: "skip" }
+      ];
+
+      try {
+        const res = await httpRequest(port, "/api/backups/restore", {
+          method: "POST",
+          headers: {
+            "content-type": "application/octet-stream",
+            "x-backup-passphrase": "restore-passphrase!",
+            "x-restore-decisions": JSON.stringify(decisions)
+          },
+          body: encrypted
+        });
+
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body.toString());
+        expect(body.restored).toHaveLength(1);
+        expect(body.restored[0].decision).toBe("skip");
+        expect(body.restored[0].success).toBe(true);
+      } finally {
+        server.close();
+      }
+    }, 30_000);
+  });
+
+  describe("maintenance mode", () => {
+    it("starts as not in maintenance mode", () => {
+      expect(isInMaintenanceMode()).toBe(false);
+    });
+  });
+});
