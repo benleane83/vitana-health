@@ -375,6 +375,24 @@ export const defaultMeasurementTypes: MeasurementType[] = [
     aggregation: "sum"
   },
   {
+    code: "total_calories_burned",
+    display: "Total calories burned",
+    category: "activity",
+    kind: "interval",
+    canonicalUnit: "kcal",
+    aliases: ["total calories", "total energy burned", "total calorie burn"],
+    aggregation: "sum"
+  },
+  {
+    code: "activity_sessions",
+    display: "Activity sessions",
+    category: "activity",
+    kind: "event",
+    canonicalUnit: "min",
+    aliases: ["activity session", "exercise session", "exercise sessions"],
+    aggregation: "sum"
+  },
+  {
     code: "distance",
     display: "Distance",
     category: "activity",

@@ -105,9 +105,17 @@ describe("DuckDbRepository fidelity", () => {
       value: 21.1,
       unit: "kg/m2"
     };
+    const totalCaloriesSample = {
+      ...fixture.timeSeriesSamples[0],
+      id: "legacy-total-calories",
+      measurementCode: "total_calories_burned",
+      value: 1_850,
+      unit: "kcal"
+    };
     const fixtureWithGlucose = {
       ...fixture,
-      observations: [...fixture.observations, glucoseObservation, bmiObservation]
+      observations: [...fixture.observations, glucoseObservation, bmiObservation],
+      timeSeriesSamples: [...fixture.timeSeriesSamples, totalCaloriesSample]
     };
 
     const hydrated = await DuckDbRepository.hydrate(root, databasePath, key, fixtureWithGlucose, { httpfsExtensionPath });
@@ -146,7 +154,9 @@ describe("DuckDbRepository fidelity", () => {
       ]));
       const summary = await repository.summary();
       expect(summary.categories.flatMap((category) => category.rows)).toEqual(expect.arrayContaining([
-        expect.objectContaining({ code: "glucose", category: "lab" })
+        expect.objectContaining({ code: "glucose", category: "lab" }),
+        expect.objectContaining({ code: "activity_sessions", category: "activity" }),
+        expect.objectContaining({ code: "total_calories_burned", category: "activity" })
       ]));
     } finally {
       await repository.close();
@@ -268,6 +278,67 @@ describe("DuckDbRepository fidelity", () => {
       expect(activities.entries[0]).toMatchObject({ id: "activity-1", note: "Type: walking • Energy: 120.5 kcal • Distance: 2500.0 m" });
       expect(firstPage.entries.map((entry) => entry.id)).toEqual(["sample-1", "observation-a"]);
       expect(firstPage.pagination).toEqual({ limit: 2, loaded: 2, total: 3, hasMore: true });
+      expect(snapshotSpy).not.toHaveBeenCalled();
+    } finally {
+      await repository.close();
+    }
+  }, 30_000);
+
+  it.skipIf(!httpfsExtensionPath)("returns complete aggregation-aware chart series independently of detail pagination", async () => {
+    const databasePath = join(root, "databases", "health-store-chart-series.duckdb-poc");
+    const fixture = createDuckDbHealthStoreFixture();
+    fixture.measurementTypes.push({
+      code: "steps",
+      display: "Steps",
+      category: "activity",
+      kind: "interval",
+      canonicalUnit: "count",
+      aliases: [],
+      aggregation: "sum"
+    });
+    fixture.timeSeriesSamples.push(
+      {
+        ...fixture.timeSeriesSamples[0],
+        id: "steps-1",
+        measurementCode: "steps",
+        startAt: "2026-07-10T01:00:00.000Z",
+        endAt: "2026-07-10T01:05:00.000Z",
+        value: 400,
+        unit: "count"
+      },
+      {
+        ...fixture.timeSeriesSamples[0],
+        id: "steps-2",
+        measurementCode: "steps",
+        startAt: "2026-07-10T11:00:00.000Z",
+        endAt: "2026-07-10T11:05:00.000Z",
+        value: 600,
+        unit: "count"
+      },
+      {
+        ...fixture.timeSeriesSamples[0],
+        id: "steps-3",
+        measurementCode: "steps",
+        startAt: "2026-07-11T01:00:00.000Z",
+        endAt: "2026-07-11T01:05:00.000Z",
+        value: 900,
+        unit: "count"
+      }
+    );
+    const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
+    const snapshotSpy = vi.spyOn(repository, "snapshot").mockRejectedValue(new Error("Chart reads must not snapshot."));
+    try {
+      const detail = await repository.measurementDetail("steps", { offset: 0, limit: 1 });
+      const chart = await repository.measurementChartSeries("steps", { range: "all", mode: "auto" });
+      const rawWeight = await repository.measurementChartSeries("weight", { range: "all", mode: "auto" });
+
+      expect(detail.entries).toHaveLength(1);
+      expect(chart).toMatchObject({ aggregation: "sum", granularity: "daily", totalPoints: 2, truncated: false });
+      expect(chart.points).toEqual([
+        expect.objectContaining({ timestamp: "2026-07-10T00:00:00.000Z", value: 1000, count: 2, minValue: 400, maxValue: 600 }),
+        expect.objectContaining({ timestamp: "2026-07-11T00:00:00.000Z", value: 900, count: 1 })
+      ]);
+      expect(rawWeight).toMatchObject({ aggregation: "latest", granularity: "raw", totalPoints: 3, truncated: false });
       expect(snapshotSpy).not.toHaveBeenCalled();
     } finally {
       await repository.close();

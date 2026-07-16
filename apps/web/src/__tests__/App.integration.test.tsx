@@ -572,6 +572,11 @@ describe("App — measurement detail", () => {
       "/api/store": { ...makeEmptyStore(), measurementTypes: defaultMeasurementTypes },
       "/api/analytics": makeEmptyAnalytics(),
       "/api/profiles": { profiles: [], activeProfileId: "self" },
+      "/api/summary/glucose/chart": {
+        generatedAt: "2026-07-14T00:00:00.000Z", measurementCode: "glucose", range: "all", requestedMode: "auto",
+        granularity: "raw", aggregation: "average", totalPoints: 1, truncated: false,
+        points: [{ timestamp: "2026-07-14T00:00:00.000Z", value: 5.2, unit: "mmol/L", count: 1 }]
+      },
       "/api/summary/glucose": {
         generatedAt: "2026-07-14T00:00:00.000Z",
         measurement: {
@@ -627,6 +632,11 @@ describe("App — measurement detail", () => {
       "/api/store": { ...makeEmptyStore(), measurementTypes: defaultMeasurementTypes },
       "/api/analytics": makeEmptyAnalytics(),
       "/api/profiles": { profiles: [], activeProfileId: "self" },
+      "/api/summary/glucose/chart": {
+        generatedAt: "2026-07-14T00:00:00.000Z", measurementCode: "glucose", range: "all", requestedMode: "auto",
+        granularity: "raw", aggregation: "average", totalPoints: 1, truncated: false,
+        points: [{ timestamp: "2026-07-14T08:30:00.000Z", value: 5.2, unit: "mmol/L", count: 1 }]
+      },
       "/api/summary/glucose": detail,
       "/api/summary": {
         generatedAt: "2026-07-14T00:00:00.000Z",

@@ -33,6 +33,11 @@ const detailPageQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0)
 });
 
+const chartSeriesQuerySchema = z.object({
+  range: z.enum(["all", "1y", "3m", "1m"]).default("all"),
+  mode: z.enum(["auto", "raw"]).default("auto")
+});
+
 const updateObservationBodySchema = z.object({
   measurementCode: measurementCodeParamSchema,
   observedAt: z.string().datetime({ offset: true }),
@@ -112,6 +117,16 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
   router.get("/summary", async (_request, response, next) => {
     try {
       response.json(await requestStore(response).summary());
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/summary/:measurementCode/chart", async (request, response, next) => {
+    try {
+      const measurementCode = measurementCodeParamSchema.parse(request.params.measurementCode);
+      const options = chartSeriesQuerySchema.parse(request.query);
+      response.json(await requestStore(response).measurementChartSeries(measurementCode, options));
     } catch (error) {
       next(error);
     }

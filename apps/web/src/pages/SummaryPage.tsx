@@ -1,5 +1,12 @@
 import { compareSummaryRows } from "@local-fitness-advisor/shared";
-import type { HealthDataDetail, HealthDataDetailEntry, HealthDataSummary } from "@local-fitness-advisor/shared";
+import type {
+  HealthDataChartMode,
+  HealthDataChartRange,
+  HealthDataChartSeries,
+  HealthDataDetail,
+  HealthDataDetailEntry,
+  HealthDataSummary
+} from "@local-fitness-advisor/shared";
 import { DetailTrendChart } from "../components/Charts.js";
 import { formatTimestamp, formatShortTimestamp, formatDetailValue } from "../utils.js";
 import type { SummarySort } from "../types.js";
@@ -218,6 +225,11 @@ export function SummaryPage({
 
 export function ObservationTypeDetailPage({
   detail,
+  chartSeries,
+  chartRange,
+  chartMode,
+  chartBusy,
+  chartError,
   loading,
   error,
   actionBusy,
@@ -226,9 +238,16 @@ export function ObservationTypeDetailPage({
   onEditObservation,
   onDeleteObservation,
   onDeleteAll,
-  onLoadMore
+  onLoadMore,
+  onChartRangeChange,
+  onChartModeChange
 }: {
   detail?: HealthDataDetail;
+  chartSeries?: HealthDataChartSeries;
+  chartRange: HealthDataChartRange;
+  chartMode: HealthDataChartMode;
+  chartBusy: boolean;
+  chartError?: string;
   loading: boolean;
   error?: string;
   actionBusy: boolean;
@@ -238,6 +257,8 @@ export function ObservationTypeDetailPage({
   onDeleteObservation: (entry: HealthDataDetailEntry) => void | Promise<void>;
   onDeleteAll: () => void | Promise<void>;
   onLoadMore: () => void | Promise<void>;
+  onChartRangeChange: (range: HealthDataChartRange) => void;
+  onChartModeChange: (mode: HealthDataChartMode) => void;
 }) {
   const deleteAllCount = detail?.deletion.observationEntries ?? 0;
   const primaryTile = detail ? primaryCountTile(detail.counts) : { label: "Entries", value: 0 };
@@ -308,9 +329,18 @@ export function ObservationTypeDetailPage({
             <p className="empty" role="status">No entries are currently stored for this measurement type.</p>
           ) : (
             <>
-              {detail.chartPoints.length > 0 ? (
+              {chartBusy || chartError || chartSeries?.points.length ? (
                 <div className="summary-detail-chart-panel">
-                  <DetailTrendChart detail={detail} />
+                  <DetailTrendChart
+                    detail={detail}
+                    series={chartSeries}
+                    range={chartRange}
+                    mode={chartMode}
+                    busy={chartBusy}
+                    error={chartError}
+                    onRangeChange={onChartRangeChange}
+                    onModeChange={onChartModeChange}
+                  />
                 </div>
               ) : null}
 

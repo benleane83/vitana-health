@@ -98,6 +98,11 @@ describe("findMeasurementType", () => {
   it("finds glucose by LOINC-style alias", () => {
     expect(findMeasurementType("blood glucose")?.code).toBe("glucose");
   });
+
+  it("finds Health Connect activity codes by their canonical codes", () => {
+    expect(findMeasurementType("activity_sessions")?.code).toBe("activity_sessions");
+    expect(findMeasurementType("total_calories_burned")?.code).toBe("total_calories_burned");
+  });
 });
 
 describe("defaultMeasurementTypes", () => {

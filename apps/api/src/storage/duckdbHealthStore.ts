@@ -2,6 +2,7 @@ import type {
   AppBootstrap,
   DeleteObservationResponse,
   DeleteObservationsByTypeResponse,
+  HealthDataChartSeriesOptions,
   HealthStoreData,
   UpdateObservationInput,
   UpdateObservationResponse
@@ -99,6 +100,10 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
 
   measurementDetail(measurementCode: string, page: MeasurementDetailPage = { offset: 0, limit: 100 }) {
     return this.repository.measurementDetail(measurementCode, page);
+  }
+
+  measurementChartSeries(measurementCode: string, options: HealthDataChartSeriesOptions) {
+    return this.repository.measurementChartSeries(measurementCode, options);
   }
 
   replaceProfile(profile: HealthStoreData["profile"]): Promise<HealthStoreData["profile"]> {

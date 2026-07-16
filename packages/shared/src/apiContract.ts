@@ -6,6 +6,7 @@ import type {
   CloudAiConsent,
   DeleteObservationResponse,
   DeleteObservationsByTypeResponse,
+  HealthDataChartSeries,
   HealthDataDetail,
   HealthDataSummary,
   Insight,
@@ -189,6 +190,7 @@ export const analyticsSummaryResponseSchema = objectResponseSchema<AnalyticsSumm
 export const biologicalAgeResponseSchema = objectResponseSchema<BiologicalAgeReport>();
 export const healthDataSummaryResponseSchema = objectResponseSchema<HealthDataSummary>();
 export const healthDataDetailResponseSchema = objectResponseSchema<HealthDataDetail>();
+export const healthDataChartSeriesResponseSchema = objectResponseSchema<HealthDataChartSeries>();
 export const profileResponseSchema = objectResponseSchema<Profile>();
 export const cloudAiConsentResponseSchema = objectResponseSchema<CloudAiConsent>();
 export const bodyCompositionDraftResponseSchema = objectResponseSchema<BodyCompositionDraft>();

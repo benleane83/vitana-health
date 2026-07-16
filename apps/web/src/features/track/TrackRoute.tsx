@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { mergeHealthDataDetail } from "@local-fitness-advisor/shared";
 import type {
+  HealthDataChartMode,
+  HealthDataChartRange,
+  HealthDataChartSeries,
   HealthDataDetail,
   HealthDataDetailEntry,
   HealthDataSummary,
@@ -45,6 +48,9 @@ export function TrackRoute({
 }) {
   const [summary, setSummary] = useState<RemoteState<HealthDataSummary>>({ busy: true });
   const [detail, setDetail] = useState<RemoteState<HealthDataDetail>>({ busy: false });
+  const [chartSeries, setChartSeries] = useState<RemoteState<HealthDataChartSeries>>({ busy: false });
+  const [chartRange, setChartRange] = useState<HealthDataChartRange>("all");
+  const [chartMode, setChartMode] = useState<HealthDataChartMode>("auto");
   const [sort, setSort] = useState<"name" | "count" | "recency">("recency");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [actionBusy, setActionBusy] = useState(false);
@@ -85,15 +91,35 @@ export function TrackRoute({
     return () => { cancelled = true; };
   }, [detailCode, activeProfileId]);
 
+  useEffect(() => {
+    if (!detailCode) {
+      setChartSeries({ busy: false });
+      return;
+    }
+    let cancelled = false;
+    setChartSeries({ busy: true });
+    void api.healthDataChartSeries(detailCode, { range: chartRange, mode: chartMode }).then((data) => {
+      if (!cancelled) setChartSeries({ data, busy: false });
+    }).catch((error: unknown) => {
+      if (!cancelled) setChartSeries({
+        busy: false,
+        error: error instanceof Error ? error.message : "Unable to load trend."
+      });
+    });
+    return () => { cancelled = true; };
+  }, [detailCode, activeProfileId, chartRange, chartMode]);
+
   async function refreshAfterMutation(nextDetailCode: string) {
-    const [nextSummary, nextDetail] = await Promise.all([
+    const [nextSummary, nextDetail, nextChartSeries] = await Promise.all([
       api.summary(),
       api.healthDataDetail(nextDetailCode),
+      api.healthDataChartSeries(nextDetailCode, { range: chartRange, mode: chartMode }),
       onDataChanged()
     ]);
     setSummary({ data: nextSummary, busy: false });
     setExpandedCategories(new Set(nextSummary.categories.map((category) => category.key)));
     setDetail({ data: nextDetail, busy: false });
+    setChartSeries({ data: nextChartSeries, busy: false });
   }
 
   async function deleteObservation(entry: HealthDataDetailEntry) {
@@ -191,6 +217,11 @@ export function TrackRoute({
       {detailCode ? (
         <ObservationTypeDetailPage
           detail={detail.data}
+          chartSeries={chartSeries.data}
+          chartRange={chartRange}
+          chartMode={chartMode}
+          chartBusy={chartSeries.busy}
+          chartError={chartSeries.error}
           loading={detail.busy}
           error={detail.error}
           actionBusy={actionBusy}
@@ -200,6 +231,8 @@ export function TrackRoute({
           onDeleteObservation={deleteObservation}
           onDeleteAll={deleteAll}
           onLoadMore={loadMore}
+          onChartRangeChange={setChartRange}
+          onChartModeChange={setChartMode}
         />
       ) : (
         <SummaryPage

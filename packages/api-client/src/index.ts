@@ -4,6 +4,7 @@ import {
   appBootstrapResponseSchema,
   assignedProfilesResponseSchema,
   bodyCompositionDraftResponseSchema,
+  healthDataChartSeriesResponseSchema,
   healthDataDetailResponseSchema,
   healthDataSummaryResponseSchema,
   healthResponseSchema,
@@ -78,6 +79,11 @@ export function createApiClient(transport: ApiTransport) {
         healthDataDetailResponseSchema,
         `/api/summary/${encodeURIComponent(measurementCode)}${paginationQuery(page)}`
       ),
+    healthDataChartSeries: (measurementCode: string, options?: { range?: "all" | "1y" | "3m" | "1m"; mode?: "auto" | "raw" }) =>
+      request(
+        healthDataChartSeriesResponseSchema,
+        `/api/summary/${encodeURIComponent(measurementCode)}/chart${chartQuery(options)}`
+      ),
     importManualObservations: (payload: ManualObservationPayload) =>
       request(importMutationResponseSchema, "/api/import/observations/manual", { method: "POST", body: payload }),
     previewBodyCompositionReport: (payload: ReportPreviewPayload) =>
@@ -103,6 +109,13 @@ export function paginationQuery(page?: { limit?: number; offset?: number }): str
   const values: string[] = [];
   if (page?.limit !== undefined) values.push(`limit=${encodeURIComponent(String(page.limit))}`);
   if (page?.offset !== undefined) values.push(`offset=${encodeURIComponent(String(page.offset))}`);
+  return values.length ? `?${values.join("&")}` : "";
+}
+
+function chartQuery(options?: { range?: "all" | "1y" | "3m" | "1m"; mode?: "auto" | "raw" }): string {
+  const values: string[] = [];
+  if (options?.range !== undefined) values.push(`range=${encodeURIComponent(options.range)}`);
+  if (options?.mode !== undefined) values.push(`mode=${encodeURIComponent(options.mode)}`);
   return values.length ? `?${values.join("&")}` : "";
 }
 

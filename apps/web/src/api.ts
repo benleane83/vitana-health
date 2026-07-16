@@ -203,6 +203,7 @@ export const api = {
   },
   summary: sharedApi.summary,
   healthDataDetail: sharedApi.healthDataDetail,
+  healthDataChartSeries: sharedApi.healthDataChartSeries,
   updateObservation: (id: string, input: UpdateObservationInput) =>
     request(updateObservationResponseSchema, `/api/observations/${encodeURIComponent(id)}`, {
       method: "PATCH",
