@@ -68,6 +68,16 @@ describe("App smoke", () => {
     expect(screen.getByText(safetyNotice)).toBeInTheDocument();
   });
 
+  it("exposes encrypted backup and restore controls on the Export page", () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("tab", { name: /^export$/i }));
+
+    expect(screen.getByRole("heading", { name: "Back up profiles" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Restore profiles" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Download encrypted backup" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Inspect backup" })).toBeDisabled();
+  });
+
   it("reaches all import modes and uses the Lab results scan label", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("tab", { name: /^import$/i }));

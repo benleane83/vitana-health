@@ -70,4 +70,25 @@ describe("API client response handling", () => {
 
     await expect(api.health()).rejects.toMatchObject({ name: "ZodError" });
   });
+
+  it("sends encrypted backup data as an owner-authenticated binary request", async () => {
+    const backup = new File(["encrypted"], "profile.lfa-backup", { type: "application/octet-stream" });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      formatVersion: 1,
+      createdAt: "2026-07-16T00:00:00.000Z",
+      scope: "all",
+      profiles: []
+    }), { headers: { "content-type": "application/json" } })));
+
+    await expect(api.backups.inspect(backup, "a secure passphrase")).resolves.toMatchObject({ scope: "all" });
+
+    expect(global.fetch).toHaveBeenCalledWith("/api/backups/inspect", expect.objectContaining({
+      method: "POST",
+      body: backup,
+      headers: expect.objectContaining({
+        "content-type": "application/octet-stream",
+        "x-backup-passphrase": "a secure passphrase"
+      })
+    }));
+  });
 });
