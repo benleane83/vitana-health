@@ -88,6 +88,8 @@ export function readFileAsBase64(file: File): Promise<string> {
   });
 }
 
-export function isSupportedBodyCompMimeType(mimeType: string): boolean {
+export function isSupportedBodyCompMimeType(
+  mimeType: string
+): mimeType is "application/pdf" | "image/jpeg" | "image/png" {
   return mimeType === "application/pdf" || mimeType === "image/jpeg" || mimeType === "image/png";
 }

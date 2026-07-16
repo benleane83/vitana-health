@@ -61,7 +61,9 @@ Upload the AAB to the Play Console internal testing track first. Promote the exa
 - [ ] Development, preview, and production EAS environments are distinct; production has no development-only values.
 - [ ] Repository checks pass: workspace typecheck, build, tests, and Android production dependency audit.
 - [ ] Production AAB build completes with a new remote Android version code, `production` channel, and cleartext disabled.
-- [ ] The exact AAB is tested on a physical Android device: launch, QR pairing, HTTPS certificate-pin validation, Health Connect permission flow, selected-category sync, disconnect, and recovery after a failed network request.
+- [ ] The exact AAB is tested on a physical Android device with the phone assigned to a profile different from the PC active profile: Dashboard refresh, Track search/detail/pagination, manual import, both camera/gallery scan types and row exclusion, HTTPS certificate-pin validation, Health Connect selected-category/cursor sync, revoke/disconnect, PC restart, maintenance, and offline recovery.
+- [ ] Report drafts clear on backgrounding, cancellation, commit, and disconnect; small and large accessibility font scales remain usable.
+- [ ] AsyncStorage and SecureStore inspection confirms that report images, OCR text, manual-entry payloads, Dashboard responses, and Track responses are not persisted.
 - [ ] A production-compatible OTA update is tested on the production channel only, or the release notes state that no OTA update is included.
 - [ ] Play Console metadata, content rating, Data Safety, and Health apps/Health Connect declarations are completed from `docs/PLAY_DATA_SAFETY.md` and `docs/HEALTH_CONNECT_DECLARATION.md`; they match `docs/HEALTH_CONNECT_DATA_INVENTORY.md` and the released binary.
 - [ ] The public privacy policy at `https://github.com/benleane83/local-fitness-advisor/blob/main/docs/PRIVACY_POLICY.md` is linked from the companion and matches `docs/HEALTH_CONNECT_DATA_INVENTORY.md`.

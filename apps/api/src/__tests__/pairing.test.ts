@@ -36,7 +36,15 @@ describe("PairingStore authorization grants", () => {
       pairingId: request.record.id,
       deviceId: "phone-a",
       allowedProfileIds: ["profile-a"],
-      capabilities: ["profiles:list-minimal", "health-connect:import", "pairing:self-revoke"]
+      capabilities: [
+        "profiles:list-minimal",
+        "assigned-profile:read",
+        "observations:import-manual",
+        "reports:preview",
+        "reports:commit",
+        "health-connect:import",
+        "pairing:self-revoke"
+      ]
     });
     const reloaded = new PairingStore();
     stores.push(reloaded);
@@ -49,6 +57,18 @@ describe("PairingStore authorization grants", () => {
       requestedAt: "", expiresAt: "", resolvedAt: "", lastUsedAt: null, revokedAt: null,
       tokenDelivered: true, tokenHash: "a".repeat(64), pollingSecretHash: "b".repeat(64)
     }]));
+
+    expect(new PairingStore().listDevices()).toEqual([]);
+  });
+
+  it("rejects tokens issued under the previous authorization schema", () => {
+    const store = new PairingStore();
+    stores.push(store);
+    approvedPairing(store);
+    const path = join(dataDir, "paired-devices.json");
+    const records = JSON.parse(readFileSync(path, "utf8"));
+    records[0].authorizationSchemaVersion = 1;
+    writeFileSync(path, JSON.stringify(records));
 
     expect(new PairingStore().listDevices()).toEqual([]);
   });

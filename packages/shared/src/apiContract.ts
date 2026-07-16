@@ -131,6 +131,14 @@ export const profilesResponseSchema = z.object({
 }).strict();
 export type ProfilesResponse = z.infer<typeof profilesResponseSchema>;
 
+export const assignedProfilesResponseSchema = z.object({
+  profiles: z.array(z.object({
+    id: z.string(),
+    displayName: z.string()
+  }).strict()).max(1)
+}).strict();
+export type AssignedProfilesResponse = z.infer<typeof assignedProfilesResponseSchema>;
+
 export const profileIdResponseSchema = z.object({ profileId: z.string() }).strict();
 export const profileDeleteResponseSchema = z.object({
   deletedProfileId: z.string(),

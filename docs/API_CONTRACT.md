@@ -89,10 +89,11 @@ POST /api/pairing/approve/:pairingId
 ```
 **Request body:** `{ "profileId": "<existing profile id>" }`
 
-Approval binds the device to exactly that profile and grants the fixed companion capabilities
-`profiles:list-minimal`, `health-connect:import`, and `pairing:self-revoke`. Re-pairing the
-same device revokes its previous token. Pairing records without these versioned grants are
-invalid and require pairing again.
+Approval binds the device to exactly that profile and grants the fixed companion capabilities:
+`profiles:list-minimal`, `assigned-profile:read`, `observations:import-manual`,
+`reports:preview`, `reports:commit`, `health-connect:import`, and `pairing:self-revoke`.
+Re-pairing the same device revokes its previous token. Authorization schema version 2 is
+required; tokens issued under an earlier schema fail closed and the phone must pair again.
 
 ### Revoke this companion device
 ```
@@ -136,10 +137,10 @@ GET /api/profiles
 ```
 **Owner success `200`:** `{ "profiles": Profile[], "activeProfileId": "<id>" }`
 
-Companion credentials are granted access only to this endpoint, Health Connect import, and
-`POST /api/pairing/revoke-self`. A companion receives only its granted profile as
+Companion credentials are granted access only to the explicitly listed companion endpoints.
+A companion receives only its granted profile as
 `{ "profiles": [{ "id": "<id>", "displayName": "<name>" }] }`; no active-profile or health
-metadata is returned. All other authenticated endpoints are owner-only.
+metadata is returned.
 
 ### Create a new profile
 ```
@@ -175,7 +176,7 @@ DELETE /api/profiles/:id
 ```
 GET /api/export/pdf
 ```
-Requires owner or companion authentication. Returns an `application/pdf` attachment containing the active profile's
+Requires owner authentication. Returns an `application/pdf` attachment containing the active profile's
 details, data totals, latest measurements, flagged laboratory results, trends, and import provenance. The report is a
 health-data summary for discussion with a clinician and is not diagnostic.
 
@@ -184,6 +185,12 @@ health-data summary for discussion with a clinician and is not diagnostic.
 GET /api/analytics
 ```
 **Success `200`:** `AnalyticsSummary`
+
+Companions may read `GET /api/bootstrap`, `GET /api/analytics`, `GET /api/summary`, and
+`GET /api/summary/:measurementCode`. These routes always resolve the profile assigned during
+pairing, regardless of the PC's active profile or any `profileId` body/query value. Profile
+management, observation mutation, Insights, Settings, exports, backups, queries, and model
+routes remain owner-only.
 
 ### Get summary by measurement code
 ```
@@ -264,7 +271,9 @@ POST /api/import/labs/manual
 ```
 POST /api/import/body-composition/preview
 ```
-**Request body:** `{ "base64": "<data-uri>" }` (max 20 MB)  
+**Request body:** `{ "fileName", "mimeType": "application/pdf"|"image/jpeg"|"image/png", "contentBase64": "<base64>" }`.
+The JSON field is capped at 20,000,000 characters and decoded content at 15 MB. Empty,
+malformed, and oversized payloads are rejected without changing these limits for companions.  
 **Success `200`:** `{ "rows": BodyCompositionRow[], "diagnostics": string[] }`
 
 ### Commit body composition rows
@@ -274,6 +283,17 @@ POST /api/import/body-composition/commit
 **Request body:** `{ "rows": BodyCompositionRow[] }`  
 **Success `201`:** committed import response described above, including `analyticsStorage`.
 
+The equivalent blood-test scan routes are `POST /api/import/blood-test/preview` and
+`POST /api/import/blood-test/commit`. Companions may use both report types. Preview performs
+OCR/parsing only; commit writes only reviewed rows to the assigned profile.
+
+### Submit manual observations
+```
+POST /api/import/observations/manual
+```
+Companions and owners may submit the existing `ManualObservationPayload`. Companion requests
+always commit to the assigned profile; a body/query profile value cannot redirect the import.
+
 ### Import Health Connect data
 ```
 POST /api/import/health-connect
@@ -281,10 +301,11 @@ POST /api/import/health-connect
 **Request body:** Health Connect JSON export (max 10 MB)  
 **Success `201`:** committed import response described above, including `analyticsStorage`.
 
-For companions, `profileId` is required and must equal the paired device's profile grant.
-Missing or mismatched values return `403 PROFILE_ACCESS_DENIED` before store access. Owners may
-continue to omit `profileId` and use the active profile. Missing or invalid credentials return
-`401`; an authenticated companion without the required capability returns `403`.
+For companions, `profileId` may be omitted. If supplied, it must equal the paired device's
+profile grant; mismatches return `403 PROFILE_ACCESS_DENIED` before store access. The assigned
+profile is always used. Owners may omit `profileId` to use the active profile or provide a
+target profile. Missing or invalid credentials return `401`; an authenticated companion
+without the required capability returns `403`.
 
 ---
 

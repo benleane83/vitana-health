@@ -4,16 +4,26 @@
   "license": "AGPL-3.0-only",
   "main": "index.ts",
   "dependencies": {
+    "@local-fitness-advisor/api-client": "^0.1.0",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/datetimepicker": "9.1.0",
+    "@react-navigation/bottom-tabs": "^7.18.8",
+    "@react-navigation/native": "^7.3.8",
+    "@react-navigation/native-stack": "^7.17.10",
     "expo": "~57.0.2",
     "expo-camera": "~57.0.1",
     "expo-health-connect": "^0.1.1",
+    "expo-image-manipulator": "~57.0.2",
+    "expo-image-picker": "~57.0.2",
     "expo-secure-store": "^57.0.0",
     "expo-status-bar": "~57.0.0",
     "expo-updates": "~57.0.6",
     "react": "19.2.7",
     "react-native": "0.86.0",
-    "react-native-health-connect": "^3.5.3"
+    "react-native-health-connect": "^3.5.3",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "4.25.2",
+    "react-native-svg": "15.15.4"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",

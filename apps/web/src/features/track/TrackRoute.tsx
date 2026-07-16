@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { mergeHealthDataDetail } from "@local-fitness-advisor/shared";
 import type {
   HealthDataDetail,
   HealthDataDetailEntry,
@@ -163,13 +164,7 @@ export function TrackRoute({
         if (!current.data) return { data: nextPage, busy: false };
         return {
           busy: false,
-          data: {
-            ...nextPage,
-            entries: [...current.data.entries, ...nextPage.entries],
-            chartPoints: [...current.data.chartPoints, ...nextPage.chartPoints].sort(
-              (left, right) => left.timestamp.localeCompare(right.timestamp) || left.kind.localeCompare(right.kind)
-            )
-          }
+          data: mergeHealthDataDetail(current.data, nextPage)
         };
       });
     } catch (error) {

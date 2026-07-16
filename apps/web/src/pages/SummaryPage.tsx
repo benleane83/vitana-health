@@ -1,4 +1,5 @@
-import type { HealthDataDetail, HealthDataDetailEntry, HealthDataSummary, HealthDataSummaryTypeRow } from "@local-fitness-advisor/shared";
+import { compareSummaryRows } from "@local-fitness-advisor/shared";
+import type { HealthDataDetail, HealthDataDetailEntry, HealthDataSummary } from "@local-fitness-advisor/shared";
 import { DetailTrendChart } from "../components/Charts.js";
 import { formatTimestamp, formatShortTimestamp, formatDetailValue } from "../utils.js";
 import type { SummarySort } from "../types.js";
@@ -18,15 +19,6 @@ function Stat({ label, value, onClick }: { label: string; value: number; onClick
       <span>{label}</span>
     </div>
   );
-}
-
-function compareSummaryRows(a: HealthDataSummaryTypeRow, b: HealthDataSummaryTypeRow, sort: SummarySort): number {
-  if (sort === "name") return a.displayName.localeCompare(b.displayName);
-  if (sort === "count") return b.counts.total - a.counts.total || a.displayName.localeCompare(b.displayName);
-  if (!a.lastMeasuredAt && !b.lastMeasuredAt) return a.displayName.localeCompare(b.displayName);
-  if (!a.lastMeasuredAt) return 1;
-  if (!b.lastMeasuredAt) return -1;
-  return b.lastMeasuredAt.localeCompare(a.lastMeasuredAt) || a.displayName.localeCompare(b.displayName);
 }
 
 function detailKindLabel(kind: HealthDataDetailEntry["kind"]): string {

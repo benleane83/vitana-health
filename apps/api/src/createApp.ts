@@ -28,12 +28,9 @@ import { makeDataRoutes } from "./routes/dataRoutes.js";
 import { makeSettingsRoutes } from "./routes/settingsRoutes.js";
 import { makeBackupRoutes, isInMaintenanceMode } from "./routes/backupRoutes.js";
 import { z } from "zod";
+import type { AuthorizationPrincipal, OwnerPrincipal } from "./requestPrincipal.js";
 
-export interface OwnerPrincipal {
-  kind: "owner";
-}
-
-export type AuthorizationPrincipal = OwnerPrincipal | import("./pairing.js").CompanionPrincipal;
+export type { AuthorizationPrincipal, OwnerPrincipal } from "./requestPrincipal.js";
 
 export interface AppOptions {
   publicKeyHash?: string | null;
@@ -56,15 +53,30 @@ function isOpenRouterCallback(request: express.Request): boolean {
 }
 
 function companionCapabilityFor(request: express.Request): import("./pairing.js").CompanionCapability | null {
-  switch (`${request.method} ${request.path}`) {
+  const route = `${request.method} ${request.path}`;
+  switch (route) {
     case "GET /profiles":
       return "profiles:list-minimal";
+    case "GET /bootstrap":
+    case "GET /analytics":
+    case "GET /summary":
+      return "assigned-profile:read";
+    case "POST /import/observations/manual":
+      return "observations:import-manual";
+    case "POST /import/body-composition/preview":
+    case "POST /import/blood-test/preview":
+      return "reports:preview";
+    case "POST /import/body-composition/commit":
+    case "POST /import/blood-test/commit":
+      return "reports:commit";
     case "POST /import/health-connect":
       return "health-connect:import";
     case "POST /pairing/revoke-self":
       return "pairing:self-revoke";
     default:
-      return null;
+      return request.method === "GET" && /^\/summary\/[^/]+$/.test(request.path)
+        ? "assigned-profile:read"
+        : null;
   }
 }
 

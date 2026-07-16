@@ -352,6 +352,84 @@ describe("central owner authorization", () => {
       .send({ ...minimalHealthConnectPayload, profileId: "other" })).status).toBe(403);
   });
 
+  it("isolates companion reads and imports from the PC active profile", async () => {
+    await request(app)
+      .post("/api/profiles")
+      .set("authorization", ownerAuthorization)
+      .send({ displayName: "Phone Profile" });
+
+    const challenge = pairingStore.createChallenge();
+    const requested = pairingStore.request("assigned-phone", "Assigned Phone", challenge.code)!;
+    pairingStore.approve(requested.record.id, "phone-profile");
+    const token = pairingStore.getStatus(requested.record.id, requested.pollingSecret)!.token!;
+    const companion = { "x-companion-token": token };
+
+    const manual = await request(app)
+      .post("/api/import/observations/manual")
+      .set(companion)
+      .send({
+        profileId: "self",
+        observedAt: "2026-07-01T08:00:00.000Z",
+        label: "Mobile entry",
+        observations: [{ measurementCode: "weight", value: 72, unit: "kg" }]
+      });
+    expect(manual.status).toBe(201);
+    expect((await storeManager.getStore("phone-profile").storageCounts()).observations).toBe(1);
+    expect((await storeManager.getStore("self").storageCounts()).observations).toBe(0);
+
+    const bootstrap = await request(app).get("/api/bootstrap?profileId=self").set(companion);
+    expect(bootstrap.status).toBe(200);
+    expect(bootstrap.body.profile).toMatchObject({ id: "phone-profile", displayName: "Phone Profile" });
+    expect(bootstrap.body.counts.observations).toBe(1);
+
+    const analytics = await request(app).get("/api/analytics?profileId=self").set(companion);
+    expect(analytics.status).toBe(200);
+    expect(analytics.body.counts.observations).toBe(1);
+
+    const summary = await request(app).get("/api/summary?profileId=self").set(companion);
+    expect(summary.status).toBe(200);
+    expect(summary.body.totals.observations).toBe(1);
+
+    const detail = await request(app).get("/api/summary/weight?profileId=self&limit=1").set(companion);
+    expect(detail.status).toBe(200);
+    expect(detail.body.entries).toHaveLength(1);
+    expect(detail.body.entries[0]).toMatchObject({ measurementCode: "weight", value: 72 });
+
+    const commit = await request(app)
+      .post("/api/import/body-composition/commit")
+      .set(companion)
+      .send({
+        profileId: "self",
+        fileName: "mobile-report.jpg",
+        reportDate: "2026-07-02",
+        rows: [{
+          id: "body-fat",
+          label: "Body fat",
+          measurementCode: "body_fat_percentage",
+          displayName: "Body fat",
+          value: 20,
+          unit: "%",
+          confidence: "high",
+          included: true
+        }]
+      });
+    expect(commit.status).toBe(201);
+    expect((await storeManager.getStore("phone-profile").storageCounts()).observations).toBe(2);
+    expect((await storeManager.getStore("self").storageCounts()).observations).toBe(0);
+
+    for (const [path, method] of [
+      ["/api/observations/missing", "patch"],
+      ["/api/observations/missing", "delete"],
+      ["/api/profile", "put"],
+      ["/api/insights/generate", "post"],
+      ["/api/export", "get"],
+      ["/api/settings/ai", "get"],
+      ["/api/query/ai", "post"]
+    ] as const) {
+      expect((await request(app)[method](path).set(companion).send({ profileId: "phone-profile" })).status).toBe(403);
+    }
+  });
+
   it("creates an owner session only for a local client", async () => {
     const agent = request.agent(app);
     const authenticated = await agent.post("/api/auth/local");

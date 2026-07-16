@@ -6,11 +6,12 @@ Use this declaration when completing Play Console Data Safety for `com.localfitn
 
 | Play data type | Collected | Purpose | Shared | Required |
 | --- | --- | --- | --- | --- |
-| Health and fitness: health information | Yes — only user-selected Health Connect categories in the inventory | App functionality: local wellness analytics and user-requested sync | No. The companion transfers it only to the user's paired local desktop API. | No |
+| Health and fitness: health information | Yes — user-selected Health Connect categories, manual entries, and approved health-report rows | App functionality: local wellness analytics and user-requested import | No. The companion transfers it only to the user's paired local desktop API. | No |
 | Health and fitness: fitness information | Yes — only user-selected activity, exercise, distance, floors, and calorie categories in the inventory | App functionality: local fitness analytics and user-requested sync | No. The companion transfers it only to the user's paired local desktop API. | No |
 | Device or other IDs | Yes — a random companion device ID | App functionality: secure pairing and sync deduplication | No | Yes for pairing and sync |
+| Photos | Yes — only a report photo the user captures or selects | App functionality: PC-side OCR and review before health-data import | No. It travels only to the paired local desktop API and is not retained on the phone. | No |
 
-The app does not collect camera images, contacts, location, financial information, messages, web browsing, app performance data, diagnostics, or advertising identifiers. It has no advertising, analytics, telemetry, sale, or third-party sharing SDKs.
+The app does not collect contacts, location, financial information, messages, web browsing, app performance data, diagnostics, or advertising identifiers. It has no advertising, analytics, telemetry, sale, or third-party sharing SDKs.
 
 ## Security and deletion answers
 

@@ -105,9 +105,18 @@ An Android MVP companion app lives at `apps/android-companion`.
 It supports:
 
 - QR-based pairing with the local API
+- Dashboard totals and latest metrics for the single profile assigned during pairing
+- Read-only Track search, sorting, metric trends, source context, and paginated history
+- Manual Activity, Body, and Lab observations
+- Camera/gallery report capture with PC-side OCR, editable row review, and approved-row commit
 - Manual "Sync now" action
 - Optional Health Connect category selection (none selected by default) and a 30–365 day initial sync window (30 days by default)
 - POST to `POST /api/import/health-connect` on your local API
+
+Dashboard and Track data are fetched on demand and are not cached on the phone. Report images
+and OCR drafts remain in memory only and are cleared after commit, cancellation, disconnect, or
+app backgrounding. OCR, parsing, analytics, and encrypted health-data storage remain on the
+paired PC.
 
 See the [Android privacy policy](docs/PRIVACY_POLICY.md), [Health Connect data inventory](docs/HEALTH_CONNECT_DATA_INVENTORY.md), and release declaration instructions in [docs/ANDROID_RELEASE.md](docs/ANDROID_RELEASE.md).
 

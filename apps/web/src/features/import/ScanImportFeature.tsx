@@ -42,7 +42,8 @@ export function ScanImportFeature({
       onNotice("Select a PDF or image before preview.");
       return;
     }
-    if (!isSupportedBodyCompMimeType(file.type)) {
+    const mimeType = file.type;
+    if (!isSupportedBodyCompMimeType(mimeType)) {
       onNotice("Use a PDF, JPEG, or PNG body composition report.");
       return;
     }
@@ -50,7 +51,7 @@ export function ScanImportFeature({
       const contentBase64 = await readFileAsBase64(file);
       const nextDraft = await (scanKind === "blood-test" ? api.previewBloodTestReport : api.previewBodyCompositionReport)({
         fileName: file.name,
-        mimeType: file.type,
+        mimeType,
         contentBase64
       });
       setDraft(nextDraft);

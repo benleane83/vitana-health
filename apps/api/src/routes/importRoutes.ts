@@ -15,7 +15,8 @@ import { healthConnectImportRequestSchema, parseHealthConnectImport } from "../h
 import { describeAnalyticsStorage } from "../storage/analyticsBackend.js";
 import { extractBodyCompositionText } from "../bodyCompositionExtract.js";
 import { parseBodyCompositionText } from "@local-fitness-advisor/shared";
-import type { AuthorizationPrincipal } from "../createApp.js";
+import type { AuthorizationPrincipal } from "../requestPrincipal.js";
+import { resolvePrincipalStore } from "../requestPrincipal.js";
 import type { ImportMutationResult, ProfileImport } from "../storage/profileRepository.js";
 
 function compactImportResponse(imported: ProfileImport, merged: ImportMutationResult) {
@@ -103,6 +104,10 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
     return storeManager.getActiveStore();
   }
 
+  function requestStore(response: express.Response) {
+    return resolvePrincipalStore(storeManager, response.locals.principal as AuthorizationPrincipal);
+  }
+
   router.post("/blood-test", async (request, response, next) => {
     try {
       const parsed = importSchema.parse(request.body);
@@ -131,7 +136,7 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
     try {
       const parsed = manualObservationImportSchema.parse(request.body ?? {});
       const imported = buildManualObservationImport(parsed);
-      const store = activeStore();
+      const store = requestStore(response);
       const merged = await store.mergeImport(imported);
       response.status(201).json(compactImportResponse(imported, merged));
     } catch (error) {
@@ -175,9 +180,9 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
     try {
       const parsed = bodyCompositionCommitSchema.parse(request.body ?? {});
       const imported = buildBloodTestImportFromDraft({ ...parsed, rows: parsed.rows as BodyCompositionDraftRow[] });
-      const store = activeStore();
+      const store = requestStore(response);
       const merged = await store.mergeImport(imported);
-      const analyticsStorage = describeAnalyticsStorage(storeManager, merged.counts);
+      const analyticsStorage = describeAnalyticsStorage(storeManager, merged.counts, store.profileId);
       response.status(201).json({ ...compactImportResponse(imported, merged), analyticsStorage });
     } catch (error) {
       next(error);
@@ -214,9 +219,9 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
         ...parsed,
         rows: parsed.rows as BodyCompositionDraftRow[]
       });
-      const store = activeStore();
+      const store = requestStore(response);
       const merged = await store.mergeImport(imported);
-      const analyticsStorage = describeAnalyticsStorage(storeManager, merged.counts);
+      const analyticsStorage = describeAnalyticsStorage(storeManager, merged.counts, store.profileId);
       response.status(201).json({
         ...compactImportResponse(imported, merged),
         analyticsStorage
@@ -234,8 +239,12 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
         response.status(403).json({ error: "The requested profile is not authorized for this device.", code: "PROFILE_ACCESS_DENIED" });
         return;
       }
-      const targetProfileId = parsed.profileId ?? storeManager.getActiveProfileId();
-      const targetStore = storeManager.getStore(targetProfileId);
+      const targetProfileId = principal.kind === "companion"
+        ? principal.allowedProfileIds[0]
+        : parsed.profileId ?? storeManager.getActiveProfileId();
+      const targetStore = principal.kind === "owner" && parsed.profileId
+        ? storeManager.getStore(parsed.profileId)
+        : resolvePrincipalStore(storeManager, principal);
       const imported = parseHealthConnectImport(parsed);
       const merged = await targetStore.mergeImport(imported);
       const analyticsStorage = describeAnalyticsStorage(storeManager, merged.counts, targetProfileId);
