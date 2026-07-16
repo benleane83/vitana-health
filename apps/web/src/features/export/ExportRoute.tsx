@@ -9,7 +9,10 @@ type RestoreSelection = {
   acknowledgeReplacement?: string;
 };
 
-export function ExportRoute({ bootstrap }: { bootstrap?: AppBootstrap }) {
+export function ExportRoute({ bootstrap, onProfilesChanged }: {
+  bootstrap?: AppBootstrap;
+  onProfilesChanged: () => Promise<void>;
+}) {
   const [status, setStatus] = useState<{ busy: boolean; error?: string }>({ busy: false });
   const [backupPassphrase, setBackupPassphrase] = useState("");
   const [backupPassphraseConfirmation, setBackupPassphraseConfirmation] = useState("");
@@ -87,6 +90,7 @@ export function ExportRoute({ bootstrap }: { bootstrap?: AppBootstrap }) {
     setRestoreStatus({ busy: true });
     try {
       const result = await api.backups.restore(restoreFile, restorePassphrase, restoreSelections);
+      await onProfilesChanged();
       const successful = result.restored.filter((entry) => entry.success).length;
       const failed = result.restored.length - successful;
       setRestoreStatus({

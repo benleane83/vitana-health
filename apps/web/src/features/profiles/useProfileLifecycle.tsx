@@ -137,7 +137,6 @@ export function useProfileLifecycle(onNotice: (message: string) => void, confirm
     await run("Profile deleted.", async () => {
       await api.profiles.remove(profileId);
       await refresh();
-      setUi((current) => ({ ...current, managerOpen: false }));
     });
   }
 

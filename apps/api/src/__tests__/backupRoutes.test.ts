@@ -145,6 +145,28 @@ describe("backupRoutes", () => {
       }
     }, 30_000);
 
+    it("includes a sanitized active profile name in active-scope backup filenames", async () => {
+      const storeManager = createMockStoreManager();
+      vi.mocked(storeManager.listProfiles).mockReturnValue([
+        { id: "test-user", displayName: "Test User: Health / 2026", updatedAt: "2024-01-01T00:00:00.000Z" }
+      ]);
+      const { app } = createTestApp(storeManager);
+      const { server, port } = await listen(app);
+
+      try {
+        const res = await httpRequest(port, "/api/backups/create", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ passphrase: "my-strong-passphrase", scope: "active" })
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.headers["content-disposition"]).toMatch(/filename="lfa-backup-test-user-health-2026-.*\.lfa-backup"/);
+      } finally {
+        server.close();
+      }
+    });
+
     it("rejects short passphrases", async () => {
       const { app } = createTestApp();
       const { server, port } = await listen(app);

@@ -36,6 +36,17 @@ export function isInMaintenanceMode(): boolean {
   return maintenanceMode;
 }
 
+function sanitizeFilenameSegment(value: string): string {
+  const normalized = value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase()
+    .slice(0, 60);
+  return normalized || "profile";
+}
+
 export function makeBackupRoutes(
   storeManager: ProfileStoreManager,
   pairingStore: PairingStore
@@ -86,7 +97,11 @@ export function makeBackupRoutes(
       const encrypted = await encryptBackup(payload, passphrase);
 
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-      const filename = `lfa-backup-${timestamp}${LFA_BACKUP_FILE_EXTENSION}`;
+      const activeProfile = allProfiles.find((profile) => profile.id === targetIds[0]);
+      const profileName = scope === "active" && activeProfile
+        ? `-${sanitizeFilenameSegment(activeProfile.displayName)}`
+        : "";
+      const filename = `lfa-backup${profileName}-${timestamp}${LFA_BACKUP_FILE_EXTENSION}`;
 
       res.setHeader("content-type", "application/octet-stream");
       res.setHeader("content-disposition", `attachment; filename="${filename}"`);
