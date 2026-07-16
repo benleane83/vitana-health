@@ -121,6 +121,7 @@ describe("computeAnalytics — labAlerts", () => {
     ];
     const result = computeAnalytics(store);
     expect(result.labAlerts).toHaveLength(2);
+    expect(result.labAlerts.map((alert) => alert.code)).toEqual(expect.arrayContaining(["glucose", "hdl_cholesterol"]));
     expect(result.labAlerts.map((a) => a.flag)).toContain("high");
     expect(result.labAlerts.map((a) => a.flag)).toContain("low");
   });

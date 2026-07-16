@@ -31,10 +31,59 @@ beforeEach(() => {
     if (url.includes("/api/analytics")) {
       return Promise.resolve(mockResponse({
         counts: { imports: 0, observations: 0, samples: 0, activities: 0, insights: 0 },
-        latestMetrics: [],
+        latestMetrics: [{
+          code: "bmi",
+          label: "BMI",
+          value: 21.1,
+          unit: "kg/m2",
+          observedAt: "2026-01-01T00:00:00.000Z",
+          status: "normal"
+        }],
         trendCards: [],
-        labAlerts: [],
+        labAlerts: [{
+          code: "ldl_cholesterol",
+          marker: "LDL cholesterol",
+          value: 3.02,
+          unit: "mmol/L",
+          observedAt: "2026-01-01T00:00:00.000Z",
+          reference: "--3",
+          flag: "high"
+        }],
         evidenceDigest: []
+      }));
+    }
+    if (url.includes("/api/summary/bmi")) {
+      return Promise.resolve(mockResponse({
+        generatedAt: "2026-01-01T00:00:00.000Z",
+        measurement: {
+          code: "bmi",
+          displayName: "BMI",
+          category: "body",
+          counts: { observations: 1, samples: 0, activities: 0, total: 1 },
+          lastMeasuredAt: "2026-01-01T00:00:00.000Z"
+        },
+        entries: [],
+        chartPoints: [],
+        counts: { observations: 1, samples: 0, activities: 0, total: 1 },
+        deletion: { observationEntries: 1, deletableEntries: 1 },
+        pagination: { limit: 100, loaded: 0, total: 1, hasMore: false }
+      }));
+    }
+    if (url.includes("/api/summary/ldl_cholesterol")) {
+      return Promise.resolve(mockResponse({
+        generatedAt: "2026-01-01T00:00:00.000Z",
+        measurement: {
+          code: "ldl_cholesterol",
+          displayName: "LDL cholesterol",
+          category: "lab",
+          counts: { observations: 1, samples: 0, activities: 0, total: 1 },
+          lastMeasuredAt: "2026-01-01T00:00:00.000Z"
+        },
+        entries: [],
+        chartPoints: [],
+        counts: { observations: 1, samples: 0, activities: 0, total: 1 },
+        deletion: { observationEntries: 1, deletableEntries: 1 },
+        pagination: { limit: 100, loaded: 0, total: 1, hasMore: false }
       }));
     }
     return Promise.resolve(mockResponse({}));
@@ -66,6 +115,35 @@ describe("App smoke", () => {
   it("keeps the safety disclaimer visible", () => {
     render(<App />);
     expect(screen.getByText(safetyNotice)).toBeInTheDocument();
+  });
+
+  it("prioritizes profile freshness and latest data on the dashboard", async () => {
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: /track\. understand\. thrive\./i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/data privacy and freshness/i)).toHaveTextContent("Private on this device");
+    expect(screen.getByRole("heading", { name: /your latest data/i })).toBeInTheDocument();
+    expect(screen.getByText("No focus set")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /encrypted local vault/i })).not.toBeInTheDocument();
+  });
+
+  it("opens measurement details from the latest data list", async () => {
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /view details for bmi/i }));
+
+    await waitFor(() => expect(window.location.pathname).toBe("/track/bmi"));
+    expect(screen.getByRole("tab", { name: /^track$/i })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("opens measurement details from the lab range review", async () => {
+    render(<App />);
+
+    fireEvent.click(await screen.findByText("Explore trends, lab ranges, and AI review"));
+    fireEvent.click(screen.getByRole("button", { name: /view details for ldl cholesterol/i }));
+
+    await waitFor(() => expect(window.location.pathname).toBe("/track/ldl_cholesterol"));
+    expect(await screen.findByRole("heading", { name: "LDL cholesterol" })).toBeInTheDocument();
   });
 
   it("reaches all import modes and uses the Lab results scan label", () => {

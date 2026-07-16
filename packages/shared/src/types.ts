@@ -326,6 +326,7 @@ export interface AnalyticsSummary {
     summary: string;
   }>;
   labAlerts: Array<{
+    code: string;
     marker: string;
     value: number;
     unit: string;

@@ -127,6 +127,7 @@ function labAlert(observation: Observation, type: MeasurementType | undefined, u
   const range = getReferenceRange(type, display.unit);
   if (!range || status === "normal") return undefined;
   return {
+    code: observation.measurementCode,
     marker: type.display,
     value: display.value,
     unit: display.unit,
