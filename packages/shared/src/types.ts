@@ -439,6 +439,37 @@ export interface HealthDataDetailChartPoint {
   referenceRange?: ReferenceRange;
 }
 
+export type HealthDataChartRange = "all" | "1y" | "3m" | "1m";
+export type HealthDataChartMode = "auto" | "raw";
+export type HealthDataChartGranularity = "raw" | "daily" | "weekly";
+
+export interface HealthDataChartSeriesOptions {
+  range: HealthDataChartRange;
+  mode: HealthDataChartMode;
+}
+
+export interface HealthDataChartSeriesPoint {
+  timestamp: string;
+  value: number;
+  unit: string;
+  count: number;
+  minValue?: number;
+  maxValue?: number;
+  referenceRange?: ReferenceRange;
+}
+
+export interface HealthDataChartSeries {
+  generatedAt: string;
+  measurementCode: string;
+  range: HealthDataChartRange;
+  requestedMode: HealthDataChartMode;
+  granularity: HealthDataChartGranularity;
+  aggregation: MeasurementType["aggregation"];
+  points: HealthDataChartSeriesPoint[];
+  totalPoints: number;
+  truncated: boolean;
+}
+
 export interface HealthDataDetail {
   generatedAt: string;
   measurement: HealthDataSummaryTypeRow;

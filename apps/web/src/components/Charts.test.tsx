@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-import type { HealthDataDetail } from "@local-fitness-advisor/shared";
+import { describe, expect, it, vi } from "vitest";
+import type { HealthDataChartSeries, HealthDataDetail } from "@local-fitness-advisor/shared";
 import { DetailTrendChart } from "./Charts.js";
 
 const detail: HealthDataDetail = {
@@ -42,35 +42,49 @@ const detail: HealthDataDetail = {
   pagination: { limit: 50, loaded: 3, total: 3, hasMore: false }
 };
 
+const series: HealthDataChartSeries = {
+  generatedAt: "2026-07-15T00:00:00.000Z",
+  measurementCode: "glucose",
+  range: "all",
+  requestedMode: "auto",
+  granularity: "daily",
+  aggregation: "average",
+  totalPoints: 3,
+  truncated: false,
+  points: detail.chartPoints.map((point) => ({
+    timestamp: point.timestamp,
+    value: point.value,
+    unit: point.unit,
+    count: 1,
+    referenceRange: point.referenceRange
+  }))
+};
+
 describe("DetailTrendChart", () => {
   it("renders time controls, point details, and a compatible reference range", () => {
-    render(<DetailTrendChart detail={detail} />);
+    const onRangeChange = vi.fn();
+    render(<DetailTrendChart detail={detail} series={series} range="all" mode="auto" busy={false} onRangeChange={onRangeChange} onModeChange={vi.fn()} />);
 
-    expect(screen.getByRole("group", { name: /trend time range/i })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: /trend chart controls/i })).toBeInTheDocument();
     expect(screen.getByText(/reference range: 3.9–5.5 mmol\/l/i)).toBeInTheDocument();
     expect(screen.getByText(/ref\. low 3.9/i)).toBeInTheDocument();
     expect(screen.getByText(/ref\. high 5.5/i)).toBeInTheDocument();
 
     const chartPoints = document.querySelectorAll<SVGCircleElement>(".summary-detail-chart-hit-target");
     fireEvent.focus(chartPoints[2]!);
-    expect(document.querySelector(".summary-detail-chart-tooltip")).toHaveTextContent(/observation .* 5.2 mmol\/l/i);
+    expect(document.querySelector(".summary-detail-chart-tooltip")).toHaveTextContent(/daily bucket .* 5.2 mmol\/l/i);
 
     fireEvent.click(chartPoints[1]!);
-    expect(document.querySelector(".summary-detail-chart-tooltip")).toHaveTextContent(/observation .* 5.8 mmol\/l/i);
+    expect(document.querySelector(".summary-detail-chart-tooltip")).toHaveTextContent(/daily bucket .* 5.8 mmol\/l/i);
 
     fireEvent.click(screen.getByRole("button", { name: "1M" }));
-    expect(screen.getByRole("img", { name: /1 reading/i })).toBeInTheDocument();
-    expect(screen.getByText(/not enough data for a trend yet/i)).toBeInTheDocument();
-    expect(screen.queryByText(/hover, focus, or select/i)).not.toBeInTheDocument();
+    expect(onRangeChange).toHaveBeenCalledWith("1m");
   });
 
   it("renders duplicate readings as separate selectable points", () => {
-    const duplicateDetail: HealthDataDetail = {
-      ...detail,
-      chartPoints: [detail.chartPoints[2]!, detail.chartPoints[2]!]
-    };
+    const duplicateSeries = { ...series, points: [series.points[2]!, series.points[2]!] };
 
-    render(<DetailTrendChart detail={duplicateDetail} />);
+    render(<DetailTrendChart detail={detail} series={duplicateSeries} range="all" mode="raw" busy={false} onRangeChange={vi.fn()} onModeChange={vi.fn()} />);
 
     expect(document.querySelectorAll(".summary-detail-chart-hit-target")).toHaveLength(2);
   });

@@ -6,11 +6,15 @@ import {
   type AnalyticsSummary,
   type AppBootstrap,
   type BiologicalAgeSource,
+  type HealthDataChartSeries,
+  type HealthDataChartSeriesOptions,
+  type HealthDataChartSeriesPoint,
   type HealthDataDetailEntry,
   type HealthDataSummaryTypeRow,
   type MeasurementType,
   type ObservationGroup,
-  type Profile
+  type Profile,
+  getReferenceRange
 } from "@local-fitness-advisor/shared";
 import type { ClinicianReportSourceImport } from "../clinicianReport.js";
 import {
@@ -301,6 +305,169 @@ export async function measurementDetail(
   });
 }
 
+export async function measurementChartSeries(
+  connection: duckdb.Connection,
+  measurementCode: string,
+  options: HealthDataChartSeriesOptions
+): Promise<HealthDataChartSeries> {
+  const typeRows = await allWithParams(
+    connection,
+    "SELECT * EXCLUDE (ordinal) FROM measurement_types WHERE code = ?;",
+    measurementCode
+  );
+  const type = typeRows[0] ? measurementTypeFromRow(typeRows[0]) : undefined;
+  const aggregation = type?.aggregation ?? "none";
+  const cutoff = chartRangeCutoff(options.range);
+
+  if (options.mode === "raw" || (aggregation !== "sum" && aggregation !== "average")) {
+    const [totalRows, rows] = await Promise.all([
+      chartEntryCount(connection, measurementCode, cutoff),
+      rawChartPoints(connection, measurementCode, cutoff)
+    ]);
+    const totalPoints = Number(totalRows[0]?.total ?? 0);
+    const truncated = rows.length > maxRawChartPoints;
+    const points = (truncated ? rows.slice(0, maxRawChartPoints) : rows)
+      .reverse()
+      .map((row) => chartPointFromRow(row, type));
+    return {
+      generatedAt: new Date().toISOString(),
+      measurementCode,
+      range: options.range,
+      requestedMode: options.mode,
+      granularity: "raw",
+      aggregation,
+      points,
+      totalPoints,
+      truncated
+    };
+  }
+
+  const dailyRows = await aggregateChartPoints(connection, measurementCode, cutoff, "day", aggregation);
+  const useWeeklyBuckets = options.range === "all" && dailyRows.length > maxDailyChartBuckets;
+  const rows = useWeeklyBuckets
+    ? await aggregateChartPoints(connection, measurementCode, cutoff, "week", aggregation)
+    : dailyRows;
+  return {
+    generatedAt: new Date().toISOString(),
+    measurementCode,
+    range: options.range,
+    requestedMode: options.mode,
+    granularity: useWeeklyBuckets ? "weekly" : "daily",
+    aggregation,
+    points: rows.map((row) => chartPointFromRow(row, type)),
+    totalPoints: rows.length,
+    truncated: false
+  };
+}
+
+async function chartEntryCount(connection: duckdb.Connection, measurementCode: string, cutoff?: string) {
+  const range = chartRangeSql(cutoff);
+  return allWithParams(
+    connection,
+    `WITH chart_entries AS (${chartEntriesSql()})
+      SELECT COUNT(*) AS total FROM chart_entries ${range.clause};`,
+    measurementCode,
+    measurementCode,
+    measurementCode,
+    ...range.params
+  );
+}
+
+async function rawChartPoints(connection: duckdb.Connection, measurementCode: string, cutoff?: string) {
+  const range = chartRangeSql(cutoff);
+  return allWithParams(
+    connection,
+    `WITH chart_entries AS (${chartEntriesSql()})
+      SELECT measured_at AS bucket, value, unit, 1 AS count, value AS min_value, value AS max_value
+      FROM chart_entries ${range.clause}
+      ORDER BY measured_at DESC, id DESC
+      LIMIT ?;`,
+    measurementCode,
+    measurementCode,
+    measurementCode,
+    ...range.params,
+    maxRawChartPoints + 1
+  );
+}
+
+async function aggregateChartPoints(
+  connection: duckdb.Connection,
+  measurementCode: string,
+  cutoff: string | undefined,
+  bucket: "day" | "week",
+  aggregation: "sum" | "average"
+) {
+  const range = chartRangeSql(cutoff);
+  const aggregate = aggregation === "sum" ? "SUM(value)" : "AVG(value)";
+  return allWithParams(
+    connection,
+    `WITH chart_entries AS (${chartEntriesSql()})
+      SELECT
+        DATE_TRUNC('${bucket}', measured_at) AS bucket,
+        ${aggregate} AS value,
+        MIN(unit) AS unit,
+        COUNT(*) AS count,
+        MIN(value) AS min_value,
+        MAX(value) AS max_value
+      FROM chart_entries ${range.clause}
+      GROUP BY DATE_TRUNC('${bucket}', measured_at)
+      ORDER BY bucket;`,
+    measurementCode,
+    measurementCode,
+    measurementCode,
+    ...range.params
+  );
+}
+
+function chartEntriesSql(): string {
+  return `
+    SELECT id, observed_at AS measured_at, value, unit
+    FROM observations WHERE measurement_code = ?
+    UNION ALL
+    SELECT id, end_at AS measured_at, value, unit
+    FROM time_series_samples WHERE measurement_code = ?
+    UNION ALL
+    SELECT id, COALESCE(end_at, start_at) AS measured_at,
+      COALESCE(duration_minutes, DATE_DIFF('minute', start_at, COALESCE(end_at, start_at))) AS value,
+      'min' AS unit
+    FROM activities WHERE ? = 'activity_sessions'`;
+}
+
+function chartRangeSql(cutoff?: string): { clause: string; params: string[] } {
+  return cutoff ? { clause: "WHERE measured_at >= ?", params: [cutoff] } : { clause: "", params: [] };
+}
+
+function chartRangeCutoff(range: HealthDataChartSeriesOptions["range"]): string | undefined {
+  if (range === "all") {
+    return undefined;
+  }
+  const cutoff = new Date();
+  if (range === "1y") {
+    cutoff.setUTCFullYear(cutoff.getUTCFullYear() - 1);
+  } else if (range === "3m") {
+    cutoff.setUTCMonth(cutoff.getUTCMonth() - 3);
+  } else {
+    cutoff.setUTCMonth(cutoff.getUTCMonth() - 1);
+  }
+  return cutoff.toISOString();
+}
+
+function chartPointFromRow(
+  row: Record<string, unknown>,
+  type: MeasurementType | undefined
+): HealthDataChartSeriesPoint {
+  const unit = String(row.unit);
+  return {
+    timestamp: isoTimestamp(row.bucket),
+    value: Number(row.value),
+    unit,
+    count: Number(row.count),
+    minValue: optionalNumber(row.min_value),
+    maxValue: optionalNumber(row.max_value),
+    referenceRange: type ? getReferenceRange(type, unit) : undefined
+  };
+}
+
 export async function dailyMetrics(connection: duckdb.Connection, measurementCode?: string): Promise<DuckDbDailyMetric[]> {
   const rows = measurementCode === undefined
     ? await all(connection, `SELECT day, measurement_code, avg_value, min_value, max_value, n, unit
@@ -578,3 +745,5 @@ export interface DuckDbActivityCount {
 }
 
 const maxAnalyticalRows = 200;
+const maxRawChartPoints = 500;
+const maxDailyChartBuckets = 366;

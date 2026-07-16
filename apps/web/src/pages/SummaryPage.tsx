@@ -1,5 +1,13 @@
 import { useState } from "react";
-import type { HealthDataDetail, HealthDataDetailEntry, HealthDataSummary, HealthDataSummaryTypeRow } from "@local-fitness-advisor/shared";
+import { compareSummaryRows } from "@local-fitness-advisor/shared";
+import type {
+  HealthDataChartMode,
+  HealthDataChartRange,
+  HealthDataChartSeries,
+  HealthDataDetail,
+  HealthDataDetailEntry,
+  HealthDataSummary
+} from "@local-fitness-advisor/shared";
 import { DetailTrendChart } from "../components/Charts.js";
 import { formatTimestamp, formatShortTimestamp, formatDetailValue } from "../utils.js";
 import type { SummarySort } from "../types.js";
@@ -19,15 +27,6 @@ function Stat({ label, value, onClick }: { label: string; value: number; onClick
       <span>{label}</span>
     </div>
   );
-}
-
-function compareSummaryRows(a: HealthDataSummaryTypeRow, b: HealthDataSummaryTypeRow, sort: SummarySort): number {
-  if (sort === "name") return a.displayName.localeCompare(b.displayName);
-  if (sort === "count") return b.counts.total - a.counts.total || a.displayName.localeCompare(b.displayName);
-  if (!a.lastMeasuredAt && !b.lastMeasuredAt) return a.displayName.localeCompare(b.displayName);
-  if (!a.lastMeasuredAt) return 1;
-  if (!b.lastMeasuredAt) return -1;
-  return b.lastMeasuredAt.localeCompare(a.lastMeasuredAt) || a.displayName.localeCompare(b.displayName);
 }
 
 function detailKindLabel(kind: HealthDataDetailEntry["kind"]): string {
@@ -227,6 +226,11 @@ export function SummaryPage({
 
 export function ObservationTypeDetailPage({
   detail,
+  chartSeries,
+  chartRange,
+  chartMode,
+  chartBusy,
+  chartError,
   loading,
   error,
   actionBusy,
@@ -236,10 +240,17 @@ export function ObservationTypeDetailPage({
   onDeleteObservation,
   onDeleteAll,
   onLoadMore,
+  onChartRangeChange,
+  onChartModeChange,
   onAddManualObservation,
   defaultUnit
 }: {
   detail?: HealthDataDetail;
+  chartSeries?: HealthDataChartSeries;
+  chartRange: HealthDataChartRange;
+  chartMode: HealthDataChartMode;
+  chartBusy: boolean;
+  chartError?: string;
   loading: boolean;
   error?: string;
   actionBusy: boolean;
@@ -249,6 +260,8 @@ export function ObservationTypeDetailPage({
   onDeleteObservation: (entry: HealthDataDetailEntry) => void | Promise<void>;
   onDeleteAll: () => void | Promise<void>;
   onLoadMore: () => void | Promise<void>;
+  onChartRangeChange: (range: HealthDataChartRange) => void;
+  onChartModeChange: (mode: HealthDataChartMode) => void;
   onAddManualObservation: (input: { observedAt: string; value: number; unit: string; note: string }) => void | Promise<void>;
   defaultUnit: string;
 }) {
@@ -339,9 +352,18 @@ export function ObservationTypeDetailPage({
             <p className="empty" role="status">No entries are currently stored for this measurement type.</p>
           ) : (
             <>
-              {detail.chartPoints.length > 0 ? (
+              {chartBusy || chartError || chartSeries?.points.length ? (
                 <div className="summary-detail-chart-panel">
-                  <DetailTrendChart detail={detail} />
+                  <DetailTrendChart
+                    detail={detail}
+                    series={chartSeries}
+                    range={chartRange}
+                    mode={chartMode}
+                    busy={chartBusy}
+                    error={chartError}
+                    onRangeChange={onChartRangeChange}
+                    onModeChange={onChartModeChange}
+                  />
                 </div>
               ) : null}
 

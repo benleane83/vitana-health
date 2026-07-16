@@ -6,6 +6,7 @@ import type {
   CloudAiConsent,
   DeleteObservationResponse,
   DeleteObservationsByTypeResponse,
+  HealthDataChartSeries,
   HealthDataDetail,
   HealthDataSummary,
   Insight,
@@ -131,6 +132,14 @@ export const profilesResponseSchema = z.object({
 }).strict();
 export type ProfilesResponse = z.infer<typeof profilesResponseSchema>;
 
+export const assignedProfilesResponseSchema = z.object({
+  profiles: z.array(z.object({
+    id: z.string(),
+    displayName: z.string()
+  }).strict()).max(1)
+}).strict();
+export type AssignedProfilesResponse = z.infer<typeof assignedProfilesResponseSchema>;
+
 export const profileIdResponseSchema = z.object({ profileId: z.string() }).strict();
 export const profileDeleteResponseSchema = z.object({
   deletedProfileId: z.string(),
@@ -181,6 +190,7 @@ export const analyticsSummaryResponseSchema = objectResponseSchema<AnalyticsSumm
 export const biologicalAgeResponseSchema = objectResponseSchema<BiologicalAgeReport>();
 export const healthDataSummaryResponseSchema = objectResponseSchema<HealthDataSummary>();
 export const healthDataDetailResponseSchema = objectResponseSchema<HealthDataDetail>();
+export const healthDataChartSeriesResponseSchema = objectResponseSchema<HealthDataChartSeries>();
 export const profileResponseSchema = objectResponseSchema<Profile>();
 export const cloudAiConsentResponseSchema = objectResponseSchema<CloudAiConsent>();
 export const bodyCompositionDraftResponseSchema = objectResponseSchema<BodyCompositionDraft>();

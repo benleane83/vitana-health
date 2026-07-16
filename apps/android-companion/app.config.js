@@ -51,8 +51,13 @@ module.exports = {
       ["./plugins/withDevNetworkSecurity", { allowCleartext }],
       "expo-health-connect",
       "expo-secure-store",
+      "@react-native-community/datetimepicker",
+      ["expo-image-picker", {
+        photosPermission: "Allow Local Fitness Companion to select a health report for private processing on your paired PC.",
+        cameraPermission: "Allow Local Fitness Companion to photograph a health report for private processing on your paired PC."
+      }],
       ["expo-camera", {
-        cameraPermission: "Allow Local Fitness Companion to access your camera for QR code scanning."
+        cameraPermission: "Allow Local Fitness Companion to access your camera for QR pairing and health-report capture."
       }],
       ["expo-build-properties", {
         android: {
@@ -62,9 +67,7 @@ module.exports = {
         }
       }]
     ],
-    runtimeVersion: {
-      policy: "appVersion"
-    },
+    runtimeVersion: "1.0.0",
     updates: {
       url: "https://u.expo.dev/2cc5cf1b-57e8-4e6f-8709-662259497a57",
       fallbackToCacheTimeout: 0

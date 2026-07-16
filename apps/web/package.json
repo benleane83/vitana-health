@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@local-fitness-advisor/api-client": "0.1.0",
     "@local-fitness-advisor/shared": "file:../../packages/shared",
     "@vitejs/plugin-react": "^4.3.4",
     "vite": "^6.2.1",

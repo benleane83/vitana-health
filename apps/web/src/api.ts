@@ -51,6 +51,8 @@ import {
   profilesResponseSchema,
   updateObservationResponseSchema
 } from "@local-fitness-advisor/shared";
+import { ApiError, createApiClient } from "@local-fitness-advisor/api-client";
+export { ApiError } from "@local-fitness-advisor/api-client";
 
 const ownerTokenKey = "local-fitness-advisor.ownerToken";
 let ownerTokenPromptInFlight: Promise<string | null> | undefined;
@@ -103,18 +105,6 @@ interface ResponseSchema<T> {
   parse(value: unknown): T;
 }
 
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-    readonly code: string,
-    readonly correlationId?: string
-  ) {
-    super(message);
-    this.name = "ApiError";
-  }
-}
-
 async function apiErrorFromResponse(response: Response): Promise<ApiError> {
   const text = await response.text();
   const headerCorrelationId = response.headers.get("x-correlation-id") ?? undefined;
@@ -143,6 +133,9 @@ async function request<T>(schema: ResponseSchema<T>, path: string, options?: Req
   return schema.parse(await response.json());
 }
 
+const sharedApi = createApiClient(async ({ path, method, headers, body }) =>
+  fetchAsOwner(path, { method, headers, body }));
+
 export type AiQueryResult = SharedAiQueryResponse;
 export type AiQueryRow = SharedAiQueryResponse["rows"][number];
 export type AiQueryChart = NonNullable<SharedAiQueryResponse["chart"]>;
@@ -160,9 +153,9 @@ export type DeleteObservationsByTypeMutationResponse = DeleteObservationsByTypeR
 export type UpdateObservationMutationResponse = UpdateObservationResponse;
 
 export const api = {
-  health: () => request(healthResponseSchema, "/api/health"),
-  bootstrap: () => request(appBootstrapResponseSchema, "/api/bootstrap"),
-  analytics: () => request(analyticsSummaryResponseSchema, "/api/analytics"),
+  health: sharedApi.health,
+  bootstrap: sharedApi.bootstrap,
+  analytics: sharedApi.analytics,
   biologicalAge: () => request(biologicalAgeResponseSchema, "/api/biological-age"),
   exportPdf: async () => {
     const response = await fetchAsOwner("/api/export/pdf", { headers: { accept: "application/pdf" } });
@@ -208,14 +201,9 @@ export const api = {
         body: file
       })
   },
-  summary: () => request(healthDataSummaryResponseSchema, "/api/summary"),
-  healthDataDetail: (measurementCode: string, page?: { limit?: number; offset?: number }) => {
-    const query = new URLSearchParams();
-    if (page?.limit !== undefined) query.set("limit", String(page.limit));
-    if (page?.offset !== undefined) query.set("offset", String(page.offset));
-    const suffix = query.size > 0 ? `?${query.toString()}` : "";
-    return request(healthDataDetailResponseSchema, `/api/summary/${encodeURIComponent(measurementCode)}${suffix}`);
-  },
+  summary: sharedApi.summary,
+  healthDataDetail: sharedApi.healthDataDetail,
+  healthDataChartSeries: sharedApi.healthDataChartSeries,
   updateObservation: (id: string, input: UpdateObservationInput) =>
     request(updateObservationResponseSchema, `/api/observations/${encodeURIComponent(id)}`, {
       method: "PATCH",
@@ -233,17 +221,13 @@ export const api = {
   },
   importObservationCsv: (fileName: string, content: string) =>
     request(importMutationResponseSchema, "/api/import/observations/csv", { method: "POST", body: JSON.stringify({ fileName, content }) }),
-  previewBodyCompositionReport: (payload: { fileName: string; mimeType: string; contentBase64: string }) =>
-    request(bodyCompositionDraftResponseSchema, "/api/import/body-composition/preview", { method: "POST", body: JSON.stringify(payload) }),
-  commitBodyCompositionReport: (payload: BodyCompositionDraftCommitPayload) =>
-    request(importMutationResponseSchema, "/api/import/body-composition/commit", { method: "POST", body: JSON.stringify(payload) }),
-  previewBloodTestReport: (payload: { fileName: string; mimeType: string; contentBase64: string }) =>
-    request(bodyCompositionDraftResponseSchema, "/api/import/blood-test/preview", { method: "POST", body: JSON.stringify(payload) }),
-  commitBloodTestReport: (payload: BodyCompositionDraftCommitPayload) =>
-    request(importMutationResponseSchema, "/api/import/blood-test/commit", { method: "POST", body: JSON.stringify(payload) }),
+  previewBodyCompositionReport: sharedApi.previewBodyCompositionReport,
+  commitBodyCompositionReport: sharedApi.commitBodyCompositionReport,
+  previewBloodTestReport: sharedApi.previewBloodTestReport,
+  commitBloodTestReport: sharedApi.commitBloodTestReport,
   importManualLabEntry: (payload: ManualLabEntryPayload) =>
     request(importMutationResponseSchema, "/api/import/labs/manual", { method: "POST", body: JSON.stringify(payload) }),
-  importManualObservations: (payload: { observedAt: string; label: string; sourceName?: string; observations: Array<{ measurementName?: string; measurementCode?: string; value: number; unit?: string; note?: string }> }) =>
+  importManualObservations: (payload: { observedAt: string; label: string; sourceName?: string; observations: Array<{ measurementName?: string; measurementCode?: string; value: number; unit?: string }> }) =>
     request(importMutationResponseSchema, "/api/import/observations/manual", { method: "POST", body: JSON.stringify(payload) }),
   generateInsight: () => request(insightResponseSchema, "/api/insights/generate", { method: "POST" }),
   pairing: {

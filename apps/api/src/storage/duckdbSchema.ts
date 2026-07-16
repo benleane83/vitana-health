@@ -27,7 +27,9 @@ export async function reconcileDefaultMeasurementTypes(
     all(connection, `
       SELECT measurement_code FROM observations
       UNION
-      SELECT measurement_code FROM time_series_samples;
+      SELECT measurement_code FROM time_series_samples
+      UNION
+      SELECT 'activity_sessions' AS measurement_code FROM activities;
     `)
   ]);
   const existingByCode = new Map(existingRows.map((row) => [String(row.code), row]));

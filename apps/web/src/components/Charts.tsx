@@ -6,22 +6,26 @@
  * - <title> elements on SVG data points
  * - A visually-hidden <details> fallback for screen readers
  */
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { AiQueryChartSeries } from "../api.js";
-import type { HealthDataDetail, HealthDataDetailChartPoint, HealthDataDetailEntry, ReferenceRange } from "@local-fitness-advisor/shared";
+import type {
+  HealthDataChartMode,
+  HealthDataChartRange,
+  HealthDataChartSeries,
+  HealthDataChartSeriesPoint,
+  HealthDataDetail,
+  HealthDataDetailEntry,
+  ReferenceRange
+} from "@local-fitness-advisor/shared";
 import { formatChartTimestamp, formatDetailValue, formatTimestamp } from "../utils.js";
 
 const flatChartPaddingRatio = 0.05;
 const minimumFlatChartPadding = 1;
-const dayMs = 24 * 60 * 60 * 1000;
-
-type TrendRange = "all" | "1y" | "3m" | "1m";
-
-const trendRanges: Array<{ value: TrendRange; label: string; duration?: number }> = [
+const trendRanges: Array<{ value: HealthDataChartRange; label: string }> = [
   { value: "all", label: "All" },
-  { value: "1y", label: "1Y", duration: 365 * dayMs },
-  { value: "3m", label: "3M", duration: 90 * dayMs },
-  { value: "1m", label: "1M", duration: 30 * dayMs }
+  { value: "1y", label: "1Y" },
+  { value: "3m", label: "3M" },
+  { value: "1m", label: "1M" }
 ];
 
 function niceStep(range: number): number {
@@ -44,17 +48,13 @@ function chartTicks(minimum: number, maximum: number, count = 5): number[] {
   return ticks;
 }
 
-function compatibleReferenceRange(points: HealthDataDetailChartPoint[]): ReferenceRange | undefined {
+function compatibleReferenceRange(points: HealthDataChartSeriesPoint[]): ReferenceRange | undefined {
   const unit = points[0]?.unit;
   return points.find((point) =>
     point.referenceRange &&
     point.referenceRange.unit === unit &&
     (point.referenceRange.low !== undefined || point.referenceRange.high !== undefined)
   )?.referenceRange;
-}
-
-function detailKindLabel(kind: HealthDataDetailEntry["kind"]): string {
-  return { observation: "Observation", sample: "Sample", activity: "Activity" }[kind];
 }
 
 // ─── Density bar (progress semantics) ────────────────────────────────────────
@@ -175,48 +175,80 @@ export function QueryChart({ chart }: { chart: { type: string; series: AiQueryCh
 
 // ─── Detail trend chart ────────────────────────────────────────────────────────
 
-export function DetailTrendChart({ detail }: { detail: HealthDataDetail }) {
-  const points = detail.chartPoints;
-  const [selectedRange, setSelectedRange] = useState<TrendRange>("all");
-  const [activePoint, setActivePoint] = useState<HealthDataDetailChartPoint | undefined>();
-  const visiblePoints = useMemo(() => {
-    if (points.length === 0) return [];
-    const latestTimestamp = Math.max(...points.map((point) => new Date(point.timestamp).getTime()));
-    const duration = trendRanges.find((range) => range.value === selectedRange)?.duration;
-    return duration ? points.filter((point) => new Date(point.timestamp).getTime() >= latestTimestamp - duration) : points;
-  }, [points, selectedRange]);
+export function DetailTrendChart({
+  detail,
+  series,
+  range,
+  mode,
+  busy,
+  error,
+  onRangeChange,
+  onModeChange
+}: {
+  detail: HealthDataDetail;
+  series?: HealthDataChartSeries;
+  range: HealthDataChartRange;
+  mode: HealthDataChartMode;
+  busy: boolean;
+  error?: string;
+  onRangeChange: (range: HealthDataChartRange) => void;
+  onModeChange: (mode: HealthDataChartMode) => void;
+}) {
+  const points = series?.points ?? [];
+  const [activePoint, setActivePoint] = useState<HealthDataChartSeriesPoint | undefined>();
 
+  if (busy && !series) {
+    return <p className="empty" role="status">Loading trend…</p>;
+  }
+  if (error && !series) {
+    return <p className="empty" role="alert">{error}</p>;
+  }
   if (points.length === 0) {
     return <p className="empty">No numeric points are available for charting.</p>;
   }
 
-  const referenceRange = compatibleReferenceRange(visiblePoints);
-  const unitLabel = [...new Set(visiblePoints.map((point) => point.unit).filter(Boolean))].join(", ");
+  const referenceRange = compatibleReferenceRange(points);
+  const unitLabel = [...new Set(points.map((point) => point.unit).filter(Boolean))].join(", ");
   const referenceLabel = referenceRange
     ? `Reference range: ${referenceRange.low ?? "—"}–${referenceRange.high ?? "—"} ${referenceRange.unit}`
     : undefined;
 
   const rangeControls = (
-    <div className="summary-detail-chart-toolbar" role="group" aria-label="Trend time range">
-      {trendRanges.map((range) => (
+    <div className="summary-detail-chart-toolbar" role="group" aria-label="Trend chart controls">
+      {trendRanges.map((rangeOption) => (
         <button
           type="button"
-          key={range.value}
-          className={selectedRange === range.value ? "active" : ""}
-          aria-pressed={selectedRange === range.value}
+          key={rangeOption.value}
+          className={range === rangeOption.value ? "active" : ""}
+          aria-pressed={range === rangeOption.value}
           onClick={() => {
-            setSelectedRange(range.value);
+            onRangeChange(rangeOption.value);
             setActivePoint(undefined);
           }}
         >
-          {range.label}
+          {rangeOption.label}
+        </button>
+      ))}
+      <span className="summary-detail-chart-toolbar-separator" aria-hidden="true" />
+      {(["auto", "raw"] as const).map((modeOption) => (
+        <button
+          type="button"
+          key={modeOption}
+          className={mode === modeOption ? "active" : ""}
+          aria-pressed={mode === modeOption}
+          onClick={() => {
+            onModeChange(modeOption);
+            setActivePoint(undefined);
+          }}
+        >
+          {modeOption === "auto" ? "Smart" : "Raw"}
         </button>
       ))}
     </div>
   );
 
-  if (visiblePoints.length === 1) {
-    const point = visiblePoints[0];
+  if (points.length === 1) {
+    const point = points[0];
     return (
       <div className="summary-detail-chart">
         <div className="summary-detail-section-heading summary-detail-chart-heading">
@@ -238,8 +270,8 @@ export function DetailTrendChart({ detail }: { detail: HealthDataDetail }) {
     );
   }
 
-  const timestamps = visiblePoints.map((p) => new Date(p.timestamp).getTime());
-  const values = visiblePoints.map((p) => p.value);
+  const timestamps = points.map((p) => new Date(p.timestamp).getTime());
+  const values = points.map((p) => p.value);
   const xMin = Math.min(...timestamps);
   const xMax = Math.max(...timestamps);
   const rawMin = Math.min(...values);
@@ -262,15 +294,16 @@ export function DetailTrendChart({ detail }: { detail: HealthDataDetail }) {
   const chartRight = 736;
   const chartTop = 24;
   const chartBottom = 266;
-  const pointX = (point: HealthDataDetailChartPoint) =>
+  const pointX = (point: HealthDataChartSeriesPoint) =>
     chartLeft + ((new Date(point.timestamp).getTime() - xMin) / xRange) * (chartRight - chartLeft);
   const pointY = (value: number) => chartBottom - ((value - yMin) / yRange) * (chartBottom - chartTop);
 
-  const path = visiblePoints
+  const path = points
     .map((point, index) => `${index === 0 ? "M" : "L"} ${pointX(point).toFixed(2)} ${pointY(point.value).toFixed(2)}`)
     .join(" ");
 
-  const ariaLabel = `${detail.measurement.displayName} trend: ${visiblePoints.length} readings, ${unitLabel || "value"} ${rawMin.toFixed(1)}–${rawMax.toFixed(1)}, from ${formatChartTimestamp(xMin, xRange)} to ${formatChartTimestamp(xMax, xRange)}`;
+  const bucketLabel = series?.granularity === "raw" ? "readings" : `${series?.granularity ?? "daily"} buckets`;
+  const ariaLabel = `${detail.measurement.displayName} trend: ${points.length} ${bucketLabel}, ${unitLabel || "value"} ${rawMin.toFixed(1)}–${rawMax.toFixed(1)}, from ${formatChartTimestamp(xMin, xRange)} to ${formatChartTimestamp(xMax, xRange)}`;
 
   return (
     <div className="summary-detail-chart">
@@ -311,12 +344,12 @@ export function DetailTrendChart({ detail }: { detail: HealthDataDetail }) {
           </g>
         ) : null)}
         <path d={path} fill="none" stroke="currentColor" strokeWidth="2.5" className="summary-detail-chart-line" />
-        {visiblePoints.map((point, index) => {
+        {points.map((point, index) => {
           const x = pointX(point);
           const y = pointY(point.value);
-          const pointLabel = `${detailKindLabel(point.kind)} • ${formatTimestamp(point.timestamp)} • ${formatDetailValue(point.value)} ${point.unit}`;
+          const pointLabel = `${series?.granularity === "raw" ? "Reading" : `${series?.granularity ?? "daily"} bucket`} • ${formatTimestamp(point.timestamp)} • ${formatDetailValue(point.value)} ${point.unit}${point.count > 1 ? ` • ${point.count} readings` : ""}`;
           return (
-            <g key={`${point.kind}-${point.timestamp}-${point.value}-${index}`}>
+            <g key={`${point.timestamp}-${point.value}-${index}`}>
               <circle cx={x} cy={y} r="5" className="summary-detail-chart-dot" aria-hidden="true" />
               <circle
                 cx={x}
@@ -357,9 +390,10 @@ export function DetailTrendChart({ detail }: { detail: HealthDataDetail }) {
         <span className="sr-only">{unitLabel || "Value"}{referenceLabel ? ` • ${referenceLabel}` : ""}</span>
         <span className="summary-detail-chart-tooltip" aria-live="polite">
           {activePoint
-            ? `${detailKindLabel(activePoint.kind)} · ${formatTimestamp(activePoint.timestamp)} · ${formatDetailValue(activePoint.value)} ${activePoint.unit}`
+            ? `${series?.granularity === "raw" ? "Reading" : `${series?.granularity ?? "daily"} bucket`} · ${formatTimestamp(activePoint.timestamp)} · ${formatDetailValue(activePoint.value)} ${activePoint.unit}${activePoint.count > 1 ? ` · ${activePoint.count} readings` : ""}`
             : "Hover, focus, or select a point for details."}
         </span>
+        {series?.truncated ? <span>Showing the newest {series.points.length} of {series.totalPoints} raw readings.</span> : null}
       </div>
     </div>
   );

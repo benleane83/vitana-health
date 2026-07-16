@@ -8,6 +8,7 @@ import {
   type BiologicalAgeSource,
   type DeleteObservationResponse,
   type DeleteObservationsByTypeResponse,
+  type HealthDataChartSeriesOptions,
   type HealthStoreData,
   type Observation,
   type Profile,
@@ -61,6 +62,7 @@ import {
   latestMeasurement as readLatestMeasurement,
   listActivities as readActivities,
   measurementDetail as readMeasurementDetail,
+  measurementChartSeries as readMeasurementChartSeries,
   measurementDetails as readMeasurementDetails,
   storageCounts as readStorageCounts,
   summary as readSummary,
@@ -263,6 +265,11 @@ export class DuckDbRepository implements ProfileRepository {
   async measurementDetail(measurementCode: string, page: MeasurementDetailPage = { offset: 0, limit: 100 }) {
     this.assertOpen();
     return readMeasurementDetail(this.connection, measurementCode, page);
+  }
+
+  async measurementChartSeries(measurementCode: string, options: HealthDataChartSeriesOptions) {
+    this.assertOpen();
+    return readMeasurementChartSeries(this.connection, measurementCode, options);
   }
 
   async dailyMetrics(measurementCode?: string): Promise<DuckDbDailyMetric[]> {

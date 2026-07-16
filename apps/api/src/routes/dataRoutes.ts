@@ -11,6 +11,8 @@ import { describeAnalyticsStorage } from "../storage/analyticsBackend.js";
 import { generateInsight } from "../insights.js";
 import { buildClinicianReport } from "../clinicianReport.js";
 import { createClinicianReportPdf } from "../pdfReport.js";
+import type { AuthorizationPrincipal } from "../requestPrincipal.js";
+import { resolvePrincipalStore } from "../requestPrincipal.js";
 
 const measurementCodeParamSchema = z
   .string()
@@ -29,6 +31,11 @@ const observationIdParamSchema = z
 const detailPageQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(250).default(100),
   offset: z.coerce.number().int().min(0).default(0)
+});
+
+const chartSeriesQuerySchema = z.object({
+  range: z.enum(["all", "1y", "3m", "1m"]).default("all"),
+  mode: z.enum(["auto", "raw"]).default("auto")
 });
 
 const updateObservationBodySchema = z.object({
@@ -79,9 +86,13 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
     return storeManager.getActiveStore();
   }
 
+  function requestStore(response: express.Response) {
+    return resolvePrincipalStore(storeManager, response.locals.principal as AuthorizationPrincipal);
+  }
+
   router.get("/bootstrap", async (_request, response, next) => {
     try {
-      response.json(await activeStore().appBootstrap());
+      response.json(await requestStore(response).appBootstrap());
     } catch (error) {
       next(error);
     }
@@ -89,7 +100,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.get("/analytics", async (_request, response, next) => {
     try {
-      response.json(await activeStore().analyticsSummary());
+      response.json(await requestStore(response).analyticsSummary());
     } catch (error) {
       next(error);
     }
@@ -105,7 +116,17 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.get("/summary", async (_request, response, next) => {
     try {
-      response.json(await activeStore().summary());
+      response.json(await requestStore(response).summary());
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/summary/:measurementCode/chart", async (request, response, next) => {
+    try {
+      const measurementCode = measurementCodeParamSchema.parse(request.params.measurementCode);
+      const options = chartSeriesQuerySchema.parse(request.query);
+      response.json(await requestStore(response).measurementChartSeries(measurementCode, options));
     } catch (error) {
       next(error);
     }
@@ -115,7 +136,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
     try {
       const measurementCode = measurementCodeParamSchema.parse(request.params.measurementCode);
       const page = detailPageQuerySchema.parse(request.query);
-      response.json(await activeStore().measurementDetail(measurementCode, page));
+      response.json(await requestStore(response).measurementDetail(measurementCode, page));
     } catch (error) {
       next(error);
     }

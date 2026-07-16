@@ -1,6 +1,6 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { getDeviceId, saveConnection } from "./endpointStore";
 import { pinnedFetch } from "./pinnedFetch";
 
@@ -24,7 +24,10 @@ export function PairScreen({
   const [detectedUrl, setDetectedUrl] = useState("");
   const [pairingCode, setPairingCode] = useState("");
   const [publicKeyHash, setPublicKeyHash] = useState<string | null>(null);
-  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [cameraPermission, requestCameraPermission, getCameraPermission] = useCameraPermissions();
+  const [cameraReady, setCameraReady] = useState(false);
+  const [cameraError, setCameraError] = useState("");
+  const [cameraInstance, setCameraInstance] = useState(0);
   const scannedRef = useRef(false);
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -34,34 +37,46 @@ export function PairScreen({
     };
   }, []);
 
+  useEffect(() => {
+    void getCameraPermission();
+  }, [getCameraPermission]);
+
+  useEffect(() => {
+    if (cameraPermission?.granted) {
+      setCameraError("");
+      setCameraReady(false);
+    }
+  }, [cameraPermission?.granted]);
+
+  async function handleCameraPermissionRequest() {
+    const permission = await requestCameraPermission();
+    if (permission.granted) return;
+    await getCameraPermission();
+  }
+
   function handleQrScanned(data: string) {
     if (scannedRef.current || status !== "idle") return;
     scannedRef.current = true;
     try {
       const payload = JSON.parse(data) as Record<string, unknown>;
-      if (
-        typeof payload.url === "string" &&
-        typeof payload.pairingCode === "string" &&
-        payload.app === "local-fitness-advisor"
-      ) {
-        const url = payload.url.replace(/\/+$/, "");
-        if (!__DEV__ && !url.startsWith("https://")) {
-          throw new Error("Production pairing requires HTTPS.");
-        }
-        if (url.startsWith("https://") && typeof payload.publicKeyHash !== "string") {
-          throw new Error("This pairing code does not include a server identity.");
-        }
-        setDetectedUrl(url);
-        setPairingCode(payload.pairingCode);
-        setPublicKeyHash(typeof payload.publicKeyHash === "string" ? payload.publicKeyHash : null);
-        setStatus("detected");
-        setMessage(`Found server: ${url}`);
-      } else {
-        setMessage("This QR code is not a Local Fitness Advisor pairing code. Try again.");
-        scannedRef.current = false;
+      if (payload.app !== "local-fitness-advisor") throw new Error("This QR code is not a Local Fitness Advisor pairing code.");
+      if (typeof payload.url !== "string" || typeof payload.pairingCode !== "string") {
+        throw new Error("This pairing QR code is incomplete. Refresh it in the web app and try again.");
       }
-    } catch {
-      setMessage("Could not read QR code. Aim at the pairing QR code shown in the web app.");
+      const url = payload.url.replace(/\/+$/, "");
+      if (!__DEV__ && !url.startsWith("https://")) {
+        throw new Error("Production pairing requires HTTPS.");
+      }
+      if (url.startsWith("https://") && typeof payload.publicKeyHash !== "string") {
+        throw new Error("This pairing code does not include a server identity.");
+      }
+      setDetectedUrl(url);
+      setPairingCode(payload.pairingCode);
+      setPublicKeyHash(typeof payload.publicKeyHash === "string" ? payload.publicKeyHash : null);
+      setStatus("detected");
+      setMessage(`Found server: ${url}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not read the QR code. Aim at the pairing QR code shown in the web app.");
       scannedRef.current = false;
     }
   }
@@ -160,6 +175,9 @@ export function PairScreen({
     setDetectedUrl("");
     setPairingCode("");
     setPublicKeyHash(null);
+    setCameraReady(false);
+    setCameraError("");
+    setCameraInstance((current) => current + 1);
   }
 
   const isError = status === "error" || status === "denied";
@@ -181,21 +199,53 @@ export function PairScreen({
               Open the web app, go to Import → Fitness Tracker, and scan the QR code shown there.
             </Text>
             {status === "idle" ? (
-              cameraPermission?.granted ? (
+              cameraPermission === null ? (
+                <View style={styles.permissionCard}>
+                  <ActivityIndicator color="#2563eb" />
+                  <Text style={styles.permissionText}>Checking camera access…</Text>
+                </View>
+              ) : cameraPermission.granted ? (
                 <View style={styles.cameraContainer}>
+                  {!cameraReady && !cameraError ? (
+                    <View style={styles.cameraLoading}>
+                      <ActivityIndicator color="#ffffff" />
+                      <Text style={styles.cameraLoadingText}>Starting camera…</Text>
+                    </View>
+                  ) : null}
                   <CameraView
+                    key={cameraInstance}
                     style={styles.camera}
                     facing="back"
+                    active={!cameraError}
                     barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+                    onCameraReady={() => setCameraReady(true)}
+                    onMountError={({ message }) => {
+                      setCameraReady(false);
+                      setCameraError(message || "The camera could not be started.");
+                    }}
                     onBarcodeScanned={({ data }) => handleQrScanned(data)}
                   />
+                  {cameraError ? (
+                    <View style={styles.cameraError}>
+                      <Text style={styles.cameraErrorText}>{cameraError}</Text>
+                      <Pressable style={styles.cameraRetryButton} onPress={retryCurrentMode}>
+                        <Text style={styles.cameraRetryText}>Restart Camera</Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
                 </View>
               ) : (
                 <View style={styles.permissionCard}>
                   <Text style={styles.permissionText}>Camera access is needed to scan the QR code.</Text>
-                  <Pressable style={styles.button} onPress={() => { void requestCameraPermission(); }}>
-                    <Text style={styles.buttonText}>Grant Camera Permission</Text>
-                  </Pressable>
+                  {cameraPermission.canAskAgain ? (
+                    <Pressable style={styles.button} onPress={() => { void handleCameraPermissionRequest(); }}>
+                      <Text style={styles.buttonText}>Grant Camera Permission</Text>
+                    </Pressable>
+                  ) : (
+                    <Pressable style={styles.button} onPress={() => { void Linking.openSettings(); }}>
+                      <Text style={styles.buttonText}>Open App Settings</Text>
+                    </Pressable>
+                  )}
                 </View>
               )
             ) : null}
@@ -255,6 +305,12 @@ const styles = StyleSheet.create({
   instructions: { color: "#4b5563", fontSize: 14, lineHeight: 20 },
   cameraContainer: { height: 280, borderRadius: 12, overflow: "hidden", backgroundColor: "#000" },
   camera: { flex: 1 },
+  cameraLoading: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "center", gap: 10, zIndex: 1 },
+  cameraLoadingText: { color: "#ffffff", fontSize: 14 },
+  cameraError: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "center", gap: 12, padding: 20, backgroundColor: "#111827" },
+  cameraErrorText: { color: "#ffffff", fontSize: 14, textAlign: "center" },
+  cameraRetryButton: { borderColor: "#ffffff", borderRadius: 8, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 8 },
+  cameraRetryText: { color: "#ffffff", fontSize: 14, fontWeight: "600" },
   permissionCard: {
     backgroundColor: "#ffffff",
     borderRadius: 10,

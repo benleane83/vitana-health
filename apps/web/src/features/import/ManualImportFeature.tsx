@@ -1,7 +1,11 @@
 import { useMemo, useState } from "react";
 import {
   defaultMeasurementTypes,
+  filterManualGroupTemplates,
+  findKnownMeasurement,
   getPreferredUnit,
+  manualGroupDefaults,
+  normalizeGroupLabel,
   type AppBootstrap,
   type ManualObservationPayload,
   type MeasurementType,
@@ -12,12 +16,6 @@ import { ManualGroupSaveDialog } from "../../components/ManualGroupSaveDialog.js
 import { ManualEntryForm } from "../../pages/ImportPage.js";
 import type { ManualMarkerRow } from "../../types.js";
 import { todayIsoDate } from "../../utils.js";
-
-const manualGroupDefaults = [
-  { label: "Activity", category: "activity", measurementCode: "steps" },
-  { label: "Body", category: "body", measurementCode: "weight" },
-  { label: "Lab", category: "lab", measurementCode: "glucose" }
-] as const;
 
 export function ManualImportFeature({
   bootstrap,
@@ -42,14 +40,7 @@ export function ManualImportFeature({
     return [...types].sort((left, right) => left.display.localeCompare(right.display));
   }, [bootstrap?.measurementTypes]);
   const groupTemplates = useMemo(() => {
-    const defaultLabels = new Set(manualGroupDefaults.map((group) => normalizeGroupLabel(group.label)));
-    return (bootstrap?.manualObservationGroupTemplates ?? [])
-      .filter((group) => !defaultLabels.has(group.normalizedLabel))
-      .map((group) => ({
-        ...group,
-        measurements: [...group.measurements].sort((left, right) => left.marker.localeCompare(right.marker))
-      }))
-      .sort((left, right) => left.label.localeCompare(right.label));
+    return filterManualGroupTemplates(bootstrap?.manualObservationGroupTemplates ?? []);
   }, [bootstrap?.manualObservationGroupTemplates]);
   const observationGroupOptions = useMemo(
     () => [...manualGroupDefaults.map((group) => group.label), ...groupTemplates.map((group) => group.label)],
@@ -185,15 +176,6 @@ export function ManualImportFeature({
   );
 }
 
-function findKnownMeasurement(input: string, knownMeasurements: MeasurementType[]): MeasurementType | undefined {
-  const normalized = input.trim().toLowerCase();
-  if (!normalized) return undefined;
-  return knownMeasurements.find((measurement) =>
-    measurement.code.toLowerCase() === normalized ||
-    measurement.display.toLowerCase() === normalized ||
-    measurement.aliases.some((alias) => alias.trim().toLowerCase() === normalized));
-}
-
 function toManualPayload({
   collectedAt,
   observationGroup,
@@ -234,8 +216,4 @@ function toManualPayload({
 
 function createEmptyRow(marker = "", measurementCode = "", value = "", unit = ""): ManualMarkerRow {
   return { id: globalThis.crypto.randomUUID(), marker, measurementCode, value, unit };
-}
-
-function normalizeGroupLabel(label: string): string {
-  return label.trim().replace(/\s+/g, " ").toLocaleLowerCase();
 }

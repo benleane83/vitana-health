@@ -5,6 +5,8 @@ import type {
   DataSource,
   DeleteObservationResponse,
   DeleteObservationsByTypeResponse,
+  HealthDataChartSeries,
+  HealthDataChartSeriesOptions,
   HealthDataDetail,
   HealthDataSummary,
   HealthStoreData,
@@ -63,6 +65,7 @@ export interface ProfileRepository {
   deleteObservationsByMeasurementCode(measurementCode: string): Promise<DeleteObservationsByTypeResponse>;
   summary(): Promise<HealthDataSummary>;
   measurementDetail(measurementCode: string, page: MeasurementDetailPage): Promise<HealthDataDetail>;
+  measurementChartSeries(measurementCode: string, options: HealthDataChartSeriesOptions): Promise<HealthDataChartSeries>;
   runCompiledQuery(sql: string): Promise<Array<Record<string, unknown>>>;
   close(): Promise<void>;
 }
