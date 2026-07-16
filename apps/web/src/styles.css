@@ -209,27 +209,36 @@ textarea {
 
 .insights-shell {
   display: grid;
-  gap: var(--space-5);
+  gap: var(--space-8);
 }
 
 .insights-header {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: var(--space-4);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: var(--space-6);
 }
 
 .insights-header h1 {
   margin: 0;
 }
 
+.insights-workspace {
+  display: grid;
+  grid-template-columns: minmax(190px, 220px) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-8);
+}
+
+.insights-workspace > [role="tabpanel"] {
+  min-width: 0;
+}
+
 .insights-tabs {
-  display: inline-flex;
+  display: grid;
   gap: var(--space-1);
   padding: var(--space-1);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: var(--surface);
+  background: var(--surface-2);
 }
 
 .insights-tabs button {
@@ -238,12 +247,91 @@ textarea {
   background: transparent;
   color: var(--muted);
   padding: 0.45rem 0.72rem;
+  text-align: left;
+  justify-content: flex-start;
 }
 
 .insights-tabs button.active {
   border-color: var(--primary);
   background: var(--primary);
   color: var(--ink-on-accent);
+}
+
+.export-page {
+  display: grid;
+  gap: var(--space-8);
+  max-width: 980px;
+}
+
+.export-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 34rem);
+  align-items: end;
+  gap: var(--space-8);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: var(--space-6);
+}
+
+.export-header h1 {
+  margin: 0;
+}
+
+.export-copy {
+  max-width: 40ch;
+  margin: 0;
+  color: var(--muted);
+  font-size: 1.04rem;
+  line-height: 1.55;
+}
+
+.export-workspace {
+  display: grid;
+  grid-template-columns: minmax(190px, 220px) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-8);
+}
+
+.export-workspace > [role="tabpanel"] {
+  min-width: 0;
+}
+
+.export-tabs {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+}
+
+.export-tabs button {
+  justify-content: flex-start;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  text-align: left;
+}
+
+.export-tabs button.active {
+  background: var(--primary);
+  color: var(--ink-on-accent);
+}
+
+.export-tool-panel {
+  min-height: 0;
+}
+
+.export-tool-panel h2 {
+  margin-top: 0;
+}
+
+.export-primary-action {
+  margin-top: var(--space-4);
+}
+
+.export-backup-stack {
+  display: grid;
+  gap: var(--space-4);
 }
 
 .profile-menu {
@@ -809,8 +897,190 @@ h3 {
   margin: var(--space-4) 0;
 }
 
-.biological-age-stats {
+.biological-age-page .summary-header {
+  margin-bottom: var(--space-3);
+}
+
+.biological-age-page .summary-header p {
+  max-width: 68ch;
+}
+
+.biological-age-disclaimer {
+  max-width: 75ch;
+  margin: 0 0 var(--space-8);
+  color: var(--muted);
+}
+
+.biological-age-model {
+  overflow: visible;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  padding-top: var(--space-6);
+}
+
+.biological-age-model .summary-category-toggle {
+  align-items: flex-start;
+  padding: 0 0 var(--space-6);
+}
+
+.biological-age-model-heading {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.biological-age-model-heading h3,
+.biological-age-model-heading p,
+.biological-age-evidence h4,
+.biological-age-evidence p,
+.biological-age-result h4,
+.biological-age-method h4 {
+  margin: 0;
+}
+
+.biological-age-model-heading h3 {
+  font-size: 1.2rem;
+}
+
+.biological-age-model-heading p {
+  max-width: 68ch;
+  color: var(--muted);
+}
+
+.biological-age-readiness {
+  flex: 0 0 auto;
+  border-radius: var(--radius-pill);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.biological-age-readiness.is-ready {
+  background: var(--success-soft);
+  color: var(--success-strong);
+}
+
+.biological-age-readiness.needs-data {
+  background: var(--warning-soft);
+  color: var(--warning-strong);
+}
+
+.biological-age-evidence {
+  display: grid;
+  gap: var(--space-5);
+  padding: var(--space-6) 0;
+  border-block: 1px solid var(--line);
+}
+
+.biological-age-evidence > div:first-child {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.biological-age-evidence-facts {
+  display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-6);
+  margin: 0;
+}
+
+.biological-age-evidence-facts div {
+  display: grid;
+  align-content: start;
+  gap: var(--space-1);
+}
+
+.biological-age-evidence-facts dt {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.biological-age-evidence-facts dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+.biological-age-context {
+  max-width: 75ch;
+}
+
+.biological-age-context ul {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-5);
+}
+
+.biological-age-context li + li {
+  margin-top: var(--space-1);
+}
+
+.summary-detail-table.biological-age-details {
+  margin-top: var(--space-8);
+}
+
+.biological-age-result {
+  max-width: 52rem;
+}
+
+.biological-age-interpretation {
+  margin: var(--space-2) 0 var(--space-5);
+  color: var(--text-strong);
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.biological-age-comparison {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: var(--space-3);
+  border-block: 1px solid var(--line);
+}
+
+.biological-age-comparison div {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-5) var(--space-6) var(--space-5) 0;
+}
+
+.biological-age-comparison div + div {
+  border-left: 1px solid var(--line);
+  padding-left: var(--space-6);
+}
+
+.biological-age-comparison span {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.biological-age-comparison strong {
+  color: var(--text-strong);
+  font-size: 1.5rem;
+}
+
+.biological-age-inputs {
+  margin-top: var(--space-8);
+  border-top: 1px solid var(--line);
+  padding-top: var(--space-4);
+}
+
+.biological-age-inputs summary {
+  width: fit-content;
+  color: var(--primary);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.biological-age-inputs .query-table-scroll {
+  margin-top: var(--space-4);
+}
+
+.biological-age-method {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 75ch;
+  margin-top: var(--space-8);
 }
 
 .summary-detail-header {
@@ -1949,14 +2219,16 @@ label {
 
 .import-page {
   display: grid;
-  gap: var(--space-5);
+  gap: var(--space-8);
 }
 
 .import-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 420px);
-  gap: var(--space-6);
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 34rem);
+  gap: var(--space-8);
   align-items: end;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: var(--space-6);
 }
 
 .import-header h1 {
@@ -1964,28 +2236,41 @@ label {
 }
 
 .import-copy {
+  max-width: 40ch;
   color: var(--muted);
   font-size: 1.04rem;
   line-height: 1.55;
   margin: 0;
 }
 
+.import-workspace {
+  display: grid;
+  grid-template-columns: minmax(190px, 220px) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-8);
+}
+
+.import-workspace > [role="tabpanel"] {
+  min-width: 0;
+}
+
 .import-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
+  display: grid;
+  gap: var(--space-1);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background: var(--surface-2);
   padding: var(--space-2);
-  width: fit-content;
+  width: 100%;
   max-width: 100%;
 }
 
 .import-tabs button {
+  justify-content: flex-start;
   background: transparent;
   border-color: transparent;
   color: var(--muted);
+  text-align: left;
 }
 
 .import-tabs button.active {
@@ -2591,8 +2876,57 @@ button.stat {
   }
 
   .import-header,
+  .export-header,
   .import-guidance-grid {
     grid-template-columns: 1fr;
+  }
+
+  .import-workspace {
+    grid-template-columns: 1fr;
+    gap: var(--space-5);
+  }
+
+  .export-workspace {
+    grid-template-columns: 1fr;
+    gap: var(--space-5);
+  }
+
+  .insights-workspace {
+    grid-template-columns: 1fr;
+    gap: var(--space-5);
+  }
+
+  .import-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    width: fit-content;
+  }
+
+  .import-tabs button {
+    justify-content: center;
+    text-align: center;
+  }
+
+  .insights-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    width: fit-content;
+  }
+
+  .export-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    width: fit-content;
+  }
+
+  .export-tabs button {
+    justify-content: center;
+    text-align: center;
+  }
+
+  .insights-tabs button {
+    justify-content: center;
+    text-align: center;
   }
 
   .trend-grid {
@@ -2609,8 +2943,28 @@ button.stat {
 }
 
 @media (max-width: 620px) {
-  .biological-age-stats {
+  .biological-age-model .summary-category-toggle,
+  .biological-age-evidence-facts,
+  .biological-age-comparison {
     grid-template-columns: 1fr;
+  }
+
+  .biological-age-model .summary-category-toggle {
+    display: grid;
+  }
+
+  .biological-age-readiness {
+    width: fit-content;
+  }
+
+  .biological-age-comparison div {
+    padding: var(--space-4) 0;
+  }
+
+  .biological-age-comparison div + div {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    padding-left: 0;
   }
 
   .shell {
@@ -2711,8 +3065,20 @@ button.stat {
     width: 100%;
   }
 
+  .insights-tabs {
+    width: 100%;
+  }
+
+  .export-tabs {
+    width: 100%;
+  }
+
   .import-tabs button {
     flex: 1 1 150px;
+  }
+
+  .export-tabs button {
+    flex: 1 1 130px;
   }
 
   .route-nav {

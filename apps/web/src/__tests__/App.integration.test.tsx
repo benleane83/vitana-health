@@ -132,7 +132,7 @@ describe("App feature flows", () => {
     fireEvent.click(screen.getByRole("tab", { name: /^insights$/i }));
     fireEvent.click(screen.getByRole("tab", { name: /biological age/i }));
     expect(await screen.findByRole("heading", { name: /biological age/i })).toBeInTheDocument();
-    expect(screen.getByText(/incomplete data/i)).toBeInTheDocument();
+    expect(screen.getByText(/needs more data/i)).toBeInTheDocument();
   });
 
   it("presents available Biological Age results without a redundant status label", async () => {
@@ -145,7 +145,11 @@ describe("App feature flows", () => {
         disclaimer: "Wellness only.",
         models: [{
           id: "phenoage-levine-2018", name: "PhenoAge", version: "Levine 2018", status: "available",
-          methodology: "Published model.", citation: "Citation.", inputs: [], limitations: ["No limitations."],
+          methodology: "Published model.", citation: "Citation.", limitations: ["Inputs may come from different dates."],
+          inputs: [
+            { code: "albumin", label: "Albumin", value: 43, unit: "g/L", normalizedUnit: "g/L", status: "used" },
+            { code: "glucose", label: "Glucose", value: 5.5, unit: "mmol/L", normalizedUnit: "mmol/L", status: "used" }
+          ],
           chronologicalAge: 46, biologicalAge: 39.8, ageAcceleration: -6.2,
           panelCollectedAt: "2026-07-14T00:00:00.000Z"
         }]
@@ -155,12 +159,17 @@ describe("App feature flows", () => {
     fireEvent.click(screen.getByRole("tab", { name: /^insights$/i }));
     fireEvent.click(screen.getByRole("tab", { name: /biological age/i }));
 
-    const selectedPanel = await screen.findByText(/Selected lab panel:/i);
+    const labEvidence = await screen.findByText(/Lab evidence/i);
     expect(screen.queryByText(/^Available$/i)).not.toBeInTheDocument();
-    expect(selectedPanel.querySelector("strong")).not.toBeNull();
-    expect(screen.getByText("Chronological age").closest(".biological-age-stats")).not.toBeNull();
-    expect(screen.getByText("Biological age").closest(".biological-age-stats")).not.toBeNull();
-    expect(screen.getByText("Age acceleration").closest(".biological-age-stats")).not.toBeNull();
+    expect(labEvidence.nextElementSibling).toHaveTextContent(/2026/i);
+    expect(screen.getByText(/2 of 2 required markers are usable/i)).toBeInTheDocument();
+    expect(screen.getByText(/6.2 years below chronological age/i)).toBeInTheDocument();
+    expect(screen.getByText("Chronological age").closest(".biological-age-comparison")).not.toBeNull();
+    expect(screen.getByText("Estimated biological age").closest(".biological-age-comparison")).not.toBeNull();
+
+    const evidenceHeading = screen.getByRole("heading", { name: /evidence readiness/i });
+    const resultHeading = screen.getByRole("heading", { name: /what the estimate shows/i });
+    expect(evidenceHeading.compareDocumentPosition(resultHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("opens the AI setup screen from Settings", async () => {
@@ -184,6 +193,25 @@ describe("App feature flows", () => {
   });
 
   describe("App — PDF export", () => {
+    it("separates PDF reporting from backup and restore tools", async () => {
+      render(<App />);
+      await screen.findByRole("button", { name: /local user/i });
+      fireEvent.click(screen.getByRole("tab", { name: /^export$/i }));
+
+      const reportTab = screen.getByRole("tab", { name: /pdf report/i });
+      const backupTab = screen.getByRole("tab", { name: /backup & restore/i });
+      expect(reportTab).toHaveAttribute("aria-selected", "true");
+      expect(screen.getByRole("heading", { name: /export pdf/i })).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: /back up profiles/i })).not.toBeInTheDocument();
+
+      fireEvent.keyDown(reportTab, { key: "ArrowDown" });
+      expect(backupTab).toHaveFocus();
+      expect(backupTab).toHaveAttribute("aria-selected", "true");
+      expect(screen.getByRole("heading", { name: /back up profiles/i })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: /restore profiles/i })).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: /export pdf/i })).not.toBeInTheDocument();
+    });
+
     it("downloads the PDF report from the Export page", async () => {
       const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
       vi.stubGlobal("URL", { createObjectURL: vi.fn(() => "blob:report"), revokeObjectURL: vi.fn() });

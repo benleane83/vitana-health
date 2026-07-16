@@ -108,27 +108,53 @@ export function InsightsRoute({
           <p className="eyebrow">Health analysis tools</p>
           <h1>Insights</h1>
         </div>
-        <div className="insights-tabs" role="tablist" aria-label="Insight tools">
-          <button type="button" role="tab" aria-selected={tab === "biological-age"} className={tab === "biological-age" ? "active" : ""} onClick={() => onTabChange("biological-age")}>Biological Age</button>
-          <button type="button" role="tab" aria-selected={tab === "ai-query"} className={tab === "ai-query" ? "active" : ""} onClick={() => onTabChange("ai-query")}>AI Query</button>
-        </div>
       </div>
-      {tab === "biological-age" ? (
-        <BiologicalAgePage report={biologicalAge.data} loading={biologicalAge.busy} error={biologicalAge.error} />
-      ) : (
-        <QueryPage
-          question={question}
-          onQuestionChange={setQuestion}
-          onSubmit={submitQuery}
-          busy={query.busy}
-          cloudProvider={llmConfig?.provider}
-          cloudConsent={bootstrap?.profile.cloudAiConsent}
-          cloudConsentBusy={consentBusy}
-          onCloudConsentChange={(enabled) => { void setCloudConsent(enabled); }}
-          result={query.data}
-          error={query.error}
-        />
-      )}
+      <div className="insights-workspace">
+        <div className="insights-tabs" role="tablist" aria-label="Insight tools">
+          <button
+            id="insight-tab-biological-age"
+            type="button"
+            role="tab"
+            aria-controls="insight-panel-biological-age"
+            aria-selected={tab === "biological-age"}
+            className={tab === "biological-age" ? "active" : ""}
+            onClick={() => onTabChange("biological-age")}
+          >
+            Biological Age
+          </button>
+          <button
+            id="insight-tab-ai-query"
+            type="button"
+            role="tab"
+            aria-controls="insight-panel-ai-query"
+            aria-selected={tab === "ai-query"}
+            className={tab === "ai-query" ? "active" : ""}
+            onClick={() => onTabChange("ai-query")}
+          >
+            AI Query
+          </button>
+        </div>
+        {tab === "biological-age" ? (
+          <div id="insight-panel-biological-age" role="tabpanel" aria-labelledby="insight-tab-biological-age">
+            <BiologicalAgePage report={biologicalAge.data} loading={biologicalAge.busy} error={biologicalAge.error} />
+          </div>
+        ) : (
+          <div id="insight-panel-ai-query" role="tabpanel" aria-labelledby="insight-tab-ai-query">
+            <QueryPage
+              question={question}
+              onQuestionChange={setQuestion}
+              onSubmit={submitQuery}
+              busy={query.busy}
+              cloudProvider={llmConfig?.provider}
+              cloudConsent={bootstrap?.profile.cloudAiConsent}
+              cloudConsentBusy={consentBusy}
+              onCloudConsentChange={(enabled) => { void setCloudConsent(enabled); }}
+              result={query.data}
+              error={query.error}
+            />
+          </div>
+        )}
+      </div>
     </section>
   );
 }

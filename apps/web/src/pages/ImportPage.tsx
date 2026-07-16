@@ -50,85 +50,87 @@ export function ImportPage({
         </p>
       </div>
 
-      {/* Tab list — proper ARIA tab semantics */}
-      <div className="import-tabs" role="tablist" aria-label="Import mode">
-        <button
-          id={manualTabId}
-          role="tab"
-          aria-selected={mode === "manual"}
-          aria-controls={manualPanelId}
-          className={mode === "manual" ? "active" : ""}
-          onClick={() => onModeChange("manual")}
-          tabIndex={mode === "manual" ? 0 : -1}
-        >
-          Manual
-        </button>
-        <button
-          id={uploadTabId}
-          role="tab"
-          aria-selected={mode === "upload"}
-          aria-controls={uploadPanelId}
-          className={mode === "upload" ? "active" : ""}
-          onClick={() => onModeChange("upload")}
-          tabIndex={mode === "upload" ? 0 : -1}
-        >
-          Upload CSV
-        </button>
-        <button
-          id={scanTabId}
-          role="tab"
-          aria-selected={mode === "scan"}
-          aria-controls={scanPanelId}
-          className={mode === "scan" ? "active" : ""}
-          onClick={() => onModeChange("scan")}
-          tabIndex={mode === "scan" ? 0 : -1}
-        >
-          Scan
-        </button>
-        <button
-          id={fitnessTabId}
-          role="tab"
-          aria-selected={mode === "fitness"}
-          aria-controls={fitnessPanelId}
-          className={mode === "fitness" ? "active" : ""}
-          onClick={() => onModeChange("fitness")}
-          tabIndex={mode === "fitness" ? 0 : -1}
-        >
-          Fitness Tracker
-        </button>
-      </div>
+      <div className="import-workspace">
+        {/* Tab list — proper ARIA tab semantics */}
+        <div className="import-tabs" role="tablist" aria-label="Import mode" aria-orientation="vertical">
+          <button
+            id={manualTabId}
+            role="tab"
+            aria-selected={mode === "manual"}
+            aria-controls={manualPanelId}
+            className={mode === "manual" ? "active" : ""}
+            onClick={() => onModeChange("manual")}
+            tabIndex={mode === "manual" ? 0 : -1}
+          >
+            Manual
+          </button>
+          <button
+            id={uploadTabId}
+            role="tab"
+            aria-selected={mode === "upload"}
+            aria-controls={uploadPanelId}
+            className={mode === "upload" ? "active" : ""}
+            onClick={() => onModeChange("upload")}
+            tabIndex={mode === "upload" ? 0 : -1}
+          >
+            Upload CSV
+          </button>
+          <button
+            id={scanTabId}
+            role="tab"
+            aria-selected={mode === "scan"}
+            aria-controls={scanPanelId}
+            className={mode === "scan" ? "active" : ""}
+            onClick={() => onModeChange("scan")}
+            tabIndex={mode === "scan" ? 0 : -1}
+          >
+            Scan
+          </button>
+          <button
+            id={fitnessTabId}
+            role="tab"
+            aria-selected={mode === "fitness"}
+            aria-controls={fitnessPanelId}
+            className={mode === "fitness" ? "active" : ""}
+            onClick={() => onModeChange("fitness")}
+            tabIndex={mode === "fitness" ? 0 : -1}
+          >
+            Fitness Tracker
+          </button>
+        </div>
 
-      {mode === "manual" ? (
-        <div id={manualPanelId} role="tabpanel" aria-labelledby={manualTabId}>
-          <ManualImportFeature
-            bootstrap={bootstrap}
-            units={units}
-            onImported={onDataChanged}
-            onNotice={onNotice}
-          />
-        </div>
-      ) : mode === "upload" ? (
-        <div id={uploadPanelId} role="tabpanel" aria-labelledby={uploadTabId}>
-          <CsvImportFeature units={units} onImported={onDataChanged} onNotice={onNotice} />
-        </div>
-      ) : mode === "scan" ? (
-        <div id={scanPanelId} role="tabpanel" aria-labelledby={scanTabId}>
-          <ScanImportFeature
-            measurementTypes={bootstrap?.measurementTypes ?? []}
-            units={units}
-            onImported={onDataChanged}
-            onNotice={onNotice}
-          />
-        </div>
-      ) : (
-        <div id={fitnessPanelId} role="tabpanel" aria-labelledby={fitnessTabId}>
-          <FitnessTrackerImportPanel
-            profiles={profiles}
-            activeProfileId={activeProfileId}
-            onNotice={onNotice}
-          />
-        </div>
-      )}
+        {mode === "manual" ? (
+          <div id={manualPanelId} role="tabpanel" aria-labelledby={manualTabId}>
+            <ManualImportFeature
+              bootstrap={bootstrap}
+              units={units}
+              onImported={onDataChanged}
+              onNotice={onNotice}
+            />
+          </div>
+        ) : mode === "upload" ? (
+          <div id={uploadPanelId} role="tabpanel" aria-labelledby={uploadTabId}>
+            <CsvImportFeature units={units} onImported={onDataChanged} onNotice={onNotice} />
+          </div>
+        ) : mode === "scan" ? (
+          <div id={scanPanelId} role="tabpanel" aria-labelledby={scanTabId}>
+            <ScanImportFeature
+              measurementTypes={bootstrap?.measurementTypes ?? []}
+              units={units}
+              onImported={onDataChanged}
+              onNotice={onNotice}
+            />
+          </div>
+        ) : (
+          <div id={fitnessPanelId} role="tabpanel" aria-labelledby={fitnessTabId}>
+            <FitnessTrackerImportPanel
+              profiles={profiles}
+              activeProfileId={activeProfileId}
+              onNotice={onNotice}
+            />
+          </div>
+        )}
+      </div>
     </section>
   );
 }
