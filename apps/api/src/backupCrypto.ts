@@ -18,13 +18,12 @@ import {
   SCRYPT_P,
   SCRYPT_KEY_LENGTH,
   BACKUP_DECRYPTION_ERROR,
+  BACKUP_MAX_SIZE_BYTES,
   healthStoreDataSchema,
   type BackupPayload,
   type BackupProfileEntry,
   type HealthStoreData
 } from "@local-fitness-advisor/shared";
-
-const BACKUP_MAX_DECOMPRESSED_SIZE_BYTES = 256 * 1024 * 1024;
 
 /**
  * Compute canonical SHA-256 digest of a HealthStoreData object.
@@ -131,7 +130,7 @@ export async function decryptBackup(buffer: Buffer, passphrase: string): Promise
     decipher.setAAD(header);
     decipher.setAuthTag(Buffer.from(tag));
     const decrypted = Buffer.concat([decipher.update(Buffer.from(ciphertext)), decipher.final()]);
-    const json = gunzipSync(decrypted, { maxOutputLength: BACKUP_MAX_DECOMPRESSED_SIZE_BYTES }).toString("utf8");
+    const json = gunzipSync(decrypted, { maxOutputLength: BACKUP_MAX_SIZE_BYTES }).toString("utf8");
     return validateBackupPayload(JSON.parse(json));
   } catch {
     throw new Error(BACKUP_DECRYPTION_ERROR);

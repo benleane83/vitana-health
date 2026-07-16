@@ -207,7 +207,7 @@ export function makeBackupRoutes(
     }
 
     const { decisions } = parsedDecisions.data;
-    const dataDir = process.env.LFA_DATA_DIR ? process.env.LFA_DATA_DIR : "data";
+    const dataDir = process.env.LFA_DATA_DIR ?? "data";
 
     // Enter maintenance mode
     maintenanceMode = true;
@@ -357,7 +357,7 @@ async function hydrateStoreFromBackup(
 
       if (relatedObs.length > 0 || relatedSamples.length > 0 || relatedActivities.length > 0) {
         const syntheticImport = {
-          id: `restore-${randomBytes(8).toString("hex")}`,
+          id: `backup-restore-orphan-${randomBytes(8).toString("hex")}`,
           sourceKind: source.sourceKind,
           fileName: "backup-restore",
           importedAt: new Date().toISOString(),

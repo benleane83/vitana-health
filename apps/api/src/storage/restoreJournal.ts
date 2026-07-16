@@ -59,7 +59,7 @@ export class RestoreJournal {
     const journalDir = resolve(dataDir, "restore-journals");
     if (!existsSync(journalDir)) return null;
     // Find incomplete journals
-    const files = readdirSync(journalDir).filter((f: string) => f.endsWith(".json"));
+    const files = readdirSync(journalDir).filter((f) => f.endsWith(".json"));
     for (const file of files) {
       const path = resolve(journalDir, file);
       try {
