@@ -88,7 +88,13 @@ export function ExportRoute({ bootstrap }: { bootstrap?: AppBootstrap }) {
     try {
       const result = await api.backups.restore(restoreFile, restorePassphrase, restoreSelections);
       const successful = result.restored.filter((entry) => entry.success).length;
-      setRestoreStatus({ busy: false, success: `${successful} profile${successful === 1 ? "" : "s"} restored.` });
+      const failed = result.restored.length - successful;
+      setRestoreStatus({
+        busy: false,
+        success: failed === 0
+          ? `${successful} profile${successful === 1 ? "" : "s"} restored.`
+          : `${successful} profile${successful === 1 ? "" : "s"} restored; ${failed} failed.`
+      });
     } catch (error) {
       setRestoreStatus({
         busy: false,

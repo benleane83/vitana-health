@@ -8,6 +8,7 @@ import type {
   ManualLabEntryPayload,
   Profile,
   ProfileListEntry,
+  RestoreDecision,
   UpdateObservationInput,
   UpdateObservationResponse,
   AiQueryResponse as SharedAiQueryResponse,
@@ -180,7 +181,7 @@ export const api = {
       await assertResponseOk(response);
       return {
         blob: await response.blob(),
-        filename: response.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "lfa-backup.lfa-backup"
+        filename: response.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "backup.lfa-backup"
       };
     },
     inspect: (file: Blob, passphrase: string): Promise<BackupInspectResponse> =>
@@ -194,7 +195,7 @@ export const api = {
       }),
     restore: (file: Blob, passphrase: string, decisions: Array<{
       profileId: string;
-      decision: "replace" | "create-copy" | "skip";
+      decision: RestoreDecision;
       acknowledgeReplacement?: string;
     }>): Promise<BackupRestoreResponse> =>
       request(backupRestoreResponseSchema, "/api/backups/restore", {

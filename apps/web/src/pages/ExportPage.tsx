@@ -1,6 +1,8 @@
 import { safetyNotice } from "@local-fitness-advisor/shared";
 import type { BackupInspectResponse, RestoreDecision } from "@local-fitness-advisor/shared";
 
+const minBackupPassphraseLength = 12;
+
 export function ExportPage({
   busy,
   error,
@@ -50,13 +52,13 @@ export function ExportPage({
   onReplacementAcknowledgmentChange: (profileId: string, acknowledged: boolean) => void;
   onRestoreBackup: () => void;
 }) {
-  const canCreateBackup = backupPassphrase.length >= 12 && backupPassphrase === backupPassphraseConfirmation;
-  const canInspectBackup = Boolean(restoreFile) && restorePassphrase.length >= 12;
-  const canRestore = Boolean(inspection) && restoreSelections.some(
+  const canCreateBackup = backupPassphrase.length >= minBackupPassphraseLength && backupPassphrase === backupPassphraseConfirmation;
+  const canInspectBackup = Boolean(restoreFile) && restorePassphrase.length >= minBackupPassphraseLength;
+  const canRestore = inspection !== undefined && restoreSelections.some(
     (selection) => selection.decision !== "skip"
   ) && restoreSelections.every(
     (selection) => selection.decision !== "replace" || selection.acknowledgeReplacement === "REPLACE_CONFIRMED"
-  ) && inspection?.profiles.every((profile) => profile.digestValid);
+  ) && inspection.profiles.every((profile) => profile.digestValid);
 
   return (
     <>
@@ -92,14 +94,14 @@ export function ExportPage({
         </label>
         <label>
           Backup passphrase
-          <input type="password" autoComplete="new-password" minLength={12} value={backupPassphrase} onChange={(event) => onBackupPassphraseChange(event.target.value)} />
+          <input type="password" autoComplete="new-password" minLength={minBackupPassphraseLength} value={backupPassphrase} onChange={(event) => onBackupPassphraseChange(event.target.value)} />
         </label>
         <label>
           Confirm backup passphrase
-          <input type="password" autoComplete="new-password" minLength={12} value={backupPassphraseConfirmation} onChange={(event) => onBackupPassphraseConfirmationChange(event.target.value)} />
+          <input type="password" autoComplete="new-password" minLength={minBackupPassphraseLength} value={backupPassphraseConfirmation} onChange={(event) => onBackupPassphraseConfirmationChange(event.target.value)} />
         </label>
         <div aria-live="polite" aria-atomic="true">
-          {backupPassphrase && backupPassphrase.length < 12 ? <p className="empty" role="status">Use at least 12 characters.</p> : null}
+          {backupPassphrase && backupPassphrase.length < minBackupPassphraseLength ? <p className="empty" role="status">Use at least 12 characters.</p> : null}
           {backupPassphraseConfirmation && backupPassphrase !== backupPassphraseConfirmation ? <p className="empty" role="status">Passphrases do not match.</p> : null}
           {backupStatus.error ? <p className="empty" role="alert">{backupStatus.error}</p> : null}
           {backupStatus.success ? <p className="empty" role="status">{backupStatus.success}</p> : null}
@@ -120,7 +122,7 @@ export function ExportPage({
         {restoreFile ? <p className="summary-detail-hint">Selected: {restoreFile.name}</p> : null}
         <label>
           Backup passphrase
-          <input type="password" autoComplete="current-password" minLength={12} value={restorePassphrase} onChange={(event) => onRestorePassphraseChange(event.target.value)} />
+          <input type="password" autoComplete="current-password" minLength={minBackupPassphraseLength} value={restorePassphrase} onChange={(event) => onRestorePassphraseChange(event.target.value)} />
         </label>
         <button type="button" onClick={onInspectBackup} disabled={restoreStatus.busy || !canInspectBackup}>
           {restoreStatus.busy && !inspection ? "Inspecting backup…" : "Inspect backup"}
