@@ -267,6 +267,7 @@ export function App() {
             onEditProfile={profileLifecycle.openEditor}
             onManageProfiles={profileLifecycle.openManager}
             onNavigateSummary={() => navigate("track")}
+            onNavigateMeasurement={navigateSummaryDetail}
             onDataChanged={profileLifecycle.refresh}
             onNotice={setMessage}
           />

@@ -1,6 +1,7 @@
 import type { AnalyticsSummary, Insight, Profile } from "@local-fitness-advisor/shared";
 import { safetyNotice } from "@local-fitness-advisor/shared";
 import { MiniChart, DensityBar } from "../components/Charts.js";
+import { MarkdownText } from "../components/MarkdownText.js";
 import { formatBloodType, formatProfileSex, formatProfileType, formatShortTimestamp } from "../utils.js";
 
 function Stat({ label, value }: { label: string; value: number }) {
@@ -20,7 +21,7 @@ function InsightCard({ insight }: { insight?: Insight }) {
     <div className="insight">
       <span>{insight.model} / confidence {insight.confidence}</span>
       <h3>{insight.title}</h3>
-      <p>{insight.body}</p>
+      <MarkdownText>{insight.body}</MarkdownText>
     </div>
   );
 }
@@ -36,6 +37,7 @@ export function DashboardPage({
   onEditProfile,
   onManageProfiles,
   onNavigateSummary,
+  onNavigateMeasurement,
   onGenerateInsight
 }: {
   importCount: number;
@@ -48,8 +50,13 @@ export function DashboardPage({
   onEditProfile: () => void;
   onManageProfiles: () => void;
   onNavigateSummary: () => void;
+  onNavigateMeasurement: (measurementCode: string) => void;
   onGenerateInsight: () => void;
 }) {
+  const latestObservedAt = analytics?.latestMetrics
+    .map((metric) => metric.observedAt)
+    .sort((left, right) => right.localeCompare(left))[0];
+
   return (
     <>
       <section className="dashboard-hero">
@@ -68,18 +75,25 @@ export function DashboardPage({
             <h1 className="vitara-promise"><span>Track.</span> <span>Understand.</span> <span>Thrive.</span></h1>
           </div>
         </div>
-        <article className="panel vault-panel" aria-label="Local vault summary">
-          <div className="vault-panel-head">
-            <h2>Encrypted local vault</h2>
-            <span>Offline by default</span>
+        <aside className="dashboard-trust-strip" aria-label="Data privacy and freshness">
+          <div className="dashboard-trust-status">
+            <span className="dashboard-trust-indicator" aria-hidden="true" />
+            <div>
+              <strong>Private on this device</strong>
+              <span>Encrypted and offline by default</span>
+            </div>
           </div>
-          <p>{importCount} imports. Raw files stay off cloud services.</p>
+          <dl className="dashboard-trust-facts">
+            <div><dt>Active profile</dt><dd>{activeProfile?.displayName ?? profile?.displayName ?? "Local user"}</dd></div>
+            <div><dt>Latest data</dt><dd>{latestObservedAt ? formatShortTimestamp(latestObservedAt) : "No readings yet"}</dd></div>
+            <div><dt>Imports stored</dt><dd>{importCount}</dd></div>
+          </dl>
           <DensityBar density={density} />
-        </article>
+        </aside>
       </section>
 
-      <section className="grid">
-        <article className="panel profile-panel">
+      <section className="dashboard-workspace">
+        <article className="dashboard-profile">
           <div className="panel-heading-row">
             <h2>Profile context</h2>
             <div className="profile-toolbar">
@@ -91,23 +105,23 @@ export function DashboardPage({
             <div><dt>Name</dt><dd>{profile?.displayName ?? "Local user"}</dd></div>
             <div><dt>Birth date</dt><dd>{profile?.birthDate ?? "Not set"}</dd></div>
             <div><dt>Profile type</dt><dd>{formatProfileSex(profile?.sex)} - {formatProfileType(profile?.subjectKind)}</dd></div>
-            <div><dt>Height</dt><dd>{profile?.heightCm ? `${profile.heightCm} cm` : "Not set"}</dd></div>
-            <div><dt>Units</dt><dd>{profile?.units === "imperial" ? "Imperial" : "Metric"}</dd></div>
             <div><dt>Blood type</dt><dd>{formatBloodType(profile?.bloodType)}</dd></div>
           </dl>
           <div className="profile-goals">
             <span>Current focus</span>
-            <p>{profile?.goalSummary || "Improve energy, sleep, and metabolic health."}</p>
+            <p>{profile?.goalSummary || "No focus set"}</p>
           </div>
         </article>
 
-        <article className="panel metrics-panel">
+        <article className="dashboard-review">
           <div className="panel-heading-row">
-            <h2>Local analytics</h2>
+            <div>
+              <h2>Your latest data</h2>
+              <p className="dashboard-section-copy">A quick review of what is stored for this profile.</p>
+            </div>
             <button type="button" onClick={onNavigateSummary}>View summary</button>
           </div>
-          <div className="stat-row">
-            <Stat label="Imports" value={analytics?.counts.imports ?? 0} />
+          <div className="dashboard-counts" aria-label="Stored health data totals">
             <Stat label="Observations" value={analytics?.counts.observations ?? 0} />
             <Stat label="Samples" value={analytics?.counts.samples ?? 0} />
             <Stat label="Activities" value={analytics?.counts.activities ?? 0} />
@@ -116,54 +130,75 @@ export function DashboardPage({
             <div className="metric-list">
               {analytics?.latestMetrics.length
                 ? analytics.latestMetrics.map((metric) => (
-                    <div className="metric" key={metric.code}>
+                    <button
+                      type="button"
+                      className="metric metric-link"
+                      key={metric.code}
+                      onClick={() => onNavigateMeasurement(metric.code)}
+                      aria-label={`View details for ${metric.label}, ${metric.value} ${metric.unit}, ${metric.status}`}
+                    >
                       <span>{metric.label}</span>
                       <strong>{metric.value} {metric.unit}</strong>
                       <em data-status={metric.status}>{metric.status}</em>
-                    </div>
+                    </button>
                   ))
                 : <p className="empty">Import data to populate latest metrics.</p>}
             </div>
           </div>
         </article>
-
-        <article className="panel trends-panel">
-          <h2>Trend traces</h2>
-          <div className="trend-grid">
-            {analytics?.trendCards.length
-              ? analytics.trendCards.map((card) => (
-                  <div className="trend" key={card.code}>
-                    <div>
-                      <strong>{card.label}</strong>
-                      <span>{card.summary}</span>
-                    </div>
-                    <MiniChart label={card.label} points={card.points} />
-                  </div>
-                ))
-              : <p className="empty">Two or more dated readings are needed for trend traces.</p>}
-          </div>
-        </article>
-
-        <article className="panel insight-panel">
-          <h2>Guarded AI review</h2>
-          <p className="safety">{safetyNotice}</p>
-          <button disabled={busy} onClick={onGenerateInsight}>Generate local insight</button>
-          <InsightCard insight={latestInsight} />
-        </article>
-
-        <article className="panel alerts-panel">
-          <h2>Lab range review</h2>
-          {analytics?.labAlerts.length
-            ? analytics.labAlerts.map((alert) => (
-                <div className="alert" key={`${alert.marker}-${alert.value}`}>
-                  <span>{alert.marker}</span>
-                  <strong>{alert.value} {alert.unit}</strong>
-                  <em>{formatShortTimestamp(alert.observedAt)} / {alert.flag}{alert.reference ? ` / ref ${alert.reference}` : ""}</em>
-                </div>
-              ))
-            : <p className="empty">No out-of-range lab markers yet.</p>}
-        </article>
       </section>
+
+      <details className="dashboard-deeper-review">
+        <summary>Explore trends, lab ranges, and AI review</summary>
+        <div className="dashboard-deeper-grid">
+          <section className="dashboard-deeper-section">
+            <h2>Trend traces</h2>
+            <div className="trend-grid">
+              {analytics?.trendCards.length
+                ? analytics.trendCards.map((card) => (
+                    <div className="trend" key={card.code}>
+                      <div>
+                        <strong>{card.label}</strong>
+                        <span>{card.summary}</span>
+                      </div>
+                      <MiniChart label={card.label} points={card.points} />
+                    </div>
+                  ))
+                : <p className="empty">Two or more dated readings are needed for trend traces.</p>}
+            </div>
+          </section>
+
+          <section className="dashboard-deeper-section dashboard-lab-review">
+            <h2>Lab range review</h2>
+            {analytics?.labAlerts.length
+              ? (
+                  <div className="metric-list" aria-label="Lab range alerts">
+                    {analytics.labAlerts.map((alert) => (
+                      <button
+                        type="button"
+                        className="alert metric-link"
+                        key={`${alert.code}-${alert.observedAt}`}
+                        onClick={() => onNavigateMeasurement(alert.code)}
+                        aria-label={`View details for ${alert.marker}, ${alert.value} ${alert.unit}, ${formatShortTimestamp(alert.observedAt)}, ${alert.flag}${alert.reference ? `, reference ${alert.reference}` : ""}`}
+                      >
+                        <span>{alert.marker}</span>
+                        <strong>{alert.value} {alert.unit}</strong>
+                        <em>{formatShortTimestamp(alert.observedAt)} / {alert.flag}{alert.reference ? ` / ref ${alert.reference}` : ""}</em>
+                      </button>
+                    ))}
+                  </div>
+                )
+              : <p className="empty">No out-of-range lab markers yet.</p>}
+          </section>
+
+          <section className="dashboard-deeper-section dashboard-ai-review">
+            <h2>Guarded AI review</h2>
+            <p className="safety">{safetyNotice}</p>
+            <button disabled={busy} onClick={onGenerateInsight}>Generate local insight</button>
+            <InsightCard insight={latestInsight} />
+          </section>
+        </div>
+      </details>
     </>
   );
 }

@@ -317,16 +317,23 @@ describe("App — import tab", () => {
     const profileType = screen.getByRole("combobox", { name: /profile type/i });
     expect(profileType).toHaveValue("adult");
     expect(screen.queryByRole("textbox", { name: /pet species/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: /pet species/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: /pet breed/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: /microchip id/i })).not.toBeInTheDocument();
 
     fireEvent.change(profileType, { target: { value: "pet" } });
-    expect(screen.getByRole("textbox", { name: /pet species/i })).toBeInTheDocument();
+    const petSpecies = screen.getByRole("combobox", { name: /pet species/i });
+    expect(petSpecies).toBeInTheDocument();
+    expect(petSpecies).toHaveValue("");
+    expect(petSpecies.querySelector('option[value="dog"]')).not.toBeNull();
+    expect(screen.queryByRole("spinbutton", { name: /height/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: /blood type/i })).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: /pet breed/i })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: /microchip id/i })).toBeInTheDocument();
 
     fireEvent.change(profileType, { target: { value: "child" } });
     expect(screen.queryByRole("textbox", { name: /pet species/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: /pet species/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: /pet breed/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: /microchip id/i })).not.toBeInTheDocument();
   });
@@ -393,6 +400,12 @@ describe("App — import tab", () => {
     expect(addProfile).not.toHaveAttribute("open");
     fireEvent.click(within(manager).getByText("Add profile"));
     expect(addProfile).toHaveAttribute("open");
+
+    const newProfileName = within(manager).getByLabelText("Profile name");
+    newProfileName.focus();
+    fireEvent.change(newProfileName, { target: { value: "Sam" } });
+    expect(newProfileName).toHaveFocus();
+    expect(newProfileName).toHaveValue("Sam");
 
     fireEvent.click(within(manager).getAllByRole("button", { name: /^edit$/i })[0]);
     expect(screen.getByRole("dialog", { name: /edit profile/i })).toBeInTheDocument();
