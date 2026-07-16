@@ -301,6 +301,7 @@ describe("central owner authorization", () => {
       const authorizationUrl = new URL(connect.headers.location);
       const state = authorizationUrl.searchParams.get("state");
       expect(state).toBeTruthy();
+      expect(authorizationUrl.searchParams.get("callback_url")).toBe("http://127.0.0.1:4317/api/settings/ai/openrouter/callback");
 
       const callbackPath = `/api/settings/ai/openrouter/callback?code=test-code&state=${encodeURIComponent(state!)}`;
       const callback = await request(app).get(callbackPath);
@@ -393,6 +394,21 @@ describe("GET /api/export/pdf", () => {
 });
 
 describe("profile lifecycle routes", () => {
+  it.each([
+    { subjectKind: "adult", birthDate: "2099-01-01", heightCm: 170 },
+    { subjectKind: "adult", birthDate: "2015-01-01", heightCm: 170 },
+    { subjectKind: "child", birthDate: "1990-01-01", heightCm: 120 },
+    { subjectKind: "adult", heightCm: 1 },
+    { subjectKind: "pet", pet: { species: "cat" }, heightCm: 1 }
+  ])("rejects implausible profile attributes: $subjectKind $birthDate $heightCm", async (attributes) => {
+    const response = await request(app)
+      .put("/api/profile")
+      .set("authorization", ownerAuthorization)
+      .send({ displayName: "Invalid profile", units: "metric", ...attributes });
+
+    expect(response.status).toBe(400);
+  });
+
   it("creates, switches, and deletes profiles", async () => {
     const created = await request(app)
       .post("/api/profiles")

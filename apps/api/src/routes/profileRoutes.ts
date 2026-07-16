@@ -10,7 +10,7 @@ const profileSchema = z.object({
   subjectKind: z.enum(["adult", "child", "pet"]).default("adult"),
   birthDate: z.string().date().optional(),
   sex: z.enum(["female", "male", "intersex", "unknown", "not-specified"]).optional(),
-  heightCm: z.number().positive().max(260).optional(),
+  heightCm: z.number().positive().optional(),
   bloodType: z.enum(["a-positive", "a-negative", "b-positive", "b-negative", "ab-positive", "ab-negative", "o-positive", "o-negative", "unknown"]).optional(),
   goalSummary: z.string().max(500).optional(),
   pet: z.object({
@@ -20,6 +20,34 @@ const profileSchema = z.object({
   }).optional(),
   units: z.enum(["metric", "imperial"])
 }).superRefine((profile, context) => {
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  if (profile.birthDate) {
+    const birthDate = new Date(`${profile.birthDate}T00:00:00.000Z`);
+    const adultCutoff = new Date(today);
+    adultCutoff.setUTCFullYear(adultCutoff.getUTCFullYear() - 18);
+    if (birthDate > today) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["birthDate"], message: "Birth date cannot be in the future." });
+    } else if (profile.subjectKind === "adult" && birthDate > adultCutoff) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["birthDate"], message: "Adult profiles must be at least 18 years old." });
+    } else if (profile.subjectKind === "child" && birthDate <= adultCutoff) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["birthDate"], message: "Child profiles must be under 18 years old." });
+    }
+  }
+  if (profile.heightCm !== undefined) {
+    const bounds = profile.subjectKind === "pet"
+      ? { min: 5, max: 250 }
+      : profile.subjectKind === "child"
+        ? { min: 30, max: 220 }
+        : { min: 50, max: 260 };
+    if (profile.heightCm < bounds.min || profile.heightCm > bounds.max) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["heightCm"],
+        message: `Height for ${profile.subjectKind} profiles must be between ${bounds.min} and ${bounds.max} cm.`
+      });
+    }
+  }
   if (profile.subjectKind === "pet" && !profile.pet?.species) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["pet", "species"], message: "Pet profiles require a species." });
   }

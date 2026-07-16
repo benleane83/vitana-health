@@ -30,7 +30,7 @@ describe("buildClinicianReport", () => {
       generatedAt: "2026-01-03T00:00:00.000Z",
       patient: { displayName: "Alex" },
       totals: { observations: 1, samples: 0, activities: 0 },
-      flaggedLabs: [{ displayName: "Cholesterol", flag: "high" }],
+      flaggedLabs: [{ displayName: "Cholesterol", flag: "high", collectedAt: "2026-01-01T00:00:00.000Z" }],
       sources: [{ fileName: "labs.csv", rowCount: 1 }]
     });
     expect(JSON.stringify(report)).not.toContain("private");

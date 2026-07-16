@@ -131,8 +131,30 @@ describe("computeAnalytics — labAlerts", () => {
       makeObservation({ id: "m1", measurementCode: "glucose", observedAt: "2026-01-01T00:00:00.000Z", value: 180, unit: "mg/dL", sourceId: "source" })
     ];
     const result = computeAnalytics(store);
-    expect(result.labAlerts).toMatchObject([{ unit: "mmol/L", flag: "high" }]);
+    expect(result.labAlerts).toMatchObject([{ unit: "mmol/L", flag: "high", observedAt: "2026-01-01T00:00:00.000Z" }]);
     expect(result.labAlerts[0].value).toBeCloseTo(9.99, 2);
+  });
+
+  it("uses only the latest observation for each current lab alert", () => {
+    const store = makeEmptyStore();
+    store.observations = [
+      makeObservation({ id: "old", measurementCode: "glucose", observedAt: "2026-01-01T00:00:00.000Z", value: 8, unit: "mmol/L", sourceId: "source" }),
+      makeObservation({ id: "new", measurementCode: "glucose", observedAt: "2026-02-01T00:00:00.000Z", value: 5, unit: "mmol/L", sourceId: "source" })
+    ];
+
+    expect(computeAnalytics(store).labAlerts).toEqual([]);
+  });
+
+  it.each(["child", "pet"] as const)("suppresses adult reference classifications for %s profiles", (subjectKind) => {
+    const store = makeEmptyStore();
+    store.profile.subjectKind = subjectKind;
+    store.observations = [
+      makeObservation({ id: "lab", measurementCode: "glucose", observedAt: "2026-01-01T00:00:00.000Z", value: 8, unit: "mmol/L", sourceId: "source" })
+    ];
+
+    const result = computeAnalytics(store);
+    expect(result.labAlerts).toEqual([]);
+    expect(result.latestMetrics.find((metric) => metric.code === "glucose")?.status).toBe("unknown");
   });
 
   it("displays mixed-unit trends in the active profile's preferred unit", () => {

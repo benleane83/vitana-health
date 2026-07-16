@@ -37,6 +37,7 @@ describe("DuckDbRepository fidelity", () => {
   it.skipIf(!httpfsExtensionPath)("returns bounded startup data without materializing full health history", async () => {
     const databasePath = join(root, "databases", "health-store-bootstrap.duckdb-poc");
     const fixture = createDuckDbHealthStoreFixture();
+    fixture.profile.units = "imperial";
     const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
     try {
       const bootstrap = await repository.appBootstrap();

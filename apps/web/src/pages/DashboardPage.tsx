@@ -1,7 +1,7 @@
 import type { AnalyticsSummary, Insight, Profile } from "@local-fitness-advisor/shared";
 import { safetyNotice } from "@local-fitness-advisor/shared";
 import { MiniChart, DensityBar } from "../components/Charts.js";
-import { formatBloodType, formatProfileSex, formatProfileType } from "../utils.js";
+import { formatBloodType, formatProfileSex, formatProfileType, formatShortTimestamp } from "../utils.js";
 
 function Stat({ label, value }: { label: string; value: number }) {
   return (
@@ -158,7 +158,7 @@ export function DashboardPage({
                 <div className="alert" key={`${alert.marker}-${alert.value}`}>
                   <span>{alert.marker}</span>
                   <strong>{alert.value} {alert.unit}</strong>
-                  <em>{alert.flag}{alert.reference ? ` / ref ${alert.reference}` : ""}</em>
+                  <em>{formatShortTimestamp(alert.observedAt)} / {alert.flag}{alert.reference ? ` / ref ${alert.reference}` : ""}</em>
                 </div>
               ))
             : <p className="empty">No out-of-range lab markers yet.</p>}

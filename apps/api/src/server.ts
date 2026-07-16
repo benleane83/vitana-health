@@ -67,7 +67,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
   const pairingStore = new PairingStore();
   const app = createApp(storeManager, pairingStore, {
     publicKeyHash: security.publicKeyHash,
-    webRoot: env.LFA_WEB_ROOT
+    webRoot: env.LFA_WEB_ROOT,
+    openRouterCallbackOrigin: `${tlsEnabled ? "https" : "http"}://127.0.0.1:${port}`
   });
 
   const scheme = tlsEnabled ? "https" : "http";

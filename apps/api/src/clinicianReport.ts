@@ -39,7 +39,7 @@ export function buildClinicianReport(input: ClinicianReportInput, generatedAt = 
       value: alert.value,
       unit: alert.unit,
       flag: alert.flag,
-      collectedAt: "",
+      collectedAt: alert.observedAt,
       referenceRange: alert.reference
     }))
     .sort((a, b) => a.displayName.localeCompare(b.displayName));

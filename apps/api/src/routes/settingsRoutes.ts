@@ -11,9 +11,11 @@ const openRouterStateExpiryMs = 10 * 60_000;
 
 export function makeSettingsRoutes(options: {
   assertSafeCloudEndpoint?: (endpoint: string) => Promise<unknown>;
+  openRouterCallbackOrigin?: string;
 } = {}): express.Router {
   const router = express.Router();
   const assertSafeCloudEndpoint = options.assertSafeCloudEndpoint ?? assertSafeCloudModelEndpoint;
+  const openRouterCallbackOrigin = options.openRouterCallbackOrigin ?? `http://127.0.0.1:${process.env.PORT ?? "4317"}`;
 
   router.get("/ai", (_request, response) => {
     response.json(toPublicAiSettings(getAiSettings()));
@@ -53,10 +55,10 @@ export function makeSettingsRoutes(options: {
     response.json(result);
   });
 
-  router.get("/ai/openrouter/connect", (request, response) => {
+  router.get("/ai/openrouter/connect", (_request, response) => {
     const state = randomBytes(24).toString("base64url");
     pendingOpenRouterStates.set(state, Date.now() + openRouterStateExpiryMs);
-    const callbackUrl = `${request.protocol}://${request.get("host")}/api/settings/ai/openrouter/callback`;
+    const callbackUrl = new URL("/api/settings/ai/openrouter/callback", openRouterCallbackOrigin).toString();
     const authUrl = new URL("https://openrouter.ai/auth");
     authUrl.searchParams.set("callback_url", callbackUrl);
     authUrl.searchParams.set("state", state);

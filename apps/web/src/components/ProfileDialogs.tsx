@@ -48,6 +48,17 @@ export function ProfileEditDialog({
       ? ""
       : String(units === "imperial" ? centimetersToInches(profile.heightCm) : profile.heightCm)
   );
+  const today = new Date().toISOString().slice(0, 10);
+  const adultBirthDateMaximum = new Date();
+  adultBirthDateMaximum.setFullYear(adultBirthDateMaximum.getFullYear() - 18);
+  const heightBoundsCm = subjectKind === "pet"
+    ? { min: 5, max: 250 }
+    : subjectKind === "child"
+      ? { min: 30, max: 220 }
+      : { min: 50, max: 260 };
+  const heightBounds = units === "imperial"
+    ? { min: centimetersToInches(heightBoundsCm.min), max: centimetersToInches(heightBoundsCm.max) }
+    : heightBoundsCm;
 
   function changeUnits(nextUnits: Profile["units"]) {
     const numericHeight = Number(height);
@@ -103,7 +114,13 @@ export function ProfileEditDialog({
         </select>
 
         <label htmlFor="profile-birthDate">Birth date</label>
-        <input id="profile-birthDate" name="birthDate" type="date" defaultValue={profile?.birthDate ?? ""} />
+        <input
+          id="profile-birthDate"
+          name="birthDate"
+          type="date"
+          max={subjectKind === "adult" ? adultBirthDateMaximum.toISOString().slice(0, 10) : today}
+          defaultValue={profile?.birthDate ?? ""}
+        />
 
         {subjectKind === "pet" ? (
           <>
@@ -133,6 +150,8 @@ export function ProfileEditDialog({
           name="height"
           type="number"
           step="0.1"
+          min={heightBounds.min}
+          max={heightBounds.max}
           value={height}
           onChange={(event) => setHeight(event.target.value)}
         />

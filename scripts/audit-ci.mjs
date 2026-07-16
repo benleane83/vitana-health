@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { execSync } from "node:child_process";
+import { vulnerabilitiesFromAuditReport } from "./audit-report.mjs";
 
 function readAllowlist() {
   try {
@@ -89,7 +90,13 @@ function printList(label, items) {
 
 const { allowed: allowedPackages, notes } = readAllowlist();
 const report = parseAudit(runAuditJson());
-const vulnerabilities = report?.vulnerabilities ?? {};
+let vulnerabilities;
+try {
+  vulnerabilities = vulnerabilitiesFromAuditReport(report);
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(2);
+}
 const { blocked, allowed } = summarize(vulnerabilities, allowedPackages);
 
 printList("Allowed high/critical vulnerabilities", allowed);

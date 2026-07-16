@@ -9,7 +9,8 @@ import {
   type HealthDataDetailEntry,
   type HealthDataSummaryTypeRow,
   type MeasurementType,
-  type ObservationGroup
+  type ObservationGroup,
+  type Profile
 } from "@local-fitness-advisor/shared";
 import type { ClinicianReportSourceImport } from "../clinicianReport.js";
 import {
@@ -81,7 +82,8 @@ export async function appBootstrap(connection: duckdb.Connection): Promise<AppBo
 }
 
 export async function analyticsSummary(connection: duckdb.Connection): Promise<AnalyticsSummary> {
-  const [measurementRows, observationRows, countRows] = await Promise.all([
+  const [profileRows, measurementRows, observationRows, countRows] = await Promise.all([
+    all(connection, "SELECT units, subject_kind FROM profile;"),
     all(connection, "SELECT * EXCLUDE (ordinal) FROM measurement_types ORDER BY ordinal;"),
     all(connection, `
       SELECT * EXCLUDE (measurement_rank, category) FROM (
@@ -110,6 +112,9 @@ export async function analyticsSummary(connection: duckdb.Connection): Promise<A
         (SELECT COUNT(*) FROM care_items) AS care_items;
     `)
   ]);
+  if (profileRows.length !== 1) {
+    throw new Error("DuckDB expected exactly one profile row.");
+  }
   const counts = countRows[0] ?? {};
   return computeAnalyticsFromInput({
     counts: {
@@ -122,7 +127,9 @@ export async function analyticsSummary(connection: duckdb.Connection): Promise<A
       careItems: Number(counts.care_items ?? 0)
     },
     measurementTypes: measurementRows.map(measurementTypeFromRow),
-    observations: observationRows.map(observationFromRow)
+    observations: observationRows.map(observationFromRow),
+    units: String(profileRows[0].units) as Profile["units"],
+    subjectKind: String(profileRows[0].subject_kind ?? "adult") as Profile["subjectKind"]
   });
 }
 

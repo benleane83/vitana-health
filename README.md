@@ -18,12 +18,6 @@ npm run dev
 
 On Windows x64, the normal development command verifies the pinned, signed DuckDB extension and selects encrypted DuckDB. The API binds to `127.0.0.1:4317`, and the Vite UI runs on `127.0.0.1:5173`.
 
-The explicit DuckDB alias is:
-
-```powershell
-npm run dev:duckdb
-```
-
 On first use, existing encrypted JSON profiles are parity-checked and imported into encrypted DuckDB databases. Later launches open those databases directly; retained JSON files are no longer required by runtime startup. New profiles are created directly in DuckDB. The API startup record reports whether startup performed initial migration or reopened canonical storage.
 
 See [Encrypted DuckDB Architecture](docs/ENCRYPTED_DUCKDB_ARCHITECTURE.md) for migration, key lifecycle, and platform limits.
@@ -73,7 +67,7 @@ non-diagnostic summary intended to support a conversation with a healthcare prof
 
 ## Model Runtime Configuration
 
-The API supports two model providers for insight generation and `/api/llm/simple` debugging.
+The API supports two model providers for insight generation.
 
 ### Option A: Local Ollama
 
@@ -102,12 +96,6 @@ Check active runtime configuration:
 
 ```powershell
 Invoke-RestMethod -Uri "http://127.0.0.1:4317/api/health"
-```
-
-Quick model connectivity test:
-
-```powershell
-Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:4317/api/llm/simple" -ContentType "application/json" -Body '{"prompt":"Reply with exactly: model runtime ok"}'
 ```
 
 ## Android Companion App (Expo / Health Connect)

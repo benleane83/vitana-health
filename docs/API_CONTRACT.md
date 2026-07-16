@@ -19,7 +19,7 @@ All API endpoints begin with `/api/`. The server enforces:
 
 ## Authentication
 
-### Exchange credentials for a session token
+### Establish a local owner session
 ```
 POST /api/auth/local
 ```
@@ -27,11 +27,7 @@ POST /api/auth/local
 ```json
 { "token": "<LFA_OWNER_TOKEN>" }
 ```
-**Success `200`:**
-```json
-{ "access_token": "<bearer>", "profile_id": "<uuid>" }
-```
-Use the returned `access_token` as the value in the `Authorization` header, using the standard scheme for token-based bearer authentication, on all subsequent requests.
+**Success `204`:** no response body. The loopback-only endpoint sets an `HttpOnly`, `SameSite=Strict` owner cookie. Standalone API clients may instead send the configured owner token as `Authorization: Bearer <token>`.
 
 ---
 
@@ -52,39 +48,40 @@ Returns `{ "ok": false }` with `503` if the server is shutting down.
 
 ## Pairing (device management)
 
-### Request a pairing code *(pre-auth, rate-limited)*
+### Submit a pairing request *(pre-auth, rate-limited)*
 ```
 POST /api/pairing/request
 ```
 **Request body:**
 ```json
-{ "deviceName": "My iPhone" }
+{ "deviceId": "stable-device-id", "deviceName": "My phone", "pairingCode": "<QR challenge>" }
 ```
-**Success `200`:** `{ "pairingId": "<id>", "code": "123456", "expiresAt": "<iso>" }`
+**Success `201`:** `{ "pairingId": "<id>", "status": "pending", "pollingSecret": "<secret>" }`
 
 ### Poll pairing status *(pre-auth)*
 ```
 GET /api/pairing/status/:pairingId
 ```
-**Success `200`:** `{ "status": "pending"|"approved"|"denied", "accessToken"?: "<bearer>" }`
+Send the `pollingSecret` as `x-pairing-secret`.
+**Success `200`:** `{ "id": "<id>", "status": "pending"|"approved"|"denied", "token"?: "<companion token>" }`
 
 ### Generate QR code for pairing
 ```
 GET /api/pairing/qr
 ```
-**Success `200`:** `{ "qr": "<data-uri>", "pairingUrl": "<url>" }`
+**Success `200`:** `image/png` containing the API URL, challenge, expiry, and TLS public-key hash.
 
 ### List pending requests
 ```
 GET /api/pairing/pending
 ```
-**Success `200`:** `{ "pending": [{ "id", "deviceName", "requestedAt" }] }`
+**Success `200`:** `[{ "id", "deviceId", "deviceName", "requestedAt" }]`
 
 ### List approved devices
 ```
 GET /api/pairing/devices
 ```
-**Success `200`:** `{ "devices": [{ "id", "deviceName", "approvedAt" }] }`
+**Success `200`:** `PairingRecord[]`
 
 ### Approve a pairing request
 ```
@@ -102,19 +99,19 @@ invalid and require pairing again.
 POST /api/pairing/revoke-self
 ```
 Requires the companion credential and revokes only that credential.
-**Success `200`:** `{ "ok": true }`
+**Success `200`:** `{ "id": "<id>", "status": "revoked" }`
 
 ### Deny a pairing request
 ```
 POST /api/pairing/deny/:pairingId
 ```
-**Success `200`:** `{ "ok": true }`
+**Success `200`:** `{ "id": "<id>", "status": "denied" }`
 
 ### Revoke an approved device
 ```
 POST /api/pairing/revoke/:pairingId
 ```
-**Success `200`:** `{ "ok": true }`
+**Success `200`:** `PairingRecord`
 
 ---
 
@@ -124,14 +121,14 @@ POST /api/pairing/revoke/:pairingId
 ```
 GET /api/profile
 ```
-**Success `200`:** `{ "profile": Profile }`
+**Success `200`:** `Profile`
 
 ### Update active profile
 ```
 PUT /api/profile
 ```
-**Request body:** `{ "displayName"?, "subjectKind"?, "birthDate"?, "sex"?, "heightCm"? }`  
-**Success `200`:** `{ "profile": Profile }`
+**Request body:** complete editable profile fields including `displayName`, `subjectKind`, `units`, and optional `birthDate`, `sex`, `heightCm`, `bloodType`, `goalSummary`, and `pet`. Future birth dates, subject-kind age mismatches, implausible heights, and pets without a species are rejected.  
+**Success `200`:** `Profile`
 
 ### List all profiles
 ```
@@ -149,26 +146,26 @@ metadata is returned. All other authenticated endpoints are owner-only.
 POST /api/profiles
 ```
 **Request body:** `{ "displayName": "<name>" }`  
-**Success `200`:** `{ "profile": Profile }`
+**Success `201`:** `Profile`
 
 ### Get active profile ID
 ```
 GET /api/profiles/active
 ```
-**Success `200`:** `{ "activeProfileId": "<uuid>" }`
+**Success `200`:** `{ "profileId": "<id>" }`
 
 ### Switch active profile
 ```
 PUT /api/profiles/active
 ```
 **Request body:** `{ "profileId": "<uuid>" }`  
-**Success `200`:** `{ "ok": true }`
+**Success `200`:** `{ "profileId": "<id>" }`
 
 ### Delete a profile
 ```
 DELETE /api/profiles/:id
 ```
-**Success `200`:** `{ "ok": true }`
+**Success `200`:** `{ "deletedProfileId": "<id>", "activeProfileId": "<id>", "profiles": ProfileEntry[] }`
 
 ---
 
@@ -186,14 +183,14 @@ health-data summary for discussion with a clinician and is not diagnostic.
 ```
 GET /api/analytics
 ```
-**Success `200`:** `{ "analytics": AnalyticsSummary }`
+**Success `200`:** `AnalyticsSummary`
 
 ### Get summary by measurement code
 ```
 GET /api/summary
 GET /api/summary/:measurementCode
 ```
-**Success `200`:** `{ "summary": SummaryEntry[] }` or `{ "observations": Observation[] }`
+**Success `200`:** `SummaryEntry[]` or `Observation[]`
 
 ### Delete an observation
 ```
@@ -303,24 +300,6 @@ POST /api/query/ai
 **Success `200`:** `{ "question", "answer", "limitations", "assumptions", "confidence", "plan", "sql", "resolvedTimeRange", "rowCount", "rows", "chart", "model" }`
 
 Runs the product's validated DSL-to-SQL pipeline. See the README for supported query classes and safety limits.
-
-### Store-grounded fallback *(experimental)*
-```
-POST /api/query/ask-store
-```
-**Request body:** `{ "question": "<text>" }`
-**Success `200`:** `{ "question", "plan", "rowCount", "rows", "answer", "model" }`
-
-This narrow fallback reads from the live store when the warehouse is unavailable. It currently supports only the latest heart-rate and oxygen-saturation questions and is not used by the web app.
-
-### Simple LLM completion *(experimental operator diagnostic)*
-```
-POST /api/llm/simple
-```
-**Request body:** `{ "prompt": "<text>", "model"?: "<model>", "timeoutMs"?: 30000, "provider"?: "ollama"|"openai" }`
-**Success `200`:** model connectivity result with `ok`, `provider`, `model`, `elapsedMs`, and optional `text`.
-
-Use only to validate configured model connectivity. It is not a product workflow.
 
 ---
 

@@ -329,6 +329,7 @@ export interface AnalyticsSummary {
     marker: string;
     value: number;
     unit: string;
+    observedAt: string;
     reference?: string;
     flag: "low" | "high" | "critical" | "unknown";
   }>;

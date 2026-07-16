@@ -1,4 +1,4 @@
-import type { AnalyticsSummary, HealthStoreData, MeasurementType, Observation, UnitSystem } from "./types.js";
+import type { AnalyticsSummary, HealthStoreData, MeasurementType, Observation, SubjectKind, UnitSystem } from "./types.js";
 import { classifyValue, getReferenceRange, toPreferredMeasurementValue } from "./measurementRegistry.js";
 
 export function computeAnalytics(store: HealthStoreData): AnalyticsSummary {
@@ -15,7 +15,8 @@ export function computeAnalytics(store: HealthStoreData): AnalyticsSummary {
     counts: counts as AnalyticsSummary["counts"],
     measurementTypes: store.measurementTypes,
     observations: store.observations,
-    units: store.profile.units
+    units: store.profile.units,
+    subjectKind: store.profile.subjectKind
   });
 }
 
@@ -24,13 +25,20 @@ export interface AnalyticsInput {
   measurementTypes: MeasurementType[];
   observations: Observation[];
   units?: UnitSystem;
+  subjectKind?: SubjectKind;
 }
 
 export function computeAnalyticsFromInput(input: AnalyticsInput): AnalyticsSummary {
   const registry = new Map(input.measurementTypes.map((type) => [type.code, type]));
   const observationsByCode = groupBy(input.observations, (observation) => observation.measurementCode);
   const latestMetrics = [...observationsByCode.entries()]
-    .map(([code, observations]) => latestMetric(code, observations, registry.get(code), input.units ?? "metric"))
+    .map(([code, observations]) => latestMetric(
+      code,
+      observations,
+      registry.get(code),
+      input.units ?? "metric",
+      input.subjectKind ?? "adult"
+    ))
     .filter((metric): metric is NonNullable<typeof metric> => metric !== undefined)
     .sort((a, b) => b.observedAt.localeCompare(a.observedAt))
     .slice(0, 12);
@@ -40,14 +48,17 @@ export function computeAnalyticsFromInput(input: AnalyticsInput): AnalyticsSumma
     .filter((card): card is NonNullable<typeof card> => card !== undefined)
     .slice(0, 8);
 
-  const labAlerts = input.observations
-    .filter((observation) => {
-      const category = registry.get(observation.measurementCode)?.category;
-      return category === "lab";
-    })
-    .map((observation) => labAlert(observation, registry.get(observation.measurementCode), input.units ?? "metric"))
-    .filter((alert): alert is NonNullable<typeof alert> => alert !== undefined)
-    .slice(0, 12);
+  const labAlerts = input.subjectKind && input.subjectKind !== "adult"
+    ? []
+    : [...observationsByCode.entries()]
+        .filter(([code]) => registry.get(code)?.category === "lab")
+        .map(([code, observations]) => {
+          const latest = [...observations].sort((a, b) => b.observedAt.localeCompare(a.observedAt))[0];
+          return labAlert(latest, registry.get(code), input.units ?? "metric");
+        })
+        .filter((alert): alert is NonNullable<typeof alert> => alert !== undefined)
+        .sort((a, b) => b.observedAt.localeCompare(a.observedAt))
+        .slice(0, 12);
 
   const evidenceDigest = [
     `Imported ${input.counts.imports} source file(s), ${input.counts.observations} observations, and ${input.counts.samples} tracker samples.`,
@@ -68,7 +79,13 @@ export function computeAnalyticsFromInput(input: AnalyticsInput): AnalyticsSumma
   };
 }
 
-function latestMetric(code: string, observations: Observation[], type: MeasurementType | undefined, units: UnitSystem) {
+function latestMetric(
+  code: string,
+  observations: Observation[],
+  type: MeasurementType | undefined,
+  units: UnitSystem,
+  subjectKind: SubjectKind
+) {
   if (!type || observations.length === 0) return undefined;
   const latest = [...observations].sort((a, b) => b.observedAt.localeCompare(a.observedAt))[0];
   const display = toPreferredMeasurementValue(latest.value, latest.unit, type, units);
@@ -78,7 +95,7 @@ function latestMetric(code: string, observations: Observation[], type: Measureme
     value: display.value,
     unit: display.unit,
     observedAt: latest.observedAt,
-    status: classifyValue(latest.value, type, latest.unit)
+    status: subjectKind === "adult" ? classifyValue(latest.value, type, latest.unit) : "unknown" as const
   };
 }
 
@@ -113,6 +130,7 @@ function labAlert(observation: Observation, type: MeasurementType | undefined, u
     marker: type.display,
     value: display.value,
     unit: display.unit,
+    observedAt: observation.observedAt,
     reference: `${range.low ?? "-"}-${range.high ?? "-"}`,
     flag: status
   };

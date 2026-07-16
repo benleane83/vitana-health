@@ -17,7 +17,7 @@ export async function generateInsight({ profile, analytics }: InsightGenerationI
   const evidence = [
     ...analytics.evidenceDigest,
     ...analytics.latestMetrics.slice(0, 6).map((metric) => `${metric.label}: ${metric.value} ${metric.unit} on ${metric.observedAt.slice(0, 10)} (${metric.status}).`),
-    ...analytics.labAlerts.map((alert) => `${alert.marker}: ${alert.value} ${alert.unit}, flagged ${alert.flag}${alert.reference ? ` against ${alert.reference}` : ""}.`)
+    ...analytics.labAlerts.map((alert) => `${alert.marker}: ${alert.value} ${alert.unit} on ${alert.observedAt}, flagged ${alert.flag}${alert.reference ? ` against ${alert.reference}` : ""}.`)
   ];
 
   const modelResult = await callConfiguredModel(buildInsightPrompt(evidence.map((item) => redactFreeText(item))), {

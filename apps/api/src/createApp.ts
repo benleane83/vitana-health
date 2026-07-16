@@ -38,6 +38,7 @@ export interface AppOptions {
   publicKeyHash?: string | null;
   webRoot?: string;
   assertSafeCloudModelEndpoint?: (endpoint: string) => Promise<unknown>;
+  openRouterCallbackOrigin?: string;
 }
 
 function decodeCookieToken(value: string | undefined): string {
@@ -285,7 +286,10 @@ export function createApp(
   app.use("/api/import", makeImportRoutes(storeManager));
   app.use("/api/query", makeQueryRoutes(storeManager));
   app.use("/api/llm", makeLlmRoutes());
-  app.use("/api/settings", makeSettingsRoutes({ assertSafeCloudEndpoint: options.assertSafeCloudModelEndpoint }));
+  app.use("/api/settings", makeSettingsRoutes({
+    assertSafeCloudEndpoint: options.assertSafeCloudModelEndpoint,
+    openRouterCallbackOrigin: options.openRouterCallbackOrigin
+  }));
   app.use("/api", makeDataRoutes(storeManager));
 
   // Static web serving

@@ -1,6 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 
 const pairingLifetimeMs = 5 * 60 * 1000;
 const authorizationSchemaVersion = 1;
@@ -61,6 +61,7 @@ export class PairingStore {
   private records = new Map<string, InternalPairingRecord>();
   private challenges = new Map<string, PairingChallenge>();
   private readonly dataPath: string;
+  private usagePersistTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor() {
     const dataDir = resolve(process.env.LFA_DATA_DIR ?? "data");
@@ -179,7 +180,7 @@ export class PairingStore {
     for (const record of this.records.values()) {
       if (record.status === "approved" && !record.revokedAt && record.tokenHash && hashesMatch(record.tokenHash, candidate)) {
         record.lastUsedAt = new Date().toISOString();
-        this.persist();
+        this.scheduleUsagePersist();
         const profileId = record.allowedProfileIds[0];
         if (!profileId) continue;
         return {
@@ -192,6 +193,13 @@ export class PairingStore {
       }
     }
     return null;
+  }
+
+  flushPendingWrites(): void {
+    if (!this.usagePersistTimer) return;
+    clearTimeout(this.usagePersistTimer);
+    this.usagePersistTimer = undefined;
+    this.persist();
   }
 
   listDevices(): PairingRecord[] {
@@ -242,6 +250,21 @@ export class PairingStore {
   private persist(): void {
     // Retain revoked records so device management can show their state and prevent token reuse.
     const records = [...this.records.values()].filter((record) => record.status === "approved" && record.tokenDelivered);
-    writeFileSync(this.dataPath, JSON.stringify(records, null, 2), { encoding: "utf8", mode: 0o600 });
+    const temporaryPath = `${this.dataPath}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
+    try {
+      writeFileSync(temporaryPath, JSON.stringify(records, null, 2), { encoding: "utf8", mode: 0o600 });
+      renameSync(temporaryPath, this.dataPath);
+    } finally {
+      rmSync(temporaryPath, { force: true });
+    }
+  }
+
+  private scheduleUsagePersist(): void {
+    if (this.usagePersistTimer) return;
+    this.usagePersistTimer = setTimeout(() => {
+      this.usagePersistTimer = undefined;
+      if (existsSync(dirname(this.dataPath))) this.persist();
+    }, 250);
+    this.usagePersistTimer.unref?.();
   }
 }
