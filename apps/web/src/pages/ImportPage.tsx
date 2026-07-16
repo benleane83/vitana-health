@@ -252,7 +252,6 @@ export function ManualEntryForm({
           <span role="columnheader">Measurement</span>
           <span role="columnheader">Value</span>
           <span role="columnheader">Unit</span>
-          <span role="columnheader">Actions</span>
         </div>
         {rows.map((row, index) => (
           <ManualMeasurementRow

@@ -1302,6 +1302,41 @@ h3 {
   flex: 0 0 auto;
 }
 
+.summary-manual-observation {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1.4fr) repeat(3, minmax(7rem, 0.6fr)) minmax(12rem, 1fr) auto;
+  align-items: end;
+  gap: var(--space-3);
+  margin-top: var(--space-10);
+  padding: var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.summary-manual-observation h3,
+.summary-manual-observation p {
+  margin: 0;
+}
+
+.summary-manual-observation h3 {
+  font-size: 1.05rem;
+}
+
+.summary-manual-observation p {
+  margin-top: var(--space-1);
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.summary-manual-observation label {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
 .summary-detail-chart {
   min-width: 0;
 }
@@ -1450,6 +1485,10 @@ h3 {
 .summary-detail-table td.summary-entry-value {
   padding-right: var(--space-4);
   text-align: right;
+}
+
+.summary-detail-table th.summary-timestamp-column {
+  text-align: left;
 }
 
 .summary-entry-value strong {

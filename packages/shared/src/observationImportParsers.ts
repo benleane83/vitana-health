@@ -201,20 +201,22 @@ export function buildManualObservationImport(
     const displayName = markerName || measurementType?.display || markerCode || "Manual marker";
     const measurementCode = measurementType?.code || markerCode || fallbackMeasurementCode(displayName);
     const unit = row.unit?.trim() || (measurementType ? getPreferredUnit(measurementType, units) : "unknown");
+    const note = row.note?.trim() || "Manual import";
     observations.push({
-      id: stableId("obs", ["manual-entry", sourceChecksum, measurementCode, String(value), unit]),
+      id: stableId("obs", ["manual-entry", sourceChecksum, measurementCode, String(value), unit, note]),
       measurementCode,
       observedAt: collectedAt,
       value,
       unit,
       sourceId,
       observationGroupId: groupId,
-      note: `Manual observation from ${group.label}`,
+      note,
       sourceJson: {
         ...(row.measurementName !== undefined ? { measurementName: row.measurementName } : {}),
         ...(row.measurementCode !== undefined ? { measurementCode: row.measurementCode } : {}),
         value: row.value,
-        ...(row.unit !== undefined ? { unit: row.unit } : {})
+        ...(row.unit !== undefined ? { unit: row.unit } : {}),
+        ...(row.note !== undefined ? { note: row.note } : {})
       }
     });
   }

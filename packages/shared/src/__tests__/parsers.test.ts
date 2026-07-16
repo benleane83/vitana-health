@@ -159,6 +159,15 @@ describe("generic observation imports", () => {
     expect(result.observations[0].sourceJson).toStrictEqual({ measurementName: "Weight", value: 82, unit: "kg" });
   });
 
+  it("preserves a note supplied with a manual observation", () => {
+    const result = buildManualObservationImport({
+      observedAt: "2026-06-15", label: "Manual Glucose",
+      observations: [{ measurementCode: "glucose", value: 5.2, unit: "mmol/L", note: "Fasting" }]
+    });
+    expect(result.observations[0]).toMatchObject({ note: "Fasting" });
+    expect(result.observations[0].sourceJson).toMatchObject({ note: "Fasting" });
+  });
+
   it("maps generic CSV observations and generates a fallback code", () => {
     const result = parseObservationCsv("observations.csv", "observedAt,measurement,value,unit\n2026-06-15,Custom score,7,points");
     expect(result.sourceImport.sourceKind).toBe("observation-csv");

@@ -243,7 +243,7 @@ export const api = {
     request(importMutationResponseSchema, "/api/import/blood-test/commit", { method: "POST", body: JSON.stringify(payload) }),
   importManualLabEntry: (payload: ManualLabEntryPayload) =>
     request(importMutationResponseSchema, "/api/import/labs/manual", { method: "POST", body: JSON.stringify(payload) }),
-  importManualObservations: (payload: { observedAt: string; label: string; sourceName?: string; observations: Array<{ measurementName?: string; measurementCode?: string; value: number; unit?: string }> }) =>
+  importManualObservations: (payload: { observedAt: string; label: string; sourceName?: string; observations: Array<{ measurementName?: string; measurementCode?: string; value: number; unit?: string; note?: string }> }) =>
     request(importMutationResponseSchema, "/api/import/observations/manual", { method: "POST", body: JSON.stringify(payload) }),
   generateInsight: () => request(insightResponseSchema, "/api/insights/generate", { method: "POST" }),
   pairing: {

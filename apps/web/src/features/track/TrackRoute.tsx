@@ -122,6 +122,26 @@ export function TrackRoute({
     });
   }
 
+  async function addManualObservation(input: { observedAt: string; value: number; unit: string; note: string }) {
+    if (!detailCode || !detail.data) return;
+    const measurement = detail.data.measurement;
+    await runAction(async () => {
+      await api.importManualObservations({
+        observedAt: input.observedAt,
+        label: `Manual ${measurement.displayName}`,
+        observations: [{
+          measurementName: measurement.displayName,
+          measurementCode: detailCode,
+          value: input.value,
+          unit: input.unit,
+          note: input.note || undefined
+        }]
+      });
+      await refreshAfterMutation(detailCode);
+      onNotice(`${measurement.displayName} measurement added.`);
+    });
+  }
+
   async function deleteAll() {
     if (!detailCode || !detail.data) return;
     const observationCount = detail.data.deletion.observationEntries;
@@ -205,6 +225,8 @@ export function TrackRoute({
           onDeleteObservation={deleteObservation}
           onDeleteAll={deleteAll}
           onLoadMore={loadMore}
+          onAddManualObservation={addManualObservation}
+          defaultUnit={measurementTypes.find((type) => type.code === detailCode)?.canonicalUnit ?? ""}
         />
       ) : (
         <SummaryPage

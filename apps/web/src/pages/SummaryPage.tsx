@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { HealthDataDetail, HealthDataDetailEntry, HealthDataSummary, HealthDataSummaryTypeRow } from "@local-fitness-advisor/shared";
 import { DetailTrendChart } from "../components/Charts.js";
 import { formatTimestamp, formatShortTimestamp, formatDetailValue } from "../utils.js";
@@ -234,7 +235,9 @@ export function ObservationTypeDetailPage({
   onEditObservation,
   onDeleteObservation,
   onDeleteAll,
-  onLoadMore
+  onLoadMore,
+  onAddManualObservation,
+  defaultUnit
 }: {
   detail?: HealthDataDetail;
   loading: boolean;
@@ -246,7 +249,13 @@ export function ObservationTypeDetailPage({
   onDeleteObservation: (entry: HealthDataDetailEntry) => void | Promise<void>;
   onDeleteAll: () => void | Promise<void>;
   onLoadMore: () => void | Promise<void>;
+  onAddManualObservation: (input: { observedAt: string; value: number; unit: string; note: string }) => void | Promise<void>;
+  defaultUnit: string;
 }) {
+  const [manualObservedAt, setManualObservedAt] = useState(() => new Date().toISOString().slice(0, 10));
+  const [manualValue, setManualValue] = useState("");
+  const [manualUnit, setManualUnit] = useState("");
+  const [manualNote, setManualNote] = useState("");
   const deleteAllCount = detail?.deletion.observationEntries ?? 0;
   const primaryTile = detail ? primaryCountTile(detail.counts) : { label: "Entries", value: 0 };
   const latestEntry = detail?.entries.reduce<HealthDataDetailEntry | undefined>((latest, entry) =>
@@ -254,6 +263,20 @@ export function ObservationTypeDetailPage({
   , undefined);
   const entryKinds = new Set(detail?.entries.map((entry) => entry.kind) ?? []);
   const showKind = entryKinds.size > 1;
+
+  function submitManualObservation(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const value = Number.parseFloat(manualValue);
+    if (!Number.isFinite(value)) return;
+    void onAddManualObservation({
+      observedAt: manualObservedAt,
+      value,
+      unit: manualUnit.trim() || defaultUnit,
+      note: manualNote.trim()
+    });
+    setManualValue("");
+    setManualNote("");
+  }
 
   return (
     <section className="panel summary-panel">
@@ -345,7 +368,7 @@ export function ObservationTypeDetailPage({
                     <caption className="sr-only">{detail.measurement.displayName} entries</caption>
                     <thead>
                       <tr>
-                        <th scope="col">Timestamp</th>
+                        <th scope="col" className="summary-timestamp-column">Timestamp</th>
                         {showKind ? <th scope="col">Kind</th> : null}
                         <th scope="col" className="summary-value-column">Value</th>
                         <th scope="col">Source / note</th>
@@ -417,6 +440,53 @@ export function ObservationTypeDetailPage({
               </div>
             </>
           )}
+
+          <form className="summary-manual-observation" onSubmit={submitManualObservation}>
+            <div>
+              <h3>Add measurement</h3>
+              <p>Record a new {detail.measurement.displayName.toLocaleLowerCase()} reading.</p>
+            </div>
+            <label>
+              Date
+              <input
+                type="date"
+                aria-label="New measurement date"
+                value={manualObservedAt}
+                onChange={(event) => setManualObservedAt(event.target.value)}
+                required
+              />
+            </label>
+            <label>
+              Value
+              <input
+                inputMode="decimal"
+                aria-label="New measurement value"
+                value={manualValue}
+                onChange={(event) => setManualValue(event.target.value)}
+                required
+              />
+            </label>
+            <label>
+              Unit
+              <input
+                aria-label="New measurement unit"
+                value={manualUnit || defaultUnit}
+                onChange={(event) => setManualUnit(event.target.value)}
+                required
+              />
+            </label>
+            <label className="summary-manual-note">
+              Note
+              <input
+                aria-label="New measurement note"
+                value={manualNote}
+                onChange={(event) => setManualNote(event.target.value)}
+              />
+            </label>
+            <button type="submit" disabled={loading || actionBusy}>
+              {actionBusy ? "Adding…" : "Add measurement"}
+            </button>
+          </form>
         </>
       ) : null}
     </section>
