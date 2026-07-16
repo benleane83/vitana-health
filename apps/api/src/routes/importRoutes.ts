@@ -90,7 +90,8 @@ const manualObservationImportSchema = z.object({
     measurementName: z.string().max(160).optional(),
     measurementCode: z.string().max(120).optional(),
     value: z.number().finite(),
-    unit: z.string().max(32).optional()
+    unit: z.string().max(32).optional(),
+    note: z.string().max(2_000).optional()
   }).refine(
     (row) => (row.measurementName?.trim()?.length ?? 0) > 0 || (row.measurementCode?.trim()?.length ?? 0) > 0,
     { message: "measurementName or measurementCode is required" }

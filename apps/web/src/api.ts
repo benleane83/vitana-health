@@ -227,7 +227,8 @@ export const api = {
   commitBloodTestReport: sharedApi.commitBloodTestReport,
   importManualLabEntry: (payload: ManualLabEntryPayload) =>
     request(importMutationResponseSchema, "/api/import/labs/manual", { method: "POST", body: JSON.stringify(payload) }),
-  importManualObservations: sharedApi.importManualObservations,
+  importManualObservations: (payload: { observedAt: string; label: string; sourceName?: string; observations: Array<{ measurementName?: string; measurementCode?: string; value: number; unit?: string }> }) =>
+    request(importMutationResponseSchema, "/api/import/observations/manual", { method: "POST", body: JSON.stringify(payload) }),
   generateInsight: () => request(insightResponseSchema, "/api/insights/generate", { method: "POST" }),
   pairing: {
     qr: async () => {

@@ -609,6 +609,50 @@ describe("App — measurement detail", () => {
     expect(screen.getByRole("button", { name: /delete 1 observation record/i })).toBeInTheDocument();
   });
 
+  it("adds a manual measurement with the selected date, unit, and note", async () => {
+    globalThis.history.replaceState({}, "", "/track/glucose");
+    const detail = {
+      generatedAt: "2026-07-14T00:00:00.000Z",
+      measurement: {
+        code: "glucose", displayName: "Glucose", category: "lab",
+        counts: { observations: 0, samples: 0, activities: 0, total: 0 }
+      },
+      entries: [],
+      chartPoints: [],
+      counts: { observations: 0, samples: 0, activities: 0, total: 0 },
+      deletion: { observationEntries: 0, deletableEntries: 0 },
+      pagination: { limit: 50, loaded: 0, total: 0, hasMore: false }
+    };
+    global.fetch = mockFetch({
+      "/api/store": { ...makeEmptyStore(), measurementTypes: defaultMeasurementTypes },
+      "/api/analytics": makeEmptyAnalytics(),
+      "/api/profiles": { profiles: [], activeProfileId: "self" },
+      "/api/summary/glucose": detail,
+      "/api/summary": {
+        generatedAt: "2026-07-14T00:00:00.000Z",
+        totals: { types: 1, observations: 0, samples: 0, activities: 0, total: 0 },
+        categories: []
+      }
+    });
+
+    render(<App />);
+    await screen.findByRole("heading", { name: /add measurement/i });
+    fireEvent.change(screen.getByLabelText(/new measurement date/i), { target: { value: "2026-07-16" } });
+    fireEvent.change(screen.getByLabelText(/new measurement value/i), { target: { value: "5.6" } });
+    fireEvent.change(screen.getByLabelText(/new measurement note/i), { target: { value: "After breakfast" } });
+    fireEvent.click(screen.getByRole("button", { name: /^add measurement$/i }));
+
+    await waitFor(() => {
+      const request = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([url, init]) =>
+        String(url).includes("/api/import/observations/manual") && init?.method === "POST"
+      );
+      expect(JSON.parse(String(request?.[1]?.body))).toMatchObject({
+        observedAt: "2026-07-16",
+        observations: [{ measurementCode: "glucose", value: 5.6, unit: "mmol/L", note: "After breakfast" }]
+      });
+    });
+  });
+
   it("edits a single observation from its detail row", async () => {
     globalThis.history.replaceState({}, "", "/track/glucose");
     const detail = {

@@ -35,6 +35,7 @@ export interface ManualObservationInput {
   measurementCode?: string;
   value: number;
   unit?: string;
+  note?: string;
 }
 
 export interface ManualObservationPayload {
