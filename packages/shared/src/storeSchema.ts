@@ -5,7 +5,7 @@ import { defaultMeasurementTypes } from "./registry.js";
 export const CURRENT_SCHEMA_VERSION = 4 as const;
 
 const sourceKind = z.enum([
-  "health-connect", "manual-entry", "blood-test-csv", "observation-csv",
+  "health-connect", "manual-entry", "blood-test-csv", "observation-csv", "structured-upload",
   "blood-test-report", "body-composition-report", "derived"
 ]);
 const stringRecord = z.record(z.unknown());

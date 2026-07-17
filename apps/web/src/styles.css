@@ -1779,6 +1779,39 @@ h3 {
   font-weight: 800;
 }
 
+.upload-mapping {
+  display: grid;
+  gap: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  padding: var(--space-4);
+}
+
+.upload-mapping-grid {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.upload-mapping-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.9fr) minmax(180px, 1.1fr);
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.upload-mapping-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.upload-mapping-stale {
+  color: var(--warning);
+  font-weight: 800;
+}
+
 .summary-categories {
   display: grid;
   gap: var(--space-3);

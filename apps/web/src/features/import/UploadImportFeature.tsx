@@ -1,0 +1,372 @@
+import { useRef, useState } from "react";
+import type {
+  MeasurementType,
+  UnitSystem,
+  UploadColumnMappingOverride,
+  UploadDraftRow,
+  UploadImportDraft
+} from "@local-fitness-advisor/shared";
+import { api } from "../../api.js";
+import { ImportDraftReview } from "../../components/ImportDraftReview.js";
+import type { UploadEditableRow } from "../../types.js";
+import { groupMeasurementTypes, measurementCategoryLabels } from "../../utils.js";
+
+const MAX_STRUCTURED_UPLOAD_BYTES = 2_000_000; // 2 MB structured file (CSV/TSV) limit
+
+type UploadFormatChoice = "auto" | "csv" | "tsv";
+
+/**
+ * Generic structured (CSV/TSV) upload flow: choose a file type/format hint,
+ * select a file, preview a fresh draft, review and adjust the long/wide
+ * column mapping, re-preview ("update") to apply mapping changes, review the
+ * resulting rows, then save. PDF/image reports are not supported here — see
+ * the mobile companion's body-composition/blood-test scan flow instead.
+ */
+export function UploadImportFeature({
+  measurementTypes,
+  units,
+  onImported,
+  onNotice
+}: {
+  measurementTypes: MeasurementType[];
+  units: UnitSystem;
+  onImported: () => Promise<void>;
+  onNotice: (message: string) => void;
+}) {
+  const [format, setFormat] = useState<UploadFormatChoice>("auto");
+  const [file, setFile] = useState<File>();
+  const [busy, setBusy] = useState(false);
+  const [draft, setDraft] = useState<UploadImportDraft>();
+  const [mapping, setMapping] = useState<UploadColumnMappingOverride>({});
+  const [appliedMappingSignature, setAppliedMappingSignature] = useState<string>();
+  const [rows, setRows] = useState<UploadEditableRow[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const mappingDirty = draft !== undefined && JSON.stringify(mapping) !== appliedMappingSignature;
+
+  function resetDraftState() {
+    setDraft(undefined);
+    setMapping({});
+    setAppliedMappingSignature(undefined);
+    setRows([]);
+  }
+
+  function selectFile(nextFile: File | undefined) {
+    setFile(nextFile);
+    // Selecting a different file invalidates any existing draft/mapping —
+    // never carry a mapping computed against a previous file into a new one.
+    resetDraftState();
+  }
+
+  async function runPreview(overrideMapping: UploadColumnMappingOverride) {
+    if (!file) {
+      onNotice("Select a CSV or TSV file before preview.");
+      return;
+    }
+    if (file.size === 0) {
+      onNotice("The selected file is empty.");
+      return;
+    }
+    if (file.size > MAX_STRUCTURED_UPLOAD_BYTES) {
+      onNotice("The selected file is too large for local preview. Use a file smaller than 2 MB.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const content = await file.text();
+      const nextDraft = await api.previewStructuredUpload({
+        fileName: file.name,
+        format: format === "auto" ? undefined : format,
+        content,
+        mapping: overrideMapping
+      });
+      setDraft(nextDraft);
+      setMapping(nextDraft.mapping);
+      setAppliedMappingSignature(JSON.stringify(nextDraft.mapping));
+      setRows(nextDraft.rows.map(toEditableRow));
+      onNotice("Upload parsed for review.");
+    } catch (error) {
+      onNotice(error instanceof Error ? error.message : "Unexpected local error.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function preview(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await runPreview(mapping);
+  }
+
+  async function updateMapping() {
+    await runPreview(mapping);
+  }
+
+  async function commit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!draft) {
+      onNotice("Preview a file before saving.");
+      return;
+    }
+    if (mappingDirty) {
+      onNotice("Update the mapping preview before saving.");
+      return;
+    }
+    let approvedRows: UploadDraftRow[];
+    try {
+      approvedRows = rows.map(toDraftRow);
+    } catch (error) {
+      onNotice(error instanceof Error ? error.message : "Invalid parsed observation.");
+      return;
+    }
+    if (!approvedRows.some((row) => row.included)) {
+      onNotice("Include at least one parsed row before saving.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.commitStructuredUpload({
+        fileName: draft.fileName,
+        format: draft.format,
+        checksum: draft.checksum,
+        layout: draft.layout,
+        rows: approvedRows
+      });
+      await onImported();
+      onNotice("Approved upload observations saved.");
+      setFile(undefined);
+      resetDraftState();
+      if (inputRef.current) inputRef.current.value = "";
+    } catch (error) {
+      onNotice(error instanceof Error ? error.message : "Unexpected local error.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="panel labs-panel bodycomp-import">
+      <form className="labs-upload-form" onSubmit={preview}>
+        <label htmlFor="upload-format">File type</label>
+        <select
+          id="upload-format"
+          value={format}
+          onChange={(event) => setFormat(event.target.value as UploadFormatChoice)}
+        >
+          <option value="auto">Auto-detect (CSV or TSV)</option>
+          <option value="csv">CSV (comma-separated)</option>
+          <option value="tsv">TSV (tab-separated)</option>
+        </select>
+
+        <label htmlFor="upload-file">Select observation file</label>
+        <input
+          id="upload-file"
+          ref={inputRef}
+          type="file"
+          accept=".csv,.tsv,text/csv,text/tab-separated-values"
+          aria-describedby="upload-file-help"
+          onChange={(event) => selectFile(event.target.files?.[0])}
+        />
+        <p id="upload-file-help" className="empty">
+          Long format: observedAt, measurement, value, unit columns. Wide format: a date column plus
+          one column per measurement (e.g. weight_kg, heart_rate). Parsed locally before save.
+        </p>
+        <div className="labs-upload-actions">
+          <button disabled={busy || !file} type="submit">Preview upload</button>
+        </div>
+      </form>
+
+      {draft ? (
+        <div className="upload-mapping">
+          <p className="eyebrow">Column mapping ({draft.layout === "long" ? "long format" : "wide format"})</p>
+          {draft.layout === "long" ? (
+            <LongFormatMappingEditor
+              columns={draft.columns}
+              mapping={mapping}
+              onChange={setMapping}
+            />
+          ) : (
+            <WideFormatMappingEditor
+              columns={draft.columns}
+              mapping={mapping}
+              measurementTypes={measurementTypes}
+              onChange={setMapping}
+            />
+          )}
+          <div className="upload-mapping-actions">
+            <button disabled={busy} type="button" onClick={() => void updateMapping()}>
+              Update mapping preview
+            </button>
+            {mappingDirty ? (
+              <span className="upload-mapping-stale" role="status">
+                Mapping changed — update the preview to apply it.
+              </span>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {draft ? (
+        <ImportDraftReview
+          fileName={draft.fileName}
+          diagnostics={draft.diagnostics}
+          rowCount={draft.rowCount}
+          truncated={draft.truncated}
+          busy={busy}
+          staleMappingWarning={mappingDirty ? "Update the mapping preview above before saving." : undefined}
+          rows={rows}
+          measurementTypes={measurementTypes}
+          units={units}
+          onRowChange={(id, patch) => setRows((current) =>
+            current.map((row) => row.id === id ? { ...row, ...patch } : row))}
+          onAddRow={() => setRows((current) => [...current, createEditableRow()])}
+          onCommit={commit}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+// ─── Long-format mapping editor ────────────────────────────────────────────────
+
+type LongFormatColumnKey =
+  | "dateColumn"
+  | "measurementColumn"
+  | "measurementCodeColumn"
+  | "valueColumn"
+  | "unitColumn"
+  | "labelColumn"
+  | "sourceNameColumn"
+  | "noteColumn";
+
+function LongFormatMappingEditor({
+  columns,
+  mapping,
+  onChange
+}: {
+  columns: string[];
+  mapping: UploadColumnMappingOverride;
+  onChange: (mapping: UploadColumnMappingOverride) => void;
+}) {
+  const roles: Array<{ key: LongFormatColumnKey; label: string }> = [
+    { key: "dateColumn", label: "Observed at / date column" },
+    { key: "measurementColumn", label: "Measurement name column" },
+    { key: "measurementCodeColumn", label: "Measurement code column" },
+    { key: "valueColumn", label: "Value column" },
+    { key: "unitColumn", label: "Unit column" },
+    { key: "labelColumn", label: "Label / group column" },
+    { key: "sourceNameColumn", label: "Source name column" },
+    { key: "noteColumn", label: "Note column" }
+  ];
+  return (
+    <div className="upload-mapping-grid">
+      {roles.map(({ key, label }) => (
+        <div className="upload-mapping-row" key={key}>
+          <label htmlFor={`upload-mapping-${key}`}>{label}</label>
+          <select
+            id={`upload-mapping-${key}`}
+            value={mapping[key] ?? ""}
+            onChange={(event) => onChange({ ...mapping, layout: "long", [key]: event.target.value || undefined })}
+          >
+            <option value="">None</option>
+            {columns.map((column) => <option key={column} value={column}>{column}</option>)}
+          </select>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Wide-format mapping editor ────────────────────────────────────────────────
+
+function WideFormatMappingEditor({
+  columns,
+  mapping,
+  measurementTypes,
+  onChange
+}: {
+  columns: string[];
+  mapping: UploadColumnMappingOverride;
+  measurementTypes: MeasurementType[];
+  onChange: (mapping: UploadColumnMappingOverride) => void;
+}) {
+  const measurementGroups = groupMeasurementTypes(measurementTypes);
+  const measurementColumns = mapping.measurementColumns ?? {};
+
+  return (
+    <div className="upload-mapping-grid">
+      <div className="upload-mapping-row">
+        <label htmlFor="upload-mapping-date">Date / timestamp column</label>
+        <select
+          id="upload-mapping-date"
+          value={mapping.dateColumn ?? ""}
+          onChange={(event) => onChange({ ...mapping, dateColumn: event.target.value || undefined, layout: "wide" })}
+        >
+          <option value="">None</option>
+          {columns.map((column) => <option key={column} value={column}>{column}</option>)}
+        </select>
+      </div>
+      {columns.filter((column) => column !== mapping.dateColumn).map((column) => (
+        <div className="upload-mapping-row" key={column}>
+          <label htmlFor={`upload-mapping-column-${column}`}>{column}</label>
+          <select
+            id={`upload-mapping-column-${column}`}
+            value={measurementColumns[column]?.measurementCode ?? ""}
+            onChange={(event) => {
+              const selectedCode = event.target.value;
+              const nextMeasurementColumns = { ...measurementColumns };
+              if (!selectedCode) {
+                delete nextMeasurementColumns[column];
+              } else {
+                nextMeasurementColumns[column] = { measurementCode: selectedCode };
+              }
+              onChange({ ...mapping, layout: "wide", measurementColumns: nextMeasurementColumns });
+            }}
+          >
+            <option value="">Ignore this column</option>
+            {measurementGroups.map(([category, types]) => (
+              <optgroup key={category} label={measurementCategoryLabels[category]}>
+                {types.map((type) => (
+                  <option key={type.code} value={type.code}>{type.display} ({type.code})</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Editable row helpers ───────────────────────────────────────────────────────
+
+function toEditableRow(row: UploadDraftRow): UploadEditableRow {
+  return { ...row, value: String(row.value) };
+}
+
+function toDraftRow(row: UploadEditableRow): UploadDraftRow {
+  const value = Number.parseFloat(row.value);
+  if (!Number.isFinite(value)) throw new Error(`Enter a numeric value for ${row.displayName || row.label}.`);
+  if (!row.measurementCode.trim()) throw new Error(`Measurement code is required for ${row.displayName || row.label}.`);
+  if (!row.unit.trim()) throw new Error(`Unit is required for ${row.displayName || row.label}.`);
+  return {
+    ...row,
+    measurementCode: row.measurementCode.trim(),
+    displayName: row.displayName.trim() || row.label.trim(),
+    value,
+    unit: row.unit.trim()
+  };
+}
+
+function createEditableRow(): UploadEditableRow {
+  return {
+    id: globalThis.crypto.randomUUID(),
+    label: "",
+    measurementCode: "",
+    displayName: "",
+    value: "",
+    unit: "",
+    confidence: "low",
+    included: true,
+    generatedCode: true
+  };
+}

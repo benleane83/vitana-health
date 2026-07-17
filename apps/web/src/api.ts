@@ -12,6 +12,8 @@ import type {
   RestoreDecision,
   UpdateObservationInput,
   UpdateObservationResponse,
+  UploadImportCommitPayload,
+  UploadImportPreviewPayload,
   AiQueryResponse as SharedAiQueryResponse,
   AiSettingsResponse as SharedAiSettingsResponse,
   ImportMutationResponse as SharedImportMutationResponse,
@@ -220,12 +222,12 @@ export const api = {
     set: (payload: { enabled: boolean; providerScopeAccepted: boolean; consentVersion?: string }) =>
       request(cloudAiConsentResponseSchema, "/api/profile/cloud-ai-consent", { method: "PUT", body: JSON.stringify(payload) })
   },
-  importObservationCsv: (fileName: string, content: string) =>
-    request(importMutationResponseSchema, "/api/import/observations/csv", { method: "POST", body: JSON.stringify({ fileName, content }) }),
   previewBodyCompositionReport: sharedApi.previewBodyCompositionReport,
   commitBodyCompositionReport: sharedApi.commitBodyCompositionReport,
   previewBloodTestReport: sharedApi.previewBloodTestReport,
   commitBloodTestReport: sharedApi.commitBloodTestReport,
+  previewStructuredUpload: (payload: UploadImportPreviewPayload) => sharedApi.previewStructuredUpload(payload),
+  commitStructuredUpload: (payload: UploadImportCommitPayload) => sharedApi.commitStructuredUpload(payload),
   importManualLabEntry: (payload: ManualLabEntryPayload) =>
     request(importMutationResponseSchema, "/api/import/labs/manual", { method: "POST", body: JSON.stringify(payload) }),
   importManualObservations: (payload: ManualObservationPayload) => sharedApi.importManualObservations(payload),

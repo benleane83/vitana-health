@@ -6,18 +6,31 @@ export function checksum(content: string): string {
 }
 
 export function parseCsv(content: string): Array<Record<string, string>> {
-  const lines = content.replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.trim().length > 0);
-  if (lines.length === 0) {
-    return [];
-  }
-  const headers = splitCsvLine(lines[0]).map((header) => header.trim());
-  return lines.slice(1).map((line) => {
-    const values = splitCsvLine(line);
-    return Object.fromEntries(headers.map((header, index) => [header, values[index]?.trim() ?? ""]));
-  });
+  return parseDelimitedWithHeaders(content, ",").rows;
 }
 
-function splitCsvLine(line: string): string[] {
+/**
+ * Delimiter-aware structured text parser shared by CSV (",") and TSV ("\t") uploads.
+ * Returns both the raw header order (needed for column-mapping suggestions) and the
+ * row records keyed by header text.
+ */
+export function parseDelimitedWithHeaders(
+  content: string,
+  delimiter: string
+): { headers: string[]; rows: Array<Record<string, string>> } {
+  const lines = content.replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.trim().length > 0);
+  if (lines.length === 0) {
+    return { headers: [], rows: [] };
+  }
+  const headers = splitDelimitedLine(lines[0], delimiter).map((header) => header.trim());
+  const rows = lines.slice(1).map((line) => {
+    const values = splitDelimitedLine(line, delimiter);
+    return Object.fromEntries(headers.map((header, index) => [header, values[index]?.trim() ?? ""]));
+  });
+  return { headers, rows };
+}
+
+function splitDelimitedLine(line: string, delimiter: string): string[] {
   const cells: string[] = [];
   let current = "";
   let quoted = false;
@@ -28,7 +41,7 @@ function splitCsvLine(line: string): string[] {
       index += 1;
     } else if (char === '"') {
       quoted = !quoted;
-    } else if (char === "," && !quoted) {
+    } else if (char === delimiter && !quoted) {
       cells.push(current);
       current = "";
     } else {
@@ -45,16 +58,22 @@ export function stableId(prefix: string, parts: string[]): string {
 
 export function normalizeKeys(row: Record<string, string>): Record<string, string> {
   return Object.fromEntries(
-    Object.entries(row).map(([key, value]) => [
-      key
-        .trim()
-        .replace(/([a-z])([A-Z])/g, "$1_$2")
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "_")
-        .replace(/^_|_$/g, ""),
-      value
-    ])
+    Object.entries(row).map(([key, value]) => [normalizeFieldKey(key), value])
   );
+}
+
+/**
+ * Normalizes a single column/field name to snake_case for role matching
+ * (e.g. "Observed At" / "observedAt" → "observed_at"). Shared by the CSV
+ * observation parsers and the generic long/wide upload column mapper.
+ */
+export function normalizeFieldKey(key: string): string {
+  return key
+    .trim()
+    .replace(/([a-z])([A-Z])/g, "$1_$2")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
 }
 
 export function readNumber(value: string | undefined): number | undefined {

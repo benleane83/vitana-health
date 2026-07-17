@@ -7,6 +7,7 @@ export type SourceKind =
   | "manual-entry"
   | "blood-test-csv"
   | "observation-csv"
+  | "structured-upload"
   | "blood-test-report"
   | "body-composition-report"
   | "derived";

@@ -8,11 +8,14 @@ import {
   healthDataDetailResponseSchema,
   healthDataSummaryResponseSchema,
   healthResponseSchema,
-  importMutationResponseSchema
+  importMutationResponseSchema,
+  uploadImportDraftResponseSchema
 } from "@local-fitness-advisor/shared";
 import type {
   BodyCompositionDraftCommitPayload,
-  ManualObservationPayload
+  ManualObservationPayload,
+  UploadImportCommitPayload,
+  UploadImportPreviewPayload
 } from "@local-fitness-advisor/shared";
 
 export interface ApiTransportRequest {
@@ -94,6 +97,10 @@ export function createApiClient(transport: ApiTransport) {
       request(importMutationResponseSchema, "/api/import/body-composition/commit", { method: "POST", body: payload }),
     commitBloodTestReport: (payload: BodyCompositionDraftCommitPayload) =>
       request(importMutationResponseSchema, "/api/import/blood-test/commit", { method: "POST", body: payload }),
+    previewStructuredUpload: (payload: UploadImportPreviewPayload) =>
+      request(uploadImportDraftResponseSchema, "/api/import/upload/preview", { method: "POST", body: payload }),
+    commitStructuredUpload: (payload: UploadImportCommitPayload) =>
+      request(importMutationResponseSchema, "/api/import/upload/commit", { method: "POST", body: payload }),
     importHealthConnect: (payload: Record<string, unknown>) =>
       request(importMutationResponseSchema, "/api/import/health-connect", { method: "POST", body: payload })
   };

@@ -287,6 +287,41 @@ The equivalent blood-test scan routes are `POST /api/import/blood-test/preview` 
 `POST /api/import/blood-test/commit`. Companions may use both report types. Preview performs
 OCR/parsing only; commit writes only reviewed rows to the assigned profile.
 
+### Generic structured (CSV/TSV) upload
+
+```
+POST /api/import/upload/preview
+```
+**Request body:** `{ "fileName", "format"?: "csv"|"tsv", "content": "<structured text>", "mapping"? }`.
+`content` is the raw file text (not base64) and is capped at 2 MB; the format is inferred from the
+file name or the header line when omitted. This endpoint never reads or writes the profile store —
+it is a pure parse of the submitted content and mapping override. Every preview call produces a
+fresh draft; no server-side draft state is retained between calls.
+
+The parser detects a **long** layout (one row per observation, with measurement/value/unit columns)
+or a **wide** layout (one row per timestamp, with one column per known measurement) and returns a
+`mappingSuggestion` alongside the effective `mapping` (suggestion merged with any override). In the
+long layout, rows whose measurement text doesn't match a known code are still included in the draft
+but marked `included: false` (generated code) until corrected. In the wide layout, columns that
+aren't recognized as a known measurement produce no rows at all until the caller adds a mapping
+override for that column and re-previews. Draft rows are capped at 200; `truncated: true` indicates
+the file had more matching rows than the ceiling.
+
+**Success `200`:** `{ "fileName", "format", "layout", "checksum", "columns": string[], "mapping",
+"mappingSuggestion", "rowCount", "diagnostics": string[], "rows": UploadDraftRow[], "truncated" }`
+
+```
+POST /api/import/upload/commit
+```
+**Request body:** `{ "fileName", "format"?, "checksum"?, "layout"?, "rows": UploadDraftRow[] }`
+(max 200 rows). Owner credential required — companion tokens have no capability mapped to this
+route and are rejected before any row is processed. Only rows still marked `included` are written,
+using the same deterministic-ID and provenance conventions as the other import parsers.
+**Success `201`:** committed import response described above, including `analyticsStorage`.
+
+PDF and image reports are not supported by this generic path. Use the body-composition/blood-test
+scan endpoints above for OCR-based report import.
+
 ### Submit manual observations
 ```
 POST /api/import/observations/manual

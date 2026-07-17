@@ -85,4 +85,63 @@ describe("createApiClient", () => {
     const client = createApiClient(async () => response({ profiles: [{ id: "self" }] }));
     await expect(client.assignedProfiles()).rejects.toThrow();
   });
+
+  it("posts generic structured-upload preview and commit requests", async () => {
+    const seen: ApiTransportRequest[] = [];
+    const transport = async (request: ApiTransportRequest) => {
+      seen.push(request);
+      if (request.path === "/api/import/upload/preview") {
+        return response({
+          fileName: "labs.csv",
+          format: "csv",
+          layout: "long",
+          checksum: "sha256-test",
+          parserVersion: "structured-upload-v1",
+          columns: ["observedAt", "measurement", "value", "unit"],
+          mapping: { layout: "long" },
+          mappingSuggestion: { layout: "long" },
+          rowCount: 1,
+          diagnostics: [],
+          rows: [],
+          truncated: false
+        });
+      }
+      return response({
+        import: {
+          id: "import-1",
+          sourceKind: "structured-upload",
+          fileName: "labs.csv",
+          importedAt: "2026-01-01",
+          parserVersion: "structured-upload-v1",
+          checksum: "sha256-test",
+          rowCount: 1,
+          status: "processed",
+          diagnostics: []
+        },
+        outcome: Object.fromEntries([
+          "sourceImport", "dataSource", "observations", "observationGroups", "timeSeriesSamples", "activitySessions"
+        ].map((key) => [key, { attempted: 0, accepted: 0, duplicates: 0, evicted: 0 }]))
+      });
+    };
+    const client = createApiClient(transport);
+
+    const draft = await client.previewStructuredUpload({ fileName: "labs.csv", content: "observedAt,measurement,value,unit\n2026-01-01,glucose,95,mg/dL" });
+    expect(draft.layout).toBe("long");
+    expect(seen[0]).toMatchObject({ method: "POST", path: "/api/import/upload/preview" });
+
+    await client.commitStructuredUpload({
+      fileName: "labs.csv",
+      rows: [{
+        id: "row-1",
+        label: "glucose",
+        measurementCode: "glucose",
+        displayName: "Glucose",
+        value: 95,
+        unit: "mg/dL",
+        confidence: "high",
+        included: true
+      }]
+    });
+    expect(seen[1]).toMatchObject({ method: "POST", path: "/api/import/upload/commit" });
+  });
 });
