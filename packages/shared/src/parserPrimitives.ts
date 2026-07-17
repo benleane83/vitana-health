@@ -133,14 +133,13 @@ const monthNameToIndex: Record<string, number> = {
 };
 
 function parseStructuredDate(value: string): StructuredDate | undefined {
-  const dateTimeMatch = value.match(/^(.*?)(?:\s+(\d{1,2})(?::(\d{2}))(?::(\d{2}))?)?$/);
-  if (!dateTimeMatch) return undefined;
-  const datePart = dateTimeMatch[1]?.trim();
+  const timeMatch = value.match(/\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  const datePart = (timeMatch?.index === undefined ? value : value.slice(0, timeMatch.index)).trim();
   if (!datePart) return undefined;
 
-  const hour = Number.parseInt(dateTimeMatch[2] ?? "0", 10);
-  const minute = Number.parseInt(dateTimeMatch[3] ?? "0", 10);
-  const second = Number.parseInt(dateTimeMatch[4] ?? "0", 10);
+  const hour = Number.parseInt(timeMatch?.[1] ?? "0", 10);
+  const minute = Number.parseInt(timeMatch?.[2] ?? "0", 10);
+  const second = Number.parseInt(timeMatch?.[3] ?? "0", 10);
   if (hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) return undefined;
 
   const ymd = datePart.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/);

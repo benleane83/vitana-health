@@ -55,8 +55,19 @@ function findHeader(headers: string[], candidates: string[]): string | undefined
 }
 
 function splitHeaderUnit(header: string): { base: string; unit?: string } {
-  const parenMatch = header.match(/^(.*?)\s*[([]([^()[\]]+)[)\]]\s*$/);
-  if (parenMatch) return { base: parenMatch[1].trim(), unit: parenMatch[2].trim() };
+  const trimmedHeader = header.trim();
+  const closingBracket = trimmedHeader.at(-1);
+  const openingBracket = closingBracket === ")" ? "(" : closingBracket === "]" ? "[" : undefined;
+  if (openingBracket) {
+    const openingIndex = trimmedHeader.lastIndexOf(openingBracket);
+    if (openingIndex > 0) {
+      const base = trimmedHeader.slice(0, openingIndex).trim();
+      const unit = trimmedHeader.slice(openingIndex + 1, -1).trim();
+      if (base && unit && !unit.includes("(") && !unit.includes("[") && !unit.includes(")") && !unit.includes("]")) {
+        return { base, unit };
+      }
+    }
+  }
   const normalized = normalizeFieldKey(header);
   for (const [suffix, unit] of Object.entries(columnUnitSuffixes)) {
     if (normalized.endsWith(`_${suffix}`)) {

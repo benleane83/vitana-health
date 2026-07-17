@@ -87,6 +87,14 @@ describe("parseStructuredUpload — wide format", () => {
     expect(draft.rows[0].observedAt).toBeDefined();
   });
 
+  it("reads units from parenthesized wide-format headers", () => {
+    const draft = parseStructuredUpload(
+      "wide.csv",
+      "date,Weight (lb)\n2026-07-01,176"
+    );
+    expect(draft.rows[0]).toMatchObject({ measurementCode: "weight", unit: "lb", value: 176 });
+  });
+
   it("applies a mapping override to include a previously unknown column", () => {
     const draft = parseStructuredUpload("wide.csv", wideFormatCsv, {
       mapping: {
