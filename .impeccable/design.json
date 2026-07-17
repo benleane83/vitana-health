@@ -1,66 +1,311 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-07-05T00:00:00.000Z",
+  "generatedAt": "2026-07-17T05:45:00.000Z",
   "title": "Design System: Local Fitness Advisor",
   "extensions": {
     "colorMeta": {
-      "vault-bg": {
+      "canvas": {
         "role": "neutral",
-        "displayName": "Vault Background",
-        "canonical": "#09110d",
-        "tonalRamp": ["#050806", "#09110d", "#0b1812", "#1d1b11"]
+        "displayName": "Cool Canvas",
+        "canonical": "oklch(97% 0.008 255)",
+        "tonalRamp": ["oklch(15% 0.008 255)", "oklch(28% 0.008 255)", "oklch(41% 0.008 255)", "oklch(54% 0.008 255)", "oklch(67% 0.008 255)", "oklch(80% 0.008 255)", "oklch(90% 0.008 255)", "oklch(97% 0.008 255)"]
       },
-      "leaf": {
+      "canvas-alt": {
+        "role": "neutral",
+        "displayName": "Alternate Canvas",
+        "canonical": "oklch(95% 0.012 262)",
+        "tonalRamp": ["oklch(15% 0.012 262)", "oklch(28% 0.012 262)", "oklch(41% 0.012 262)", "oklch(54% 0.012 262)", "oklch(67% 0.012 262)", "oklch(80% 0.012 262)", "oklch(90% 0.012 262)", "oklch(95% 0.012 262)"]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Evidence Surface",
+        "canonical": "oklch(99% 0.004 260)",
+        "tonalRamp": ["oklch(15% 0.004 260)", "oklch(28% 0.004 260)", "oklch(41% 0.004 260)", "oklch(54% 0.004 260)", "oklch(67% 0.004 260)", "oklch(80% 0.004 260)", "oklch(90% 0.004 260)", "oklch(99% 0.004 260)"]
+      },
+      "surface-soft": {
+        "role": "neutral",
+        "displayName": "Soft Evidence Surface",
+        "canonical": "oklch(96% 0.012 254)",
+        "tonalRamp": ["oklch(15% 0.012 254)", "oklch(28% 0.012 254)", "oklch(41% 0.012 254)", "oklch(54% 0.012 254)", "oklch(67% 0.012 254)", "oklch(80% 0.012 254)", "oklch(90% 0.012 254)", "oklch(96% 0.012 254)"]
+      },
+      "surface-strong": {
+        "role": "neutral",
+        "displayName": "Strong Evidence Surface",
+        "canonical": "oklch(94% 0.017 252)",
+        "tonalRamp": ["oklch(15% 0.017 252)", "oklch(28% 0.017 252)", "oklch(41% 0.017 252)", "oklch(54% 0.017 252)", "oklch(67% 0.017 252)", "oklch(80% 0.017 252)", "oklch(90% 0.017 252)", "oklch(94% 0.017 252)"]
+      },
+      "surface-warm": {
+        "role": "tertiary",
+        "displayName": "Warm Review Surface",
+        "canonical": "oklch(97% 0.02 45)",
+        "tonalRamp": ["oklch(15% 0.02 45)", "oklch(28% 0.02 45)", "oklch(41% 0.02 45)", "oklch(54% 0.02 45)", "oklch(67% 0.02 45)", "oklch(80% 0.02 45)", "oklch(90% 0.02 45)", "oklch(97% 0.02 45)"]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Evidence Ink",
+        "canonical": "oklch(30% 0.07 275)",
+        "tonalRamp": ["oklch(15% 0.07 275)", "oklch(28% 0.07 275)", "oklch(41% 0.07 275)", "oklch(54% 0.07 275)", "oklch(67% 0.07 275)", "oklch(80% 0.07 275)", "oklch(90% 0.07 275)", "oklch(95% 0.07 275)"]
+      },
+      "text-strong": {
+        "role": "neutral",
+        "displayName": "Strong Evidence Ink",
+        "canonical": "oklch(23% 0.08 275)",
+        "tonalRamp": ["oklch(15% 0.08 275)", "oklch(28% 0.08 275)", "oklch(41% 0.08 275)", "oklch(54% 0.08 275)", "oklch(67% 0.08 275)", "oklch(80% 0.08 275)", "oklch(90% 0.08 275)", "oklch(95% 0.08 275)"]
+      },
+      "text-muted": {
+        "role": "neutral",
+        "displayName": "Muted Ink",
+        "canonical": "oklch(48% 0.04 272)",
+        "tonalRamp": ["oklch(15% 0.04 272)", "oklch(28% 0.04 272)", "oklch(41% 0.04 272)", "oklch(54% 0.04 272)", "oklch(67% 0.04 272)", "oklch(80% 0.04 272)", "oklch(90% 0.04 272)", "oklch(95% 0.04 272)"]
+      },
+      "text-subtle": {
+        "role": "neutral",
+        "displayName": "Subtle Ink",
+        "canonical": "oklch(56% 0.036 266)",
+        "tonalRamp": ["oklch(15% 0.036 266)", "oklch(28% 0.036 266)", "oklch(41% 0.036 266)", "oklch(54% 0.036 266)", "oklch(67% 0.036 266)", "oklch(80% 0.036 266)", "oklch(90% 0.036 266)", "oklch(95% 0.036 266)"]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Quiet Line",
+        "canonical": "oklch(86% 0.02 260)",
+        "tonalRamp": ["oklch(15% 0.02 260)", "oklch(28% 0.02 260)", "oklch(41% 0.02 260)", "oklch(54% 0.02 260)", "oklch(67% 0.02 260)", "oklch(80% 0.02 260)", "oklch(90% 0.02 260)", "oklch(95% 0.02 260)"]
+      },
+      "line-strong": {
+        "role": "neutral",
+        "displayName": "Strong Line",
+        "canonical": "oklch(79% 0.03 258)",
+        "tonalRamp": ["oklch(15% 0.03 258)", "oklch(28% 0.03 258)", "oklch(41% 0.03 258)", "oklch(54% 0.03 258)", "oklch(67% 0.03 258)", "oklch(79% 0.03 258)", "oklch(90% 0.03 258)", "oklch(95% 0.03 258)"]
+      },
+      "primary": {
         "role": "primary",
-        "displayName": "Leaf Signal",
-        "canonical": "#b5f45d",
-        "tonalRamp": ["#071008", "#7adf52", "#b5f45d", "#c8ff64"]
+        "displayName": "Private Indigo",
+        "canonical": "oklch(46% 0.13 278)",
+        "tonalRamp": ["oklch(15% 0.13 278)", "oklch(28% 0.13 278)", "oklch(41% 0.13 278)", "oklch(54% 0.13 278)", "oklch(67% 0.13 278)", "oklch(80% 0.13 278)", "oklch(90% 0.13 278)", "oklch(95% 0.13 278)"]
       },
-      "cyan": {
-        "role": "secondary",
-        "displayName": "Fresh Cyan",
-        "canonical": "#85ffe1",
-        "tonalRamp": ["#0d1e17", "#1e4131", "#85ffe1"]
+      "primary-strong": {
+        "role": "primary",
+        "displayName": "Pressed Indigo",
+        "canonical": "oklch(40% 0.15 278)",
+        "tonalRamp": ["oklch(15% 0.15 278)", "oklch(28% 0.15 278)", "oklch(40% 0.15 278)", "oklch(54% 0.15 278)", "oklch(67% 0.15 278)", "oklch(80% 0.15 278)", "oklch(90% 0.15 278)", "oklch(95% 0.15 278)"]
       },
-      "amber": {
+      "primary-soft": {
+        "role": "primary",
+        "displayName": "Indigo Wash",
+        "canonical": "oklch(92% 0.04 284)",
+        "tonalRamp": ["oklch(15% 0.04 284)", "oklch(28% 0.04 284)", "oklch(41% 0.04 284)", "oklch(54% 0.04 284)", "oklch(67% 0.04 284)", "oklch(80% 0.04 284)", "oklch(92% 0.04 284)", "oklch(95% 0.04 284)"]
+      },
+      "lavender-soft": {
         "role": "secondary",
-        "displayName": "Warm Amber",
-        "canonical": "#ffc857",
-        "tonalRamp": ["#3c2114", "#ffc857"]
+        "displayName": "Lavender Air",
+        "canonical": "oklch(95% 0.026 300)",
+        "tonalRamp": ["oklch(15% 0.026 300)", "oklch(28% 0.026 300)", "oklch(41% 0.026 300)", "oklch(54% 0.026 300)", "oklch(67% 0.026 300)", "oklch(80% 0.026 300)", "oklch(90% 0.026 300)", "oklch(95% 0.026 300)"]
+      },
+      "info": {
+        "role": "secondary",
+        "displayName": "Seafoam Signal",
+        "canonical": "oklch(79% 0.08 190)",
+        "tonalRamp": ["oklch(15% 0.08 190)", "oklch(28% 0.08 190)", "oklch(41% 0.08 190)", "oklch(54% 0.08 190)", "oklch(67% 0.08 190)", "oklch(79% 0.08 190)", "oklch(90% 0.08 190)", "oklch(95% 0.08 190)"]
+      },
+      "info-strong": {
+        "role": "secondary",
+        "displayName": "Deep Seafoam",
+        "canonical": "oklch(39% 0.085 195)",
+        "tonalRamp": ["oklch(15% 0.085 195)", "oklch(28% 0.085 195)", "oklch(39% 0.085 195)", "oklch(54% 0.085 195)", "oklch(67% 0.085 195)", "oklch(80% 0.085 195)", "oklch(90% 0.085 195)", "oklch(95% 0.085 195)"]
+      },
+      "info-soft": {
+        "role": "secondary",
+        "displayName": "Seafoam Wash",
+        "canonical": "oklch(95% 0.035 190)",
+        "tonalRamp": ["oklch(15% 0.035 190)", "oklch(28% 0.035 190)", "oklch(41% 0.035 190)", "oklch(54% 0.035 190)", "oklch(67% 0.035 190)", "oklch(80% 0.035 190)", "oklch(90% 0.035 190)", "oklch(95% 0.035 190)"]
+      },
+      "blush-strong": {
+        "role": "tertiary",
+        "displayName": "Measured Blush",
+        "canonical": "oklch(42% 0.1 344)",
+        "tonalRamp": ["oklch(15% 0.1 344)", "oklch(28% 0.1 344)", "oklch(42% 0.1 344)", "oklch(54% 0.1 344)", "oklch(67% 0.1 344)", "oklch(80% 0.1 344)", "oklch(90% 0.1 344)", "oklch(95% 0.1 344)"]
+      },
+      "blush-soft": {
+        "role": "tertiary",
+        "displayName": "Blush Wash",
+        "canonical": "oklch(96% 0.035 344)",
+        "tonalRamp": ["oklch(15% 0.035 344)", "oklch(28% 0.035 344)", "oklch(41% 0.035 344)", "oklch(54% 0.035 344)", "oklch(67% 0.035 344)", "oklch(80% 0.035 344)", "oklch(90% 0.035 344)", "oklch(96% 0.035 344)"]
+      },
+      "success": {
+        "role": "semantic",
+        "displayName": "Success Signal",
+        "canonical": "oklch(66% 0.12 170)",
+        "tonalRamp": ["oklch(15% 0.12 170)", "oklch(28% 0.12 170)", "oklch(41% 0.12 170)", "oklch(54% 0.12 170)", "oklch(66% 0.12 170)", "oklch(80% 0.12 170)", "oklch(90% 0.12 170)", "oklch(95% 0.12 170)"]
+      },
+      "success-strong": {
+        "role": "semantic",
+        "displayName": "Success Ink",
+        "canonical": "oklch(39% 0.095 170)",
+        "tonalRamp": ["oklch(15% 0.095 170)", "oklch(28% 0.095 170)", "oklch(39% 0.095 170)", "oklch(54% 0.095 170)", "oklch(67% 0.095 170)", "oklch(80% 0.095 170)", "oklch(90% 0.095 170)", "oklch(95% 0.095 170)"]
+      },
+      "success-soft": {
+        "role": "semantic",
+        "displayName": "Success Wash",
+        "canonical": "oklch(94% 0.04 170)",
+        "tonalRamp": ["oklch(15% 0.04 170)", "oklch(28% 0.04 170)", "oklch(41% 0.04 170)", "oklch(54% 0.04 170)", "oklch(67% 0.04 170)", "oklch(80% 0.04 170)", "oklch(90% 0.04 170)", "oklch(94% 0.04 170)"]
+      },
+      "warning": {
+        "role": "semantic",
+        "displayName": "Review Signal",
+        "canonical": "oklch(78% 0.13 82)",
+        "tonalRamp": ["oklch(15% 0.13 82)", "oklch(28% 0.13 82)", "oklch(41% 0.13 82)", "oklch(54% 0.13 82)", "oklch(67% 0.13 82)", "oklch(78% 0.13 82)", "oklch(90% 0.13 82)", "oklch(95% 0.13 82)"]
+      },
+      "warning-strong": {
+        "role": "semantic",
+        "displayName": "Review Ink",
+        "canonical": "oklch(44% 0.105 76)",
+        "tonalRamp": ["oklch(15% 0.105 76)", "oklch(28% 0.105 76)", "oklch(41% 0.105 76)", "oklch(54% 0.105 76)", "oklch(67% 0.105 76)", "oklch(80% 0.105 76)", "oklch(90% 0.105 76)", "oklch(95% 0.105 76)"]
+      },
+      "warning-soft": {
+        "role": "semantic",
+        "displayName": "Review Wash",
+        "canonical": "oklch(95% 0.04 82)",
+        "tonalRamp": ["oklch(15% 0.04 82)", "oklch(28% 0.04 82)", "oklch(41% 0.04 82)", "oklch(54% 0.04 82)", "oklch(67% 0.04 82)", "oklch(80% 0.04 82)", "oklch(90% 0.04 82)", "oklch(95% 0.04 82)"]
+      },
+      "danger": {
+        "role": "semantic",
+        "displayName": "Actionable Danger",
+        "canonical": "oklch(64% 0.19 28)",
+        "tonalRamp": ["oklch(15% 0.19 28)", "oklch(28% 0.19 28)", "oklch(41% 0.19 28)", "oklch(54% 0.19 28)", "oklch(64% 0.19 28)", "oklch(80% 0.19 28)", "oklch(90% 0.19 28)", "oklch(95% 0.19 28)"]
+      },
+      "focus": {
+        "role": "semantic",
+        "displayName": "Visible Focus",
+        "canonical": "oklch(72% 0.12 245)",
+        "tonalRamp": ["oklch(15% 0.12 245)", "oklch(28% 0.12 245)", "oklch(41% 0.12 245)", "oklch(54% 0.12 245)", "oklch(67% 0.12 245)", "oklch(80% 0.12 245)", "oklch(90% 0.12 245)", "oklch(95% 0.12 245)"]
+      },
+      "ink-on-accent": {
+        "role": "neutral",
+        "displayName": "Ink on Accent",
+        "canonical": "oklch(99% 0.004 260)",
+        "tonalRamp": ["oklch(15% 0.004 260)", "oklch(28% 0.004 260)", "oklch(41% 0.004 260)", "oklch(54% 0.004 260)", "oklch(67% 0.004 260)", "oklch(80% 0.004 260)", "oklch(90% 0.004 260)", "oklch(99% 0.004 260)"]
       }
     },
     "typographyMeta": {
-      "display": {
-        "displayName": "Fraunces Display",
-        "purpose": "Dashboard identity only; reduce scale during redesign."
-      },
-      "body": {
-        "displayName": "Alegreya Sans Body",
-        "purpose": "Readable product UI labels, prose, controls, and data rows."
-      }
+      "display": { "displayName": "Display", "purpose": "Page identity and rare dashboard welcome headings." },
+      "headline": { "displayName": "Headline", "purpose": "Major section headings and dialog titles." },
+      "title": { "displayName": "Title", "purpose": "Panel, metric group, and row-group headings." },
+      "body": { "displayName": "Body", "purpose": "Evidence explanations, instructions, and contextual values." },
+      "label": { "displayName": "Label", "purpose": "Buttons, tabs, field labels, and compact metadata." }
     },
-    "elevation": {
-      "ambientPanel": "0 24px 80px rgba(0, 0, 0, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.06)",
-      "accentHover": "0 14px 40px rgba(181, 244, 93, 0.18)",
-      "philosophy": "Layered but restrained; prefer tone and borders before glow."
+    "shadows": [
+      { "name": "popover-lift", "value": "0 16px 34px oklch(34% 0.03 255 / 0.2)", "purpose": "Menus and compact transient surfaces." },
+      { "name": "dialog-lift", "value": "0 20px 42px oklch(35% 0.04 260 / 0.2)", "purpose": "Modal dialogs above a dimmed backdrop." },
+      { "name": "inset-signal", "value": "inset 0 0 0 12px oklch(80% 0.08 190 / 0.24)", "purpose": "Dashboard privacy pulse only." }
+    ],
+    "motion": [
+      { "name": "state-fast", "value": "180ms ease-out", "purpose": "Hover, focus, pressed, and selected-state feedback." },
+      { "name": "progress", "value": "240ms ease-out", "purpose": "Bounded progress-value changes." },
+      { "name": "reduced-motion", "value": "instant or cross-fade", "purpose": "Required alternative when platform reduced motion is enabled." }
+    ],
+    "breakpoints": [
+      { "name": "compact", "value": "620px" },
+      { "name": "workspace-collapse", "value": "1050px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single strongest command in a task region.",
+      "html": "<button class=\"ds-btn-primary\">Import observations</button>",
+      "css": ".ds-btn-primary { min-height: 44px; border: 1px solid transparent; border-radius: 999px; padding: .72rem 1rem; background: var(--primary); color: var(--ink-on-accent); font: 700 .9rem/1.25 Aptos, 'Segoe UI', sans-serif; transition: background-color 180ms ease-out, transform 180ms ease-out; cursor: pointer; } .ds-btn-primary:hover { background: var(--primary-strong); transform: translateY(-1px); } .ds-btn-primary:active { transform: translateY(0); } .ds-btn-primary:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }"
     },
-    "motion": {
-      "durationFast": "180ms",
-      "easing": "ease",
-      "reducedMotionRequired": true
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "A familiar supporting command with lower visual force.",
+      "html": "<button class=\"ds-btn-secondary\">Cancel</button>",
+      "css": ".ds-btn-secondary { min-height: 44px; border: 1px solid var(--line); border-radius: 999px; padding: .72rem 1rem; background: var(--surface); color: var(--text); font: 700 .9rem/1.25 Aptos, 'Segoe UI', sans-serif; transition: background-color 180ms ease-out, border-color 180ms ease-out; cursor: pointer; } .ds-btn-secondary:hover { border-color: var(--line-strong); background: var(--surface-soft); } .ds-btn-secondary:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }"
     },
-    "rules": {
-      "northStar": "Local health data management and insights. Calm, trustworthy, flexible.",
-      "dos": [
-        "Keep source, recency, units, and safety boundaries visible.",
-        "Distinguish deterministic analytics from AI-generated interpretation.",
-        "Use restrained layers and meaningful state color."
-      ],
-      "donts": [
-        "Do not imply diagnosis, treatment, medication changes, urgent triage, or clinical certainty.",
-        "Do not expand glassy panels or wide glow shadows as default decoration.",
-        "Do not hide browser focus outlines or rely on color-only status."
-      ]
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "A labeled evidence or configuration field with a visible boundary.",
+      "html": "<label class=\"ds-field\"><span>Measurement</span><input placeholder=\"Search measurements\"></label>",
+      "css": ".ds-field { display: grid; gap: 8px; color: var(--text); font: 700 .9rem/1.25 Aptos, 'Segoe UI', sans-serif; } .ds-field input { min-height: 44px; border: 1px solid var(--line); border-radius: 12px; padding: .72rem .86rem; background: var(--surface); color: var(--text); font: 400 1rem/1.5 Aptos, 'Segoe UI', sans-serif; } .ds-field input::placeholder { color: var(--muted); opacity: 1; } .ds-field input:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }"
+    },
+    {
+      "name": "Selected Chip",
+      "kind": "chip",
+      "refersTo": "chip-selected",
+      "description": "A selected filter or import option with explicit selected semantics.",
+      "html": "<button class=\"ds-chip\" aria-pressed=\"true\">Last 30 days</button>",
+      "css": ".ds-chip { min-height: 44px; border: 1px solid var(--primary); border-radius: 999px; padding: 8px 14px; background: var(--primary); color: var(--ink-on-accent); font: 700 .9rem/1.25 Aptos, 'Segoe UI', sans-serif; cursor: pointer; } .ds-chip:hover { background: var(--primary-strong); } .ds-chip:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }"
+    },
+    {
+      "name": "Evidence Panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "A bounded record or task region, flat at rest.",
+      "html": "<section class=\"ds-panel\"><h3>Latest reading</h3><p>Source and observed time stay next to the value.</p></section>",
+      "css": ".ds-panel { border: 1px solid var(--line); border-radius: 16px; padding: 20px; background: var(--surface); color: var(--text); font: 400 1rem/1.5 Aptos, 'Segoe UI', sans-serif; } .ds-panel h3 { margin: 0 0 8px; color: var(--text-strong); font-size: 1.04rem; line-height: 1.2; letter-spacing: -.02em; } .ds-panel p { margin: 0; color: var(--muted); }"
+    },
+    {
+      "name": "Route Navigation",
+      "kind": "nav",
+      "description": "Stable web destinations with one solid active state.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"App sections\"><button class=\"ds-nav-active\">Dashboard</button><button>Import</button><button>Track</button></nav>",
+      "css": ".ds-nav { display: flex; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 999px; padding: 8px; background: var(--surface); } .ds-nav button { min-height: 44px; border: 1px solid transparent; border-radius: 999px; padding: .55rem .85rem; background: transparent; color: var(--muted); font: 700 .9rem/1.25 Aptos, 'Segoe UI', sans-serif; cursor: pointer; } .ds-nav button:hover { background: var(--surface-soft); color: var(--text); } .ds-nav .ds-nav-active { background: var(--primary); color: var(--ink-on-accent); } .ds-nav button:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }"
+    },
+    {
+      "name": "Information Message",
+      "kind": "custom",
+      "refersTo": "message-info",
+      "description": "A text-backed status with a specific next step.",
+      "html": "<section class=\"ds-message\" role=\"status\"><strong>Waiting for approval on your PC</strong><span>Keep this screen open while you approve the connection.</span></section>",
+      "css": ".ds-message { display: grid; gap: 6px; border-radius: 12px; padding: 14px; background: var(--info-soft); color: var(--info-strong); font: 400 .9rem/1.45 Aptos, 'Segoe UI', sans-serif; } .ds-message strong { font-weight: 800; }"
     }
+  ],
+  "narrative": {
+    "northStar": "The Private Evidence Workspace",
+    "overview": "Local Fitness Advisor is a calm place to inspect personal health evidence, understand what changed, and prepare better questions. The visual system makes privacy, provenance, freshness, units, and safety boundaries easy to see without adopting hospital-portal severity or wellness-game optimism. Design serves repeated review. Stable structure and familiar controls matter more than novelty; restrained indigo carries action and selection, while lavender, seafoam, blush, and semantic tones clarify state. The interface is composed and confident, with enough warmth to feel personal but no decoration that competes with evidence. One identity spans the desktop web app and mobile companion, but composition remains platform-native.",
+    "keyCharacteristics": [
+      "Light, cool-tinted canvases with clear tonal surface layers.",
+      "Indigo action and selection, supported by lavender, seafoam, and blush.",
+      "Compact evidence hierarchy with explicit units, source, recency, and state text.",
+      "Medium-radius containers, pill controls, and borders before shadows.",
+      "State-based motion only, normally 150–220ms, with reduced-motion support.",
+      "Native interaction patterns carrying the same semantic identity on every platform."
+    ],
+    "rules": [
+      { "name": "The One Source Rule", "body": "A single semantic token module must emit web CSS variables and typed React Native values. Never maintain a web palette, mobile palette, and pairing palette independently. Canonical OKLCH values may be converted to sRGB for React Native; generated outputs are not hand-edited.", "section": "overview" },
+      { "name": "The Meaning Before Markup Rule", "body": "Share what a component means, not how one platform renders it. A warning has the same semantic role, title/detail/action content contract, icon meaning, and color family everywhere, while its web and native controls remain idiomatic.", "section": "overview" },
+      { "name": "The Accent Rarity Rule", "body": "Solid primary is reserved for primary actions and current selection. Lavender, seafoam, and blush support meaning; they do not tint every panel.", "section": "colors" },
+      { "name": "The Paired State Rule", "body": "Every semantic background uses its corresponding strong text/icon tone, and every color-coded state includes a visible text label. Pastel colors are forbidden for body text.", "section": "colors" },
+      { "name": "The Trust Color Rule", "body": "Health values do not become red, amber, or green from a numeric comparison alone. Quality and range semantics must be determined by shared domain logic before visual state is assigned.", "section": "colors" },
+      { "name": "The Fixed Product Scale Rule", "body": "Product typography uses stable role sizes, not viewport-fluid type. Mobile maps roles to native numeric sizes and supports dynamic type without truncating health values or actions.", "section": "typography" },
+      { "name": "The Evidence Order Rule", "body": "Measurement rows scan in this order: name, formatted value, unit, quality state, observed time, and source. Never use weight or size to make a raw number look authoritative before its unit and quality are known.", "section": "typography" },
+      { "name": "The Flat-by-Default Rule", "body": "Static panels never combine a 1px border with a wide drop shadow. If every card appears to float, elevation has failed.", "section": "elevation" },
+      { "name": "The Overlay-Only Rule", "body": "Shadows communicate stacking and temporary escape. A modal may lift; a metric row may not.", "section": "elevation" },
+      { "name": "The Complete State Rule", "body": "Interactive components require default, focus, pressed/active, disabled, loading, error, and selected states when applicable. A component with only default styling is unfinished.", "section": "components" }
+    ],
+    "dos": [
+      "Do generate web CSS custom properties and typed React Native values from one platform-neutral semantic token source.",
+      "Do preserve the current indigo, lavender, seafoam, blush, cool-canvas, and semantic-state vocabulary across platforms.",
+      "Do keep platform controls native while sharing roles, status language, icon meanings, and evidence formatting.",
+      "Do show freshness, source, scope, units, quality, and safety boundaries near the decisions they affect.",
+      "Do target WCAG AA contrast, visible focus, dynamic type, TalkBack semantics, and text-backed health states.",
+      "Do distinguish deterministic observations from AI-generated interpretation and clinical follow-up prompts.",
+      "Do use stable layouts, predictable controls, and quick comparison for repeat review."
+    ],
+    "donts": [
+      "Don't maintain independent web, mobile, or pairing color literals. PairScreen and every mobile screen must consume generated semantic tokens.",
+      "Don't share React DOM or React Native visual components across platforms; share tokens, content contracts, domain presentation models, and deterministic behavior.",
+      "Don't use medical-diagnosis vibes, hospital portal aesthetics, generic SaaS dashboard polish, alarmist health scoring, or playful gamified wellness patterns.",
+      "Don't imply diagnosis, treatment, medication changes, clinical certainty, or urgency handling.",
+      "Don't use gradient text, side-stripe card accents, decorative grid overlays, glassmorphism, or wide card shadows.",
+      "Don't use pastel accents for body text or color alone to communicate status.",
+      "Don't over-round cards beyond 16px or nest cards inside cards.",
+      "Don't render raw connection states, unformatted measurement values, or unsupported units as trusted user-facing evidence.",
+      "Don't use a tiny uppercase eyebrow above every section or repeat identical metric cards as the default dashboard structure."
+    ]
   }
 }

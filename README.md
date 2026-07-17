@@ -122,6 +122,18 @@ See the [Android privacy policy](docs/PRIVACY_POLICY.md), [Health Connect data i
 
 The API import pipeline uses deterministic IDs so re-running sync keeps existing records deduplicated.
 
+### Preview the companion on Windows
+
+Use Expo Web for the fastest UI development loop before publishing an EAS Update:
+
+```powershell
+npm run preview:web -w apps/android-companion
+```
+
+Open `http://127.0.0.1:8082` and use the browser's responsive device toolbar to test phone-sized layouts. Changes to React Native components refresh locally without an EAS build or update. Coding agents can open the same URL in the VS Code integrated browser to inspect the accessibility tree, interact with controls, and capture desktop or mobile-sized screenshots.
+
+This is a rendering preview rather than a second companion client. The Android pairing flow is unchanged, and camera capture, Health Connect, native secure storage, certificate pinning, and Android permission behavior still require an Android development or preview build. Use the web preview for navigation, layout, forms, dashboard and Track presentation, loading states, and other platform-neutral UI work.
+
 ### Build an APK for sideloading
 
 ```powershell

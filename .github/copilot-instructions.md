@@ -13,6 +13,7 @@ Currently uses DuckDB as a local database, although considering SQLite as an alt
 ## Mobile app design
 
 My current mobile companion app was first designed for sync of Health Connect data only to the API layer of my PC app, but is being expanded to feature dashboards and copies of selected PC app features for mobiles. Android only for now, but I intend to support iOS later and publish in both App Stores. Use appropriate abstractions when adding native features to make iOS support easier.
+Use the preview:web mode to preview mobile app from a web browser, and the demo mode to preview the app without a paired PC.
 
 ## Testing
 

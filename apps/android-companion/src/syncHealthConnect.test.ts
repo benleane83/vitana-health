@@ -52,7 +52,7 @@ describe("Health Connect sync", () => {
   it("does not request permission when no categories are selected", async () => {
     await expect(syncHealthConnect("https://desktop.test", "companion-token", null, "pin", {
       deviceId: "device-1"
-    })).rejects.toThrow("Select at least one Health Connect data category to sync.");
+    })).rejects.toThrow("Select at least one data category to sync.");
 
     expect(mocks.requestPermission).not.toHaveBeenCalled();
   });

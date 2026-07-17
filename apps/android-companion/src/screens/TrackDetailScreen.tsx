@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import Svg, { Circle, Path } from "react-native-svg";
 import { calculateChartDomain, mergeHealthDataDetail, type HealthDataDetail } from "@local-fitness-advisor/shared";
-import { createCompanionApi } from "../api";
 import { useMobileApi } from "../MobileApiProvider";
 import type { RootStackParamList } from "../navigationTypes";
 import { Button, Card, Loading, Message, Screen } from "../ui/components";
@@ -12,23 +11,18 @@ import { colors, spacing } from "../ui/theme";
 type Props = NativeStackScreenProps<RootStackParamList, "TrackDetail">;
 
 export function TrackDetailScreen({ route }: Props) {
-  const { connection } = useMobileApi();
+  const { healthDataDetail } = useMobileApi();
   const [detail, setDetail] = useState<HealthDataDetail>();
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const client = useMemo(() => connection?.token ? createCompanionApi(connection) : undefined, [connection]);
 
   useEffect(() => {
     let current = true;
     setDetail(undefined);
     setLoading(true);
     setError(undefined);
-    if (!client) {
-      setLoading(false);
-      return () => { current = false; };
-    }
-    void client.healthDataDetail(route.params.measurementCode).then((value) => {
+    void healthDataDetail(route.params.measurementCode).then((value) => {
       if (current) setDetail(value);
     }).catch((caught: unknown) => {
       if (current) setError(caught instanceof Error ? caught.message : "Unable to load metric.");
@@ -36,13 +30,13 @@ export function TrackDetailScreen({ route }: Props) {
       if (current) setLoading(false);
     });
     return () => { current = false; };
-  }, [client, route.params.measurementCode]);
+  }, [healthDataDetail, route.params.measurementCode]);
 
   async function loadMore() {
-    if (!client || !detail?.pagination.hasMore) return;
+    if (!detail?.pagination.hasMore) return;
     setLoadingMore(true);
     try {
-      const next = await client.healthDataDetail(route.params.measurementCode, {
+      const next = await healthDataDetail(route.params.measurementCode, {
         limit: detail.pagination.limit,
         offset: detail.pagination.loaded
       });
