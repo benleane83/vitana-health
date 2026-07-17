@@ -1,5 +1,5 @@
 import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { getPreferredUnit, type AppBootstrap, type MeasurementType, type ProfileListEntry, type UnitSystem } from "@local-fitness-advisor/shared";
+import { defaultMeasurementTypes, getPreferredUnit, type AppBootstrap, type MeasurementType, type ProfileListEntry, type UnitSystem } from "@local-fitness-advisor/shared";
 import { api } from "../api.js";
 import type { PairedDevice, PendingPairing } from "../api.js";
 import type { ImportMode, ManualMarkerRow } from "../types.js";
@@ -119,7 +119,7 @@ export function ImportPage({
         ) : mode === "upload" ? (
           <div id={uploadPanelId} role="tabpanel" aria-labelledby={uploadTabId}>
             <UploadImportFeature
-              measurementTypes={bootstrap?.measurementTypes ?? []}
+              measurementTypes={bootstrap?.measurementTypes?.length ? bootstrap.measurementTypes : defaultMeasurementTypes}
               units={units}
               onImported={onDataChanged}
               onNotice={onNotice}

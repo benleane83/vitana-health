@@ -2,12 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   buildStructuredUploadImportFromDraft,
   detectUploadFormat,
-  detectUploadLayout,
   parseStructuredUpload
 } from "../uploadImportParser.js";
 import type { UploadDraftRow } from "../parserTypes.js";
 
-// ─── format / layout detection ─────────────────────────────────────────────────
+// ─── format detection ──────────────────────────────────────────────────────────
 
 describe("detectUploadFormat", () => {
   it("uses the file extension when present", () => {
@@ -21,16 +20,6 @@ describe("detectUploadFormat", () => {
   });
 });
 
-describe("detectUploadLayout", () => {
-  it("recognizes long-format headers (measurement + value columns)", () => {
-    expect(detectUploadLayout(["observedAt", "measurement", "value", "unit"])).toBe("long");
-  });
-
-  it("falls back to wide format when there is no measurement/value pair", () => {
-    expect(detectUploadLayout(["date", "weight_kg", "heart_rate"])).toBe("wide");
-  });
-});
-
 // ─── long-format parsing ────────────────────────────────────────────────────────
 
 const longFormatCsv = `observedAt,measurement,value,unit
@@ -40,7 +29,6 @@ const longFormatCsv = `observedAt,measurement,value,unit
 describe("parseStructuredUpload — long format", () => {
   it("maps known measurements and includes them by default", () => {
     const draft = parseStructuredUpload("labs.csv", longFormatCsv);
-    expect(draft.layout).toBe("long");
     expect(draft.format).toBe("csv");
     const glucoseRow = draft.rows.find((row) => row.measurementCode === "glucose");
     expect(glucoseRow?.included).toBe(true);
@@ -65,71 +53,24 @@ describe("parseStructuredUpload — long format", () => {
   });
 });
 
-// ─── wide-format parsing ────────────────────────────────────────────────────────
+// ─── unsupported layouts ────────────────────────────────────────────────────────
 
 const wideFormatCsv = `date,weight_kg,unknown_metric
 2026-07-01,80,5
 2026-07-02,79.5,6`;
 
-describe("parseStructuredUpload — wide format", () => {
-  it("suggests measurement mappings for recognized columns and ignores unknown ones", () => {
+describe("parseStructuredUpload — non-long format", () => {
+  it("does not parse wide-shaped input and explains the required columns", () => {
     const draft = parseStructuredUpload("wide.csv", wideFormatCsv);
-    expect(draft.layout).toBe("wide");
-    expect(draft.mappingSuggestion.measurementColumns?.["weight_kg"]?.measurementCode).toBe("weight");
-    expect(draft.mappingSuggestion.measurementColumns?.["unknown_metric"]).toBeUndefined();
-    expect(draft.mapping.ignoredColumns).toContain("unknown_metric");
-  });
-
-  it("only produces rows for mapped columns", () => {
-    const draft = parseStructuredUpload("wide.csv", wideFormatCsv);
-    expect(draft.rows.every((row) => row.measurementCode === "weight")).toBe(true);
-    expect(draft.rows).toHaveLength(2);
-    expect(draft.rows[0].observedAt).toBeDefined();
-  });
-
-  it("reads units from parenthesized wide-format headers", () => {
-    const draft = parseStructuredUpload(
-      "wide.csv",
-      "date,Weight (lb)\n2026-07-01,176"
-    );
-    expect(draft.rows[0]).toMatchObject({ measurementCode: "weight", unit: "lb", value: 176 });
-  });
-
-  it("applies a mapping override to include a previously unknown column", () => {
-    const draft = parseStructuredUpload("wide.csv", wideFormatCsv, {
-      mapping: {
-        layout: "wide",
-        measurementColumns: { unknown_metric: { measurementCode: "steps" } }
-      }
-    });
-    const stepsRows = draft.rows.filter((row) => row.measurementCode === "steps");
-    expect(stepsRows).toHaveLength(2);
-  });
-
-  it("allows a recognized column to be explicitly ignored", () => {
-    const draft = parseStructuredUpload("wide.csv", wideFormatCsv, {
-      mapping: {
-        layout: "wide",
-        ignoredColumns: ["weight_kg", "unknown_metric"]
-      }
-    });
-    expect(draft.mapping.measurementColumns?.["weight_kg"]).toBeUndefined();
     expect(draft.rows).toHaveLength(0);
-  });
-
-  it("allows the automatically detected date column to be cleared", () => {
-    const draft = parseStructuredUpload("wide.csv", wideFormatCsv, {
-      mapping: { layout: "wide", dateColumn: "" }
-    });
-    expect(draft.mapping.dateColumn).toBe("");
-    expect(draft.rows.every((row) => row.observedAt === undefined)).toBe(true);
+    expect(draft.diagnostics).toContain("Long-format uploads require measurement and value columns. Update the column mapping to continue.");
   });
 });
 
 describe("parseStructuredUpload — mapping overrides", () => {
   it("allows an automatically detected long-format column to be cleared", () => {
     const draft = parseStructuredUpload("labs.csv", longFormatCsv, {
-      mapping: { layout: "long", dateColumn: "" }
+      mapping: { dateColumn: "" }
     });
     expect(draft.mapping.dateColumn).toBe("");
     expect(draft.rows.every((row) => row.observedAt === undefined)).toBe(true);

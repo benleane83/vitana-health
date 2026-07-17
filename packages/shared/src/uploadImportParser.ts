@@ -17,9 +17,7 @@ import type {
   UploadDraftRow,
   UploadFileFormat,
   UploadImportCommitPayload,
-  UploadImportDraft,
-  UploadLayout,
-  UploadMeasurementColumnMapping
+  UploadImportDraft
 } from "./parserTypes.js";
 
 /** Draft rows are capped so preview/review stays responsive and bounded. */
@@ -33,12 +31,6 @@ const unitHeaderCandidates = ["unit", "units"];
 const labelHeaderCandidates = ["label", "panel_name", "group", "observation_group"];
 const sourceNameHeaderCandidates = ["source_name", "source", "lab_name"];
 const noteHeaderCandidates = ["note", "notes", "comment", "comments"];
-
-const columnUnitSuffixes: Record<string, string> = {
-  kg: "kg", lb: "lb", lbs: "lb", cm: "cm", in: "in",
-  bpm: "bpm", pct: "%", percent: "%", kcal: "kcal",
-  steps: "steps", min: "min", minutes: "min", hours: "h", hour: "h"
-};
 
 /** Detects CSV vs TSV from the file name, falling back to sniffing the header line. */
 export function detectUploadFormat(fileName: string, content: string): UploadFileFormat {
@@ -54,107 +46,37 @@ function findHeader(headers: string[], candidates: string[]): string | undefined
   return headers.find((header) => candidates.includes(normalizeFieldKey(header)));
 }
 
-function splitHeaderUnit(header: string): { base: string; unit?: string } {
-  const trimmedHeader = header.trim();
-  const closingBracket = trimmedHeader.at(-1);
-  const openingBracket = closingBracket === ")" ? "(" : closingBracket === "]" ? "[" : undefined;
-  if (openingBracket) {
-    const openingIndex = trimmedHeader.lastIndexOf(openingBracket);
-    if (openingIndex > 0) {
-      const base = trimmedHeader.slice(0, openingIndex).trim();
-      const unit = trimmedHeader.slice(openingIndex + 1, -1).trim();
-      if (base && unit && !unit.includes("(") && !unit.includes("[") && !unit.includes(")") && !unit.includes("]")) {
-        return { base, unit };
-      }
-    }
-  }
-  const normalized = normalizeFieldKey(header);
-  for (const [suffix, unit] of Object.entries(columnUnitSuffixes)) {
-    if (normalized.endsWith(`_${suffix}`)) {
-      return { base: normalized.slice(0, -(suffix.length + 1)).replace(/_/g, " "), unit };
-    }
-  }
-  return { base: header };
-}
-
-/**
- * Detects whether a structured upload is "long" (measurement + value columns,
- * one observation per row) or "wide" (a date column plus one column per
- * measurement).
- */
-export function detectUploadLayout(headers: string[]): UploadLayout {
-  const hasValueColumn = Boolean(findHeader(headers, valueHeaderCandidates));
-  const hasMeasurementColumn = Boolean(
-    findHeader(headers, measurementHeaderCandidates) ?? findHeader(headers, measurementCodeHeaderCandidates)
-  );
-  return hasValueColumn && hasMeasurementColumn ? "long" : "wide";
-}
-
 /** Builds the automatic column-role mapping suggestion for a set of headers. */
 export function suggestUploadColumnMapping(headers: string[]): UploadColumnMapping {
-  const layout = detectUploadLayout(headers);
-  const dateColumn = findHeader(headers, dateHeaderCandidates);
-  if (layout === "long") {
-    return {
-      layout,
-      dateColumn,
-      measurementColumn: findHeader(headers, measurementHeaderCandidates),
-      measurementCodeColumn: findHeader(headers, measurementCodeHeaderCandidates),
-      valueColumn: findHeader(headers, valueHeaderCandidates),
-      unitColumn: findHeader(headers, unitHeaderCandidates),
-      labelColumn: findHeader(headers, labelHeaderCandidates),
-      sourceNameColumn: findHeader(headers, sourceNameHeaderCandidates),
-      noteColumn: findHeader(headers, noteHeaderCandidates)
-    };
-  }
-  const measurementColumns: Record<string, UploadMeasurementColumnMapping> = {};
-  const ignoredColumns: string[] = [];
-  for (const header of headers) {
-    if (header === dateColumn) continue;
-    const { base, unit } = splitHeaderUnit(header);
-    const measurementType = findMeasurementType(base) ?? findMeasurementType(header);
-    if (measurementType) {
-      measurementColumns[header] = { measurementCode: measurementType.code, ...(unit ? { unit } : {}) };
-    } else {
-      ignoredColumns.push(header);
-    }
-  }
-  return { layout, dateColumn, measurementColumns, ignoredColumns };
+  return {
+    dateColumn: findHeader(headers, dateHeaderCandidates),
+    measurementColumn: findHeader(headers, measurementHeaderCandidates),
+    measurementCodeColumn: findHeader(headers, measurementCodeHeaderCandidates),
+    valueColumn: findHeader(headers, valueHeaderCandidates),
+    unitColumn: findHeader(headers, unitHeaderCandidates),
+    labelColumn: findHeader(headers, labelHeaderCandidates),
+    sourceNameColumn: findHeader(headers, sourceNameHeaderCandidates),
+    noteColumn: findHeader(headers, noteHeaderCandidates)
+  };
 }
 
 /**
  * Applies a caller-supplied mapping override on top of the automatic
- * suggestion. Wide-format `measurementColumns` merge per-column; every other
- * field is replaced wholesale when present in the override.
+ * suggestion. A supplied field replaces the detected field.
  */
 export function mergeUploadColumnMapping(
   suggestion: UploadColumnMapping,
   override?: UploadColumnMappingOverride
 ): UploadColumnMapping {
-  if (!override) return suggestion;
-  const layout = override.layout ?? suggestion.layout;
-  if (layout === "long") {
-    return {
-      layout,
-      dateColumn: override.dateColumn ?? suggestion.dateColumn,
-      measurementColumn: override.measurementColumn ?? suggestion.measurementColumn,
-      measurementCodeColumn: override.measurementCodeColumn ?? suggestion.measurementCodeColumn,
-      valueColumn: override.valueColumn ?? suggestion.valueColumn,
-      unitColumn: override.unitColumn ?? suggestion.unitColumn,
-      labelColumn: override.labelColumn ?? suggestion.labelColumn,
-      sourceNameColumn: override.sourceNameColumn ?? suggestion.sourceNameColumn,
-      noteColumn: override.noteColumn ?? suggestion.noteColumn
-    };
-  }
-  const measurementColumns = { ...suggestion.measurementColumns, ...override.measurementColumns };
-  for (const ignoredColumn of override.ignoredColumns ?? []) {
-    delete measurementColumns[ignoredColumn];
-  }
   return {
-    layout,
-    dateColumn: override.dateColumn ?? suggestion.dateColumn,
-    measurementColumns,
-    ignoredColumns: override.ignoredColumns ?? suggestion.ignoredColumns
+    dateColumn: override?.dateColumn ?? suggestion.dateColumn,
+    measurementColumn: override?.measurementColumn ?? suggestion.measurementColumn,
+    measurementCodeColumn: override?.measurementCodeColumn ?? suggestion.measurementCodeColumn,
+    valueColumn: override?.valueColumn ?? suggestion.valueColumn,
+    unitColumn: override?.unitColumn ?? suggestion.unitColumn,
+    labelColumn: override?.labelColumn ?? suggestion.labelColumn,
+    sourceNameColumn: override?.sourceNameColumn ?? suggestion.sourceNameColumn,
+    noteColumn: override?.noteColumn ?? suggestion.noteColumn
   };
 }
 
@@ -185,9 +107,7 @@ export function parseStructuredUpload(
   const mappingSuggestion = suggestUploadColumnMapping(headers);
   const mapping = mergeUploadColumnMapping(mappingSuggestion, options.mapping);
 
-  const draftRows = mapping.layout === "long"
-    ? buildLongFormatRows(rows, mapping, sourceChecksum, units, diagnostics)
-    : buildWideFormatRows(rows, mapping, sourceChecksum, units, diagnostics);
+  const draftRows = buildLongFormatRows(rows, mapping, sourceChecksum, units, diagnostics);
 
   const truncated = draftRows.length > MAX_UPLOAD_DRAFT_ROWS;
   if (truncated) {
@@ -195,11 +115,13 @@ export function parseStructuredUpload(
   }
   if (headers.length === 0) diagnostics.push("No header row was detected in the uploaded file.");
   if (rows.length === 0 && headers.length > 0) diagnostics.push("No data rows were found beneath the header row.");
+  if (!mapping.valueColumn || (!mapping.measurementColumn && !mapping.measurementCodeColumn)) {
+    diagnostics.push("Long-format uploads require measurement and value columns. Update the column mapping to continue.");
+  }
 
   return {
     fileName,
     format,
-    layout: mapping.layout,
     checksum: sourceChecksum,
     parserVersion: "structured-upload-v1",
     columns: headers,
@@ -257,48 +179,6 @@ function buildLongFormatRows(
       generatedCode,
       sourceRowIndex: index
     });
-  });
-  return result;
-}
-
-function buildWideFormatRows(
-  rows: Array<Record<string, string>>,
-  mapping: UploadColumnMapping,
-  sourceChecksum: string,
-  units: UnitSystem,
-  diagnostics: string[]
-): UploadDraftRow[] {
-  const result: UploadDraftRow[] = [];
-  const measurementColumns = Object.entries(mapping.measurementColumns ?? {});
-  if (measurementColumns.length === 0) {
-    diagnostics.push("No columns were recognized as known measurements; map a column to include data.");
-  }
-  if (!mapping.dateColumn) {
-    diagnostics.push("No date/timestamp column was detected; observations will use the import time.");
-  }
-  rows.forEach((row, index) => {
-    const observedAt = readDate(mapping.dateColumn ? row[mapping.dateColumn] : undefined);
-    for (const [column, columnMapping] of measurementColumns) {
-      const value = readNumber(row[column]);
-      if (value === undefined) continue;
-      const measurementType = findMeasurementType(columnMapping.measurementCode);
-      const unit = columnMapping.unit || (measurementType ? getPreferredUnit(measurementType, units) : "unknown");
-      const displayName = measurementType?.display ?? toDisplayName(column);
-      result.push({
-        id: stableId("upload-draft", [sourceChecksum, String(index), columnMapping.measurementCode, String(value), unit]),
-        label: column,
-        measurementCode: columnMapping.measurementCode,
-        displayName,
-        value,
-        unit,
-        observedAt,
-        confidence: measurementType ? "high" : "medium",
-        included: true,
-        generatedCode: !measurementType,
-        sourceRowIndex: index,
-        sourceColumn: column
-      });
-    }
   });
   return result;
 }

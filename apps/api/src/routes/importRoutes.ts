@@ -108,13 +108,7 @@ const manualObservationImportSchema = z.object({
 
 const MAX_STRUCTURED_UPLOAD_BYTES = 2_000_000; // 2 MB structured file (CSV/TSV) limit
 
-const uploadMeasurementColumnMappingSchema = z.object({
-  measurementCode: z.string().min(1).max(120),
-  unit: z.string().max(32).optional()
-}).strict();
-
 const uploadColumnMappingOverrideSchema = z.object({
-  layout: z.enum(["long", "wide"]).optional(),
   dateColumn: z.string().max(160).optional(),
   measurementColumn: z.string().max(160).optional(),
   measurementCodeColumn: z.string().max(160).optional(),
@@ -122,9 +116,7 @@ const uploadColumnMappingOverrideSchema = z.object({
   unitColumn: z.string().max(160).optional(),
   labelColumn: z.string().max(160).optional(),
   sourceNameColumn: z.string().max(160).optional(),
-  noteColumn: z.string().max(160).optional(),
-  measurementColumns: z.record(uploadMeasurementColumnMappingSchema).optional(),
-  ignoredColumns: z.array(z.string().max(160)).optional()
+  noteColumn: z.string().max(160).optional()
 }).strict();
 
 const uploadPreviewSchema = z.object({
@@ -156,7 +148,6 @@ const uploadCommitSchema = z.object({
   fileName: z.string().min(1).max(240),
   format: z.enum(["csv", "tsv"]).optional(),
   checksum: z.string().max(120).optional(),
-  layout: z.enum(["long", "wide"]).optional(),
   rows: z.array(uploadDraftRowSchema).min(1).max(200)
 }).strict();
 

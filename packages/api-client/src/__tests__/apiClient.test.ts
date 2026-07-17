@@ -94,12 +94,11 @@ describe("createApiClient", () => {
         return response({
           fileName: "labs.csv",
           format: "csv",
-          layout: "long",
           checksum: "sha256-test",
           parserVersion: "structured-upload-v1",
           columns: ["observedAt", "measurement", "value", "unit"],
-          mapping: { layout: "long" },
-          mappingSuggestion: { layout: "long" },
+          mapping: {},
+          mappingSuggestion: {},
           rowCount: 1,
           diagnostics: [],
           rows: [],
@@ -126,7 +125,7 @@ describe("createApiClient", () => {
     const client = createApiClient(transport);
 
     const draft = await client.previewStructuredUpload({ fileName: "labs.csv", content: "observedAt,measurement,value,unit\n2026-01-01,glucose,95,mg/dL" });
-    expect(draft.layout).toBe("long");
+    expect(draft).not.toHaveProperty("layout");
     expect(seen[0]).toMatchObject({ method: "POST", path: "/api/import/upload/preview" });
 
     await client.commitStructuredUpload({

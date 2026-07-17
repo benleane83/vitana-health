@@ -12,9 +12,7 @@ import { api } from "../../api.js";
 import { ImportDraftReview } from "../../components/ImportDraftReview.js";
 import type { UploadEditableRow } from "../../types.js";
 import {
-  groupMeasurementTypes,
   isSupportedBodyCompMimeType,
-  measurementCategoryLabels,
   readFileAsBase64,
   todayIsoDate
 } from "../../utils.js";
@@ -22,7 +20,6 @@ import {
 const MAX_STRUCTURED_UPLOAD_BYTES = 2_000_000; // 2 MB structured file (CSV/TSV) limit
 const MAX_REPORT_UPLOAD_BYTES = 15_000_000;
 
-type UploadFormatChoice = "auto" | "csv" | "tsv";
 type UploadKind = "structured" | "body-composition" | "blood-test";
 
 export function UploadImportFeature(props: {
@@ -67,7 +64,6 @@ function StructuredUploadFeature({
   onImported: () => Promise<void>;
   onNotice: (message: string) => void;
 }) {
-  const [format, setFormat] = useState<UploadFormatChoice>("auto");
   const [file, setFile] = useState<File>();
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState<UploadImportDraft>();
@@ -110,7 +106,6 @@ function StructuredUploadFeature({
       const content = await file.text();
       const nextDraft = await api.previewStructuredUpload({
         fileName: file.name,
-        format: format === "auto" ? undefined : format,
         content,
         mapping: overrideMapping
       });
@@ -162,7 +157,6 @@ function StructuredUploadFeature({
         fileName: draft.fileName,
         format: draft.format,
         checksum: draft.checksum,
-        layout: draft.layout,
         rows: approvedRows
       });
       await onImported();
@@ -180,20 +174,6 @@ function StructuredUploadFeature({
   return (
     <section className="panel labs-panel bodycomp-import">
       <form className="labs-upload-form" onSubmit={preview}>
-        <label htmlFor="upload-format">File type</label>
-        <select
-          id="upload-format"
-          value={format}
-          onChange={(event) => {
-            setFormat(event.target.value as UploadFormatChoice);
-            resetDraftState();
-          }}
-        >
-          <option value="auto">Auto-detect (CSV or TSV)</option>
-          <option value="csv">CSV (comma-separated)</option>
-          <option value="tsv">TSV (tab-separated)</option>
-        </select>
-
         <label htmlFor="upload-file">Select observation file</label>
         <input
           id="upload-file"
@@ -204,8 +184,7 @@ function StructuredUploadFeature({
           onChange={(event) => selectFile(event.target.files?.[0])}
         />
         <p id="upload-file-help" className="empty">
-          Long format: observedAt, measurement, value, unit columns. Wide format: a date column plus
-          one column per measurement (e.g. weight_kg, heart_rate). Parsed locally before save.
+          CSV and TSV files are detected automatically. Include measurement and value columns; observedAt and unit are optional.
         </p>
         <div className="labs-upload-actions">
           <button disabled={busy || !file} type="submit">Preview upload</button>
@@ -214,36 +193,12 @@ function StructuredUploadFeature({
 
       {draft ? (
         <div className="upload-mapping">
-          <p className="eyebrow">Column mapping ({draft.layout === "long" ? "long format" : "wide format"})</p>
-          <div className="upload-mapping-row">
-            <label htmlFor="upload-layout">Data layout</label>
-            <select
-              id="upload-layout"
-              value={draft.layout}
-              disabled={busy}
-              onChange={(event) => void runPreview({
-                ...mapping,
-                layout: event.target.value as "long" | "wide"
-              })}
-            >
-              <option value="long">Long (one measurement per row)</option>
-              <option value="wide">Wide (one measurement per column)</option>
-            </select>
-          </div>
-          {draft.layout === "long" ? (
-            <LongFormatMappingEditor
-              columns={draft.columns}
-              mapping={mapping}
-              onChange={setMapping}
-            />
-          ) : (
-            <WideFormatMappingEditor
-              columns={draft.columns}
-              mapping={mapping}
-              measurementTypes={measurementTypes}
-              onChange={setMapping}
-            />
-          )}
+          <p className="eyebrow">Column mapping</p>
+          <LongFormatMappingEditor
+            columns={draft.columns}
+            mapping={mapping}
+            onChange={setMapping}
+          />
           <div className="upload-mapping-actions">
             <button disabled={busy} type="button" onClick={() => void updateMapping()}>
               Update mapping preview
@@ -472,79 +427,10 @@ function LongFormatMappingEditor({
           <select
             id={`upload-mapping-${key}`}
             value={mapping[key] ?? ""}
-            onChange={(event) => onChange({ ...mapping, layout: "long", [key]: event.target.value })}
+            onChange={(event) => onChange({ ...mapping, [key]: event.target.value })}
           >
             <option value="">None</option>
             {columns.map((column) => <option key={column} value={column}>{column}</option>)}
-          </select>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ─── Wide-format mapping editor ────────────────────────────────────────────────
-
-function WideFormatMappingEditor({
-  columns,
-  mapping,
-  measurementTypes,
-  onChange
-}: {
-  columns: string[];
-  mapping: UploadColumnMappingOverride;
-  measurementTypes: MeasurementType[];
-  onChange: (mapping: UploadColumnMappingOverride) => void;
-}) {
-  const measurementGroups = groupMeasurementTypes(measurementTypes);
-  const measurementColumns = mapping.measurementColumns ?? {};
-
-  return (
-    <div className="upload-mapping-grid">
-      <div className="upload-mapping-row">
-        <label htmlFor="upload-mapping-date">Date / timestamp column</label>
-        <select
-          id="upload-mapping-date"
-          value={mapping.dateColumn ?? ""}
-          onChange={(event) => onChange({ ...mapping, dateColumn: event.target.value, layout: "wide" })}
-        >
-          <option value="">None</option>
-          {columns.map((column) => <option key={column} value={column}>{column}</option>)}
-        </select>
-      </div>
-      {columns.filter((column) => column !== mapping.dateColumn).map((column) => (
-        <div className="upload-mapping-row" key={column}>
-          <label htmlFor={`upload-mapping-column-${column}`}>{column}</label>
-          <select
-            id={`upload-mapping-column-${column}`}
-            value={measurementColumns[column]?.measurementCode ?? ""}
-            onChange={(event) => {
-              const selectedCode = event.target.value;
-              const nextMeasurementColumns = { ...measurementColumns };
-              const nextIgnoredColumns = new Set(mapping.ignoredColumns ?? []);
-              if (!selectedCode) {
-                delete nextMeasurementColumns[column];
-                nextIgnoredColumns.add(column);
-              } else {
-                nextMeasurementColumns[column] = { measurementCode: selectedCode };
-                nextIgnoredColumns.delete(column);
-              }
-              onChange({
-                ...mapping,
-                layout: "wide",
-                measurementColumns: nextMeasurementColumns,
-                ignoredColumns: [...nextIgnoredColumns]
-              });
-            }}
-          >
-            <option value="">Ignore this column</option>
-            {measurementGroups.map(([category, types]) => (
-              <optgroup key={category} label={measurementCategoryLabels[category]}>
-                {types.map((type) => (
-                  <option key={type.code} value={type.code}>{type.display} ({type.code})</option>
-                ))}
-              </optgroup>
-            ))}
           </select>
         </div>
       ))}

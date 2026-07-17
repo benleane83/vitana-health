@@ -8,7 +8,7 @@ import { groupMeasurementTypes, measurementCategoryLabels } from "../utils.js";
  * with an include checkbox, an editable measurement/value/unit, and a
  * confidence badge — the same review pattern used across the app's import
  * flows, but driven entirely by the shared `UploadDraftRow` shape so it works
- * for both long- and wide-format uploads.
+ * for structured uploads.
  */
 export function ImportDraftReview({
   fileName,

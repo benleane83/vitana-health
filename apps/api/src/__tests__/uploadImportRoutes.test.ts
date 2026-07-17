@@ -66,7 +66,7 @@ describe("POST /api/import/upload/preview", () => {
       .send({ fileName: "labs.csv", content: longFormatCsv });
 
     expect(response.status).toBe(200);
-    expect(response.body.layout).toBe("long");
+    expect(response.body).not.toHaveProperty("layout");
     expect(response.body.rows).toHaveLength(1);
     expect(response.body.rows[0].measurementCode).toBe("glucose");
     expect(active.mergeImport).not.toHaveBeenCalled();
