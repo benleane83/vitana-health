@@ -1,5 +1,7 @@
 import {
+  classifyValue,
   defaultMeasurementTypes,
+  getReferenceRange,
   type AnalyticsSummary,
   type AppBootstrap,
   type HealthDataDetail,
@@ -120,18 +122,22 @@ function makeSummary(rows: HealthDataSummaryTypeRow[], now: Date): HealthDataSum
 function makeDetail(metric: DemoMetric, now: Date): HealthDataDetail {
   const measurementType = defaultMeasurementTypes.find((entry) => entry.code === metric.code);
   if (!measurementType) throw new Error(`Unknown demo measurement: ${metric.code}`);
-  const entries = [...metric.values].reverse().map((value, index): HealthDataDetailEntry => ({
-    kind: metric.kind,
-    id: `demo-${metric.code}-${index}`,
-    measurementCode: metric.code,
-    displayName: measurementType.display,
-    timestamp: daysBefore(now, index).toISOString(),
-    value,
-    unit: metric.unit,
-    sourceLabel: metric.sourceLabel,
-    sourceKind: metric.kind === "sample" ? "health-connect" : "manual-entry",
-    status: "normal"
-  }));
+  const entries = [...metric.values].reverse().map((value, index): HealthDataDetailEntry => {
+    const referenceRange = getReferenceRange(measurementType, metric.unit);
+    return {
+      kind: metric.kind,
+      id: `demo-${metric.code}-${index}`,
+      measurementCode: metric.code,
+      displayName: measurementType.display,
+      timestamp: daysBefore(now, index).toISOString(),
+      value,
+      unit: metric.unit,
+      sourceLabel: metric.sourceLabel,
+      sourceKind: metric.kind === "sample" ? "health-connect" : "manual-entry",
+      referenceRange,
+      status: classifyValue(value, measurementType, metric.unit)
+    };
+  });
   const counts = {
     observations: metric.kind === "observation" ? entries.length : 0,
     samples: metric.kind === "sample" ? entries.length : 0,
@@ -152,7 +158,8 @@ function makeDetail(metric: DemoMetric, now: Date): HealthDataDetail {
       kind: entry.kind,
       timestamp: entry.timestamp,
       value: entry.value,
-      unit: entry.unit
+      unit: entry.unit,
+      referenceRange: entry.referenceRange
     })),
     counts: { ...counts, total: entries.length },
     deletion: { observationEntries: counts.observations, deletableEntries: 0 },

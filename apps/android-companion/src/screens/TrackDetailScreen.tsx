@@ -1,8 +1,13 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import Svg, { Circle, Path } from "react-native-svg";
-import { calculateChartDomain, mergeHealthDataDetail, type HealthDataDetail } from "@local-fitness-advisor/shared";
+import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
+import {
+  calculateChartDomain,
+  mergeHealthDataDetail,
+  type HealthDataDetail,
+  type HealthDataDetailEntry
+} from "@local-fitness-advisor/shared";
 import { useMobileApi } from "../MobileApiProvider";
 import type { RootStackParamList } from "../navigationTypes";
 import { Button, Card, Loading, Message, Screen } from "../ui/components";
@@ -74,11 +79,9 @@ export function TrackDetailScreen({ route }: Props) {
               <View style={styles.flex}>
                 <Text style={styles.value}>{entry.value} {entry.unit}</Text>
                 <Text style={styles.meta}>{formatTimestamp(entry.timestamp)}</Text>
-                <Text numberOfLines={3} style={styles.meta}>
-                  {[entry.sourceLabel, entry.importFileName, entry.observationGroup?.label].filter(Boolean).join(" · ") || "Local record"}
-                </Text>
+                <Text style={styles.meta}>{formatSource(entry)}</Text>
               </View>
-              <Text style={styles.kind}>{entry.kind}</Text>
+              <ReadingStatus entry={entry} />
             </View>
           </Card>
         ))}
@@ -98,24 +101,114 @@ function formatTimestamp(value: string): string {
   return Number.isFinite(timestamp.getTime()) ? timestamp.toLocaleString() : "Date unavailable";
 }
 
+function formatShortDate(value: string): string {
+  const timestamp = new Date(value);
+  return Number.isFinite(timestamp.getTime())
+    ? timestamp.toLocaleDateString(undefined, { day: "numeric", month: "short" })
+    : "—";
+}
+
+function formatChartValue(value: number): string {
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
+}
+
+function formatSource(entry: HealthDataDetailEntry): string {
+  switch (entry.sourceKind) {
+    case "health-connect": return "Synced from phone";
+    case "manual-entry": return "Entered manually";
+    case "blood-test-report": return "Imported from blood test report";
+    case "body-composition-report": return "Imported from body composition report";
+    case "blood-test-csv": return "Imported from blood test file";
+    case "observation-csv": return "Imported from file";
+    case "derived": return "Calculated from your records";
+    default: return entry.sourceLabel ? "Imported record" : "Local record";
+  }
+}
+
+function ReadingStatus({ entry }: { entry: HealthDataDetailEntry }) {
+  if (!entry.referenceRange || !entry.status || entry.status === "unknown") return null;
+  const statusStyles = {
+    low: { container: styles.statusLow, text: styles.statusLowText },
+    normal: { container: styles.statusNormal, text: styles.statusNormalText },
+    high: { container: styles.statusHigh, text: styles.statusHighText }
+  }[entry.status];
+  return (
+    <View style={[styles.status, statusStyles.container]}>
+      <Text style={[styles.statusText, statusStyles.text]}>{entry.status}</Text>
+    </View>
+  );
+}
+
 function TrendChart({ detail }: { detail: HealthDataDetail }) {
   const domain = calculateChartDomain(detail.chartPoints);
+  const latestPoint = detail.chartPoints.at(-1);
+  const [selectedTimestamp, setSelectedTimestamp] = useState(latestPoint?.timestamp);
+
+  useEffect(() => {
+    setSelectedTimestamp(latestPoint?.timestamp);
+  }, [detail.measurement.code, latestPoint?.timestamp]);
+
   if (!domain) return <Text style={styles.meta}>No numeric trend points.</Text>;
   const width = 320;
-  const height = 130;
+  const height = 174;
+  const chartLeft = 44;
+  const chartRight = 308;
+  const chartTop = 12;
+  const chartBottom = 126;
   const xRange = domain.xMax - domain.xMin || 1;
   const yRange = domain.yMax - domain.yMin || 1;
   const points = detail.chartPoints.map((point) => ({
-    x: 12 + ((Date.parse(point.timestamp) - domain.xMin) / xRange) * (width - 24),
-    y: height - 12 - ((point.value - domain.yMin) / yRange) * (height - 24)
+    ...point,
+    x: chartLeft + ((Date.parse(point.timestamp) - domain.xMin) / xRange) * (chartRight - chartLeft),
+    y: chartBottom - ((point.value - domain.yMin) / yRange) * (chartBottom - chartTop)
   }));
+  const selectedPoint = points.find((point) => point.timestamp === selectedTimestamp) ?? points.at(-1);
+  const yTicks = [domain.yMax, domain.yMin + yRange / 2, domain.yMin];
   const path = points.map((point, index) =>
     `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(" ");
   return (
-    <Svg accessibilityLabel={`${detail.measurement.displayName} trend with ${points.length} points`} height={height} width="100%" viewBox={`0 0 ${width} ${height}`}>
-      <Path d={path} fill="none" stroke={colors.primary} strokeWidth={3} />
-      {points.map((point, index) => <Circle key={index} cx={point.x} cy={point.y} fill={colors.primary} r={4} />)}
-    </Svg>
+    <View style={styles.chart}>
+      {selectedPoint ? (
+        <View accessibilityLiveRegion="polite" style={styles.chartReading}>
+          <Text style={styles.chartReadingValue}>{formatChartValue(selectedPoint.value)} {selectedPoint.unit}</Text>
+          <Text style={styles.meta}>{formatTimestamp(selectedPoint.timestamp)}</Text>
+        </View>
+      ) : null}
+      <Svg accessibilityLabel={`${detail.measurement.displayName} trend with ${points.length} selectable points`} height={height} width="100%" viewBox={`0 0 ${width} ${height}`}>
+        {yTicks.map((tick) => {
+          const y = chartBottom - ((tick - domain.yMin) / yRange) * (chartBottom - chartTop);
+          return (
+            <Line key={tick} x1={chartLeft} x2={chartRight} y1={y} y2={y} stroke={colors.border} strokeWidth={1} />
+          );
+        })}
+        {yTicks.map((tick) => {
+          const y = chartBottom - ((tick - domain.yMin) / yRange) * (chartBottom - chartTop);
+          return <SvgText key={`label-${tick}`} fill={colors.muted} fontSize={11} textAnchor="end" x={chartLeft - 7} y={y + 4}>{formatChartValue(tick)}</SvgText>;
+        })}
+        <Path d={path} fill="none" stroke={colors.primary} strokeWidth={3} />
+        {points.map((point) => (
+          <Fragment key={`${point.timestamp}-${point.value}`}>
+            <Circle
+              accessibilityLabel={`${formatChartValue(point.value)} ${point.unit}, ${formatTimestamp(point.timestamp)}`}
+              cx={point.x}
+              cy={point.y}
+              fill="transparent"
+              onPress={() => setSelectedTimestamp(point.timestamp)}
+              r={14}
+            />
+            <Circle
+              cx={point.x}
+              cy={point.y}
+              fill={point.timestamp === selectedPoint?.timestamp ? colors.primaryStrong : colors.primary}
+              pointerEvents="none"
+              r={point.timestamp === selectedPoint?.timestamp ? 6 : 4}
+            />
+          </Fragment>
+        ))}
+        <SvgText fill={colors.muted} fontSize={11} textAnchor="start" x={chartLeft} y={154}>{formatShortDate(points[0].timestamp)}</SvgText>
+        <SvgText fill={colors.muted} fontSize={11} textAnchor="end" x={chartRight} y={154}>{formatShortDate(points.at(-1)!.timestamp)}</SvgText>
+      </Svg>
+    </View>
   );
 }
 
@@ -128,5 +221,15 @@ const styles = StyleSheet.create({
   flex: { flex: 1, gap: spacing.xs },
   value: { color: colors.text, fontSize: 17, fontWeight: "700" },
   meta: { color: colors.muted, fontSize: 14, lineHeight: 19 },
-  kind: { color: colors.primary, flexShrink: 0, fontSize: 14, fontWeight: "600", textTransform: "capitalize" }
+  chart: { gap: spacing.xs },
+  chartReading: { alignItems: "baseline", flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  chartReadingValue: { color: colors.text, fontSize: 17, fontWeight: "800" },
+  status: { alignSelf: "flex-start", borderRadius: 999, marginLeft: spacing.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
+  statusText: { fontSize: 14, fontWeight: "700", textTransform: "capitalize" },
+  statusLow: { backgroundColor: colors.warningMuted },
+  statusLowText: { color: colors.warning },
+  statusNormal: { backgroundColor: colors.successMuted },
+  statusNormalText: { color: colors.success },
+  statusHigh: { backgroundColor: colors.dangerMuted },
+  statusHighText: { color: colors.danger }
 });

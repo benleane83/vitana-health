@@ -621,7 +621,7 @@ function measurementDetailEntryFromRow(
     importedAt: optionalTimestamp(row.imported_at)
   };
   if (kind === "observation") {
-    const referenceRange = type?.referenceRanges?.find((range) => range.unit === base.unit);
+    const referenceRange = type ? getReferenceRange(type, base.unit) : undefined;
     const groupId = optionalString(row.group_id);
     return {
       ...base,
@@ -645,7 +645,9 @@ function measurementDetailEntryFromRow(
     const endAt = isoTimestamp(row.sample_end);
     return {
       ...base,
-      note: startAt !== endAt ? `${startAt} → ${endAt}` : undefined
+      note: startAt !== endAt ? `${startAt} → ${endAt}` : undefined,
+      referenceRange: type ? getReferenceRange(type, base.unit) : undefined,
+      status: type ? classifyValue(base.value, type, base.unit) : "unknown"
     };
   }
   const detailNotes = [

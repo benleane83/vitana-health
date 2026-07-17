@@ -34,4 +34,17 @@ describe("demo data source", () => {
     expect(second.entries[0].id).not.toBe(first.entries[0].id);
     await expect(source.healthDataDetail("unknown")).rejects.toThrow("not available in demo mode");
   });
+
+  it("classifies ranged samples without inventing a status for range-less metrics", async () => {
+    const source = createDemoDataSource(new Date("2026-07-17T12:00:00.000Z"));
+    const oxygen = await source.healthDataDetail("oxygen_saturation");
+    const steps = await source.healthDataDetail("steps");
+
+    expect(oxygen.entries[0]).toMatchObject({
+      referenceRange: { low: 92, high: 100, unit: "%" },
+      status: "normal"
+    });
+    expect(steps.entries[0]).toMatchObject({ status: "unknown" });
+    expect(steps.entries[0].referenceRange).toBeUndefined();
+  });
 });

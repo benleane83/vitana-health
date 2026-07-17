@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator, type NativeStackScreenProps } from "@react-navigation/native-stack";
-import { SafeAreaProvider } from "react-native-safe-area-context";
+import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { ChartNoAxesColumnIncreasing, Home, MonitorSmartphone, Plus } from "lucide-react-native";
 import { MobileApiProvider, useMobileApi } from "./src/MobileApiProvider";
@@ -41,6 +41,8 @@ export default function App() {
 }
 
 function MainTabs() {
+  const insets = useSafeAreaInsets();
+
   return (
     <Tabs.Navigator
       screenOptions={({ navigation }) => ({
@@ -59,7 +61,13 @@ function MainTabs() {
         tabBarInactiveTintColor: colors.muted,
         tabBarItemStyle: styles.tabItem,
         tabBarLabelStyle: styles.tabLabel,
-        tabBarStyle: styles.tabBar
+        tabBarStyle: [
+          styles.tabBar,
+          {
+            height: 68 + insets.bottom,
+            paddingBottom: Math.max(insets.bottom, spacing.xs)
+          }
+        ]
       })}
     >
       <Tabs.Screen name="Dashboard" component={DashboardScreen} options={{ tabBarIcon: ({ color, size }) => <Home color={color} size={size} /> }} />
@@ -122,7 +130,7 @@ function ConnectionScreen({ navigation }: NativeStackScreenProps<RootStackParamL
 const styles = StyleSheet.create({
   connectionButton: { alignItems: "center", flexDirection: "row", gap: spacing.xs, marginRight: spacing.sm },
   connectionButtonText: { color: colors.primary, fontWeight: "700" },
-  tabBar: { backgroundColor: colors.surface, borderTopColor: colors.border, height: 68, paddingBottom: spacing.xs, paddingTop: spacing.xs },
+  tabBar: { backgroundColor: colors.surface, borderTopColor: colors.border, paddingTop: spacing.xs },
   tabItem: { borderRadius: radii.sm, minHeight: 56 },
   tabLabel: { fontSize: type.label, fontWeight: "700", lineHeight: 18 },
   label: { color: colors.muted, fontSize: type.label, fontWeight: "700", textTransform: "uppercase" },

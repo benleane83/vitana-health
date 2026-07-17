@@ -151,6 +151,7 @@ export function listHealthDataDetailEntries(store: HealthStoreData, measurementC
       const imported = source?.importId ? sourceImports.get(source.importId) : undefined;
       const type = measurementTypes.get(entry.measurementCode);
       const display = type ? toPreferredMeasurementValue(entry.value, entry.unit, type, store.profile.units) : entry;
+      const referenceRange = type ? getReferenceRange(type, display.unit) : undefined;
       return {
         kind: "sample",
         id: entry.id,
@@ -163,7 +164,9 @@ export function listHealthDataDetailEntries(store: HealthStoreData, measurementC
         sourceKind: source?.sourceKind,
         importFileName: imported?.fileName,
         importedAt: imported?.importedAt,
-        note: entry.startAt && entry.endAt && entry.startAt !== entry.endAt ? `${entry.startAt} → ${entry.endAt}` : undefined
+        note: entry.startAt && entry.endAt && entry.startAt !== entry.endAt ? `${entry.startAt} → ${entry.endAt}` : undefined,
+        referenceRange,
+        status: type ? classifyValue(entry.value, type, entry.unit) : "unknown"
       };
     });
 
