@@ -147,7 +147,7 @@ export const HEALTH_CONNECT_DESCRIPTORS = [
   })),
   defineHealthConnectDescriptor("OxygenSaturation", "OxygenSaturation", ["oxygenSaturation"], (records) => ({
     oxygenSaturation: records.map((record) => ({
-      time: record.time, value: record.percentage * 100, provenance: extractProvenance(record)
+      time: record.time, value: record.percentage, provenance: extractProvenance(record)
     })).filter((record) => Number.isFinite(record.value))
   })),
   defineHealthConnectDescriptor("RespiratoryRate", "RespiratoryRate" as RecordType, ["respiratoryRate"], (records) => ({
@@ -241,12 +241,12 @@ export const HEALTH_CONNECT_DESCRIPTORS = [
   })),
   defineHealthConnectDescriptor("ActiveCaloriesBurned", "ActiveCaloriesBurned", ["activeCaloriesKcal"], (records) => ({
     activeCaloriesKcal: records.map((record) => ({
-      startTime: record.startTime, endTime: record.endTime, value: record.energy.inCalories, provenance: extractProvenance(record)
+      startTime: record.startTime, endTime: record.endTime, value: record.energy.inKilocalories, provenance: extractProvenance(record)
     })).filter((record) => Number.isFinite(record.value))
   })),
   defineHealthConnectDescriptor("TotalCaloriesBurned", "TotalCaloriesBurned", ["totalCaloriesKcal"], (records) => ({
     totalCaloriesKcal: records.map((record) => ({
-      startTime: record.startTime, endTime: record.endTime, value: record.energy.inCalories, provenance: extractProvenance(record)
+      startTime: record.startTime, endTime: record.endTime, value: record.energy.inKilocalories, provenance: extractProvenance(record)
     })).filter((record) => Number.isFinite(record.value))
   })),
   defineHealthConnectDescriptor("SleepSession", "SleepSession", ["sleepSessions"], (records) => ({

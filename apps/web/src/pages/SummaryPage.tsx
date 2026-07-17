@@ -37,6 +37,11 @@ function normalizeContextToken(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
+function isTransferWindow(value: string): boolean {
+  const isoTimestamp = String.raw`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z`;
+  return new RegExp(`^${isoTimestamp}\\s*(?:→|->)\\s*${isoTimestamp}$`).test(value.trim());
+}
+
 function compactSourceLabel(entry: HealthDataDetailEntry): string | undefined {
   const label = entry.sourceLabel?.trim();
   if (!label) {
@@ -51,7 +56,11 @@ function compactSourceLabel(entry: HealthDataDetailEntry): string | undefined {
     return "Health Connect";
   }
   const appLabel = match[1].trim();
-  return appLabel ? `Health Connect (${appLabel})` : "Health Connect";
+  if (!appLabel) {
+    return "Health Connect";
+  }
+  const friendlyAppLabel = appLabel.toLowerCase() === "android-companion" ? "Android" : appLabel;
+  return `Health Connect · ${friendlyAppLabel}`;
 }
 
 function renderEntryContext(entry: HealthDataDetailEntry): string {
@@ -67,7 +76,7 @@ function renderEntryContext(entry: HealthDataDetailEntry): string {
     parts.push(sourceLabel);
   }
 
-  if (importFileName) {
+  if (importFileName && entry.sourceKind !== "health-connect") {
     const normalizedImport = normalizeContextToken(importFileName);
     const normalizedSource = sourceLabel ? normalizeContextToken(sourceLabel) : "";
     const duplicatesSource =
@@ -77,7 +86,7 @@ function renderEntryContext(entry: HealthDataDetailEntry): string {
     }
   }
 
-  if (note) {
+  if (note && !(entry.sourceKind === "health-connect" && isTransferWindow(note))) {
     const normalizedNote = normalizeContextToken(note);
     const duplicatesExisting = parts.some((part) => normalizeContextToken(part) === normalizedNote);
     if (!duplicatesExisting) {
@@ -121,8 +130,8 @@ export function SummaryPage({
     <section className="panel summary-panel">
       <div className="summary-header">
         <div>
-          <p className="eyebrow">Loaded health data by type</p>
-          <h2>Track health data</h2>
+          <p className="eyebrow">Evidence library</p>
+          <h1>Track health data</h1>
         </div>
         <div className="summary-controls" role="group" aria-label="Sort summary rows">
           <button
@@ -298,8 +307,8 @@ export function ObservationTypeDetailPage({
           <button type="button" className="summary-back-link" onClick={onBack}>
             ← Back to summary
           </button>
-          <p className="eyebrow">Loaded health data by type</p>
-          <h2>{detail?.measurement.displayName ?? "Measurement detail"}</h2>
+          <p className="eyebrow">Measurement detail</p>
+          <h1>{detail?.measurement.displayName ?? "Measurement detail"}</h1>
           <p className="summary-detail-code">{detail?.measurement.code ?? "Loading…"}</p>
         </div>
       </div>

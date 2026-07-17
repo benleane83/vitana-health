@@ -5,6 +5,8 @@ import { BodyCompositionImportPanel } from "../../pages/ImportPage.js";
 import type { BodyCompositionEditableRow, ScanKind } from "../../types.js";
 import { isSupportedBodyCompMimeType, readFileAsBase64, todayIsoDate } from "../../utils.js";
 
+const MAX_SCAN_FILE_BYTES = 15_000_000;
+
 export function ScanImportFeature({
   measurementTypes,
   units,
@@ -45,6 +47,14 @@ export function ScanImportFeature({
     const mimeType = file.type;
     if (!isSupportedBodyCompMimeType(mimeType)) {
       onNotice("Use a PDF, JPEG, or PNG body composition report.");
+      return;
+    }
+    if (file.size === 0) {
+      onNotice("The selected report is empty.");
+      return;
+    }
+    if (file.size > MAX_SCAN_FILE_BYTES) {
+      onNotice("The selected report is too large for local preview. Use a file smaller than 15 MB.");
       return;
     }
     await run("Body composition scan parsed for review.", async () => {

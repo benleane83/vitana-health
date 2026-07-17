@@ -192,6 +192,35 @@ describe("App feature flows", () => {
     expect(screen.getByRole("button", { name: /connect openrouter/i })).toBeInTheDocument();
   });
 
+  it("offers a retry when AI settings fail to load", async () => {
+    const responses = mockFetch({
+      "/api/store": makeEmptyStore(),
+      "/api/analytics": makeEmptyAnalytics(),
+      "/api/profiles": { profiles: [], activeProfileId: "self" },
+      "/api/settings/ai": {
+        provider: "ollama",
+        endpoint: "http://127.0.0.1:11434/api/generate",
+        model: "llama3.2",
+        timeoutMs: 30000,
+        hasApiKey: false
+      }
+    });
+    let settingsAttempts = 0;
+    global.fetch = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes("/api/settings/ai") && settingsAttempts++ === 0) {
+        return Promise.reject(new Error("Local API unavailable"));
+      }
+      return responses(input);
+    });
+
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: /settings/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Unable to load AI settings.");
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+    expect(await screen.findByRole("heading", { name: /ai setup/i })).toBeInTheDocument();
+  });
+
   describe("App — PDF export", () => {
     it("separates PDF reporting from backup and restore tools", async () => {
       render(<App />);
@@ -292,6 +321,21 @@ describe("App — import tab", () => {
     fireEvent.change(measurement, { target: { value: "iron" } });
     expect(screen.getByRole("combobox", { name: /row 2 known measurement/i })).toHaveValue("iron");
     expect(screen.getByRole("textbox", { name: /row 2 unit/i })).toHaveValue("µmol/L");
+  });
+
+  it("rejects oversized scan files before reading or uploading them", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("tab", { name: /^import$/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /^scan$/i }));
+    const oversized = new File(["report"], "large-report.pdf", { type: "application/pdf" });
+    Object.defineProperty(oversized, "size", { value: 15_000_001 });
+    fireEvent.change(screen.getByLabelText(/select report/i), { target: { files: [oversized] } });
+    fireEvent.click(screen.getByRole("button", { name: /preview scan/i }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent(/too large/i);
+    expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls.some(([url]) =>
+      String(url).includes("/api/import/body-composition/preview")
+    )).toBe(false);
   });
 
   it("uses category-backed groups to initialize and filter manual rows", async () => {
@@ -464,9 +508,7 @@ describe("App — import tab", () => {
     });
 
     render(<App />);
-    await waitFor(() => expect(screen.getByText("Imperial")).toBeInTheDocument());
-
-    fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^edit$/i }));
     const height = screen.getByRole("spinbutton", { name: /height in/i });
     const units = screen.getByRole("combobox", { name: /^units$/i });
     expect(height).toHaveValue(70);
@@ -566,6 +608,45 @@ describe("App — import tab", () => {
 });
 
 describe("App — measurement detail", () => {
+  it("presents Health Connect provenance without transport metadata", async () => {
+    globalThis.history.replaceState({}, "", "/track/steps");
+    global.fetch = mockFetch({
+      "/api/store": { ...makeEmptyStore(), measurementTypes: defaultMeasurementTypes },
+      "/api/analytics": makeEmptyAnalytics(),
+      "/api/profiles": { profiles: [], activeProfileId: "self" },
+      "/api/summary/steps/chart": {
+        generatedAt: "2026-07-14T00:00:00.000Z", measurementCode: "steps", range: "all", requestedMode: "auto",
+        granularity: "raw", aggregation: "average", totalPoints: 1, truncated: false,
+        points: [{ timestamp: "2026-07-14T08:30:00.000Z", value: 8400, unit: "count", count: 1 }]
+      },
+      "/api/summary/steps": {
+        generatedAt: "2026-07-14T00:00:00.000Z",
+        measurement: {
+          code: "steps", displayName: "Steps", category: "activity", canonicalUnit: "count",
+          counts: { observations: 0, samples: 0, activities: 1, total: 1 },
+          lastMeasuredAt: "2026-07-14T08:30:00.000Z"
+        },
+        entries: [{
+          kind: "activity", id: "steps-1", measurementCode: "steps", displayName: "Steps",
+          timestamp: "2026-07-14T08:30:00.000Z", value: 8400, unit: "count",
+          sourceLabel: "Health Connect: android-companion: steps", sourceKind: "health-connect",
+          importFileName: "health-connect-steps.ndjson",
+          note: "2026-07-14T08:00:00.000Z → 2026-07-14T09:00:00.000Z", canDelete: false
+        }],
+        chartPoints: [{ kind: "activity", timestamp: "2026-07-14T08:30:00.000Z", value: 8400, unit: "count" }],
+        counts: { observations: 0, samples: 0, activities: 1, total: 1 },
+        deletion: { observationEntries: 0, deletableEntries: 0 },
+        pagination: { limit: 50, loaded: 1, total: 1, hasMore: false }
+      }
+    });
+
+    render(<App />);
+    expect(await screen.findByText("Health Connect · Android companion")).toBeInTheDocument();
+    expect(screen.queryByText(/2026-07-14T08:00:00\.000Z/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/health-connect-steps\.ndjson/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/android-companion/i)).not.toBeInTheDocument();
+  });
+
   it("shows only the source label for manually entered measurements", async () => {
     globalThis.history.replaceState({}, "", "/track/glucose");
     global.fetch = mockFetch({

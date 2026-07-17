@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { AppBootstrap, BiologicalAgeReport, CloudAiConsent } from "@local-fitness-advisor/shared";
 import { api, type AiQueryResult, type LlmConfig } from "../../api.js";
 import { BiologicalAgePage } from "../../pages/BiologicalAgePage.js";
@@ -24,6 +24,18 @@ export function InsightsRoute({
   onDataChanged: () => Promise<void>;
   onNotice: (message: string) => void;
 }) {
+  function handleTabKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, currentTab: InsightsTab) {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const nextTab: InsightsTab = event.key === "End" || event.key === "ArrowRight"
+      ? "ai-query"
+      : "biological-age";
+    const resolvedTab = event.key.startsWith("Arrow") && nextTab === currentTab
+      ? currentTab === "biological-age" ? "ai-query" : "biological-age"
+      : nextTab;
+    onTabChange(resolvedTab);
+    document.getElementById(`insight-tab-${resolvedTab}`)?.focus();
+  }
   const [biologicalAge, setBiologicalAge] = useState<RemoteState<BiologicalAgeReport>>({ busy: false });
   const [query, setQuery] = useState<RemoteState<AiQueryResult>>({ busy: false });
   const [question, setQuestion] = useState("");
@@ -118,6 +130,8 @@ export function InsightsRoute({
             aria-controls="insight-panel-biological-age"
             aria-selected={tab === "biological-age"}
             className={tab === "biological-age" ? "active" : ""}
+            tabIndex={tab === "biological-age" ? 0 : -1}
+            onKeyDown={(event) => handleTabKeyDown(event, "biological-age")}
             onClick={() => onTabChange("biological-age")}
           >
             Biological Age
@@ -129,6 +143,8 @@ export function InsightsRoute({
             aria-controls="insight-panel-ai-query"
             aria-selected={tab === "ai-query"}
             className={tab === "ai-query" ? "active" : ""}
+            tabIndex={tab === "ai-query" ? 0 : -1}
+            onKeyDown={(event) => handleTabKeyDown(event, "ai-query")}
             onClick={() => onTabChange("ai-query")}
           >
             AI Query

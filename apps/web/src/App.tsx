@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { defaultMeasurementTypes, safetyNotice } from "@local-fitness-advisor/shared";
 import type { AppRoute, ImportMode, InsightsTab } from "./types.js";
 import { ProfileLifecycleDialogs, useProfileLifecycle } from "./features/profiles/useProfileLifecycle.js";
@@ -9,6 +9,8 @@ import { InsightsRoute } from "./features/insights/InsightsRoute.js";
 import { ExportRoute } from "./features/export/ExportRoute.js";
 import { TrackRoute } from "./features/track/TrackRoute.js";
 import { DashboardRoute } from "./features/dashboard/DashboardRoute.js";
+
+const mainRoutes: AppRoute[] = ["dashboard", "import", "track", "insights", "export"];
 
 export function App() {
   const [message, setMessage] = useState<string>();
@@ -136,12 +138,27 @@ export function App() {
     settings: "nav-tab-settings"
   };
 
+  function handleRouteTabKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, currentRoute: AppRoute) {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const currentIndex = mainRoutes.indexOf(currentRoute);
+    const nextIndex = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? mainRoutes.length - 1
+        : (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + mainRoutes.length) % mainRoutes.length;
+    const nextRoute = mainRoutes[nextIndex];
+    setProfileMenuOpen(false);
+    navigate(nextRoute);
+    document.getElementById(navTabIds[nextRoute])?.focus();
+  }
+
   return (
     <main className="shell">
       {/* Navigation tablist */}
       <nav className="route-nav" aria-label="Page navigation">
         <div className="route-nav-main" role="tablist" aria-label="App sections">
-          {(["dashboard", "import", "track", "insights", "export"] as AppRoute[]).map((r) => {
+          {mainRoutes.map((r) => {
             const labels: Record<AppRoute, string> = {
               dashboard: "Dashboard",
               import: "Import",
@@ -160,6 +177,7 @@ export function App() {
                 aria-controls={panelId}
                 className={route === r ? "active" : ""}
                 tabIndex={route === r ? 0 : -1}
+                onKeyDown={(event) => handleRouteTabKeyDown(event, r)}
                 onClick={() => {
                   setProfileMenuOpen(false);
                   navigate(r);

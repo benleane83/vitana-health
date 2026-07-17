@@ -56,6 +56,7 @@ export function TrackRoute({
   const [actionBusy, setActionBusy] = useState(false);
   const [loadMoreBusy, setLoadMoreBusy] = useState(false);
   const [observationBeingEdited, setObservationBeingEdited] = useState<HealthDataDetailEntry>();
+  const defaultUnit = measurementTypes.find((measurement) => measurement.code === detailCode)?.canonicalUnit ?? "";
 
   useEffect(() => {
     let cancelled = false;
@@ -251,6 +252,10 @@ export function TrackRoute({
           onDeleteObservation={deleteObservation}
           onDeleteAll={deleteAll}
           onLoadMore={loadMore}
+          onChartRangeChange={setChartRange}
+          onChartModeChange={setChartMode}
+          onAddManualObservation={addManualObservation}
+          defaultUnit={defaultUnit}
         />
       ) : (
         <SummaryPage

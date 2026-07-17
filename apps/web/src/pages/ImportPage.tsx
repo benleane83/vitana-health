@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { getPreferredUnit, type AppBootstrap, type BodyCompositionDraft, type MeasurementType, type ProfileListEntry, type UnitSystem } from "@local-fitness-advisor/shared";
 import { api } from "../api.js";
 import type { PairedDevice, PendingPairing } from "../api.js";
@@ -37,6 +37,26 @@ export function ImportPage({
   const uploadPanelId = "import-panel-upload";
   const scanPanelId = "import-panel-scan";
   const fitnessPanelId = "import-panel-fitness";
+  const tabs: Array<{ mode: ImportMode; id: string }> = [
+    { mode: "manual", id: manualTabId },
+    { mode: "upload", id: uploadTabId },
+    { mode: "scan", id: scanTabId },
+    { mode: "fitness", id: fitnessTabId }
+  ];
+
+  function handleTabKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, currentMode: ImportMode) {
+    if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const currentIndex = tabs.findIndex((item) => item.mode === currentMode);
+    const nextIndex = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? tabs.length - 1
+        : (currentIndex + (["ArrowDown", "ArrowRight"].includes(event.key) ? 1 : -1) + tabs.length) % tabs.length;
+    const nextTab = tabs[nextIndex];
+    onModeChange(nextTab.mode);
+    document.getElementById(nextTab.id)?.focus();
+  }
 
   return (
     <section className="import-page">
@@ -60,6 +80,7 @@ export function ImportPage({
             aria-controls={manualPanelId}
             className={mode === "manual" ? "active" : ""}
             onClick={() => onModeChange("manual")}
+            onKeyDown={(event) => handleTabKeyDown(event, "manual")}
             tabIndex={mode === "manual" ? 0 : -1}
           >
             Manual
@@ -71,6 +92,7 @@ export function ImportPage({
             aria-controls={uploadPanelId}
             className={mode === "upload" ? "active" : ""}
             onClick={() => onModeChange("upload")}
+            onKeyDown={(event) => handleTabKeyDown(event, "upload")}
             tabIndex={mode === "upload" ? 0 : -1}
           >
             Upload CSV
@@ -82,6 +104,7 @@ export function ImportPage({
             aria-controls={scanPanelId}
             className={mode === "scan" ? "active" : ""}
             onClick={() => onModeChange("scan")}
+            onKeyDown={(event) => handleTabKeyDown(event, "scan")}
             tabIndex={mode === "scan" ? 0 : -1}
           >
             Scan
@@ -93,6 +116,7 @@ export function ImportPage({
             aria-controls={fitnessPanelId}
             className={mode === "fitness" ? "active" : ""}
             onClick={() => onModeChange("fitness")}
+            onKeyDown={(event) => handleTabKeyDown(event, "fitness")}
             tabIndex={mode === "fitness" ? 0 : -1}
           >
             Fitness Tracker
@@ -663,6 +687,7 @@ function FitnessTrackerImportPanel({
   const [pendingPairings, setPendingPairings] = useState<PendingPairing[]>([]);
   const [pairedDevices, setPairedDevices] = useState<PairedDevice[]>([]);
   const [selectedProfiles, setSelectedProfiles] = useState<Record<string, string>>({});
+  const [pendingActionId, setPendingActionId] = useState<string>();
   const activeProfileExists = activeProfileId !== undefined && profiles.some((profile) => profile.id === activeProfileId);
   const defaultProfileId = activeProfileExists ? activeProfileId : profiles[0]?.id ?? "";
 
@@ -691,26 +716,42 @@ function FitnessTrackerImportPanel({
   }, []);
 
   async function approve(id: string, profileId: string) {
+    if (pendingActionId) return;
+    setPendingActionId(id);
     try {
       await api.pairing.approve(id, profileId);
       setPendingPairings(await api.pairing.pending());
     } catch (error) {
       onNotice(error instanceof Error ? error.message : "Could not approve pairing request.");
+    } finally {
+      setPendingActionId(undefined);
     }
   }
 
   async function deny(id: string) {
+    if (pendingActionId) return;
+    setPendingActionId(id);
     try {
       await api.pairing.deny(id);
       setPendingPairings(await api.pairing.pending());
     } catch (error) {
       onNotice(error instanceof Error ? error.message : "Could not deny pairing request.");
+    } finally {
+      setPendingActionId(undefined);
     }
   }
 
   async function revokeDevice(id: string) {
-    await api.pairing.revoke(id);
-    setPairedDevices(await api.pairing.devices());
+    if (pendingActionId) return;
+    setPendingActionId(id);
+    try {
+      await api.pairing.revoke(id);
+      setPairedDevices(await api.pairing.devices());
+    } catch (error) {
+      onNotice(error instanceof Error ? error.message : "Could not revoke paired device.");
+    } finally {
+      setPendingActionId(undefined);
+    }
   }
 
   return (
@@ -763,7 +804,7 @@ function FitnessTrackerImportPanel({
               <div className="pairing-request-actions">
                 <button
                   type="button"
-                  disabled={profiles.length === 0}
+                  disabled={profiles.length === 0 || pendingActionId !== undefined}
                   onClick={() => {
                     const profileId = selectedProfiles[req.id] ?? defaultProfileId;
                     if (profileId) void approve(req.id, profileId);
@@ -772,6 +813,7 @@ function FitnessTrackerImportPanel({
                 >Approve</button>
                 <button
                   type="button"
+                  disabled={pendingActionId !== undefined}
                   onClick={() => { void deny(req.id); }}
                   aria-label={`Deny pairing request from ${req.deviceName}`}
                 >Deny</button>
@@ -800,6 +842,7 @@ function FitnessTrackerImportPanel({
               {!device.revokedAt ? (
                 <button
                   type="button"
+                  disabled={pendingActionId !== undefined}
                   onClick={() => { void revokeDevice(device.id); }}
                   aria-label={`Revoke ${device.deviceName}`}
                 >Revoke</button>

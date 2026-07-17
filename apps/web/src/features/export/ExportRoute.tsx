@@ -134,7 +134,12 @@ export function ExportRoute({ bootstrap, onProfilesChanged }: {
         setRestoreSelections([]);
         setRestoreStatus({ busy: false });
       }}
-      onRestorePassphraseChange={setRestorePassphrase}
+      onRestorePassphraseChange={(passphrase) => {
+        setRestorePassphrase(passphrase);
+        setInspection(undefined);
+        setRestoreSelections([]);
+        setRestoreStatus({ busy: false });
+      }}
       onInspectBackup={() => { void inspectBackup(); }}
       onRestoreSelectionChange={(profileId, decision) => {
         setRestoreSelections((selections) => selections.map((selection) => selection.profileId === profileId

@@ -236,12 +236,13 @@ export function DetailTrendChart({
           key={modeOption}
           className={mode === modeOption ? "active" : ""}
           aria-pressed={mode === modeOption}
+          title={modeOption === "auto" ? "Adjust detail to the selected time range" : "Show individual recorded readings"}
           onClick={() => {
             onModeChange(modeOption);
             setActivePoint(undefined);
           }}
         >
-          {modeOption === "auto" ? "Smart" : "Raw"}
+          {modeOption === "auto" ? "Adaptive" : "Readings"}
         </button>
       ))}
     </div>

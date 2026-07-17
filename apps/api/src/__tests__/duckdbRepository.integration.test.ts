@@ -15,6 +15,7 @@ import {
   closeEncryptedDuckDbDatabase,
   createDuckDbSchema,
   initializeDuckDbRoot,
+  migrateDuckDbSchema,
   openEncryptedDuckDbDatabase
 } from "../storage/duckdbRuntime.js";
 import { createDuckDbHealthStoreFixture } from "./support/duckdbFixture.js";
@@ -733,7 +734,7 @@ describe("DuckDbRepository fidelity", () => {
 
     const upgraded = await DuckDbRepository.open(root, databasePath, key, options);
     try {
-      expect(await upgraded.schemaVersions()).toEqual([1, 2, 3, 4]);
+      expect(await upgraded.schemaVersions()).toEqual([1, 2, 3, 4, 5]);
       expect(await upgraded.dailyMetrics()).toEqual([]);
       expect(await upgraded.weeklyMetrics()).toEqual([]);
     } finally {
@@ -754,9 +755,48 @@ describe("DuckDbRepository fidelity", () => {
 
     const reopened = await DuckDbRepository.open(root, databasePath, key, options);
     try {
-      expect(await reopened.schemaVersions()).toEqual([1, 2, 3, 4]);
+      expect(await reopened.schemaVersions()).toEqual([1, 2, 3, 4, 5]);
     } finally {
       await reopened.close();
+    }
+  }, 30_000);
+
+  it.skipIf(!httpfsExtensionPath)("repairs only Health Connect percentage and calorie scales during version 5 migration", async () => {
+    const databasePath = join(root, "databases", "health-store-schema-v4.duckdb-poc");
+    const options = { httpfsExtensionPath };
+    await createDuckDbSchema(root, databasePath, key, options, 4);
+    const database = await openEncryptedDuckDbDatabase(root, databasePath, key, options);
+    try {
+      await execSql(database.connection, `
+        INSERT INTO sources (ordinal, id, source_kind, label, import_id, created_at) VALUES
+          (0, 'health-connect-source', 'health-connect', 'Health Connect', NULL, CURRENT_TIMESTAMP),
+          (1, 'manual-source', 'manual', 'Manual', NULL, CURRENT_TIMESTAMP);
+        INSERT INTO observations
+          (ordinal, id, measurement_code, observed_at, value, unit, source_id, source_json_present) VALUES
+          (0, 'health-connect-oxygen', 'oxygen_saturation', CURRENT_TIMESTAMP, 9300, '%', 'health-connect-source', false),
+          (1, 'manual-oxygen', 'oxygen_saturation', CURRENT_TIMESTAMP, 9300, '%', 'manual-source', false);
+        INSERT INTO time_series_samples
+          (ordinal, id, measurement_code, start_at, end_at, value, unit, source_id, source_json_present) VALUES
+          (0, 'health-connect-total', 'total_calories_burned', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 383550.11, 'kcal', 'health-connect-source', false),
+          (1, 'health-connect-active', 'active_energy_burned', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 123400, 'kcal', 'health-connect-source', false),
+          (2, 'manual-total', 'total_calories_burned', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 500000, 'kcal', 'manual-source', false);
+      `);
+
+      expect(await migrateDuckDbSchema(database)).toBe(5);
+      expect(await querySql(database.connection, "SELECT id, value FROM observations ORDER BY ordinal;")).toEqual([
+        { id: "health-connect-oxygen", value: 93 },
+        { id: "manual-oxygen", value: 9300 }
+      ]);
+      expect(await querySql(database.connection, "SELECT id, value FROM time_series_samples ORDER BY ordinal;")).toEqual([
+        { id: "health-connect-total", value: expect.closeTo(383.55011, 8) },
+        { id: "health-connect-active", value: 123.4 },
+        { id: "manual-total", value: 500000 }
+      ]);
+      expect(await migrateDuckDbSchema(database)).toBe(5);
+      expect(await querySql(database.connection, "SELECT value FROM observations WHERE id = 'health-connect-oxygen';"))
+        .toEqual([{ value: 93 }]);
+    } finally {
+      await closeEncryptedDuckDbDatabase(database);
     }
   }, 30_000);
 
@@ -786,7 +826,8 @@ describe("DuckDbRepository fidelity", () => {
     await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (2, CURRENT_TIMESTAMP, 'synthetic');");
     await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (3, CURRENT_TIMESTAMP, 'synthetic');");
     await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (4, CURRENT_TIMESTAMP, 'synthetic');");
-    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (5, CURRENT_TIMESTAMP, 'future');");
+    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (5, CURRENT_TIMESTAMP, 'synthetic');");
+    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (6, CURRENT_TIMESTAMP, 'future');");
     await execSql(futureHandle.connection, "CHECKPOINT;");
     await closeEncryptedDuckDbDatabase(futureHandle);
     const futureHash = hashFile(futurePath);

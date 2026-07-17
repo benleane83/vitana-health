@@ -7,12 +7,14 @@ export function SettingsPage() {
   const [apiKey, setApiKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();
+  const [loadError, setLoadError] = useState<string>();
 
   async function load() {
+    setLoadError(undefined);
     try {
       setSettings(await api.settings.ai.get());
     } catch {
-      setMessage("Unable to load AI settings.");
+      setLoadError("Unable to load AI settings.");
     }
   }
 
@@ -69,12 +71,21 @@ export function SettingsPage() {
     setApiKey("");
   }
 
-  if (!settings) return <section className="panel"><p className="empty">Loading AI settings…</p></section>;
+  if (!settings) return (
+    <section className="panel">
+      {loadError ? (
+        <div role="alert">
+          <p>{loadError}</p>
+          <button type="button" onClick={() => { void load(); }}>Retry</button>
+        </div>
+      ) : <p className="empty">Loading AI settings…</p>}
+    </section>
+  );
 
   return (
     <section className="panel settings-panel">
       <p className="eyebrow">Settings</p>
-      <h2>AI setup</h2>
+      <h1>AI setup</h1>
       <p className="empty">Configure the model connection used for AI queries and insights. Your API key is stored by the local application server and is never displayed.</p>
       <form className="settings-form" onSubmit={save}>
         <label htmlFor="ai-provider">Provider</label>

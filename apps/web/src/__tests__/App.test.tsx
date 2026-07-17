@@ -106,6 +106,25 @@ describe("App smoke", () => {
     expect(screen.getByRole("button", { name: /settings/i })).toBeInTheDocument();
   });
 
+  it("supports arrow, Home, and End navigation across the route tablist", () => {
+    render(<App />);
+    const dashboard = screen.getByRole("tab", { name: "Dashboard" });
+    dashboard.focus();
+
+    fireEvent.keyDown(dashboard, { key: "ArrowRight" });
+    expect(screen.getByRole("tab", { name: "Import" })).toHaveFocus();
+    expect(screen.getByRole("tab", { name: "Import" })).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Import" }), { key: "End" });
+    expect(screen.getByRole("tab", { name: "Export" })).toHaveFocus();
+
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Export" }), { key: "Home" });
+    expect(screen.getByRole("tab", { name: "Dashboard" })).toHaveFocus();
+
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Dashboard" }), { key: "ArrowLeft" });
+    expect(screen.getByRole("tab", { name: "Export" })).toHaveFocus();
+  });
+
   it("starts from the bounded bootstrap contract without requesting the full store", async () => {
     render(<App />);
     await waitFor(() => expect(global.fetch).toHaveBeenCalledWith("/api/bootstrap", expect.anything()));
@@ -127,5 +146,26 @@ describe("App smoke", () => {
     expect(screen.getByRole("tab", { name: /fitness tracker/i })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: /^scan$/i }));
     expect(screen.getByRole("option", { name: "Lab results" })).toHaveValue("blood-test");
+  });
+
+  it("supports keyboard navigation within Import and Insights tablists", () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("tab", { name: /^import$/i }));
+    const manual = screen.getByRole("tab", { name: /^manual$/i });
+    manual.focus();
+    fireEvent.keyDown(manual, { key: "ArrowDown" });
+    expect(screen.getByRole("tab", { name: /upload csv/i })).toHaveFocus();
+    expect(screen.getByRole("tab", { name: /upload csv/i })).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(screen.getByRole("tab", { name: /upload csv/i }), { key: "End" });
+    expect(screen.getByRole("tab", { name: /fitness tracker/i })).toHaveFocus();
+
+    fireEvent.click(screen.getByRole("tab", { name: /^insights$/i }));
+    const biologicalAge = screen.getByRole("tab", { name: /biological age/i });
+    biologicalAge.focus();
+    fireEvent.keyDown(biologicalAge, { key: "ArrowRight" });
+    expect(screen.getByRole("tab", { name: /ai query/i })).toHaveFocus();
+    expect(screen.getByRole("tab", { name: /ai query/i })).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(screen.getByRole("tab", { name: /ai query/i }), { key: "Home" });
+    expect(screen.getByRole("tab", { name: /biological age/i })).toHaveFocus();
   });
 });

@@ -4,7 +4,7 @@ import duckdb from "duckdb";
 import { dailyMetricsViewSql, weeklyMetricsViewSql } from "../analyticalViews.js";
 
 const markerName = ".lfa-duckdb-poc";
-const schemaVersion = 4;
+const schemaVersion = 5;
 
 export interface DuckDbOptions {
   httpfsExtensionPath?: string;
@@ -340,9 +340,24 @@ const schemaVersion4Sql = `
   INSERT OR IGNORE INTO poc_metadata VALUES (4, CURRENT_TIMESTAMP, 'Remove legacy profile birth year');
 `;
 
+const schemaVersion5Sql = `
+  UPDATE observations
+  SET value = value / 100
+  WHERE measurement_code = 'oxygen_saturation'
+    AND unit = '%'
+    AND source_id IN (SELECT id FROM sources WHERE source_kind = 'health-connect');
+  UPDATE time_series_samples
+  SET value = value / 1000
+  WHERE measurement_code IN ('active_energy_burned', 'total_calories_burned')
+    AND unit = 'kcal'
+    AND source_id IN (SELECT id FROM sources WHERE source_kind = 'health-connect');
+  INSERT OR IGNORE INTO poc_metadata VALUES (5, CURRENT_TIMESTAMP, 'Correct Health Connect percentage and calorie scales');
+`;
+
 const schemaMigrations = [
   { version: 1, sql: schemaVersion1Sql },
   { version: 2, sql: schemaVersion2Sql },
   { version: 3, sql: schemaVersion3Sql },
-  { version: 4, sql: schemaVersion4Sql }
+  { version: 4, sql: schemaVersion4Sql },
+  { version: 5, sql: schemaVersion5Sql }
 ] as const;
