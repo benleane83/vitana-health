@@ -9,7 +9,7 @@ export function mergeDefaultMeasurementType(
   const mergedRecord = merged as unknown as Record<string, unknown>;
 
   for (const [key, value] of Object.entries(defaults)) {
-    if (mergedRecord[key] === undefined) {
+    if (mergedRecord[key] === undefined || (key === "description" && mergedRecord[key] === "")) {
       mergedRecord[key] = value;
       changed = true;
     }
