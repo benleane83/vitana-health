@@ -6,18 +6,31 @@ export function checksum(content: string): string {
 }
 
 export function parseCsv(content: string): Array<Record<string, string>> {
-  const lines = content.replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.trim().length > 0);
-  if (lines.length === 0) {
-    return [];
-  }
-  const headers = splitCsvLine(lines[0]).map((header) => header.trim());
-  return lines.slice(1).map((line) => {
-    const values = splitCsvLine(line);
-    return Object.fromEntries(headers.map((header, index) => [header, values[index]?.trim() ?? ""]));
-  });
+  return parseDelimitedWithHeaders(content, ",").rows;
 }
 
-function splitCsvLine(line: string): string[] {
+/**
+ * Delimiter-aware structured text parser shared by CSV (",") and TSV ("\t") uploads.
+ * Returns both the raw header order (needed for column-mapping suggestions) and the
+ * row records keyed by header text.
+ */
+export function parseDelimitedWithHeaders(
+  content: string,
+  delimiter: string
+): { headers: string[]; rows: Array<Record<string, string>> } {
+  const lines = content.replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.trim().length > 0);
+  if (lines.length === 0) {
+    return { headers: [], rows: [] };
+  }
+  const headers = splitDelimitedLine(lines[0], delimiter).map((header) => header.trim());
+  const rows = lines.slice(1).map((line) => {
+    const values = splitDelimitedLine(line, delimiter);
+    return Object.fromEntries(headers.map((header, index) => [header, values[index]?.trim() ?? ""]));
+  });
+  return { headers, rows };
+}
+
+function splitDelimitedLine(line: string, delimiter: string): string[] {
   const cells: string[] = [];
   let current = "";
   let quoted = false;
@@ -28,7 +41,7 @@ function splitCsvLine(line: string): string[] {
       index += 1;
     } else if (char === '"') {
       quoted = !quoted;
-    } else if (char === "," && !quoted) {
+    } else if (char === delimiter && !quoted) {
       cells.push(current);
       current = "";
     } else {
@@ -45,16 +58,22 @@ export function stableId(prefix: string, parts: string[]): string {
 
 export function normalizeKeys(row: Record<string, string>): Record<string, string> {
   return Object.fromEntries(
-    Object.entries(row).map(([key, value]) => [
-      key
-        .trim()
-        .replace(/([a-z])([A-Z])/g, "$1_$2")
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "_")
-        .replace(/^_|_$/g, ""),
-      value
-    ])
+    Object.entries(row).map(([key, value]) => [normalizeFieldKey(key), value])
   );
+}
+
+/**
+ * Normalizes a single column/field name to snake_case for role matching
+ * (e.g. "Observed At" / "observedAt" → "observed_at"). Shared by the CSV
+ * observation parsers and the generic long/wide upload column mapper.
+ */
+export function normalizeFieldKey(key: string): string {
+  return key
+    .trim()
+    .replace(/([a-z])([A-Z])/g, "$1_$2")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
 }
 
 export function readNumber(value: string | undefined): number | undefined {
@@ -113,15 +132,36 @@ const monthNameToIndex: Record<string, number> = {
   december: 12
 };
 
+function isWhitespace(character: string): boolean {
+  return character === " " || character === "\t" || character === "\n" || character === "\r";
+}
+
+function isAsciiDigits(value: string): boolean {
+  if (value.length === 0) return false;
+  for (const character of value) {
+    if (character < "0" || character > "9") return false;
+  }
+  return true;
+}
+
 function parseStructuredDate(value: string): StructuredDate | undefined {
-  const dateTimeMatch = value.match(/^(.*?)(?:\s+(\d{1,2})(?::(\d{2}))(?::(\d{2}))?)?$/);
-  if (!dateTimeMatch) return undefined;
-  const datePart = dateTimeMatch[1]?.trim();
+  const normalizedValue = value.trim();
+  let timeStart = normalizedValue.length;
+  while (timeStart > 0 && !isWhitespace(normalizedValue[timeStart - 1])) timeStart -= 1;
+  const timeParts = normalizedValue.slice(timeStart).split(":");
+  const hasClockTime = timeStart > 0
+    && (timeParts.length === 2 || timeParts.length === 3)
+    && timeParts[0].length >= 1
+    && timeParts[0].length <= 2
+    && timeParts[1].length === 2
+    && (timeParts[2] === undefined || timeParts[2].length === 2)
+    && timeParts.every(isAsciiDigits);
+  const datePart = (hasClockTime ? normalizedValue.slice(0, timeStart) : normalizedValue).trim();
   if (!datePart) return undefined;
 
-  const hour = Number.parseInt(dateTimeMatch[2] ?? "0", 10);
-  const minute = Number.parseInt(dateTimeMatch[3] ?? "0", 10);
-  const second = Number.parseInt(dateTimeMatch[4] ?? "0", 10);
+  const hour = Number.parseInt(hasClockTime ? timeParts[0] : "0", 10);
+  const minute = Number.parseInt(hasClockTime ? timeParts[1] : "0", 10);
+  const second = Number.parseInt(hasClockTime ? timeParts[2] ?? "0" : "0", 10);
   if (hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) return undefined;
 
   const ymd = datePart.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/);

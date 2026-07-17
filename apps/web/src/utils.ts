@@ -2,6 +2,8 @@
  * Formatting utilities extracted from App.tsx.
  */
 
+import type { MeasurementType } from "@local-fitness-advisor/shared";
+
 const timestampFormatter = new Intl.DateTimeFormat(undefined, {
   year: "numeric",
   month: "short",
@@ -92,4 +94,26 @@ export function isSupportedBodyCompMimeType(
   mimeType: string
 ): mimeType is "application/pdf" | "image/jpeg" | "image/png" {
   return mimeType === "application/pdf" || mimeType === "image/jpeg" || mimeType === "image/png";
+}
+
+export const measurementCategoryLabels: Record<MeasurementType["category"], string> = {
+  activity: "Activity",
+  body: "Body",
+  cardio: "Cardio",
+  derived: "Derived",
+  lab: "Lab",
+  sleep: "Sleep"
+};
+
+/** Groups measurement types by category, sorted by their display label — used to render `<optgroup>`s. */
+export function groupMeasurementTypes(measurementTypes: MeasurementType[]): Array<[MeasurementType["category"], MeasurementType[]]> {
+  const byCategory = new Map<MeasurementType["category"], MeasurementType[]>();
+  for (const measurementType of measurementTypes) {
+    const group = byCategory.get(measurementType.category) ?? [];
+    group.push(measurementType);
+    byCategory.set(measurementType.category, group);
+  }
+  return [...byCategory.entries()].sort(([left], [right]) =>
+    measurementCategoryLabels[left].localeCompare(measurementCategoryLabels[right])
+  );
 }

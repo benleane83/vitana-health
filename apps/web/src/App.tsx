@@ -46,6 +46,7 @@ export function App() {
   // Popstate (browser back/forward)
   useEffect(() => {
     const onPopState = () => {
+      normalizeLegacyImportPath();
       setRoute(routeFromPathname(window.location.pathname));
       setInsightsTab(insightsTabFromPathname(window.location.pathname));
       setImportMode(importModeFromPathname(window.location.pathname));
@@ -53,6 +54,12 @@ export function App() {
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  // Normalize legacy /import/scan and /import/fitness-tracker URLs to their
+  // canonical /import/upload and /import/sync form without adding a history entry.
+  useEffect(() => {
+    normalizeLegacyImportPath();
   }, []);
 
   useEffect(() => {
@@ -407,15 +414,35 @@ function summaryDetailCodeFromPathname(pathname: string): string | undefined {
   }
 }
 
+// Canonical import mode routes are /import/upload and /import/sync. Earlier
+// prototypes used /import/scan and /import/fitness-tracker; those are
+// recognized here and normalized to the canonical path via history.replaceState
+// (see normalizeLegacyImportPath) rather than being treated as first-class routes.
+const legacyImportPathAliases: Partial<Record<string, ImportMode>> = {
+  "/import/scan": "upload",
+  "/import/fitness-tracker": "sync"
+};
+
 function importModeFromPathname(pathname: string): ImportMode {
   if (pathname === "/import/upload") return "upload";
-  if (pathname === "/import/scan") return "scan";
-  if (pathname === "/import/fitness-tracker") return "fitness";
-  return "manual";
+  if (pathname === "/import/sync") return "sync";
+  return legacyImportPathAliases[pathname] ?? "manual";
 }
 
 function importModePath(mode: ImportMode): string {
-  return `/import/${mode === "fitness" ? "fitness-tracker" : mode}`;
+  return `/import/${mode}`;
+}
+
+function canonicalImportPathname(pathname: string): string | undefined {
+  const alias = legacyImportPathAliases[pathname];
+  return alias ? importModePath(alias) : undefined;
+}
+
+function normalizeLegacyImportPath(): void {
+  const canonical = canonicalImportPathname(window.location.pathname);
+  if (canonical && canonical !== window.location.pathname) {
+    window.history.replaceState({}, "", canonical);
+  }
 }
 
 function insightsPath(tab: InsightsTab): string {

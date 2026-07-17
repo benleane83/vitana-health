@@ -14,7 +14,7 @@ import type {
   ProfileListEntry,
   UpdateObservationResponse
 } from "./types.js";
-import type { BodyCompositionDraft } from "./parsers.js";
+import type { BodyCompositionDraft, UploadImportDraft } from "./parsers.js";
 
 export const apiErrorResponseSchema = z.object({
   error: z.string(),
@@ -194,6 +194,7 @@ export const healthDataChartSeriesResponseSchema = objectResponseSchema<HealthDa
 export const profileResponseSchema = objectResponseSchema<Profile>();
 export const cloudAiConsentResponseSchema = objectResponseSchema<CloudAiConsent>();
 export const bodyCompositionDraftResponseSchema = objectResponseSchema<BodyCompositionDraft>();
+export const uploadImportDraftResponseSchema = objectResponseSchema<UploadImportDraft>();
 export const insightResponseSchema = objectResponseSchema<Insight>();
 export const updateObservationResponseSchema = objectResponseSchema<UpdateObservationResponse>();
 export const deleteObservationResponseSchema = objectResponseSchema<DeleteObservationResponse>();

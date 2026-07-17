@@ -81,3 +81,78 @@ export interface BodyCompositionDraftCommitPayload {
 
 export type BloodTestDraft = BodyCompositionDraft;
 export type BloodTestDraftCommitPayload = BodyCompositionDraftCommitPayload;
+
+// ─── Generic structured (CSV/TSV) upload import ───────────────────────────────
+//
+// Standards-aware, dependency-free parsing of arbitrary CSV/TSV observation
+// exports. One observation is read from each row using measurement name/code,
+// value, and optional timestamp/unit columns. Column mapping is suggested
+// automatically and may be overridden by the caller
+// before a fresh draft is regenerated. PDF/image reports are not supported here;
+// see BodyCompositionDraft / BloodTestDraft for the existing scan-based flow.
+
+export type UploadFileFormat = "csv" | "tsv";
+export type UploadDraftRowConfidence = "high" | "medium" | "low";
+
+/** Column-to-role assignment for a structured upload. */
+export interface UploadColumnMapping {
+  dateColumn?: string;
+  measurementColumn?: string;
+  measurementCodeColumn?: string;
+  valueColumn?: string;
+  unitColumn?: string;
+  labelColumn?: string;
+  sourceNameColumn?: string;
+  noteColumn?: string;
+}
+
+export type UploadColumnMappingOverride = Partial<UploadColumnMapping>;
+
+export interface UploadDraftRow {
+  id: string;
+  label: string;
+  measurementCode: string;
+  displayName: string;
+  value: number;
+  unit: string;
+  observedAt?: string;
+  confidence: UploadDraftRowConfidence;
+  sourceText?: string;
+  sourceName?: string;
+  note?: string;
+  included: boolean;
+  generatedCode?: boolean;
+  sourceRowIndex?: number;
+  sourceColumn?: string;
+}
+
+export interface UploadImportDraft {
+  fileName: string;
+  format: UploadFileFormat;
+  checksum: string;
+  parserVersion: "structured-upload-v1";
+  /** Raw column headers, in file order — used to render mapping controls. */
+  columns: string[];
+  mapping: UploadColumnMapping;
+  mappingSuggestion: UploadColumnMapping;
+  /** Total data rows detected in the file (before the row ceiling is applied). */
+  rowCount: number;
+  diagnostics: string[];
+  rows: UploadDraftRow[];
+  /** True when `rows` were clipped to the draft row ceiling. */
+  truncated: boolean;
+}
+
+export interface UploadImportPreviewPayload {
+  fileName: string;
+  format?: UploadFileFormat;
+  content: string;
+  mapping?: UploadColumnMappingOverride;
+}
+
+export interface UploadImportCommitPayload {
+  fileName: string;
+  format?: UploadFileFormat;
+  checksum?: string;
+  rows: UploadDraftRow[];
+}

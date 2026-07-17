@@ -270,26 +270,30 @@ describe("App — import tab", () => {
   it("dismisses a global notification after it has been read", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("tab", { name: /^import$/i }));
-    fireEvent.click(screen.getByRole("tab", { name: /upload csv/i }));
-    fireEvent.click(screen.getByRole("button", { name: /^upload csv$/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /^upload$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^preview upload$/i }));
 
-    expect(screen.getByRole("status")).toHaveTextContent("Select a CSV file before upload.");
+    expect(screen.getByRole("status")).toHaveTextContent("Select a CSV or TSV file before preview.");
     fireEvent.click(screen.getByRole("button", { name: /dismiss notification/i }));
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
-  it("adds a manually entered row to a scan preview", async () => {
+  it("adds a manually entered row to an upload preview", async () => {
     global.fetch = mockFetch({
       "/api/store": { ...makeEmptyStore(), measurementTypes: defaultMeasurementTypes },
       "/api/analytics": makeEmptyAnalytics(),
       "/api/profiles": { profiles: [], activeProfileId: "self" },
-      "/api/import/body-composition/preview": {
-        fileName: "report.pdf",
-        reportDate: "2026-07-08T00:00:00.000Z",
-        sourceText: "Weight 80 kg",
+      "/api/import/upload/preview": {
+        fileName: "labs.csv",
+        format: "csv",
         checksum: "sha256-test",
-        parserVersion: "body-composition-text-v1",
+        parserVersion: "structured-upload-v1",
+        columns: ["observedAt", "measurement", "value", "unit"],
+        mapping: { dateColumn: "observedAt", measurementColumn: "measurement", valueColumn: "value", unitColumn: "unit" },
+        mappingSuggestion: { dateColumn: "observedAt", measurementColumn: "measurement", valueColumn: "value", unitColumn: "unit" },
+        rowCount: 1,
         diagnostics: [],
+        truncated: false,
         rows: [{
           id: "weight-row",
           label: "Weight",
@@ -305,11 +309,11 @@ describe("App — import tab", () => {
 
     render(<App />);
     fireEvent.click(screen.getByRole("tab", { name: /^import$/i }));
-    fireEvent.click(screen.getByRole("tab", { name: /^scan$/i }));
-    fireEvent.change(screen.getByLabelText(/select report/i), {
-      target: { files: [new File(["report"], "report.pdf", { type: "application/pdf" })] }
+    fireEvent.click(screen.getByRole("tab", { name: /^upload$/i }));
+    fireEvent.change(screen.getByLabelText(/select observation file/i), {
+      target: { files: [new File(["observedAt,measurement,value,unit\n2026-07-08,weight,80,kg"], "labs.csv", { type: "text/csv" })] }
     });
-    fireEvent.click(screen.getByRole("button", { name: /preview scan/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^preview upload$/i }));
 
     await screen.findByRole("button", { name: /^add row$/i });
     fireEvent.click(screen.getByRole("button", { name: /^add row$/i }));
@@ -323,18 +327,18 @@ describe("App — import tab", () => {
     expect(screen.getByRole("textbox", { name: /row 2 unit/i })).toHaveValue("µmol/L");
   });
 
-  it("rejects oversized scan files before reading or uploading them", async () => {
+  it("rejects oversized structured uploads before reading or uploading them", async () => {
     render(<App />);
     fireEvent.click(screen.getByRole("tab", { name: /^import$/i }));
-    fireEvent.click(screen.getByRole("tab", { name: /^scan$/i }));
-    const oversized = new File(["report"], "large-report.pdf", { type: "application/pdf" });
-    Object.defineProperty(oversized, "size", { value: 15_000_001 });
-    fireEvent.change(screen.getByLabelText(/select report/i), { target: { files: [oversized] } });
-    fireEvent.click(screen.getByRole("button", { name: /preview scan/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /^upload$/i }));
+    const oversized = new File(["observedAt,measurement,value,unit"], "large.csv", { type: "text/csv" });
+    Object.defineProperty(oversized, "size", { value: 2_000_001 });
+    fireEvent.change(screen.getByLabelText(/select observation file/i), { target: { files: [oversized] } });
+    fireEvent.click(screen.getByRole("button", { name: /^preview upload$/i }));
 
     expect(await screen.findByRole("status")).toHaveTextContent(/too large/i);
     expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls.some(([url]) =>
-      String(url).includes("/api/import/body-composition/preview")
+      String(url).includes("/api/import/upload/preview")
     )).toBe(false);
   });
 

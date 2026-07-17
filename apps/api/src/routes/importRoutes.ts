@@ -5,10 +5,13 @@ import {
   buildBloodTestImportFromDraft,
   buildManualLabEntryImport,
   buildManualObservationImport,
+  buildStructuredUploadImportFromDraft,
   parseBloodTestCsv,
   parseBloodTestScanText,
   parseObservationCsv,
-  type BodyCompositionDraftRow
+  parseStructuredUpload,
+  type BodyCompositionDraftRow,
+  type UploadDraftRow
 } from "@local-fitness-advisor/shared";
 import type { ProfileStoreManager } from "../storage/profileStoreManager.js";
 import { healthConnectImportRequestSchema, parseHealthConnectImport } from "../healthConnectImport.js";
@@ -97,6 +100,56 @@ const manualObservationImportSchema = z.object({
     { message: "measurementName or measurementCode is required" }
   )).min(1)
 });
+
+// ─── Generic structured (CSV/TSV) upload ──────────────────────────────────────
+// PDF/image reports are not supported by this generic path — see the
+// body-composition/blood-test scan endpoints above (preserved for the mobile
+// companion app) for OCR-based report import.
+
+const MAX_STRUCTURED_UPLOAD_BYTES = 2_000_000; // 2 MB structured file (CSV/TSV) limit
+
+const uploadColumnMappingOverrideSchema = z.object({
+  dateColumn: z.string().max(160).optional(),
+  measurementColumn: z.string().max(160).optional(),
+  measurementCodeColumn: z.string().max(160).optional(),
+  valueColumn: z.string().max(160).optional(),
+  unitColumn: z.string().max(160).optional(),
+  labelColumn: z.string().max(160).optional(),
+  sourceNameColumn: z.string().max(160).optional(),
+  noteColumn: z.string().max(160).optional()
+}).strict();
+
+const uploadPreviewSchema = z.object({
+  fileName: z.string().min(1).max(240),
+  format: z.enum(["csv", "tsv"]).optional(),
+  content: z.string().min(1),
+  mapping: uploadColumnMappingOverrideSchema.optional()
+}).strict();
+
+const uploadDraftRowSchema = z.object({
+  id: z.string().min(1).max(160),
+  label: z.string().max(200),
+  measurementCode: z.string().min(1).max(120),
+  displayName: z.string().min(1).max(160),
+  value: z.number().finite(),
+  unit: z.string().min(1).max(32),
+  observedAt: z.string().max(80).optional(),
+  confidence: z.enum(["high", "medium", "low"]),
+  sourceText: z.string().max(500).optional(),
+  sourceName: z.string().max(160).optional(),
+  note: z.string().max(2_000).optional(),
+  included: z.boolean(),
+  generatedCode: z.boolean().optional(),
+  sourceRowIndex: z.number().int().nonnegative().optional(),
+  sourceColumn: z.string().max(160).optional()
+}).strict();
+
+const uploadCommitSchema = z.object({
+  fileName: z.string().min(1).max(240),
+  format: z.enum(["csv", "tsv"]).optional(),
+  checksum: z.string().max(120).optional(),
+  rows: z.array(uploadDraftRowSchema).min(1).max(200)
+}).strict();
 
 export function makeImportRoutes(storeManager: ProfileStoreManager): express.Router {
   const router = express.Router();
@@ -227,6 +280,44 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
         ...compactImportResponse(imported, merged),
         analyticsStorage
       });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Preview never touches the store — it is a pure parse of the submitted
+  // content plus any client-supplied column-mapping override.
+  router.post("/upload/preview", (request, response, next) => {
+    try {
+      const parsed = uploadPreviewSchema.parse(request.body ?? {});
+      const contentBytes = Buffer.byteLength(parsed.content, "utf8");
+      if (contentBytes > MAX_STRUCTURED_UPLOAD_BYTES) {
+        response.status(413).json({ error: "Uploaded file is too large for local preview.", code: "PAYLOAD_TOO_LARGE" });
+        return;
+      }
+      const draft = parseStructuredUpload(parsed.fileName, parsed.content, {
+        format: parsed.format,
+        mapping: parsed.mapping
+      });
+      response.json(draft);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/upload/commit", async (request, response, next) => {
+    try {
+      const principal = response.locals.principal as AuthorizationPrincipal;
+      if (principal.kind !== "owner") {
+        response.status(403).json({ error: "Owner access required.", code: "OWNER_REQUIRED" });
+        return;
+      }
+      const parsed = uploadCommitSchema.parse(request.body ?? {});
+      const imported = buildStructuredUploadImportFromDraft({ ...parsed, rows: parsed.rows as UploadDraftRow[] });
+      const store = activeStore();
+      const merged = await store.mergeImport(imported);
+      const analyticsStorage = describeAnalyticsStorage(storeManager, merged.counts, store.profileId);
+      response.status(201).json({ ...compactImportResponse(imported, merged), analyticsStorage });
     } catch (error) {
       next(error);
     }

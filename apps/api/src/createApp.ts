@@ -92,6 +92,7 @@ export function createApp(
   // Body limits — larger limits only on routes that require them
   app.use(["/api/import/body-composition/preview", "/api/import/blood-test/preview"], express.json({ limit: "20mb" }));
   app.use("/api/import/health-connect", express.json({ limit: "10mb" }));
+  app.use("/api/import/upload/preview", express.json({ limit: "4mb" }));
   app.use(express.json({ limit: "1mb" }));
 
   // CORS — local browser origins only
