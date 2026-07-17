@@ -125,6 +125,7 @@ export interface Device {
 export interface MeasurementType {
   code: string;
   display: string;
+  description: string;
   category: "activity" | "cardio" | "sleep" | "body" | "lab" | "derived";
   kind: MeasurementKind;
   canonicalUnit: string;
@@ -383,6 +384,7 @@ export interface HealthDataSummarySourceCounts {
 export interface HealthDataSummaryTypeRow {
   code: string;
   displayName: string;
+  description?: string;
   category: MeasurementType["category"] | "uncategorized";
   counts: HealthDataSummarySourceCounts & {
     total: number;

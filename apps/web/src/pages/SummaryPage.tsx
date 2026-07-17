@@ -309,6 +309,9 @@ export function ObservationTypeDetailPage({
           </button>
           <p className="eyebrow">Measurement detail</p>
           <h1>{detail?.measurement.displayName ?? "Measurement detail"}</h1>
+          {detail?.measurement.description ? (
+            <p className="summary-detail-description">{detail.measurement.description}</p>
+          ) : null}
           <p className="summary-detail-code">{detail?.measurement.code ?? "Loading…"}</p>
         </div>
       </div>

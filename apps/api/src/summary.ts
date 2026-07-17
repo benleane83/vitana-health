@@ -246,6 +246,7 @@ export function summarizeMeasurementEntries(
   const measurement: HealthDataSummaryTypeRow = {
     code: measurementCode,
     displayName: type?.display ?? entries[0]?.displayName ?? humanizeCode(measurementCode),
+    description: type?.description,
     category: type?.category ?? "uncategorized",
     counts,
     lastMeasuredAt: latestTimestamp
@@ -298,6 +299,7 @@ function ensureRow(
   const next: HealthDataSummaryTypeRow = {
     code: measurementCode,
     displayName: type?.display ?? humanizeCode(measurementCode),
+    description: type?.description,
     category: type?.category ?? "uncategorized",
     counts: {
       observations: 0,

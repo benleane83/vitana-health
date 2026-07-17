@@ -1104,6 +1104,12 @@ h3 {
   margin-top: var(--space-2);
 }
 
+.summary-detail-description {
+  color: var(--muted);
+  margin-top: var(--space-2);
+  max-width: 70ch;
+}
+
 .summary-detail-hint,
 .summary-readonly {
   color: var(--muted);

@@ -49,6 +49,7 @@ export function createDuckDbHealthStoreFixture(): HealthStoreData {
     measurementTypes: [{
       code: "weight",
       display: "Weight",
+      description: "Your total body weight.",
       category: "body",
       kind: "point",
       canonicalUnit: "kg",

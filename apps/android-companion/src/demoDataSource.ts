@@ -146,6 +146,7 @@ function makeDetail(metric: DemoMetric, now: Date): HealthDataDetail {
   const measurement: HealthDataSummaryTypeRow = {
     code: metric.code,
     displayName: measurementType.display,
+    description: measurementType.description,
     category: measurementType.category,
     counts: { ...counts, total: entries.length },
     lastMeasuredAt: entries[0].timestamp

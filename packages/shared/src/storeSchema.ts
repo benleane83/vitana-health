@@ -45,7 +45,7 @@ export const insightSchema = z.object({
 }).strict();
 
 const measurementTypeSchema = z.object({
-  code: z.string(), display: z.string(),
+  code: z.string(), display: z.string(), description: z.string().default(""),
   category: z.enum(["activity", "cardio", "sleep", "body", "lab", "derived"]),
   kind: z.enum(["point", "interval", "event", "panel-component"]), canonicalUnit: z.string(), aliases: z.array(z.string()),
   preferredUnits: z.object({ metric: z.string().optional(), imperial: z.string().optional() }).strict().optional(),
