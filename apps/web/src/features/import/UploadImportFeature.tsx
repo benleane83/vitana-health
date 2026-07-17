@@ -152,7 +152,7 @@ function StructuredUploadFeature({
       onNotice(error instanceof Error ? error.message : "Invalid parsed observation.");
       return;
     }
-    if (!approvedRows.some((row) => row.included)) {
+    if (approvedRows.length === 0) {
       onNotice("Include at least one parsed row before saving.");
       return;
     }
@@ -506,7 +506,7 @@ function WideFormatMappingEditor({
         <select
           id="upload-mapping-date"
           value={mapping.dateColumn ?? ""}
-          onChange={(event) => onChange({ ...mapping, dateColumn: event.target.value || undefined, layout: "wide" })}
+          onChange={(event) => onChange({ ...mapping, dateColumn: event.target.value, layout: "wide" })}
         >
           <option value="">None</option>
           {columns.map((column) => <option key={column} value={column}>{column}</option>)}

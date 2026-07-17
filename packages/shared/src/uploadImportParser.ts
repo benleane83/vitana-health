@@ -341,8 +341,8 @@ export function buildStructuredUploadImportFromDraft(
         displayName: row.displayName,
         confidence: row.confidence,
         sourceColumn: row.sourceColumn,
-        sourceName: row.sourceName,
-        note: row.note,
+        sourceName: row.sourceName?.trim() || undefined,
+        note: row.note?.trim() || undefined,
         generatedCode: row.generatedCode === true
       }
     });

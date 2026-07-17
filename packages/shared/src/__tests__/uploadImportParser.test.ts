@@ -108,6 +108,14 @@ describe("parseStructuredUpload — wide format", () => {
     expect(draft.mapping.measurementColumns?.["weight_kg"]).toBeUndefined();
     expect(draft.rows).toHaveLength(0);
   });
+
+  it("allows the automatically detected date column to be cleared", () => {
+    const draft = parseStructuredUpload("wide.csv", wideFormatCsv, {
+      mapping: { layout: "wide", dateColumn: "" }
+    });
+    expect(draft.mapping.dateColumn).toBe("");
+    expect(draft.rows.every((row) => row.observedAt === undefined)).toBe(true);
+  });
 });
 
 describe("parseStructuredUpload — mapping overrides", () => {
