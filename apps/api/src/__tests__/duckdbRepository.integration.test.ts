@@ -148,6 +148,7 @@ describe("DuckDbRepository fidelity", () => {
       expect((await repository.appBootstrap()).measurementTypes).toEqual(expect.arrayContaining([
         expect.objectContaining({
           code: "bmi",
+          description: "A number calculated from your height and weight, used as a simple screening measure for weight status.",
           normalLow: 18.5,
           normalHigh: 24.9,
           referenceRanges: [{ low: 18.5, high: 24.9, unit: "kg/m2" }]
