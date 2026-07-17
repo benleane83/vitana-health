@@ -115,6 +115,10 @@ describe("defaultMeasurementTypes", () => {
       expect(new Set(codes.map(normalizeLookup)).size).toBe(codes.length);
     });
 
+    it("has a plain-language description for every measurement type", () => {
+      expect(defaultMeasurementTypes.every((type) => type.description.trim().length > 0)).toBe(true);
+    });
+
     it("has non-empty aliases that resolve unambiguously to their owner", () => {
       const owners = new Map<string, Set<string>>();
       for (const type of defaultMeasurementTypes) {

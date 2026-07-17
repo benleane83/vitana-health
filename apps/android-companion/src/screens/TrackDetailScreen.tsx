@@ -61,6 +61,10 @@ export function TrackDetailScreen({ route }: Props) {
   return (
     <Screen>
       <ScrollView contentContainerStyle={styles.content}>
+        <View>
+          <Text style={styles.title}>{detail.measurement.displayName}</Text>
+          {detail.measurement.description ? <Text style={styles.meta}>{detail.measurement.description}</Text> : null}
+        </View>
         {latest ? (
           <Card>
             <Text style={styles.label}>Latest</Text>
@@ -214,6 +218,7 @@ function TrendChart({ detail }: { detail: HealthDataDetail }) {
 
 const styles = StyleSheet.create({
   content: { gap: spacing.md, paddingBottom: spacing.xl },
+  title: { color: colors.text, fontSize: 24, fontWeight: "800", marginBottom: spacing.xs },
   label: { color: colors.muted, fontSize: 14, fontWeight: "700" },
   latest: { color: colors.text, fontSize: 28, fontWeight: "800" },
   heading: { color: colors.text, fontSize: 18, fontWeight: "800" },

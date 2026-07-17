@@ -268,7 +268,12 @@ describe("DuckDbRepository fidelity", () => {
       const firstPage = await repository.measurementDetail("weight", { offset: 0, limit: 2 });
 
       expect(summary.totals).toMatchObject({ observations: 2, samples: 1, activities: 1, total: 4, types: 2 });
-      expect(detail.measurement).toMatchObject({ code: "weight", displayName: "Weight", counts: { total: 3 } });
+      expect(detail.measurement).toMatchObject({
+        code: "weight",
+        displayName: "Weight",
+        description: "Your total body weight.",
+        counts: { total: 3 }
+      });
       expect(detail.entries.map((entry) => entry.id)).toEqual(["sample-1", "observation-a", "observation-z"]);
       expect(detail.entries[0]).toMatchObject({
         referenceRange: { low: 50, high: 100, unit: "kg" },
@@ -295,6 +300,7 @@ describe("DuckDbRepository fidelity", () => {
     fixture.measurementTypes.push({
       code: "steps",
       display: "Steps",
+      description: "The number of steps you have taken.",
       category: "activity",
       kind: "interval",
       canonicalUnit: "count",

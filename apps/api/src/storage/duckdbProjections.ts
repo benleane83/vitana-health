@@ -191,6 +191,7 @@ export async function summary(connection: duckdb.Connection) {
     SELECT
       measurement_code,
       MIN(display) AS display_name,
+      MIN(json_extract_string(custom_properties, '$.description')) AS description,
       MIN(category) AS category,
       SUM(CASE WHEN entry_kind = 'observation' THEN 1 ELSE 0 END) AS observations,
       SUM(CASE WHEN entry_kind = 'sample' THEN 1 ELSE 0 END) AS samples,
@@ -208,6 +209,7 @@ export async function summary(connection: duckdb.Connection) {
     return {
       code: String(row.measurement_code),
       displayName: typeof row.display_name === "string" ? row.display_name : humanizeCode(String(row.measurement_code)),
+      description: typeof row.description === "string" ? row.description : undefined,
       category: isSummaryCategory(row.category) ? row.category : "uncategorized",
       counts: {
         observations,

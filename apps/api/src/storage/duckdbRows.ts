@@ -207,6 +207,7 @@ export function measurementTypeFromRow(row: DuckDbRow): MeasurementType {
 
 export function measurementTypeProperties(entry: MeasurementType): Record<string, unknown> {
   return compact({
+    description: entry.description,
     preferredUnits: entry.preferredUnits,
     unitAliases: entry.unitAliases,
     fhirCode: entry.fhirCode,

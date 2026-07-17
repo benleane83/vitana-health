@@ -58,6 +58,7 @@ beforeEach(() => {
         measurement: {
           code: "bmi",
           displayName: "BMI",
+          description: "A number calculated from your height and weight, used as a simple screening measure for weight status.",
           category: "body",
           counts: { observations: 1, samples: 0, activities: 0, total: 1 },
           lastMeasuredAt: "2026-01-01T00:00:00.000Z"
@@ -96,6 +97,17 @@ afterEach(() => {
 });
 
 describe("App smoke", () => {
+  it("shows a measurement description directly below its name on the detail page", async () => {
+    globalThis.history.replaceState({}, "", "/track/bmi");
+    render(<App />);
+
+    const heading = await screen.findByRole("heading", { name: "BMI" });
+    const description = screen.getByText(
+      "A number calculated from your height and weight, used as a simple screening measure for weight status."
+    );
+    expect(heading.compareDocumentPosition(description) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("renders the accessible application shell and primary navigation", () => {
     render(<App />);
     expect(screen.getByRole("main")).toBeInTheDocument();
