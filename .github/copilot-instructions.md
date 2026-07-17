@@ -1,9 +1,9 @@
-This application (working title Local Fitness Advisor) is a local-first, single-user application that stores personal health data in an encrypted local database. It started as a single-user application, but has been expanded to support multiple family member profiles including pets and children.
+This app (working title Local Fitness Advisor) is a local-first application that stores personal health data in an encrypted database. It started as a single-user application, but has been expanded to support multiple family member profiles including pets and children.
 
 ## Application status
 
-Currently in development and is not yet released. Planning to release it globally in two parts: an open PC app, and a paid mobile companion app (Android initially, then iOS later). The app will be for use on a local network only by design, but I intend to support multiple profiles so that family members can each maintain their own records in one app instance.
-Because I haven't released, backwards compatibility is not a concern yet. I just need to maintain compatibility over my local testing profiles, but not full end-user migrations yet.
+Currently in development and not yet released. Planning to release it globally in two parts: an open PC app, and a paid mobile companion app (Android initially, then iOS later). The app will be for use on a local network only by design, but supporting multiple profiles so that family members can each maintain their own records in one instance.
+Because I haven't released, backwards compatibility is not a concern. I just need to maintain compatibility over my local testing profiles, not full end-user migrations yet.
 I'm only testing on Windows x64 currently, but I intend to support Linux and MacOS as well if the app is successful.
 
 ## Database design
@@ -12,4 +12,8 @@ Currently uses DuckDB as a local database, although considering SQLite as an alt
 
 ## Mobile app design
 
-My current mobile companion app is designed for sync of Health Connect data only to the API layer of my PC app. My longer term plan is to expand the mobile app to feature dashboards and copies of selected PC app features for the mobile device. Implementation hasn't started yet, but keep this in mind when developing PC features so they can be easily exposed/mirrored later.
+My current mobile companion app was first designed for sync of Health Connect data only to the API layer of my PC app, but is being expanded to feature dashboards and copies of selected PC app features for mobiles. Android only for now, but I intend to support iOS later and publish in both App Stores. Use appropriate abstractions when adding native features to make iOS support easier.
+
+## Testing
+
+This app uses a combination of unit tests, integration tests, and durability tests. Please keep this maintained, but don't bloat the suite with minimal value tests. My app is not in production yet, so I'd prefer a simple and robust test suite that can be run quickly, rather than a large and complex one that takes a long time to run.
