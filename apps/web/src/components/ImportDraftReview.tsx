@@ -39,6 +39,7 @@ export function ImportDraftReview({
   onCommit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
   const includedCount = rows.filter((row) => row.included).length;
+  const measurementGroups = groupMeasurementTypes(measurementTypes);
   const [customMeasurementRows, setCustomMeasurementRows] = useState<Record<string, true>>({});
 
   useEffect(() => {
@@ -91,7 +92,6 @@ export function ImportDraftReview({
           const forcedCustom = Boolean(customMeasurementRows[row.id]);
           const selectedMeasurementCode = forcedCustom ? "" : resolveKnownMeasurementSelection(row, measurementTypes);
           const showCustomFields = selectedMeasurementCode === "";
-          const measurementGroups = groupMeasurementTypes(measurementTypes);
           return (
             <div className="bodycomp-row" role="row" key={row.id} data-included={row.included}>
               <span role="cell" className="bodycomp-include-cell">

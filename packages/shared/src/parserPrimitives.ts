@@ -132,14 +132,36 @@ const monthNameToIndex: Record<string, number> = {
   december: 12
 };
 
+function isWhitespace(character: string): boolean {
+  return character === " " || character === "\t" || character === "\n" || character === "\r";
+}
+
+function isAsciiDigits(value: string): boolean {
+  if (value.length === 0) return false;
+  for (const character of value) {
+    if (character < "0" || character > "9") return false;
+  }
+  return true;
+}
+
 function parseStructuredDate(value: string): StructuredDate | undefined {
-  const timeMatch = value.match(/\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
-  const datePart = (timeMatch?.index === undefined ? value : value.slice(0, timeMatch.index)).trim();
+  const normalizedValue = value.trim();
+  let timeStart = normalizedValue.length;
+  while (timeStart > 0 && !isWhitespace(normalizedValue[timeStart - 1])) timeStart -= 1;
+  const timeParts = normalizedValue.slice(timeStart).split(":");
+  const hasClockTime = timeStart > 0
+    && (timeParts.length === 2 || timeParts.length === 3)
+    && timeParts[0].length >= 1
+    && timeParts[0].length <= 2
+    && timeParts[1].length === 2
+    && (timeParts[2] === undefined || timeParts[2].length === 2)
+    && timeParts.every(isAsciiDigits);
+  const datePart = (hasClockTime ? normalizedValue.slice(0, timeStart) : normalizedValue).trim();
   if (!datePart) return undefined;
 
-  const hour = Number.parseInt(timeMatch?.[1] ?? "0", 10);
-  const minute = Number.parseInt(timeMatch?.[2] ?? "0", 10);
-  const second = Number.parseInt(timeMatch?.[3] ?? "0", 10);
+  const hour = Number.parseInt(hasClockTime ? timeParts[0] : "0", 10);
+  const minute = Number.parseInt(hasClockTime ? timeParts[1] : "0", 10);
+  const second = Number.parseInt(hasClockTime ? timeParts[2] ?? "0" : "0", 10);
   if (hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) return undefined;
 
   const ymd = datePart.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/);
