@@ -70,7 +70,7 @@ export function DashboardScreen() {
             <View style={styles.profileIcon}><UserRound color={colors.primary} size={21} /></View>
             <View style={styles.profileText}>
               <Text style={styles.contextLabel}>Active profile</Text>
-              <Text style={styles.title}>{bootstrap.profile.displayName}</Text>
+              <Text numberOfLines={2} style={styles.title}>{bootstrap.profile.displayName}</Text>
             </View>
           </View>
           <View style={styles.connectionRow}>
@@ -84,7 +84,7 @@ export function DashboardScreen() {
           </View>
         </View>
         <View style={styles.sectionHeader}>
-          <View>
+          <View style={styles.sectionHeadingText}>
             <Text style={styles.sectionTitle}>Latest data</Text>
             <Text style={styles.sectionCopy}>Most recent readings for this profile</Text>
           </View>
@@ -137,8 +137,8 @@ export function DashboardScreen() {
               ["Activities", counts.activities]
             ].map(([label, value]) => (
               <View key={String(label)} style={styles.countItem}>
-                <Text style={styles.count}>{value}</Text>
-                <Text numberOfLines={1} style={styles.label}>{label}</Text>
+                <Text adjustsFontSizeToFit numberOfLines={1} style={styles.count}>{formatCount(Number(value))}</Text>
+                <Text numberOfLines={2} style={styles.label}>{label}</Text>
               </View>
             ))}
           </View>
@@ -150,6 +150,7 @@ export function DashboardScreen() {
 
 function formatObservedDate(value: string): string {
   const observed = new Date(value);
+  if (!Number.isFinite(observed.getTime())) return "Date unavailable";
   const today = new Date();
   if (observed.toDateString() === today.toDateString()) {
     return `Today, ${observed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
@@ -157,24 +158,30 @@ function formatObservedDate(value: string): string {
   return observed.toLocaleDateString([], { day: "numeric", month: "short" });
 }
 
+function formatCount(value: number): string {
+  if (!Number.isFinite(value)) return "—";
+  return new Intl.NumberFormat(undefined, { notation: value >= 100_000 ? "compact" : "standard" }).format(value);
+}
+
 const styles = StyleSheet.create({
   content: { gap: spacing.lg, paddingBottom: spacing.xl },
   contextPanel: { backgroundColor: colors.primaryMuted, borderRadius: radii.lg, gap: spacing.md, padding: spacing.md },
   profileRow: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
   profileIcon: { alignItems: "center", backgroundColor: colors.surface, borderRadius: radii.pill, height: 42, justifyContent: "center", width: 42 },
-  profileText: { flex: 1 },
+  profileText: { flex: 1, minWidth: 0 },
   contextLabel: { color: colors.muted, fontSize: type.label, fontWeight: "700" },
   title: { color: colors.textStrong, fontSize: type.display, fontWeight: "800" },
   connectionRow: { alignItems: "center", borderTopColor: colors.borderStrong, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: "row", gap: spacing.sm, paddingTop: spacing.sm },
   online: { color: colors.success, flex: 1, fontSize: type.body, fontWeight: "600" },
   offline: { color: colors.warning, flex: 1, fontSize: type.body, fontWeight: "600", textTransform: "capitalize" },
   sectionHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
+  sectionHeadingText: { flex: 1, minWidth: 0 },
   sectionTitle: { color: colors.textStrong, fontSize: type.heading, fontWeight: "800" },
   sectionCopy: { color: colors.muted, fontSize: type.label, marginTop: 2 },
-  viewAll: { alignItems: "center", flexDirection: "row", minHeight: 44, paddingLeft: spacing.sm },
+  viewAll: { alignItems: "center", flexDirection: "row", flexShrink: 0, minHeight: 44, paddingLeft: spacing.sm },
   viewAllText: { color: colors.primary, fontSize: type.body, fontWeight: "700" },
   metricGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  metricTile: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, flexBasis: "47%", flexGrow: 1, gap: spacing.xs, minHeight: 116, padding: spacing.md },
+  metricTile: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, flexBasis: "47%", flexGrow: 1, gap: spacing.xs, minHeight: 128, padding: spacing.md },
   pressed: { opacity: 0.8 },
   metricName: { color: colors.muted, fontSize: type.label, fontWeight: "700", minHeight: 30 },
   metricValue: { color: colors.primaryStrong, fontSize: 22, fontWeight: "800" },
@@ -184,7 +191,7 @@ const styles = StyleSheet.create({
   recordsTitleRow: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
   recordsTitle: { color: colors.text, fontSize: type.title, fontWeight: "700" },
   countRow: { backgroundColor: colors.surfaceMuted, borderRadius: radii.md, flexDirection: "row", paddingVertical: spacing.md },
-  countItem: { alignItems: "center", flex: 1, gap: 2, paddingHorizontal: spacing.xs },
+  countItem: { alignItems: "center", flex: 1, gap: spacing.xs, minWidth: 0, paddingHorizontal: spacing.xs },
   count: { color: colors.textStrong, fontSize: type.title, fontWeight: "800" },
-  label: { color: colors.muted, fontSize: 10 }
+  label: { color: colors.muted, fontSize: type.label, lineHeight: 18, textAlign: "center" }
 });

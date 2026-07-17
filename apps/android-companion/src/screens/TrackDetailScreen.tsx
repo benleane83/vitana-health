@@ -33,7 +33,8 @@ export function TrackDetailScreen({ route }: Props) {
   }, [healthDataDetail, route.params.measurementCode]);
 
   async function loadMore() {
-    if (!detail?.pagination.hasMore) return;
+    if (loadingMore || !detail?.pagination.hasMore) return;
+    setError(undefined);
     setLoadingMore(true);
     try {
       const next = await healthDataDetail(route.params.measurementCode, {
@@ -58,8 +59,8 @@ export function TrackDetailScreen({ route }: Props) {
         {latest ? (
           <Card>
             <Text style={styles.label}>Latest</Text>
-            <Text style={styles.latest}>{latest.value} {latest.unit}</Text>
-            <Text style={styles.meta}>{new Date(latest.timestamp).toLocaleString()}</Text>
+            <Text adjustsFontSizeToFit numberOfLines={1} style={styles.latest}>{latest.value} {latest.unit}</Text>
+            <Text style={styles.meta}>{formatTimestamp(latest.timestamp)}</Text>
           </Card>
         ) : <Message title="No history yet" />}
         <Card>
@@ -72,8 +73,8 @@ export function TrackDetailScreen({ route }: Props) {
             <View style={styles.row}>
               <View style={styles.flex}>
                 <Text style={styles.value}>{entry.value} {entry.unit}</Text>
-                <Text style={styles.meta}>{new Date(entry.timestamp).toLocaleString()}</Text>
-                <Text style={styles.meta}>
+                <Text style={styles.meta}>{formatTimestamp(entry.timestamp)}</Text>
+                <Text numberOfLines={3} style={styles.meta}>
                   {[entry.sourceLabel, entry.importFileName, entry.observationGroup?.label].filter(Boolean).join(" · ") || "Local record"}
                 </Text>
               </View>
@@ -81,7 +82,7 @@ export function TrackDetailScreen({ route }: Props) {
             </View>
           </Card>
         ))}
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {error ? <Message title="Could not load more history" detail={error} tone="danger" /> : null}
         {detail.pagination.hasMore ? (
           <Button disabled={loadingMore} onPress={() => { void loadMore(); }}>
             {loadingMore ? "Loading…" : "Load more"}
@@ -90,6 +91,11 @@ export function TrackDetailScreen({ route }: Props) {
       </ScrollView>
     </Screen>
   );
+}
+
+function formatTimestamp(value: string): string {
+  const timestamp = new Date(value);
+  return Number.isFinite(timestamp.getTime()) ? timestamp.toLocaleString() : "Date unavailable";
 }
 
 function TrendChart({ detail }: { detail: HealthDataDetail }) {
@@ -115,13 +121,12 @@ function TrendChart({ detail }: { detail: HealthDataDetail }) {
 
 const styles = StyleSheet.create({
   content: { gap: spacing.md, paddingBottom: spacing.xl },
-  label: { color: colors.muted, fontSize: 12, fontWeight: "700", textTransform: "uppercase" },
+  label: { color: colors.muted, fontSize: 14, fontWeight: "700" },
   latest: { color: colors.text, fontSize: 28, fontWeight: "800" },
   heading: { color: colors.text, fontSize: 18, fontWeight: "800" },
   row: { flexDirection: "row", justifyContent: "space-between" },
   flex: { flex: 1, gap: spacing.xs },
   value: { color: colors.text, fontSize: 17, fontWeight: "700" },
-  meta: { color: colors.muted, fontSize: 13 },
-  kind: { color: colors.primary, fontSize: 12, textTransform: "capitalize" },
-  error: { color: colors.danger }
+  meta: { color: colors.muted, fontSize: 14, lineHeight: 19 },
+  kind: { color: colors.primary, flexShrink: 0, fontSize: 14, fontWeight: "600", textTransform: "capitalize" }
 });

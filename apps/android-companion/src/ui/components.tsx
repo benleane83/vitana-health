@@ -24,6 +24,7 @@ export function Button({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [
@@ -39,7 +40,7 @@ export function Button({
 }
 
 export function Loading({ label = "Loading…" }: { label?: string }) {
-  return <View style={styles.center}><ActivityIndicator color={colors.primary} /><Text style={styles.muted}>{label}</Text></View>;
+  return <View accessibilityLiveRegion="polite" accessibilityRole="progressbar" style={styles.center}><ActivityIndicator color={colors.primary} /><Text style={styles.muted}>{label}</Text></View>;
 }
 
 export function Message({
@@ -52,7 +53,11 @@ export function Message({
   tone?: "neutral" | "info" | "success" | "warning" | "danger";
 }) {
   return (
-    <View style={[styles.message, styles[`${tone}Message`]]}>
+    <View
+      accessibilityLiveRegion={tone === "danger" ? "assertive" : "polite"}
+      accessibilityRole={tone === "danger" ? "alert" : undefined}
+      style={[styles.message, styles[`${tone}Message`]]}
+    >
       <Text style={styles.heading}>{title}</Text>
       {detail ? <Text style={styles.muted}>{detail}</Text> : null}
     </View>

@@ -13,7 +13,7 @@ import { ImportScreen } from "./src/screens/ImportScreen";
 import { TrackDetailScreen } from "./src/screens/TrackDetailScreen";
 import { TrackScreen } from "./src/screens/TrackScreen";
 import { Button, Card, Message, Screen } from "./src/ui/components";
-import { colors, spacing } from "./src/ui/theme";
+import { colors, radii, spacing, type } from "./src/ui/theme";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tabs = createBottomTabNavigator<TabParamList>();
@@ -57,6 +57,7 @@ function MainTabs() {
         ),
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.muted,
+        tabBarItemStyle: styles.tabItem,
         tabBarLabelStyle: styles.tabLabel,
         tabBarStyle: styles.tabBar
       })}
@@ -89,7 +90,7 @@ function ConnectionScreen({ navigation }: NativeStackScreenProps<RootStackParamL
         <Text style={styles.heading}>{demoMode ? "Sample data" : connectionState.replaceAll("-", " ")}</Text>
         <Text style={styles.meta}>{demoMode ? "Read-only demo" : connection?.url ?? "No paired PC"}</Text>
         {bootstrap ? <Text style={styles.meta}>Assigned to {bootstrap.profile.displayName}</Text> : null}
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {error ? <Message title="Connection issue" detail={error} tone="danger" /> : null}
       </Card>
       <View style={styles.settingRow}>
         <View style={styles.settingText}>
@@ -121,13 +122,13 @@ function ConnectionScreen({ navigation }: NativeStackScreenProps<RootStackParamL
 const styles = StyleSheet.create({
   connectionButton: { alignItems: "center", flexDirection: "row", gap: spacing.xs, marginRight: spacing.sm },
   connectionButtonText: { color: colors.primary, fontWeight: "700" },
-  tabBar: { backgroundColor: colors.surface, borderTopColor: colors.border },
-  tabLabel: { fontSize: 12, fontWeight: "700" },
-  label: { color: colors.muted, fontSize: 12, fontWeight: "700", textTransform: "uppercase" },
-  heading: { color: colors.text, fontSize: 20, fontWeight: "800", textTransform: "capitalize" },
-  meta: { color: colors.muted, fontSize: 14 },
+  tabBar: { backgroundColor: colors.surface, borderTopColor: colors.border, height: 68, paddingBottom: spacing.xs, paddingTop: spacing.xs },
+  tabItem: { borderRadius: radii.sm, minHeight: 56 },
+  tabLabel: { fontSize: type.label, fontWeight: "700", lineHeight: 18 },
+  label: { color: colors.muted, fontSize: type.label, fontWeight: "700", textTransform: "uppercase" },
+  heading: { color: colors.text, fontSize: type.heading, fontWeight: "800", textTransform: "capitalize" },
+  meta: { color: colors.muted, fontSize: type.body, lineHeight: 20 },
   settingRow: { alignItems: "center", flexDirection: "row", gap: spacing.md, justifyContent: "space-between", paddingVertical: spacing.sm },
   settingText: { flex: 1, gap: spacing.xs },
-  settingTitle: { color: colors.text, fontSize: 16, fontWeight: "700" },
-  error: { color: colors.danger, fontSize: 14 }
+  settingTitle: { color: colors.text, fontSize: type.title, fontWeight: "700" }
 });

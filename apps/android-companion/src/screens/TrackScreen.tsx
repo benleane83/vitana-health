@@ -5,7 +5,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { filterAndSortSummary, type SummarySort } from "@local-fitness-advisor/shared";
 import { useMobileApi } from "../MobileApiProvider";
 import type { RootStackParamList } from "../navigationTypes";
-import { Card, Loading, Message, Screen } from "../ui/components";
+import { Button, Card, Loading, Message, Screen } from "../ui/components";
 import { colors, spacing } from "../ui/theme";
 
 export function TrackScreen() {
@@ -20,7 +20,12 @@ export function TrackScreen() {
   );
 
   if (trackLoading && !visible) return <Screen><Loading label="Loading Track…" /></Screen>;
-  if (!visible) return <Screen><Message title="Track unavailable" detail={error} /></Screen>;
+  if (!visible) return (
+    <Screen>
+      <Message title="Track unavailable" detail={error ?? "Reconnect to your paired PC and try again."} tone="warning" />
+      <Button disabled={trackLoading} onPress={() => { void refreshTrack(); }}>{trackLoading ? "Retrying…" : "Retry"}</Button>
+    </Screen>
+  );
 
   return (
     <Screen>
@@ -35,6 +40,7 @@ export function TrackScreen() {
           accessibilityLabel="Search metrics"
           onChangeText={setSearch}
           placeholder="Search metrics"
+          maxLength={100}
           style={styles.input}
           value={search}
         />
@@ -66,9 +72,9 @@ export function TrackScreen() {
               >
                 <Card>
                   <View style={styles.row}>
-                    <View>
-                      <Text style={styles.name}>{row.displayName}</Text>
-                      <Text style={styles.meta}>{row.counts.total} record(s)</Text>
+                    <View style={styles.rowText}>
+                      <Text numberOfLines={2} style={styles.name}>{row.displayName}</Text>
+                      <Text style={styles.meta}>{new Intl.NumberFormat().format(row.counts.total)} {row.counts.total === 1 ? "record" : "records"}</Text>
                     </View>
                     <Text style={styles.chevron}>›</Text>
                   </View>
@@ -100,8 +106,9 @@ const styles = StyleSheet.create({
   chipTextSelected: { color: "#fff" },
   category: { gap: spacing.sm },
   heading: { color: colors.text, fontSize: 18, fontWeight: "800" },
-  row: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
+  row: { alignItems: "center", flexDirection: "row", gap: spacing.sm, justifyContent: "space-between" },
+  rowText: { flex: 1, minWidth: 0 },
   name: { color: colors.text, fontSize: 16, fontWeight: "700" },
-  meta: { color: colors.muted, fontSize: 13 },
+  meta: { color: colors.muted, fontSize: 14, lineHeight: 18 },
   chevron: { color: colors.primary, fontSize: 28 }
 });
