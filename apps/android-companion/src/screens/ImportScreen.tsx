@@ -4,16 +4,18 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
 import { useKeepAwake } from "expo-keep-awake";
-import { ArrowLeft, ChevronRight, PencilLine, RefreshCw, ScanLine } from "lucide-react-native";
+import { ArrowLeft, CalendarDays, ChevronRight, PencilLine, RefreshCw, ScanLine } from "lucide-react-native";
 import { useNavigation } from "@react-navigation/native";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { Picker } from "@react-native-picker/picker";
 import {
   defaultMeasurementTypes,
   filterManualGroupTemplates,
   findKnownMeasurement,
   getPreferredUnit,
   manualGroupDefaults,
+  normalizeGroupLabel,
   type BodyCompositionDraft,
   type BodyCompositionDraftRow,
   type ManualObservationPayload
@@ -164,16 +166,27 @@ function ManualImport() {
   const groups = [...manualGroupDefaults.map((group) => group.label), ...templates.map((template) => template.label)];
   const [group, setGroup] = useState("Activity");
   const [date, setDate] = useState(new Date());
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [rows, setRows] = useState([{ id: "first", measurement: "steps", value: "", unit: "count" }]);
   const [status, setStatus] = useState("");
   const [statusTone, setStatusTone] = useState<"success" | "danger">("success");
   const [busy, setBusy] = useState(false);
   const client = useMemo(() => connection?.token ? createCompanionApi(connection) : undefined, [connection]);
+  const selectedDefault = manualGroupDefaults.find((entry) => entry.label === group);
+  const selectedTemplate = templates.find((entry) => entry.normalizedLabel === normalizeGroupLabel(group));
+  const allowedMeasurements = useMemo(() => {
+    if (selectedDefault) return measurements.filter((entry) => entry.category === selectedDefault.category);
+    if (selectedTemplate) {
+      const measurementCodes = new Set(selectedTemplate.measurements.map((entry) => entry.measurementCode));
+      return measurements.filter((entry) => measurementCodes.has(entry.code));
+    }
+    return measurements;
+  }, [measurements, selectedDefault, selectedTemplate]);
 
   function selectGroup(nextGroup: string) {
     setGroup(nextGroup);
     const defaultGroup = manualGroupDefaults.find((entry) => entry.label === nextGroup);
-    const template = templates.find((entry) => entry.label === nextGroup);
+    const template = templates.find((entry) => entry.normalizedLabel === normalizeGroupLabel(nextGroup));
     const nextRows = defaultGroup
       ? [{ id: `${Date.now()}`, measurement: defaultGroup.measurementCode, value: "", unit: getPreferredUnit(
           measurements.find((entry) => entry.code === defaultGroup.measurementCode)!,
@@ -186,6 +199,17 @@ function ManualImport() {
           unit: entry.unit
         })) ?? [];
     setRows(nextRows.length ? nextRows : [{ id: `${Date.now()}`, measurement: "", value: "", unit: "" }]);
+  }
+
+  function selectMeasurement(rowId: string, measurementCode: string) {
+    const measurement = measurements.find((entry) => entry.code === measurementCode);
+    setRows((current) => current.map((entry) => entry.id === rowId
+      ? {
+          ...entry,
+          measurement: measurementCode,
+          unit: measurement ? getPreferredUnit(measurement, bootstrap?.profile.units ?? "metric") : entry.unit
+        }
+      : entry));
   }
 
   async function submit() {
@@ -222,18 +246,53 @@ function ManualImport() {
         {groups.map((value) => <Chip disabled={busy} key={value} label={value} selected={group === value} onPress={() => selectGroup(value)} />)}
       </View>
       <Card>
-        <Text style={styles.label}>Observed date</Text>
-        <DateTimePicker value={date} mode="date" onChange={(_event, value) => value && setDate(value)} />
+        <Pressable
+          accessibilityHint="Opens the observed date picker"
+          accessibilityLabel={`Observed date: ${formatObservedDate(date)}`}
+          accessibilityRole="button"
+          disabled={busy}
+          onPress={() => setDatePickerOpen(true)}
+          style={({ pressed }) => [styles.dateField, pressed && styles.dateFieldPressed, busy && styles.dateFieldDisabled]}
+        >
+          <View>
+            <Text style={styles.label}>Observed date</Text>
+            <Text style={styles.dateValue}>{formatObservedDate(date)}</Text>
+          </View>
+          <CalendarDays color={colors.primary} size={21} />
+        </Pressable>
+        {datePickerOpen ? (
+          <View style={styles.datePicker}>
+            <DateTimePicker
+              value={date}
+              mode="date"
+              onChange={(_event, value) => {
+                if (value) setDate(value);
+                if (Platform.OS !== "ios") setDatePickerOpen(false);
+              }}
+            />
+            {Platform.OS === "ios" ? <Button secondary onPress={() => setDatePickerOpen(false)}>Done</Button> : null}
+          </View>
+        ) : null}
       </Card>
       {rows.map((row) => (
         <Card key={row.id}>
-          <TextInput
-            accessibilityLabel="Measurement"
-            placeholder="Search measurement"
-            style={styles.input}
-            value={row.measurement}
-            onChangeText={(measurement) => setRows((current) => current.map((entry) => entry.id === row.id ? { ...entry, measurement } : entry))}
-          />
+          <View style={styles.field}>
+            <Text style={styles.label}>Measurement</Text>
+            <View style={styles.pickerField}>
+              <Picker
+                accessibilityLabel="Measurement"
+                enabled={!busy}
+                onValueChange={(measurementCode) => selectMeasurement(row.id, String(measurementCode))}
+                selectedValue={row.measurement}
+                style={styles.picker}
+              >
+                <Picker.Item label="Choose a measurement" value="" />
+                {allowedMeasurements.map((measurement) => (
+                  <Picker.Item key={measurement.code} label={measurement.display} value={measurement.code} />
+                ))}
+              </Picker>
+            </View>
+          </View>
           <View style={styles.row}>
             <TextInput
               accessibilityLabel="Value"
@@ -493,6 +552,10 @@ function parseNumericInput(value: string): number {
   return value.trim() ? Number(value) : Number.NaN;
 }
 
+function formatObservedDate(date: Date): string {
+  return date.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+}
+
 function Chip({ label, selected, disabled = false, onPress }: { label: string; selected: boolean; disabled?: boolean; onPress: () => void }) {
   return <Pressable accessibilityRole="button" accessibilityState={{ disabled, selected }} disabled={disabled} onPress={onPress} style={[styles.chip, selected && styles.chipSelected, disabled && styles.chipDisabled]}><Text style={[styles.chipText, selected && styles.chipTextSelected]}>{label}</Text></Pressable>;
 }
@@ -526,6 +589,14 @@ const styles = StyleSheet.create({
   chipText: { color: colors.text, fontSize: type.label, fontWeight: "600" },
   chipTextSelected: { color: "#fff" },
   input: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.sm, borderWidth: 1, color: colors.text, minHeight: 46, paddingHorizontal: spacing.sm },
+  field: { gap: spacing.xs },
+  pickerField: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.sm, borderWidth: 1, height: 56, overflow: "hidden" },
+  picker: { color: colors.text, height: 56 },
+  dateField: { alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.sm, borderWidth: 1, flexDirection: "row", justifyContent: "space-between", minHeight: 58, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
+  dateFieldPressed: { backgroundColor: colors.surfaceMuted },
+  dateFieldDisabled: { opacity: 0.55 },
+  dateValue: { color: colors.text, fontSize: type.body, fontWeight: "700", marginTop: 2 },
+  datePicker: { alignItems: "stretch", gap: spacing.sm, marginTop: spacing.sm },
   row: { alignItems: "center", flexDirection: "row", gap: spacing.sm, justifyContent: "space-between" },
   flex: { flex: 1 },
   label: { color: colors.muted, fontSize: type.label, fontWeight: "700" },
