@@ -26,9 +26,10 @@ export interface UploadEditableRow {
   observedAt?: string;
   confidence: "high" | "medium" | "low";
   sourceText?: string;
+  sourceName?: string;
+  note?: string;
   included: boolean;
   generatedCode?: boolean;
   sourceRowIndex?: number;
   sourceColumn?: string;
 }
-

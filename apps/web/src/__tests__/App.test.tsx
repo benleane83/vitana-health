@@ -170,6 +170,17 @@ describe("App smoke", () => {
     expect(screen.getByRole("tab", { name: /^upload$/i })).toHaveAttribute("aria-selected", "true");
   });
 
+  it("keeps PDF and image report imports available in the unified Upload tab", () => {
+    globalThis.history.replaceState({}, "", "/import/upload");
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("Upload type"), {
+      target: { value: "body-composition" }
+    });
+    expect(screen.getByLabelText("Select body composition report").getAttribute("accept"))
+      .toContain("application/pdf");
+    expect(screen.getByRole("button", { name: "Preview report" })).toBeInTheDocument();
+  });
+
   it("supports keyboard navigation within Import and Insights tablists", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("tab", { name: /^import$/i }));

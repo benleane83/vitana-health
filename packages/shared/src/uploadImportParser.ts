@@ -135,10 +135,14 @@ export function mergeUploadColumnMapping(
       noteColumn: override.noteColumn ?? suggestion.noteColumn
     };
   }
+  const measurementColumns = { ...suggestion.measurementColumns, ...override.measurementColumns };
+  for (const ignoredColumn of override.ignoredColumns ?? []) {
+    delete measurementColumns[ignoredColumn];
+  }
   return {
     layout,
     dateColumn: override.dateColumn ?? suggestion.dateColumn,
-    measurementColumns: { ...suggestion.measurementColumns, ...override.measurementColumns },
+    measurementColumns,
     ignoredColumns: override.ignoredColumns ?? suggestion.ignoredColumns
   };
 }
@@ -236,6 +240,8 @@ function buildLongFormatRows(
       observedAt,
       confidence: measurementType ? "high" : "low",
       sourceText: mapping.labelColumn ? row[mapping.labelColumn] : undefined,
+      sourceName: mapping.sourceNameColumn ? row[mapping.sourceNameColumn]?.trim() : undefined,
+      note: mapping.noteColumn ? row[mapping.noteColumn]?.trim() : undefined,
       included: !generatedCode,
       generatedCode,
       sourceRowIndex: index
@@ -329,12 +335,14 @@ export function buildStructuredUploadImportFromDraft(
       unit,
       sourceId,
       observationGroupId: groupId,
-      note: `Upload: ${payload.fileName}`,
+      note: row.note?.trim() || `Upload: ${payload.fileName}`,
       sourceJson: {
         label: row.label,
         displayName: row.displayName,
         confidence: row.confidence,
         sourceColumn: row.sourceColumn,
+        sourceName: row.sourceName,
+        note: row.note,
         generatedCode: row.generatedCode === true
       }
     });

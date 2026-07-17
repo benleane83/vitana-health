@@ -1,5 +1,7 @@
 import { useRef, useState } from "react";
 import type {
+  BodyCompositionDraft,
+  BodyCompositionDraftRow,
   MeasurementType,
   UnitSystem,
   UploadColumnMappingOverride,
@@ -9,20 +11,52 @@ import type {
 import { api } from "../../api.js";
 import { ImportDraftReview } from "../../components/ImportDraftReview.js";
 import type { UploadEditableRow } from "../../types.js";
-import { groupMeasurementTypes, measurementCategoryLabels } from "../../utils.js";
+import {
+  groupMeasurementTypes,
+  isSupportedBodyCompMimeType,
+  measurementCategoryLabels,
+  readFileAsBase64,
+  todayIsoDate
+} from "../../utils.js";
 
 const MAX_STRUCTURED_UPLOAD_BYTES = 2_000_000; // 2 MB structured file (CSV/TSV) limit
+const MAX_REPORT_UPLOAD_BYTES = 15_000_000;
 
 type UploadFormatChoice = "auto" | "csv" | "tsv";
+type UploadKind = "structured" | "body-composition" | "blood-test";
 
-/**
- * Generic structured (CSV/TSV) upload flow: choose a file type/format hint,
- * select a file, preview a fresh draft, review and adjust the long/wide
- * column mapping, re-preview ("update") to apply mapping changes, review the
- * resulting rows, then save. PDF/image reports are not supported here — see
- * the mobile companion's body-composition/blood-test scan flow instead.
- */
-export function UploadImportFeature({
+export function UploadImportFeature(props: {
+  measurementTypes: MeasurementType[];
+  units: UnitSystem;
+  onImported: () => Promise<void>;
+  onNotice: (message: string) => void;
+}) {
+  const [uploadKind, setUploadKind] = useState<UploadKind>("structured");
+
+  return (
+    <>
+      <section className="panel labs-panel">
+        <label htmlFor="upload-kind">Upload type</label>
+        <select
+          id="upload-kind"
+          value={uploadKind}
+          onChange={(event) => setUploadKind(event.target.value as UploadKind)}
+        >
+          <option value="structured">CSV or TSV observations</option>
+          <option value="body-composition">Body composition report</option>
+          <option value="blood-test">Lab results report</option>
+        </select>
+      </section>
+      {uploadKind === "structured" ? (
+        <StructuredUploadFeature {...props} />
+      ) : (
+        <ReportUploadFeature key={uploadKind} reportKind={uploadKind} {...props} />
+      )}
+    </>
+  );
+}
+
+function StructuredUploadFeature({
   measurementTypes,
   units,
   onImported,
@@ -113,7 +147,7 @@ export function UploadImportFeature({
     }
     let approvedRows: UploadDraftRow[];
     try {
-      approvedRows = rows.map(toDraftRow);
+      approvedRows = rows.filter((row) => row.included).map(toDraftRow);
     } catch (error) {
       onNotice(error instanceof Error ? error.message : "Invalid parsed observation.");
       return;
@@ -150,7 +184,10 @@ export function UploadImportFeature({
         <select
           id="upload-format"
           value={format}
-          onChange={(event) => setFormat(event.target.value as UploadFormatChoice)}
+          onChange={(event) => {
+            setFormat(event.target.value as UploadFormatChoice);
+            resetDraftState();
+          }}
         >
           <option value="auto">Auto-detect (CSV or TSV)</option>
           <option value="csv">CSV (comma-separated)</option>
@@ -178,6 +215,21 @@ export function UploadImportFeature({
       {draft ? (
         <div className="upload-mapping">
           <p className="eyebrow">Column mapping ({draft.layout === "long" ? "long format" : "wide format"})</p>
+          <div className="upload-mapping-row">
+            <label htmlFor="upload-layout">Data layout</label>
+            <select
+              id="upload-layout"
+              value={draft.layout}
+              disabled={busy}
+              onChange={(event) => void runPreview({
+                ...mapping,
+                layout: event.target.value as "long" | "wide"
+              })}
+            >
+              <option value="long">Long (one measurement per row)</option>
+              <option value="wide">Wide (one measurement per column)</option>
+            </select>
+          </div>
           {draft.layout === "long" ? (
             <LongFormatMappingEditor
               columns={draft.columns}
@@ -226,6 +278,161 @@ export function UploadImportFeature({
   );
 }
 
+function ReportUploadFeature({
+  reportKind,
+  measurementTypes,
+  units,
+  onImported,
+  onNotice
+}: {
+  reportKind: Exclude<UploadKind, "structured">;
+  measurementTypes: MeasurementType[];
+  units: UnitSystem;
+  onImported: () => Promise<void>;
+  onNotice: (message: string) => void;
+}) {
+  const [file, setFile] = useState<File>();
+  const [busy, setBusy] = useState(false);
+  const [draft, setDraft] = useState<BodyCompositionDraft>();
+  const [rows, setRows] = useState<UploadEditableRow[]>([]);
+  const [reportDate, setReportDate] = useState(todayIsoDate());
+  const inputRef = useRef<HTMLInputElement>(null);
+  const reportLabel = reportKind === "blood-test" ? "lab results" : "body composition";
+
+  function selectFile(nextFile: File | undefined) {
+    setFile(nextFile);
+    setDraft(undefined);
+    setRows([]);
+  }
+
+  async function preview(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!file) {
+      onNotice("Select a PDF or image before preview.");
+      return;
+    }
+    const mimeType = file.type;
+    if (!isSupportedBodyCompMimeType(mimeType)) {
+      onNotice("Use a PDF, JPEG, or PNG report.");
+      return;
+    }
+    if (file.size === 0) {
+      onNotice("The selected report is empty.");
+      return;
+    }
+    if (file.size > MAX_REPORT_UPLOAD_BYTES) {
+      onNotice("The selected report is too large for local preview. Use a file smaller than 15 MB.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const contentBase64 = await readFileAsBase64(file);
+      const nextDraft = await (reportKind === "blood-test"
+        ? api.previewBloodTestReport
+        : api.previewBodyCompositionReport)({
+        fileName: file.name,
+        mimeType,
+        contentBase64
+      });
+      setDraft(nextDraft);
+      setRows(nextDraft.rows.map(toEditableRow));
+      setReportDate(nextDraft.reportDate?.slice(0, 10) ?? todayIsoDate());
+      onNotice(`${reportLabel} report parsed for review.`);
+    } catch (error) {
+      onNotice(error instanceof Error ? error.message : "Unexpected local error.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function commit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!draft) {
+      onNotice("Preview a report before saving.");
+      return;
+    }
+    let approvedRows: BodyCompositionDraftRow[];
+    try {
+      approvedRows = rows.filter((row) => row.included).map(toDraftRow);
+    } catch (error) {
+      onNotice(error instanceof Error ? error.message : "Invalid parsed observation.");
+      return;
+    }
+    if (approvedRows.length === 0) {
+      onNotice("Include at least one parsed row before saving.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await (reportKind === "blood-test"
+        ? api.commitBloodTestReport
+        : api.commitBodyCompositionReport)({
+        fileName: draft.fileName,
+        reportDate,
+        sourceText: draft.sourceText,
+        sourceChecksum: draft.checksum,
+        rows: approvedRows
+      });
+      await onImported();
+      onNotice(`Approved ${reportLabel} observations saved.`);
+      selectFile(undefined);
+      setReportDate(todayIsoDate());
+      if (inputRef.current) inputRef.current.value = "";
+    } catch (error) {
+      onNotice(error instanceof Error ? error.message : "Unexpected local error.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="panel labs-panel bodycomp-import">
+      <form className="labs-upload-form" onSubmit={preview}>
+        <label htmlFor="report-upload-file">Select {reportLabel} report</label>
+        <input
+          id="report-upload-file"
+          ref={inputRef}
+          type="file"
+          accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+          onChange={(event) => selectFile(event.target.files?.[0])}
+        />
+        <p className="empty">PDF, JPEG, or PNG. Parsed locally before save.</p>
+        <div className="labs-upload-actions">
+          <button disabled={busy || !file} type="submit">Preview report</button>
+        </div>
+      </form>
+
+      {draft ? (
+        <>
+          <div className="bodycomp-review-header">
+            <label htmlFor="report-upload-date">Report date</label>
+            <input
+              id="report-upload-date"
+              type="date"
+              value={reportDate}
+              onChange={(event) => setReportDate(event.target.value)}
+            />
+          </div>
+          <ImportDraftReview
+            fileName={draft.fileName}
+            diagnostics={draft.diagnostics}
+            rowCount={draft.rows.length}
+            truncated={false}
+            busy={busy}
+            rows={rows}
+            measurementTypes={measurementTypes}
+            units={units}
+            onRowChange={(id, patch) => setRows((current) =>
+              current.map((row) => row.id === id ? { ...row, ...patch } : row))}
+            onAddRow={() => setRows((current) => [...current, createEditableRow()])}
+            onCommit={commit}
+          />
+        </>
+      ) : null}
+    </section>
+  );
+}
+
 // ─── Long-format mapping editor ────────────────────────────────────────────────
 
 type LongFormatColumnKey =
@@ -265,7 +472,7 @@ function LongFormatMappingEditor({
           <select
             id={`upload-mapping-${key}`}
             value={mapping[key] ?? ""}
-            onChange={(event) => onChange({ ...mapping, layout: "long", [key]: event.target.value || undefined })}
+            onChange={(event) => onChange({ ...mapping, layout: "long", [key]: event.target.value })}
           >
             <option value="">None</option>
             {columns.map((column) => <option key={column} value={column}>{column}</option>)}
@@ -314,12 +521,20 @@ function WideFormatMappingEditor({
             onChange={(event) => {
               const selectedCode = event.target.value;
               const nextMeasurementColumns = { ...measurementColumns };
+              const nextIgnoredColumns = new Set(mapping.ignoredColumns ?? []);
               if (!selectedCode) {
                 delete nextMeasurementColumns[column];
+                nextIgnoredColumns.add(column);
               } else {
                 nextMeasurementColumns[column] = { measurementCode: selectedCode };
+                nextIgnoredColumns.delete(column);
               }
-              onChange({ ...mapping, layout: "wide", measurementColumns: nextMeasurementColumns });
+              onChange({
+                ...mapping,
+                layout: "wide",
+                measurementColumns: nextMeasurementColumns,
+                ignoredColumns: [...nextIgnoredColumns]
+              });
             }}
           >
             <option value="">Ignore this column</option>

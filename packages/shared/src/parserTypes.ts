@@ -136,6 +136,8 @@ export interface UploadDraftRow {
   observedAt?: string;
   confidence: UploadDraftRowConfidence;
   sourceText?: string;
+  sourceName?: string;
+  note?: string;
   included: boolean;
   generatedCode?: boolean;
   sourceRowIndex?: number;

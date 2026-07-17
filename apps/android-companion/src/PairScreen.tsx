@@ -198,7 +198,7 @@ export function PairScreen({
 
         <View style={styles.section}>
             <Text style={styles.instructions}>
-              Open the web app, go to Import → Fitness Tracker, and scan the QR code shown there.
+              Open the web app, go to Import → Sync, and scan the QR code shown there.
             </Text>
             {status === "idle" ? (
               cameraPermission === null ? (

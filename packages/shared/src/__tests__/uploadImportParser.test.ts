@@ -97,6 +97,40 @@ describe("parseStructuredUpload — wide format", () => {
     const stepsRows = draft.rows.filter((row) => row.measurementCode === "steps");
     expect(stepsRows).toHaveLength(2);
   });
+
+  it("allows a recognized column to be explicitly ignored", () => {
+    const draft = parseStructuredUpload("wide.csv", wideFormatCsv, {
+      mapping: {
+        layout: "wide",
+        ignoredColumns: ["weight_kg", "unknown_metric"]
+      }
+    });
+    expect(draft.mapping.measurementColumns?.["weight_kg"]).toBeUndefined();
+    expect(draft.rows).toHaveLength(0);
+  });
+});
+
+describe("parseStructuredUpload — mapping overrides", () => {
+  it("allows an automatically detected long-format column to be cleared", () => {
+    const draft = parseStructuredUpload("labs.csv", longFormatCsv, {
+      mapping: { layout: "long", dateColumn: "" }
+    });
+    expect(draft.mapping.dateColumn).toBe("");
+    expect(draft.rows.every((row) => row.observedAt === undefined)).toBe(true);
+  });
+
+  it("retains mapped source metadata in committed provenance", () => {
+    const draft = parseStructuredUpload(
+      "labs.csv",
+      "date,measurement,value,unit,source,note\n2026-07-01,glucose,95,mg/dL,Home meter,Fasting",
+      { mapping: { sourceNameColumn: "source", noteColumn: "note" } }
+    );
+    const imported = buildStructuredUploadImportFromDraft({ fileName: "labs.csv", rows: draft.rows });
+    expect(imported.observations[0].sourceJson).toMatchObject({
+      sourceName: "Home meter",
+      note: "Fasting"
+    });
+  });
 });
 
 // ─── row ceiling ────────────────────────────────────────────────────────────────

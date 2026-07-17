@@ -144,6 +144,8 @@ const uploadDraftRowSchema = z.object({
   observedAt: z.string().max(80).optional(),
   confidence: z.enum(["high", "medium", "low"]),
   sourceText: z.string().max(500).optional(),
+  sourceName: z.string().max(160).optional(),
+  note: z.string().max(2_000).optional(),
   included: z.boolean(),
   generatedCode: z.boolean().optional(),
   sourceRowIndex: z.number().int().nonnegative().optional(),
