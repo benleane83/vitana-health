@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { getDeviceId, saveConnection } from "./endpointStore";
 import { pinnedFetch } from "./pinnedFetch";
+import { Button, Card, Message } from "./ui/components";
+import { colors, radii, spacing, type } from "./ui/theme";
 
 type PairStatus = "idle" | "detected" | "requesting" | "waiting" | "approved" | "denied" | "error";
 
@@ -201,14 +203,14 @@ export function PairScreen({
             {status === "idle" ? (
               cameraPermission === null ? (
                 <View style={styles.permissionCard}>
-                  <ActivityIndicator color="#2563eb" />
+                  <ActivityIndicator color={colors.primary} />
                   <Text style={styles.permissionText}>Checking camera access…</Text>
                 </View>
               ) : cameraPermission.granted ? (
                 <View style={styles.cameraContainer}>
                   {!cameraReady && !cameraError ? (
                     <View style={styles.cameraLoading}>
-                      <ActivityIndicator color="#ffffff" />
+                      <ActivityIndicator color={colors.onAccent} />
                       <Text style={styles.cameraLoadingText}>Starting camera…</Text>
                     </View>
                   ) : null}
@@ -228,44 +230,34 @@ export function PairScreen({
                   {cameraError ? (
                     <View style={styles.cameraError}>
                       <Text style={styles.cameraErrorText}>{cameraError}</Text>
-                      <Pressable style={styles.cameraRetryButton} onPress={retryCurrentMode}>
-                        <Text style={styles.cameraRetryText}>Restart Camera</Text>
-                      </Pressable>
+                      <Button secondary onPress={retryCurrentMode}>Restart camera</Button>
                     </View>
                   ) : null}
                 </View>
               ) : (
-                <View style={styles.permissionCard}>
+                <Card>
                   <Text style={styles.permissionText}>Camera access is needed to scan the QR code.</Text>
                   {cameraPermission.canAskAgain ? (
-                    <Pressable style={styles.button} onPress={() => { void handleCameraPermissionRequest(); }}>
-                      <Text style={styles.buttonText}>Grant Camera Permission</Text>
-                    </Pressable>
+                    <Button onPress={() => { void handleCameraPermissionRequest(); }}>Grant camera permission</Button>
                   ) : (
-                    <Pressable style={styles.button} onPress={() => { void Linking.openSettings(); }}>
-                      <Text style={styles.buttonText}>Open App Settings</Text>
-                    </Pressable>
+                    <Button onPress={() => { void Linking.openSettings(); }}>Open app settings</Button>
                   )}
-                </View>
+                </Card>
               )
             ) : null}
         </View>
 
         {message ? (
-          <View style={[styles.messageCard, isError ? styles.messageCardError : undefined]}>
-            <Text style={styles.messageText}>{message}</Text>
-          </View>
+          <Message title={isError ? "Could not pair" : status === "approved" ? "Phone paired" : "Pairing status"} detail={message} tone={isError ? "danger" : status === "approved" ? "success" : "info"} />
         ) : null}
 
         {status === "detected" ? (
-          <Pressable style={styles.button} onPress={() => { void handleConnect(); }}>
-            <Text style={styles.buttonText}>Connect &amp; Pair</Text>
-          </Pressable>
+          <Button onPress={() => { void handleConnect(); }}>Connect and pair</Button>
         ) : null}
 
         {status === "waiting" ? (
           <View style={styles.waitingCard}>
-            <ActivityIndicator color="#2563eb" />
+            <ActivityIndicator color={colors.primary} />
             <Text style={styles.waitingText}>
               Approve the pairing request in the web app on your PC.
             </Text>
@@ -273,9 +265,7 @@ export function PairScreen({
         ) : null}
 
         {isError ? (
-          <Pressable style={styles.button} onPress={retryCurrentMode}>
-            <Text style={styles.buttonText}>Try Again</Text>
-          </Pressable>
+          <Button onPress={retryCurrentMode}>Try again</Button>
         ) : null}
       </ScrollView>
     </SafeAreaView>
@@ -283,88 +273,37 @@ export function PairScreen({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#f5f7fa" },
-  container: { gap: 16, padding: 20 },
+  root: { flex: 1, backgroundColor: colors.background },
+  container: { gap: spacing.md, padding: spacing.lg },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  title: { color: "#111827", fontSize: 22, fontWeight: "700" },
+  title: { color: colors.textStrong, fontSize: type.heading, fontWeight: "800" },
   cancelButton: { paddingHorizontal: 12, paddingVertical: 6 },
-  cancelText: { color: "#2563eb", fontSize: 15, fontWeight: "600" },
-  subtitle: { color: "#4b5563", fontSize: 14 },
-  tabs: { flexDirection: "row", gap: 8 },
-  tab: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: "#e5e7eb"
-  },
-  tabActive: { backgroundColor: "#2563eb" },
-  tabText: { color: "#374151", fontWeight: "600", fontSize: 14 },
-  tabTextActive: { color: "#ffffff" },
-  section: { gap: 12 },
-  instructions: { color: "#4b5563", fontSize: 14, lineHeight: 20 },
-  cameraContainer: { height: 280, borderRadius: 12, overflow: "hidden", backgroundColor: "#000" },
+  cancelText: { color: colors.primary, fontSize: type.body, fontWeight: "700" },
+  subtitle: { color: colors.muted, fontSize: type.body, lineHeight: 21 },
+  section: { gap: spacing.md },
+  instructions: { color: colors.muted, fontSize: type.body, lineHeight: 21 },
+  cameraContainer: { height: 280, borderRadius: radii.md, overflow: "hidden", backgroundColor: colors.textStrong },
   camera: { flex: 1 },
-  cameraLoading: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "center", gap: 10, zIndex: 1 },
-  cameraLoadingText: { color: "#ffffff", fontSize: 14 },
-  cameraError: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "center", gap: 12, padding: 20, backgroundColor: "#111827" },
-  cameraErrorText: { color: "#ffffff", fontSize: 14, textAlign: "center" },
-  cameraRetryButton: { borderColor: "#ffffff", borderRadius: 8, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 8 },
-  cameraRetryText: { color: "#ffffff", fontSize: 14, fontWeight: "600" },
+  cameraLoading: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "center", gap: spacing.sm, zIndex: 1 },
+  cameraLoadingText: { color: colors.onAccent, fontSize: type.body },
+  cameraError: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.lg, backgroundColor: colors.textStrong },
+  cameraErrorText: { color: colors.onAccent, fontSize: type.body, textAlign: "center" },
   permissionCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 10,
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
-    padding: 16,
-    gap: 12
+    borderColor: colors.border,
+    padding: spacing.md,
+    gap: spacing.md
   },
-  permissionText: { color: "#374151", fontSize: 14 },
-  button: {
-    alignItems: "center",
-    backgroundColor: "#2563eb",
-    borderRadius: 10,
-    justifyContent: "center",
-    minHeight: 48,
-    paddingHorizontal: 14
-  },
-  buttonText: { color: "#ffffff", fontSize: 15, fontWeight: "600" },
-  discoveringRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  discoveringText: { color: "#4b5563", fontSize: 14 },
-  serviceList: { gap: 8 },
-  serviceListLabel: { color: "#6b7280", fontSize: 13, fontWeight: "600" },
-  serviceItem: {
-    backgroundColor: "#ffffff",
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    padding: 14,
-    gap: 4
-  },
-  serviceName: { color: "#111827", fontSize: 15, fontWeight: "600" },
-  serviceAddr: { color: "#6b7280", fontSize: 13 },
-  hint: { color: "#6b7280", fontSize: 13 },
-  messageCard: {
-    backgroundColor: "#f0fdf4",
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#bbf7d0",
-    padding: 14
-  },
-  messageCardError: {
-    backgroundColor: "#fef2f2",
-    borderColor: "#fecaca"
-  },
-  messageText: { color: "#111827", fontSize: 14 },
+  permissionText: { color: colors.text, fontSize: type.body, lineHeight: 21 },
   waitingCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    backgroundColor: "#eff6ff",
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#bfdbfe",
-    padding: 14
+    gap: spacing.md,
+    backgroundColor: colors.infoMuted,
+    borderRadius: radii.md,
+    padding: spacing.md
   },
-  waitingText: { color: "#1e40af", fontSize: 14, flex: 1 }
+  waitingText: { color: colors.info, fontSize: type.body, flex: 1, lineHeight: 21 }
 });

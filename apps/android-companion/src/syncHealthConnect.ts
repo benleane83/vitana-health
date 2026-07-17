@@ -305,7 +305,7 @@ export async function syncHealthConnect(
   publicKeyHash: string | null | undefined,
   options: SyncOptions
 ): Promise<SyncResult> {
-  if (Platform.OS !== "android") throw new Error("This app only supports Android Health Connect.");
+  if (Platform.OS !== "android") throw new Error("Sync is currently available on Android only.");
   if (!__DEV__ && !endpointUrl.startsWith("https://")) throw new Error("Production sync requires an HTTPS endpoint.");
   if (!companionToken) throw new Error("A paired device token is required. Pair this device before syncing.");
 
@@ -313,23 +313,23 @@ export async function syncHealthConnect(
   if (sdkStatus !== SdkAvailabilityStatus.SDK_AVAILABLE) {
     throw new Error(
       sdkStatus === SdkAvailabilityStatus.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED
-        ? "Health Connect needs an update from the Play Store before syncing."
-        : "Health Connect is unavailable on this device."
+        ? "Your Android health data service needs an update from the Play Store before syncing."
+        : "Health data sync is unavailable on this device."
     );
   }
   try {
     if (!(await initialize())) throw new Error("returned false");
   } catch (error) {
-    throw new Error(`Health Connect initialization error: ${error instanceof Error ? error.message : "Unknown error"}`);
+    throw new Error(`Could not start Sync: ${error instanceof Error ? error.message : "Unknown error"}`);
   }
 
   const selectedCategories = HEALTH_CONNECT_CATEGORIES.filter((category) => options.categories?.includes(category) ?? false);
-  if (selectedCategories.length === 0) throw new Error("Select at least one Health Connect data category to sync.");
+  if (selectedCategories.length === 0) throw new Error("Select at least one data category to sync.");
   const selectedDescriptors = HEALTH_CONNECT_DESCRIPTORS.filter((descriptor) => selectedCategories.includes(descriptor.category));
   const availableDescriptors = selectedDescriptors.filter((descriptor) => descriptor.available);
   const requestedPermissions = availableDescriptors.map((descriptor) => descriptor.permission);
   if (requestedPermissions.length === 0) {
-    throw new Error("Selected categories are not supported by the installed Health Connect SDK version.");
+    throw new Error("Selected categories are not supported by the installed health data service.");
   }
   const grantedPermissions = await requestPermission(requestedPermissions);
   const grantedDescriptors = availableDescriptors.filter((descriptor) =>
@@ -337,7 +337,7 @@ export async function syncHealthConnect(
   );
   const grantedCategories: HealthConnectCategory[] = grantedDescriptors.map((descriptor) => descriptor.category);
   if (grantedCategories.length === 0) {
-    throw new Error("No selected Health Connect permissions were granted. Choose at least one category in Health Connect to sync.");
+    throw new Error("No selected health data permissions were granted. Allow at least one category to sync.");
   }
   const omittedCategories = selectedCategories.filter((category) => !grantedCategories.includes(category));
 
@@ -374,7 +374,7 @@ export async function syncHealthConnect(
     syncCursor: rangeEnd.toISOString(),
     canAdvanceCursor: omittedCategories.length === 0,
     details: [
-      `Synced ${importedRows} Health Connect records from ${rangeStart.toLocaleDateString()} to ${rangeEnd.toLocaleDateString()} in ${uploadResults.length} upload${uploadResults.length === 1 ? "" : "s"}.`,
+      `Synced ${importedRows} records from ${rangeStart.toLocaleDateString()} to ${rangeEnd.toLocaleDateString()} in ${uploadResults.length} upload${uploadResults.length === 1 ? "" : "s"}.`,
       omittedCategories.length ? `Not synced (permission not granted): ${omittedCategories.join(", ")}.` : "",
       `Store counts: observations ${lastResponse?.counts?.observations ?? "n/a"}, samples ${lastResponse?.counts?.timeSeriesSamples ?? "n/a"}, activities ${lastResponse?.counts?.activitySessions ?? "n/a"}.`
     ].filter(Boolean).join("\n")

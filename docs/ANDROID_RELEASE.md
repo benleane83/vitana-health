@@ -53,6 +53,16 @@ Before uploading, confirm the EAS build details show the expected commit, produc
 
 Upload the AAB to the Play Console internal testing track first. Promote the exact tested artifact through closed testing and then production; do not rebuild between successful test-track validation and promotion.
 
+## Reviewer demo mode
+
+Reviewers can inspect the Dashboard and Track experience without installing or pairing the PC application:
+
+1. Open **Connection** from the top-right of any main tab.
+2. Turn on **Demo mode**.
+3. Browse the read-only sample profile, dashboard metrics, Track categories, trends, history, and pagination.
+
+Demo mode does not contact a local PC, alter pairing credentials, or write sample records. Import, report scanning, manual entry, and Health Connect sync remain unavailable because they require a paired PC or native health provider. Turning Demo mode off restores the existing paired connection, if present.
+
 ## Release checklist
 
 - [ ] `apps/android-companion/app.config.js` has the intended new `expo.version` and the commit is merged/tagged.
@@ -64,6 +74,7 @@ Upload the AAB to the Play Console internal testing track first. Promote the exa
 - [ ] The exact AAB is tested on a physical Android device with the phone assigned to a profile different from the PC active profile: Dashboard refresh, Track search/detail/pagination, manual import, both camera/gallery scan types and row exclusion, HTTPS certificate-pin validation, Health Connect selected-category/cursor sync, revoke/disconnect, PC restart, maintenance, and offline recovery.
 - [ ] Report drafts clear on backgrounding, cancellation, commit, and disconnect; small and large accessibility font scales remain usable.
 - [ ] AsyncStorage and SecureStore inspection confirms that report images, OCR text, manual-entry payloads, Dashboard responses, and Track responses are not persisted.
+- [ ] Reviewer Demo mode works without network access, exposes Dashboard and Track sample data, blocks all import actions, and preserves any existing paired connection when turned off.
 - [ ] A production-compatible OTA update is tested on the production channel only, or the release notes state that no OTA update is included.
 - [ ] Play Console metadata, content rating, Data Safety, and Health apps/Health Connect declarations are completed from `docs/PLAY_DATA_SAFETY.md` and `docs/HEALTH_CONNECT_DECLARATION.md`; they match `docs/HEALTH_CONNECT_DATA_INVENTORY.md` and the released binary.
 - [ ] The public privacy policy at `https://github.com/benleane83/local-fitness-advisor/blob/main/docs/PRIVACY_POLICY.md` is linked from the companion and matches `docs/HEALTH_CONNECT_DATA_INVENTORY.md`.

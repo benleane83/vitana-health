@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
-import { colors, controlHeight, spacing } from "./theme";
+import { colors, controlHeight, radii, spacing, type } from "./theme";
 
 export function Screen({ children }: { children: ReactNode }) {
   return <View style={styles.screen}>{children}</View>;
@@ -24,9 +24,15 @@ export function Button({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
-      style={[styles.button, secondary && styles.secondary, disabled && styles.disabled]}
+      style={({ pressed }) => [
+        styles.button,
+        secondary && styles.secondary,
+        pressed && styles.pressed,
+        disabled && styles.disabled
+      ]}
     >
       <Text style={[styles.buttonText, secondary && styles.secondaryText]}>{children}</Text>
     </Pressable>
@@ -34,11 +40,28 @@ export function Button({
 }
 
 export function Loading({ label = "Loading…" }: { label?: string }) {
-  return <View style={styles.center}><ActivityIndicator color={colors.primary} /><Text style={styles.muted}>{label}</Text></View>;
+  return <View accessibilityLiveRegion="polite" accessibilityRole="progressbar" style={styles.center}><ActivityIndicator color={colors.primary} /><Text style={styles.muted}>{label}</Text></View>;
 }
 
-export function Message({ title, detail }: { title: string; detail?: string }) {
-  return <Card><Text style={styles.heading}>{title}</Text>{detail ? <Text style={styles.muted}>{detail}</Text> : null}</Card>;
+export function Message({
+  title,
+  detail,
+  tone = "neutral"
+}: {
+  title: string;
+  detail?: string;
+  tone?: "neutral" | "info" | "success" | "warning" | "danger";
+}) {
+  return (
+    <View
+      accessibilityLiveRegion={tone === "danger" ? "assertive" : "polite"}
+      accessibilityRole={tone === "danger" ? "alert" : undefined}
+      style={[styles.message, styles[`${tone}Message`]]}
+    >
+      <Text style={styles.heading}>{title}</Text>
+      {detail ? <Text style={styles.muted}>{detail}</Text> : null}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -46,7 +69,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
-    borderRadius: 12,
+    borderRadius: radii.md,
     borderWidth: 1,
     gap: spacing.sm,
     padding: spacing.md
@@ -54,16 +77,23 @@ const styles = StyleSheet.create({
   button: {
     alignItems: "center",
     backgroundColor: colors.primary,
-    borderRadius: 10,
+    borderRadius: radii.md,
     justifyContent: "center",
     minHeight: controlHeight,
     paddingHorizontal: spacing.md
   },
   secondary: { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 },
+  pressed: { opacity: 0.82 },
   disabled: { opacity: 0.5 },
-  buttonText: { color: "#ffffff", fontSize: 15, fontWeight: "700" },
+  buttonText: { color: colors.onAccent, fontSize: 15, fontWeight: "700" },
   secondaryText: { color: colors.text },
   center: { alignItems: "center", gap: spacing.sm, justifyContent: "center", padding: spacing.xl },
-  heading: { color: colors.text, fontSize: 17, fontWeight: "700" },
-  muted: { color: colors.muted, fontSize: 14, lineHeight: 20 }
+  heading: { color: colors.textStrong, fontSize: type.title, fontWeight: "700" },
+  muted: { color: colors.muted, fontSize: type.body, lineHeight: 20 },
+  message: { borderRadius: radii.md, gap: spacing.xs, padding: spacing.md },
+  neutralMessage: { backgroundColor: colors.surfaceMuted },
+  infoMessage: { backgroundColor: colors.infoMuted },
+  successMessage: { backgroundColor: colors.successMuted },
+  warningMessage: { backgroundColor: colors.warningMuted },
+  dangerMessage: { backgroundColor: colors.dangerMuted }
 });

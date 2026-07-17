@@ -1,19 +1,27 @@
 import { useCallback } from "react";
 import { RefreshControl, ScrollView, StyleSheet, Text, View, Pressable } from "react-native";
-import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { CompositeNavigationProp, useFocusEffect, useNavigation } from "@react-navigation/native";
+import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { ChevronRight, Database, MonitorSmartphone, UserRound } from "lucide-react-native";
 import { useMobileApi } from "../MobileApiProvider";
-import type { RootStackParamList } from "../navigationTypes";
+import type { RootStackParamList, TabParamList } from "../navigationTypes";
 import { Button, Card, Loading, Message, Screen } from "../ui/components";
-import { colors, spacing } from "../ui/theme";
+import { colors, radii, spacing, type } from "../ui/theme";
+
+type DashboardNavigation = CompositeNavigationProp<
+  BottomTabNavigationProp<TabParamList, "Dashboard">,
+  NativeStackNavigationProp<RootStackParamList>
+>;
 
 export function DashboardScreen() {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const navigation = useNavigation<DashboardNavigation>();
   const {
     analytics,
     bootstrap,
     connectionState,
     dashboardLoading,
+    demoMode,
     error,
     refreshDashboard
   } = useMobileApi();
@@ -45,71 +53,145 @@ export function DashboardScreen() {
   }
 
   const counts = analytics.counts;
+  const visibleMetrics = analytics.latestMetrics.slice(0, 4);
+  const connectionLabel = demoMode
+    ? "Sample data · read only"
+    : connectionState === "online"
+      ? "Connected · refreshed just now"
+      : `${connectionState.replaceAll("-", " ")} · showing current session data`;
   return (
     <Screen>
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={dashboardLoading} onRefresh={() => { void refreshDashboard(); }} />}
       >
-        <View>
-          <Text style={styles.eyebrow}>Assigned profile</Text>
-          <Text style={styles.title}>{bootstrap.profile.displayName}</Text>
-          <Text style={connectionState === "online" ? styles.online : styles.offline}>
-            ● {connectionState === "online" ? "Online · refreshed just now" : `${connectionState.replaceAll("-", " ")} · showing in-memory data`}
-          </Text>
+        <View style={styles.contextPanel}>
+          <View style={styles.profileRow}>
+            <View style={styles.profileIcon}><UserRound color={colors.primary} size={21} /></View>
+            <View style={styles.profileText}>
+              <Text style={styles.contextLabel}>Active profile</Text>
+              <Text numberOfLines={2} style={styles.title}>{bootstrap.profile.displayName}</Text>
+            </View>
+          </View>
+          <View style={styles.connectionRow}>
+            <MonitorSmartphone
+              color={demoMode || connectionState === "online" ? colors.success : colors.warning}
+              size={17}
+            />
+            <Text style={demoMode || connectionState === "online" ? styles.online : styles.offline}>
+              {connectionLabel}
+            </Text>
+          </View>
         </View>
-        <View style={styles.grid}>
-          {[
-            ["Imports", counts.imports],
-            ["Observations", counts.observations],
-            ["Samples", counts.samples],
-            ["Activities", counts.activities]
-          ].map(([label, value]) => (
-            <Card key={String(label)}>
-              <Text style={styles.count}>{value}</Text>
-              <Text style={styles.label}>{label}</Text>
-            </Card>
-          ))}
-        </View>
-        <Text style={styles.sectionTitle}>Latest metrics</Text>
-        {analytics.latestMetrics.length === 0 ? (
-          <Message title="No metrics yet" detail="Use Import to add a report, manual entry, or Health Connect data." />
-        ) : analytics.latestMetrics.map((metric) => (
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionHeadingText}>
+            <Text style={styles.sectionTitle}>Latest data</Text>
+            <Text style={styles.sectionCopy}>Most recent readings for this profile</Text>
+          </View>
           <Pressable
             accessibilityRole="button"
-            key={metric.code}
-            onPress={() => navigation.navigate("TrackDetail", {
-              measurementCode: metric.code,
-              displayName: metric.label
-            })}
+            onPress={() => navigation.navigate("Track")}
+            style={styles.viewAll}
           >
-            <Card>
-              <View style={styles.metricRow}>
-                <View>
-                  <Text style={styles.metricName}>{metric.label}</Text>
-                  <Text style={styles.label}>{new Date(metric.observedAt).toLocaleDateString()}</Text>
-                </View>
-                <Text style={styles.metricValue}>{metric.value} {metric.unit}</Text>
-              </View>
-            </Card>
+            <Text style={styles.viewAllText}>View all</Text>
+            <ChevronRight color={colors.primary} size={17} />
           </Pressable>
-        ))}
+        </View>
+        {analytics.latestMetrics.length === 0 ? (
+          <Message title="No readings yet" detail="Use Import to sync, scan a report, or enter a reading." />
+        ) : (
+          <View style={styles.metricGrid}>
+            {visibleMetrics.map((metric) => {
+              const observed = formatObservedDate(metric.observedAt);
+              return (
+                <Pressable
+                  accessibilityLabel={`${metric.label}, ${metric.value} ${metric.unit}, ${observed}`}
+                  accessibilityRole="button"
+                  key={metric.code}
+                  onPress={() => navigation.navigate("TrackDetail", {
+                    measurementCode: metric.code,
+                    displayName: metric.label
+                  })}
+                  style={({ pressed }) => [styles.metricTile, pressed && styles.pressed]}
+                >
+                  <Text numberOfLines={2} style={styles.metricName}>{metric.label}</Text>
+                  <Text numberOfLines={1} adjustsFontSizeToFit style={styles.metricValue}>
+                    {metric.value} <Text style={styles.metricUnit}>{metric.unit}</Text>
+                  </Text>
+                  <Text style={styles.metricDate}>{observed}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+        <View style={styles.recordsSection}>
+          <View style={styles.recordsTitleRow}>
+            <Database color={colors.muted} size={17} />
+            <Text style={styles.recordsTitle}>Stored records</Text>
+          </View>
+          <View accessibilityLabel="Stored health data totals" style={styles.countRow}>
+            {[
+              ["Imports", counts.imports],
+              ["Observations", counts.observations],
+              ["Samples", counts.samples],
+              ["Activities", counts.activities]
+            ].map(([label, value]) => (
+              <View key={String(label)} style={styles.countItem}>
+                <Text adjustsFontSizeToFit numberOfLines={1} style={styles.count}>{formatCount(Number(value))}</Text>
+                <Text numberOfLines={2} style={styles.label}>{label}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
       </ScrollView>
     </Screen>
   );
 }
 
+function formatObservedDate(value: string): string {
+  const observed = new Date(value);
+  if (!Number.isFinite(observed.getTime())) return "Date unavailable";
+  const today = new Date();
+  if (observed.toDateString() === today.toDateString()) {
+    return `Today, ${observed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+  }
+  return observed.toLocaleDateString([], { day: "numeric", month: "short" });
+}
+
+function formatCount(value: number): string {
+  if (!Number.isFinite(value)) return "—";
+  return new Intl.NumberFormat(undefined, { notation: value >= 100_000 ? "compact" : "standard" }).format(value);
+}
+
 const styles = StyleSheet.create({
-  content: { gap: spacing.md, paddingBottom: spacing.xl },
-  eyebrow: { color: colors.muted, fontSize: 12, fontWeight: "700", textTransform: "uppercase" },
-  title: { color: colors.text, fontSize: 26, fontWeight: "800" },
-  online: { color: colors.success, marginTop: spacing.xs },
-  offline: { color: colors.warning, marginTop: spacing.xs, textTransform: "capitalize" },
-  grid: { gap: spacing.sm },
-  count: { color: colors.text, fontSize: 24, fontWeight: "800" },
-  label: { color: colors.muted, fontSize: 13 },
-  sectionTitle: { color: colors.text, fontSize: 19, fontWeight: "800" },
-  metricRow: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
-  metricName: { color: colors.text, fontSize: 16, fontWeight: "700" },
-  metricValue: { color: colors.primary, fontSize: 16, fontWeight: "800" }
+  content: { gap: spacing.lg, paddingBottom: spacing.xl },
+  contextPanel: { backgroundColor: colors.primaryMuted, borderRadius: radii.lg, gap: spacing.md, padding: spacing.md },
+  profileRow: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
+  profileIcon: { alignItems: "center", backgroundColor: colors.surface, borderRadius: radii.pill, height: 42, justifyContent: "center", width: 42 },
+  profileText: { flex: 1, minWidth: 0 },
+  contextLabel: { color: colors.muted, fontSize: type.label, fontWeight: "700" },
+  title: { color: colors.textStrong, fontSize: type.display, fontWeight: "800" },
+  connectionRow: { alignItems: "center", borderTopColor: colors.borderStrong, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: "row", gap: spacing.sm, paddingTop: spacing.sm },
+  online: { color: colors.success, flex: 1, fontSize: type.body, fontWeight: "600" },
+  offline: { color: colors.warning, flex: 1, fontSize: type.body, fontWeight: "600", textTransform: "capitalize" },
+  sectionHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
+  sectionHeadingText: { flex: 1, minWidth: 0 },
+  sectionTitle: { color: colors.textStrong, fontSize: type.heading, fontWeight: "800" },
+  sectionCopy: { color: colors.muted, fontSize: type.label, marginTop: 2 },
+  viewAll: { alignItems: "center", flexDirection: "row", flexShrink: 0, minHeight: 44, paddingLeft: spacing.sm },
+  viewAllText: { color: colors.primary, fontSize: type.body, fontWeight: "700" },
+  metricGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  metricTile: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, flexBasis: "47%", flexGrow: 1, gap: spacing.xs, minHeight: 128, padding: spacing.md },
+  pressed: { opacity: 0.8 },
+  metricName: { color: colors.muted, fontSize: type.label, fontWeight: "700", minHeight: 30 },
+  metricValue: { color: colors.primaryStrong, fontSize: 22, fontWeight: "800" },
+  metricUnit: { color: colors.muted, fontSize: type.label, fontWeight: "700" },
+  metricDate: { color: colors.muted, fontSize: type.label },
+  recordsSection: { gap: spacing.sm },
+  recordsTitleRow: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
+  recordsTitle: { color: colors.text, fontSize: type.title, fontWeight: "700" },
+  countRow: { backgroundColor: colors.surfaceMuted, borderRadius: radii.md, flexDirection: "row", paddingVertical: spacing.md },
+  countItem: { alignItems: "center", flex: 1, gap: spacing.xs, minWidth: 0, paddingHorizontal: spacing.xs },
+  count: { color: colors.textStrong, fontSize: type.title, fontWeight: "800" },
+  label: { color: colors.muted, fontSize: type.label, lineHeight: 18, textAlign: "center" }
 });
