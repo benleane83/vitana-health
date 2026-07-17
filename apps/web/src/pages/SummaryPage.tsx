@@ -312,7 +312,6 @@ export function ObservationTypeDetailPage({
           {detail?.measurement.description ? (
             <p className="summary-detail-description">{detail.measurement.description}</p>
           ) : null}
-          <p className="summary-detail-code">{detail?.measurement.code ?? "Loading…"}</p>
         </div>
       </div>
 
@@ -364,7 +363,7 @@ export function ObservationTypeDetailPage({
             <p className="empty" role="status">No entries are currently stored for this measurement type.</p>
           ) : (
             <>
-              {chartBusy || chartError || chartSeries?.points.length ? (
+              {chartBusy || chartError || chartSeries?.points?.length ? (
                 <div className="summary-detail-chart-panel">
                   <DetailTrendChart
                     detail={detail}

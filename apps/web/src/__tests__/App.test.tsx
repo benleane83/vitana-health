@@ -106,6 +106,7 @@ describe("App smoke", () => {
       "A number calculated from your height and weight, used as a simple screening measure for weight status."
     );
     expect(heading.compareDocumentPosition(description) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByText("bmi")).not.toBeInTheDocument();
   });
 
   it("renders the accessible application shell and primary navigation", () => {

@@ -1089,6 +1089,10 @@ h3 {
   margin-bottom: var(--space-6);
 }
 
+.summary-detail-header h1 {
+  max-width: none;
+}
+
 .summary-back-link {
   border: 0;
   padding: 0;
@@ -1099,15 +1103,9 @@ h3 {
   margin-bottom: var(--space-2);
 }
 
-.summary-detail-code {
-  color: var(--muted);
-  margin-top: var(--space-2);
-}
-
 .summary-detail-description {
   color: var(--muted);
   margin-top: var(--space-2);
-  max-width: 70ch;
 }
 
 .summary-detail-hint,

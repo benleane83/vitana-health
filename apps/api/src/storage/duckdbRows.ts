@@ -193,6 +193,7 @@ export function withStoredJson(
 }
 
 export function measurementTypeFromRow(row: DuckDbRow): MeasurementType {
+  const properties = optionalJson<Record<string, unknown>>(row.custom_properties) ?? {};
   return {
     code: String(row.code),
     display: String(row.display),
@@ -200,7 +201,8 @@ export function measurementTypeFromRow(row: DuckDbRow): MeasurementType {
     kind: String(row.kind) as MeasurementType["kind"],
     canonicalUnit: String(row.canonical_unit),
     aliases: requiredJson<string[]>(row.aliases),
-    ...(optionalJson<Record<string, unknown>>(row.custom_properties) ?? {}),
+    ...properties,
+    description: String(properties.description ?? ""),
     aggregation: String(row.aggregation) as MeasurementType["aggregation"]
   };
 }
