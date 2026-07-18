@@ -2369,6 +2369,62 @@ label {
   max-width: 960px;
 }
 
+.pairing-requests {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.pairing-requests > .eyebrow {
+  margin: 0;
+}
+
+.pairing-request-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: var(--space-3) var(--space-4);
+}
+
+.pairing-request-info {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-1);
+}
+
+.pairing-request-info strong {
+  color: var(--text-strong);
+}
+
+.pairing-request-info .muted {
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.pairing-request-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.pairing-device-revoke {
+  border-color: var(--danger);
+  background: transparent;
+  color: var(--danger);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .pairing-device-revoke:hover:not(:disabled) {
+    border-color: var(--danger);
+    background: var(--danger);
+    color: var(--ink-on-accent);
+  }
+}
+
 .import-guidance-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -3140,6 +3196,15 @@ button.stat {
   .profile-manager-row {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .pairing-request-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pairing-request-actions {
+    justify-content: flex-start;
   }
 
   .profile-manager-actions button {

@@ -24,7 +24,6 @@ module.exports = {
         "android.permission.health.READ_BLOOD_PRESSURE",
         "android.permission.health.READ_BODY_TEMPERATURE",
         "android.permission.health.READ_HEIGHT",
-        "android.permission.health.READ_SKIN_TEMPERATURE",
         "android.permission.health.READ_VO2_MAX",
         "android.permission.health.READ_WEIGHT",
         "android.permission.health.READ_DISTANCE",

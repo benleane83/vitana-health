@@ -2,7 +2,7 @@
  * Formatting utilities extracted from App.tsx.
  */
 
-import type { MeasurementType } from "@local-fitness-advisor/shared";
+import { isUtcMidnightTimestamp, type MeasurementType } from "@local-fitness-advisor/shared";
 
 const timestampFormatter = new Intl.DateTimeFormat(undefined, {
   year: "numeric",
@@ -12,9 +12,17 @@ const timestampFormatter = new Intl.DateTimeFormat(undefined, {
   minute: "2-digit"
 });
 
+const utcDateFormatter = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  month: "short",
+  day: "2-digit",
+  timeZone: "UTC"
+});
+
 export function formatTimestamp(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
+  if (isUtcMidnightTimestamp(value)) return utcDateFormatter.format(date);
   return timestampFormatter.format(date);
 }
 

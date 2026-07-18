@@ -58,7 +58,6 @@ export function ImportPage({
     <section className="import-page">
       <div className="import-header">
         <div>
-          <p className="eyebrow">Bring local data into the vault</p>
           <h1>Import</h1>
         </div>
         <p className="import-copy">
@@ -495,43 +494,36 @@ function SyncImportPanel({
   return (
     <section className="panel import-source-panel">
       <div>
-        <p className="eyebrow">Android companion</p>
-        <h2>Sync</h2>
+        <h2>Sync your Android phone</h2>
       </div>
       <p className="empty">
-        Sync Health Connect from the Android companion app to import recent steps, heart rate, sleep,
-        oxygen saturation, and other supported fitness samples into the local vault.
+        Bring recent health and activity data from your Android phone into your local vault, including
+        steps, heart rate, sleep, and oxygen saturation.
       </p>
 
       <div className="pairing-section">
         <div>
-          <p className="eyebrow">Companion pairing</p>
-          <strong>Scan to connect</strong>
+          <h3>Connect your phone</h3>
         </div>
         <p className="empty">
-          Open the companion app, tap <strong>Set Up Connection</strong>, and scan this QR code.
-          The app will find this server automatically — no IP address required.
+          In the companion app, choose <strong>Set Up Connection</strong>, then scan this code. Your
+          phone will find this server automatically.
         </p>
         <PairingQr />
-        <p className="empty pairing-hint">
-          The QR code contains a short-lived pairing code and the server's LAN address. LAN use
-          requires configured authentication and HTTPS, except for the explicit development-only HTTP mode.
-        </p>
       </div>
 
       {pendingPairings.length > 0 ? (
         <div className="pairing-requests" aria-live="polite" aria-label="Pending pairing requests">
-          <p className="eyebrow">Pairing requests</p>
+          <h3>Connection requests</h3>
           {pendingPairings.map((req) => (
             <div key={req.id} className="pairing-request-row">
               <div className="pairing-request-info">
                 <strong>{req.deviceName}</strong>
-                <span className="muted">Device ID: {req.deviceId.slice(0, 12)}…</span>
-                <span className="muted">Requested: {new Date(req.requestedAt).toLocaleTimeString()}</span>
+                <span className="muted">Requested {new Date(req.requestedAt).toLocaleTimeString()}</span>
                  <label>
-                   Profile
+                   Save data to
                    <select
-                     aria-label={`Profile for ${req.deviceName}`}
+                     aria-label={`Save data from ${req.deviceName} to profile`}
                      value={selectedProfiles[req.id] ?? defaultProfileId}
                      onChange={(event) => setSelectedProfiles((current) => ({ ...current, [req.id]: event.target.value }))}
                    >
@@ -547,14 +539,14 @@ function SyncImportPanel({
                     const profileId = selectedProfiles[req.id] ?? defaultProfileId;
                     if (profileId) void approve(req.id, profileId);
                   }}
-                  aria-label={`Approve pairing request from ${req.deviceName}`}
-                >Approve</button>
+                  aria-label={`Connect ${req.deviceName}`}
+                >Connect</button>
                 <button
                   type="button"
                   disabled={pendingActionId !== undefined}
                   onClick={() => { void deny(req.id); }}
-                  aria-label={`Deny pairing request from ${req.deviceName}`}
-                >Deny</button>
+                  aria-label={`Do not connect ${req.deviceName}`}
+                >Not now</button>
               </div>
             </div>
           ))}
@@ -563,7 +555,7 @@ function SyncImportPanel({
 
       {pairedDevices.length > 0 ? (
         <div className="pairing-requests" aria-label="Paired devices">
-          <p className="eyebrow">Paired devices</p>
+          <h3>Connected devices</h3>
           {pairedDevices.map((device) => (
             <div key={device.id} className="pairing-request-row">
               <div className="pairing-request-info">
@@ -575,15 +567,16 @@ function SyncImportPanel({
                       ? `Last sync ${new Date(device.lastUsedAt).toLocaleString()}`
                       : "Not synced yet"}
                 </span>
-                <span className="muted">Granted profile: {profiles.find((profile) => profile.id === device.allowedProfileIds[0])?.displayName ?? "Unknown profile"}</span>
+                        <span className="muted">Saving to {profiles.find((profile) => profile.id === device.allowedProfileIds[0])?.displayName ?? "an unknown profile"}</span>
               </div>
               {!device.revokedAt ? (
                 <button
                   type="button"
+                  className="pairing-device-revoke"
                   disabled={pendingActionId !== undefined}
                   onClick={() => { void revokeDevice(device.id); }}
-                  aria-label={`Revoke ${device.deviceName}`}
-                >Revoke</button>
+                  aria-label={`Disconnect ${device.deviceName}`}
+                >Disconnect</button>
               ) : null}
             </div>
           ))}
@@ -592,16 +585,16 @@ function SyncImportPanel({
 
       <div className="import-guidance-grid">
         <div>
-          <strong>1. Open companion app</strong>
-          <span>Tap <em>Set Up Connection</em> and scan the short-lived QR code.</span>
+          <strong>1. On your phone</strong>
+          <span>Open the companion app and choose <em>Set Up Connection</em>.</span>
         </div>
         <div>
-          <strong>2. Approve pairing</strong>
-          <span>A pairing request will appear above. Approve it to issue the companion a secure token.</span>
+          <strong>2. Confirm the connection</strong>
+          <span>Scan the code, then choose <em>Connect</em> when a request appears here.</span>
         </div>
         <div>
-          <strong>3. Sync recent data</strong>
-          <span>The app syncs automatically once paired. Token is stored on-device for future syncs.</span>
+          <strong>3. Sync when you're ready</strong>
+          <span>In the companion app, press <em>Sync</em> to bring in new data.</span>
         </div>
       </div>
     </section>
@@ -622,8 +615,8 @@ function PairingQr() {
         objectUrl = URL.createObjectURL(blob);
         setUrl(objectUrl);
       })
-      .catch((cause: unknown) => {
-        if (active) setError(cause instanceof Error ? cause.message : "Unable to create pairing QR code.");
+      .catch(() => {
+        if (active) setError("We couldn't create the connection code. Refresh the page and try again.");
       });
     return () => {
       active = false;
@@ -637,13 +630,13 @@ function PairingQr() {
       {url ? (
         <img
           src={url}
-          alt="Short-lived QR code for secure companion pairing. Scan with the Android companion app."
+          alt="QR code to connect the Android companion app."
           width={200}
           height={200}
           className="pairing-qr"
         />
       ) : (
-        <span className="empty" role="status" aria-live="polite">Creating short-lived pairing code…</span>
+        <span className="empty" role="status" aria-live="polite">Getting your connection code ready…</span>
       )}
     </div>
   );
