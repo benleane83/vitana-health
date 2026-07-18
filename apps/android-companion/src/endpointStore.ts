@@ -18,7 +18,6 @@ export const HEALTH_CONNECT_CATEGORIES = [
   "BloodPressure",
   "BodyTemperature",
   "Height",
-  "SkinTemperature",
   "Vo2Max",
   "Weight",
   "ExerciseSession",

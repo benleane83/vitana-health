@@ -55,7 +55,6 @@ export interface HealthConnectImportPayload {
   bloodPressureDiastolicMmHg: HealthConnectPointValue[];
   bodyTemperatureC: HealthConnectPointValue[];
   heightCm: HealthConnectPointValue[];
-  skinTemperatureC: HealthConnectPointValue[];
   vo2MaxMlKgMin: HealthConnectPointValue[];
   weightKg: HealthConnectPointValue[];
   exerciseSessions: Array<{
@@ -112,21 +111,6 @@ function defineHealthConnectDescriptor<
     permission: { accessType: "read", recordType } satisfies Permission,
     toPayload,
     read: async (options: ReadRecordsOptions) => toPayload(await readAllRecords(recordType, options))
-  };
-}
-
-function defineUnavailableHealthConnectDescriptor<
-  const Category extends HealthConnectCategory,
-  const Keys extends readonly PayloadCollectionKey[]
->(category: Category, recordType: string, payloadKeys: Keys) {
-  return {
-    category,
-    recordType,
-    payloadKeys,
-    available: false as const,
-    permission: undefined,
-    toPayload: () => Object.fromEntries(payloadKeys.map((key) => [key, []])) as unknown as Pick<HealthConnectPayloadCollections, Keys[number]>,
-    read: async () => Object.fromEntries(payloadKeys.map((key) => [key, []])) as unknown as Pick<HealthConnectPayloadCollections, Keys[number]>
   };
 }
 
@@ -202,7 +186,6 @@ export const HEALTH_CONNECT_DESCRIPTORS = [
       time: record.time, value: extractHeightInCm(record), provenance: extractProvenance(record)
     }))
   })),
-  defineUnavailableHealthConnectDescriptor("SkinTemperature", "SkinTemperature", ["skinTemperatureC"]),
   defineHealthConnectDescriptor("Vo2Max", "Vo2Max", ["vo2MaxMlKgMin"], (records) => ({
     vo2MaxMlKgMin: toPointSamples(records, (record) => ({
       time: record.time, value: extractVo2MaxMlKgMin(record), provenance: extractProvenance(record)

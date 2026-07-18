@@ -134,6 +134,8 @@ export async function snapshot(
     const medication = medications.get(String(row.id));
     if (immunization) return { ...base, kind: "immunization", immunization: compact({ vaccine: immunization.vaccine, targetDisease: immunization.target_disease, doseNumber: optionalNumber(immunization.dose_number), series: immunization.series, manufacturer: immunization.manufacturer, lotNumber: immunization.lot_number, expiresAt: immunization.expires_at ? String(immunization.expires_at).slice(0, 10) : undefined, route: immunization.route, site: immunization.site, reaction: immunization.reaction }) };
     if (medication) return { ...base, kind: "medication-administration", medicationAdministration: compact({ medication: medication.medication, activeIngredient: medication.active_ingredient, dose: Number(medication.dose), unit: medication.unit, route: medication.route }) };
+    if (row.kind === "immunization") return { ...base, kind: "immunization" };
+    if (row.kind === "medication-administration") return { ...base, kind: "medication-administration" };
     return { ...base, kind: "other" };
   });
   const careItems = (await orderedRows(connection, "care_items")).map((row) => compact({
@@ -266,13 +268,13 @@ async function insertHealthEventRows(connection: duckdb.Connection, events: Heal
     event.provider ?? null, event.notes ?? null, optionalJsonValue(event.metadata)
   ]));
   await insertRows(connection, "INSERT INTO immunizations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
-    events.filter((event): event is Extract<HealthEvent, { kind: "immunization" }> => event.kind === "immunization").map((event) => [
+    events.filter((event): event is Extract<HealthEvent, { kind: "immunization" }> & { immunization: NonNullable<Extract<HealthEvent, { kind: "immunization" }>["immunization"]> } => event.kind === "immunization" && !!event.immunization).map((event) => [
       event.id, event.immunization.vaccine, event.immunization.targetDisease ?? null, event.immunization.doseNumber ?? null,
       event.immunization.series ?? null, event.immunization.manufacturer ?? null, event.immunization.lotNumber ?? null,
       event.immunization.expiresAt ?? null, event.immunization.route ?? null, event.immunization.site ?? null, event.immunization.reaction ?? null
     ]));
   await insertRows(connection, "INSERT INTO medication_administrations VALUES (?, ?, ?, ?, ?, ?);",
-    events.filter((event): event is Extract<HealthEvent, { kind: "medication-administration" }> => event.kind === "medication-administration").map((event) => [
+    events.filter((event): event is Extract<HealthEvent, { kind: "medication-administration" }> & { medicationAdministration: NonNullable<Extract<HealthEvent, { kind: "medication-administration" }>["medicationAdministration"]> } => event.kind === "medication-administration" && !!event.medicationAdministration).map((event) => [
       event.id, event.medicationAdministration.medication, event.medicationAdministration.activeIngredient ?? null,
       event.medicationAdministration.dose, event.medicationAdministration.unit, event.medicationAdministration.route ?? null
     ]));

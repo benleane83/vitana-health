@@ -3,8 +3,12 @@ import { AppState } from "react-native";
 import type {
   AnalyticsSummary,
   AppBootstrap,
+  CareItemListQuery,
+  CreateCareItemInput,
+  CreateHealthEventInput,
   HealthDataDetail,
   HealthDataSummary,
+  HealthEventListQuery,
   ManualObservationPayload
 } from "@local-fitness-advisor/shared";
 import { clearConnection, clearSelectedProfileId, loadConnection } from "./endpointStore";
@@ -13,6 +17,7 @@ import { createCompanionApi } from "./api";
 import { pinnedFetch } from "./pinnedFetch";
 import { connectionStateForError, type ConnectionState } from "./connectionState";
 import type {
+  CompanionCareService,
   CompanionDataSource,
   CompanionLifecycleService,
   CompanionMaintenanceService,
@@ -52,6 +57,14 @@ interface MobileApiContextValue {
   healthDataDetail(measurementCode: string, page?: DetailPage): Promise<HealthDataDetail>;
   importManualObservations(payload: ManualObservationPayload): Promise<unknown>;
   resetStandaloneData(): Promise<void>;
+  listHealthEvents(query?: HealthEventListQuery): Promise<Awaited<ReturnType<CompanionCareService["listHealthEvents"]>>>;
+  createHealthEvent(payload: CreateHealthEventInput): Promise<void>;
+  updateHealthEvent(id: string, payload: CreateHealthEventInput): Promise<void>;
+  deleteHealthEvent(id: string): Promise<void>;
+  listCareItems(query?: CareItemListQuery): Promise<Awaited<ReturnType<CompanionCareService["listCareItems"]>>>;
+  createCareItem(payload: CreateCareItemInput): Promise<void>;
+  updateCareItem(id: string, payload: CreateCareItemInput): Promise<void>;
+  deleteCareItem(id: string): Promise<void>;
   refreshAfterImport(): Promise<void>;
   clearTransientData(): void;
   disconnect(): Promise<void>;
@@ -183,6 +196,38 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     await Promise.all([refreshDashboard(), refreshTrack()]);
   }, [clearHealthData, operatingMode, refreshDashboard, refreshTrack, standaloneSource]);
 
+  const listHealthEvents = useCallback(async (query?: HealthEventListQuery) => {
+    return requireCareService(source).listHealthEvents(query);
+  }, [source]);
+
+  const createHealthEvent = useCallback(async (payload: CreateHealthEventInput) => {
+    await requireCareService(source).createHealthEvent(payload);
+  }, [source]);
+
+  const updateHealthEvent = useCallback(async (id: string, payload: CreateHealthEventInput) => {
+    await requireCareService(source).updateHealthEvent(id, payload);
+  }, [source]);
+
+  const deleteHealthEvent = useCallback(async (id: string) => {
+    await requireCareService(source).deleteHealthEvent(id);
+  }, [source]);
+
+  const listCareItems = useCallback(async (query?: CareItemListQuery) => {
+    return requireCareService(source).listCareItems(query);
+  }, [source]);
+
+  const createCareItem = useCallback(async (payload: CreateCareItemInput) => {
+    await requireCareService(source).createCareItem(payload);
+  }, [source]);
+
+  const updateCareItem = useCallback(async (id: string, payload: CreateCareItemInput) => {
+    await requireCareService(source).updateCareItem(id, payload);
+  }, [source]);
+
+  const deleteCareItem = useCallback(async (id: string) => {
+    await requireCareService(source).deleteCareItem(id);
+  }, [source]);
+
   const refreshAfterImport = useCallback(async () => {
     await Promise.all([refreshDashboard(), refreshTrack()]);
   }, [refreshDashboard, refreshTrack]);
@@ -254,14 +299,23 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     healthDataDetail,
     importManualObservations,
     resetStandaloneData,
+    listHealthEvents,
+    createHealthEvent,
+    updateHealthEvent,
+    deleteHealthEvent,
+    listCareItems,
+    createCareItem,
+    updateCareItem,
+    deleteCareItem,
     refreshAfterImport,
     clearTransientData,
     disconnect
   }), [
-    analytics, bootstrap, clearTransientData, connection, connectionState, dashboardLoading, demoMode,
-    disconnect, error, healthDataDetail, importManualObservations, operatingMode, refreshAfterImport, refreshDashboard, refreshTrack, reloadConnection,
-    resetStandaloneData,
-    setDemoMode, setOperatingMode, summary, trackLoading, transientRevision
+    analytics, bootstrap, clearTransientData, connection, connectionState, createCareItem, createHealthEvent,
+    dashboardLoading, deleteCareItem, deleteHealthEvent, demoMode, disconnect, error, healthDataDetail,
+  importManualObservations, listCareItems, listHealthEvents, operatingMode, refreshAfterImport, refreshDashboard,
+  refreshTrack, reloadConnection, resetStandaloneData, setDemoMode, setOperatingMode, summary, trackLoading,
+  transientRevision, updateCareItem, updateHealthEvent
   ]);
   return <MobileApiContext.Provider value={value}>{children}</MobileApiContext.Provider>;
 }
@@ -270,4 +324,16 @@ export function useMobileApi(): MobileApiContextValue {
   const value = useContext(MobileApiContext);
   if (!value) throw new Error("useMobileApi must be used inside MobileApiProvider.");
   return value;
+}
+
+function requireCareService(source: CompanionDataSource | undefined): CompanionCareService {
+  const candidate = source as Partial<CompanionCareService> | undefined;
+  if (
+    !candidate?.listHealthEvents || !candidate.createHealthEvent || !candidate.updateHealthEvent ||
+    !candidate.deleteHealthEvent || !candidate.listCareItems || !candidate.createCareItem ||
+    !candidate.updateCareItem || !candidate.deleteCareItem
+  ) {
+    throw new Error("Switch to Connected mode to use Care.");
+  }
+  return candidate as CompanionCareService;
 }

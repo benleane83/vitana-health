@@ -4,7 +4,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator, type NativeStackScreenProps } from "@react-navigation/native-stack";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import { ChartNoAxesColumnIncreasing, Home, MonitorSmartphone, Plus } from "lucide-react-native";
+import { ChartNoAxesColumnIncreasing, HeartPulse, Home, MonitorSmartphone, Plus } from "lucide-react-native";
 import { MobileApiProvider, useMobileApi } from "./src/MobileApiProvider";
 import { PairScreen } from "./src/PairScreen";
 import type { RootStackParamList, TabParamList } from "./src/navigationTypes";
@@ -12,6 +12,7 @@ import { DashboardScreen } from "./src/screens/DashboardScreen";
 import { ImportScreen } from "./src/screens/ImportScreen";
 import { TrackDetailScreen } from "./src/screens/TrackDetailScreen";
 import { TrackScreen } from "./src/screens/TrackScreen";
+import { CareScreen } from "./src/screens/CareScreen";
 import { Button, Card, Message, Screen } from "./src/ui/components";
 import { colors, radii, spacing, type } from "./src/ui/theme";
 
@@ -73,6 +74,7 @@ function MainTabs() {
       <Tabs.Screen name="Dashboard" component={DashboardScreen} options={{ tabBarIcon: ({ color, size }) => <Home color={color} size={size} /> }} />
       <Tabs.Screen name="Import" component={ImportScreen} options={{ tabBarIcon: ({ color, size }) => <Plus color={color} size={size} /> }} />
       <Tabs.Screen name="Track" component={TrackScreen} options={{ tabBarIcon: ({ color, size }) => <ChartNoAxesColumnIncreasing color={color} size={size} /> }} />
+      <Tabs.Screen name="Care" component={CareScreen} options={{ tabBarIcon: ({ color, size }) => <HeartPulse color={color} size={size} /> }} />
     </Tabs.Navigator>
   );
 }

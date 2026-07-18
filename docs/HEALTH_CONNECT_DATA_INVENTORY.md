@@ -15,7 +15,6 @@ This is the source inventory for the Android companion's privacy policy, Play Da
 | Blood pressure | Systolic and diastolic samples | Local wellness trends |
 | Body temperature | Temperature samples | Local wellness trends |
 | Height | Height values | Local wellness trends |
-| Skin temperature | Skin-temperature samples | Not currently readable by the installed SDK; retained only as a selectable category until support is available |
 | VO2 max | VO2-max samples | Local fitness trends |
 | Weight | Weight values | Local wellness trends |
 | Exercise sessions | Session times, activity type, energy, distance, title, notes, and record metadata when supplied by Health Connect | Local activity trends |

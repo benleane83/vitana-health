@@ -6,12 +6,22 @@ import {
   type AnalyticsSummary,
   type AppBootstrap,
   type BiologicalAgeSource,
+  type CareItemListQuery,
+  type CareItemMutationResponse,
+  type CreateCareItemInput,
+  type CreateHealthEventInput,
+  type DeleteCareItemResponse,
+  type DeleteHealthEventResponse,
   type DeleteObservationResponse,
   type DeleteObservationsByTypeResponse,
   type HealthDataChartSeriesOptions,
+  type HealthEventListQuery,
+  type HealthEventMutationResponse,
   type HealthStoreData,
   type Observation,
   type Profile,
+  type UpdateCareItemInput,
+  type UpdateHealthEventInput,
   type UpdateObservationInput,
   type UpdateObservationResponse
 } from "@local-fitness-advisor/shared";
@@ -39,6 +49,10 @@ import {
 } from "./duckdbExport.js";
 import {
   addInsight as addDuckDbInsight,
+  createCareItem as createDuckDbCareItem,
+  createHealthEvent as createDuckDbHealthEvent,
+  deleteCareItem as deleteDuckDbCareItem,
+  deleteHealthEvent as deleteDuckDbHealthEvent,
   deleteObservation as deleteDuckDbObservation,
   deleteObservationRecord as deleteDuckDbObservationRecord,
   deleteObservationRecordsByMeasurementCode as deleteDuckDbObservationRecordsByMeasurementCode,
@@ -46,6 +60,8 @@ import {
   getProfile as readProfile,
   insertObservationRecord as insertDuckDbObservationRecord,
   replaceProfile as replaceDuckDbProfile,
+  updateCareItem as updateDuckDbCareItem,
+  updateHealthEvent as updateDuckDbHealthEvent,
   updateObservation as updateDuckDbObservation
 } from "./duckdbCommands.js";
 import {
@@ -60,7 +76,9 @@ import {
   countActivities as readActivityCounts,
   dailyMetrics as readDailyMetrics,
   latestMeasurement as readLatestMeasurement,
+  listCareItems as readCareItems,
   listActivities as readActivities,
+  listHealthEvents as readHealthEvents,
   measurementDetail as readMeasurementDetail,
   measurementChartSeries as readMeasurementChartSeries,
   measurementDetails as readMeasurementDetails,
@@ -220,6 +238,46 @@ export class DuckDbRepository implements ProfileRepository {
   async exportData(): Promise<HealthStoreData> {
     this.assertOpen();
     return this.transaction(() => exportDuckDbData(this.connection));
+  }
+
+  async listHealthEvents(query: HealthEventListQuery) {
+    this.assertOpen();
+    return readHealthEvents(this.connection, query);
+  }
+
+  async createHealthEvent(input: CreateHealthEventInput): Promise<HealthEventMutationResponse> {
+    this.assertOpen();
+    return this.transaction(() => createDuckDbHealthEvent(this.connection, input));
+  }
+
+  async updateHealthEvent(id: string, input: UpdateHealthEventInput): Promise<HealthEventMutationResponse | undefined> {
+    this.assertOpen();
+    return this.transaction(() => updateDuckDbHealthEvent(this.connection, id, input));
+  }
+
+  async deleteHealthEvent(id: string): Promise<DeleteHealthEventResponse | undefined> {
+    this.assertOpen();
+    return this.transaction(() => deleteDuckDbHealthEvent(this.connection, id));
+  }
+
+  async listCareItems(query: CareItemListQuery) {
+    this.assertOpen();
+    return readCareItems(this.connection, query);
+  }
+
+  async createCareItem(input: CreateCareItemInput): Promise<CareItemMutationResponse> {
+    this.assertOpen();
+    return this.transaction(() => createDuckDbCareItem(this.connection, input));
+  }
+
+  async updateCareItem(id: string, input: UpdateCareItemInput): Promise<CareItemMutationResponse | undefined> {
+    this.assertOpen();
+    return this.transaction(() => updateDuckDbCareItem(this.connection, id, input));
+  }
+
+  async deleteCareItem(id: string): Promise<DeleteCareItemResponse | undefined> {
+    this.assertOpen();
+    return this.transaction(() => deleteDuckDbCareItem(this.connection, id));
   }
 
   async insertObservationRecord(observation: Observation): Promise<boolean> {

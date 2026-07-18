@@ -1,10 +1,21 @@
 import type {
   AnalyticsSummary,
   AppBootstrap,
+  CareItem,
+  CareItemMutationResponse,
+  CareItemListQuery,
+  CreateCareItemInput,
+  CreateHealthEventInput,
+  DeleteCareItemResponse,
+  DeleteHealthEventResponse,
   HealthDataDetail,
   HealthDataSummary,
   ManualObservationPayload,
-  MobileImportResult
+  MobileImportResult,
+  HealthEvent,
+  HealthEventListQuery,
+  HealthEventMutationResponse,
+  PaginatedResult
 } from "@local-fitness-advisor/shared";
 
 export interface DetailPage {
@@ -29,4 +40,15 @@ export interface CompanionMaintenanceService {
 
 export interface CompanionLifecycleService {
   dispose(): Promise<void>;
+}
+
+export interface CompanionCareService {
+  listHealthEvents(query?: HealthEventListQuery): Promise<PaginatedResult<HealthEvent>>;
+  createHealthEvent(payload: CreateHealthEventInput): Promise<HealthEventMutationResponse>;
+  updateHealthEvent(id: string, payload: CreateHealthEventInput): Promise<HealthEventMutationResponse>;
+  deleteHealthEvent(id: string): Promise<DeleteHealthEventResponse>;
+  listCareItems(query?: CareItemListQuery): Promise<PaginatedResult<CareItem>>;
+  createCareItem(payload: CreateCareItemInput): Promise<CareItemMutationResponse>;
+  updateCareItem(id: string, payload: CreateCareItemInput): Promise<CareItemMutationResponse>;
+  deleteCareItem(id: string): Promise<DeleteCareItemResponse>;
 }

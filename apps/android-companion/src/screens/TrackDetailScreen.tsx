@@ -4,6 +4,7 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
 import {
   calculateChartDomain,
+  isUtcMidnightTimestamp,
   mergeHealthDataDetail,
   type HealthDataDetail,
   type HealthDataDetailEntry
@@ -102,7 +103,16 @@ export function TrackDetailScreen({ route }: Props) {
 
 function formatTimestamp(value: string): string {
   const timestamp = new Date(value);
-  return Number.isFinite(timestamp.getTime()) ? timestamp.toLocaleString() : "Date unavailable";
+  if (!Number.isFinite(timestamp.getTime())) return "Date unavailable";
+  if (isUtcMidnightTimestamp(value)) {
+    return timestamp.toLocaleDateString(undefined, {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      timeZone: "UTC"
+    });
+  }
+  return timestamp.toLocaleString();
 }
 
 function formatShortDate(value: string): string {

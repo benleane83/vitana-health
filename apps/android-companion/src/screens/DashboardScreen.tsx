@@ -4,6 +4,7 @@ import { CompositeNavigationProp, useFocusEffect, useNavigation } from "@react-n
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { ChevronRight, Database, MonitorSmartphone, UserRound } from "lucide-react-native";
+import { isUtcMidnightTimestamp } from "@local-fitness-advisor/shared";
 import { useMobileApi } from "../MobileApiProvider";
 import type { RootStackParamList, TabParamList } from "../navigationTypes";
 import { Button, Card, Loading, Message, Screen } from "../ui/components";
@@ -154,6 +155,9 @@ export function DashboardScreen() {
 function formatObservedDate(value: string): string {
   const observed = new Date(value);
   if (!Number.isFinite(observed.getTime())) return "Date unavailable";
+  if (isUtcMidnightTimestamp(value)) {
+    return observed.toLocaleDateString([], { day: "numeric", month: "short", timeZone: "UTC" });
+  }
   const today = new Date();
   if (observed.toDateString() === today.toDateString()) {
     return `Today, ${observed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;

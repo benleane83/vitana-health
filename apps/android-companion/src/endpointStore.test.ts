@@ -84,6 +84,18 @@ describe("connection storage", () => {
       .resolves.toMatchObject({ healthConnectSyncWindowDays: 30 });
   });
 
+  it("drops unsupported categories from stored Health Connect selections", async () => {
+    storage.async.set(connectionKey, JSON.stringify({
+      url: "https://desktop.test",
+      healthConnectCategories: ["Steps", "SkinTemperature"]
+    }));
+    storage.secure.set(deviceIdKey, "device-1");
+
+    await expect(loadConnection()).resolves.toMatchObject({
+      healthConnectCategories: ["Steps"]
+    });
+  });
+
   it("keeps tokens and device IDs out of AsyncStorage while advancing a cursor for the matching endpoint", async () => {
     storage.secure.set(deviceIdKey, "device-1");
     await saveConnection({

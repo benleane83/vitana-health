@@ -151,7 +151,7 @@ function emptyPayload(): HealthConnectImportPayload {
     deviceLabel: "android-companion:device-1",
     steps: [], heartRate: [], oxygenSaturation: [], respiratoryRate: [], hrvRmssd: [], hrvSdnn: [], basalBodyTemperatureC: [],
     basalMetabolicRateKcalDay: [], bloodGlucoseMgDl: [], bloodPressureSystolicMmHg: [], bloodPressureDiastolicMmHg: [],
-    bodyTemperatureC: [], heightCm: [], skinTemperatureC: [], vo2MaxMlKgMin: [], weightKg: [], exerciseSessions: [], distanceMeters: [],
+    bodyTemperatureC: [], heightCm: [], vo2MaxMlKgMin: [], weightKg: [], exerciseSessions: [], distanceMeters: [],
     floorsClimbed: [], activeCaloriesKcal: [], totalCaloriesKcal: [], sleepSessions: [], bodyFatPct: [], leanBodyMassKg: [],
     bodyWaterMassKg: [], boneMassKg: []
   };

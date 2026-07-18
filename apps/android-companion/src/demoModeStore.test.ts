@@ -20,6 +20,7 @@ import { loadDemoMode, saveDemoMode } from "./demoModeStore";
 afterEach(() => {
   storage.values.clear();
   vi.clearAllMocks();
+  vi.unstubAllEnvs();
 });
 
 describe("demo mode storage", () => {
@@ -29,5 +30,12 @@ describe("demo mode storage", () => {
     await expect(loadDemoMode()).resolves.toBe(true);
     await saveDemoMode(false);
     await expect(loadDemoMode()).resolves.toBe(false);
+  });
+
+  it("enables demo mode when the preview environment requests it", async () => {
+    vi.stubEnv("EXPO_PUBLIC_LFA_DEMO_MODE", "1");
+
+    await expect(loadDemoMode()).resolves.toBe(true);
+    expect(storage.getItem).not.toHaveBeenCalled();
   });
 });

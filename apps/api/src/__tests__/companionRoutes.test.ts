@@ -29,6 +29,12 @@ function store(profileId: string) {
     analyticsSummary: vi.fn(async () => ({ profileId, counts: { observations: profileId === "phone" ? 1 : 0 } })),
     summary: vi.fn(async () => ({ profileId, totals: { observations: profileId === "phone" ? 1 : 0 } })),
     measurementDetail: vi.fn(async (measurementCode: string) => ({ profileId, measurement: { code: measurementCode } })),
+    listHealthEvents: vi.fn(async () => ({ items: [{ id: `${profileId}-event`, kind: "other", status: "completed", occurredAt: "2026-01-01T00:00:00.000Z", source: "manual-entry" }], total: 1, offset: 0, limit: 20, hasMore: false })),
+    createHealthEvent: vi.fn(async () => ({ healthEvent: { id: `${profileId}-event`, kind: "other", status: "completed", occurredAt: "2026-01-01T00:00:00.000Z", source: "manual-entry" }, counts: { imports: 0, observations: 0, samples: 0, activities: 0, healthEvents: 1, careItems: 0 } })),
+    deleteHealthEvent: vi.fn(async () => ({ deletedCount: 1, counts: { imports: 0, observations: 0, samples: 0, activities: 0, healthEvents: 0, careItems: 0 } })),
+    listCareItems: vi.fn(async () => ({ items: [{ id: `${profileId}-care`, title: "Follow up", kind: "Appointment", priority: "normal", status: "open" }], total: 1, offset: 0, limit: 20, hasMore: false })),
+    createCareItem: vi.fn(async () => ({ careItem: { id: `${profileId}-care`, title: "Follow up", kind: "Appointment", priority: "normal", status: "open" }, counts: { imports: 0, observations: 0, samples: 0, activities: 0, healthEvents: 0, careItems: 1 } })),
+    deleteCareItem: vi.fn(async () => ({ deletedCount: 1, counts: { imports: 0, observations: 0, samples: 0, activities: 0, healthEvents: 0, careItems: 0 } })),
     mergeImport: vi.fn(async () => ({
       outcome: outcome(),
       counts: { imports: 1, observations: 1, samples: 0, activities: 0 }
@@ -114,9 +120,17 @@ describe("companion route profile isolation", () => {
 
     expect((await request(app).post("/api/import/body-composition/preview").set(headers).send({})).status).toBe(400);
     expect((await request(app).post("/api/import/blood-test/preview").set(headers).send({})).status).toBe(400);
+    expect((await request(app).get("/api/care/health-events").set(headers)).status).toBe(200);
+    expect((await request(app).get("/api/care/items").set(headers)).status).toBe(200);
+    expect((await request(app).post("/api/care/health-events").set(headers).send({ kind: "other", status: "completed", occurredAt: "2026-01-01T00:00:00.000Z" })).status).toBe(201);
+    expect((await request(app).post("/api/care/items").set(headers).send({ title: "Follow up", kind: "Appointment", priority: "normal", status: "open" })).status).toBe(201);
     expect((await request(app).delete("/api/observations/missing").set(headers)).status).toBe(403);
     expect((await request(app).get("/api/settings/ai").set(headers)).status).toBe(403);
     expect((await request(app).post("/api/query/ai").set(headers).send({ question: "test" })).status).toBe(403);
+    expect(assigned.listHealthEvents).toHaveBeenCalledOnce();
+    expect(assigned.listCareItems).toHaveBeenCalledOnce();
+    expect(assigned.createHealthEvent).toHaveBeenCalledOnce();
+    expect(assigned.createCareItem).toHaveBeenCalledOnce();
   });
 
   it("leaves owner reads on the active store", async () => {

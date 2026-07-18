@@ -1,4 +1,5 @@
 export * from "./types.js";
+export * from "./dateFormatting.js";
 export * from "./storeSchema.js";
 export * from "./registry.js";
 export * from "./measurementRegistry.js";

@@ -33,16 +33,18 @@ export function UploadImportFeature(props: {
   return (
     <>
       <section className="panel labs-panel">
-        <label htmlFor="upload-kind">Upload type</label>
-        <select
-          id="upload-kind"
-          value={uploadKind}
-          onChange={(event) => setUploadKind(event.target.value as UploadKind)}
-        >
-          <option value="structured">CSV or TSV observations</option>
-          <option value="body-composition">Body composition report</option>
-          <option value="blood-test">Lab results report</option>
-        </select>
+        <div className="labs-upload-form">
+          <label htmlFor="upload-kind">Upload type</label>
+          <select
+            id="upload-kind"
+            value={uploadKind}
+            onChange={(event) => setUploadKind(event.target.value as UploadKind)}
+          >
+            <option value="structured">CSV or TSV observations</option>
+            <option value="body-composition">Body composition report</option>
+            <option value="blood-test">Lab results report</option>
+          </select>
+        </div>
       </section>
       {uploadKind === "structured" ? (
         <StructuredUploadFeature {...props} />

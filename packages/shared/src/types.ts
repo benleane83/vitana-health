@@ -37,6 +37,25 @@ export interface Profile {
 
 export type HealthEventKind = "immunization" | "medication-administration" | "other";
 export type HealthEventStatus = "completed" | "entered-in-error";
+export interface ImmunizationDetails {
+  vaccine: string;
+  targetDisease?: string;
+  doseNumber?: number;
+  series?: string;
+  manufacturer?: string;
+  lotNumber?: string;
+  expiresAt?: string;
+  route?: string;
+  site?: string;
+  reaction?: string;
+}
+export interface MedicationAdministrationDetails {
+  medication: string;
+  activeIngredient?: string;
+  dose: number;
+  unit: string;
+  route?: string;
+}
 export interface HealthEventBase {
   id: string;
   kind: HealthEventKind;
@@ -50,19 +69,17 @@ export interface HealthEventBase {
 }
 export interface ImmunizationEvent extends HealthEventBase {
   kind: "immunization";
-  immunization: {
-    vaccine: string; targetDisease?: string; doseNumber?: number; series?: string;
-    manufacturer?: string; lotNumber?: string; expiresAt?: string; route?: string; site?: string; reaction?: string;
-  };
+  immunization?: ImmunizationDetails;
 }
 export interface MedicationAdministrationEvent extends HealthEventBase {
   kind: "medication-administration";
-  medicationAdministration: { medication: string; activeIngredient?: string; dose: number; unit: string; route?: string };
+  medicationAdministration?: MedicationAdministrationDetails;
 }
 export interface OtherHealthEvent extends HealthEventBase { kind: "other"; }
 export type HealthEvent = ImmunizationEvent | MedicationAdministrationEvent | OtherHealthEvent;
 
 export type CareItemStatus = "open" | "completed" | "cancelled" | "skipped";
+export type CareItemPriority = "low" | "normal" | "high";
 export interface CareItem {
   id: string;
   kind: string;
@@ -71,7 +88,7 @@ export interface CareItem {
   dueStart?: string;
   dueEnd?: string;
   reminderAt?: string;
-  priority: "low" | "normal" | "high";
+  priority: CareItemPriority;
   status: CareItemStatus;
   scheduleProvenance?: string;
   scheduleVersion?: string;
@@ -79,6 +96,94 @@ export interface CareItem {
   originatingHealthEventId?: string;
   completedHealthEventId?: string;
   completedAt?: string;
+}
+export interface CarePagination {
+  total: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+}
+
+export interface PaginatedResult<T> extends CarePagination {
+  items: T[];
+}
+
+export interface HealthEventListQuery {
+  limit?: number;
+  offset?: number;
+  search?: string;
+  kind?: HealthEventKind;
+  status?: HealthEventStatus;
+  occurredFrom?: string;
+  occurredTo?: string;
+  includeId?: string;
+}
+
+export interface CareItemListQuery {
+  limit?: number;
+  offset?: number;
+  search?: string;
+  status?: CareItemStatus;
+  priority?: CareItemPriority;
+  dueFrom?: string;
+  dueTo?: string;
+  includeId?: string;
+}
+
+export interface CreateHealthEventInput {
+  kind: HealthEventKind;
+  status: HealthEventStatus;
+  occurredAt: string;
+  occurredEnd?: string;
+  provider?: string;
+  notes?: string;
+}
+
+export type UpdateHealthEventInput = CreateHealthEventInput;
+
+export interface CreateCareItemInput {
+  title: string;
+  kind: string;
+  dueStart?: string;
+  dueEnd?: string;
+  reminderAt?: string;
+  priority: CareItemPriority;
+  status: CareItemStatus;
+  notes?: string;
+  originatingHealthEventId?: string;
+  completedHealthEventId?: string;
+}
+
+export type UpdateCareItemInput = CreateCareItemInput;
+
+export interface HealthEventMutationResponse {
+  healthEvent: HealthEvent;
+  counts: AppBootstrap["counts"];
+}
+
+export interface CareItemMutationResponse {
+  careItem: CareItem;
+  counts: AppBootstrap["counts"];
+}
+
+export interface DeleteHealthEventResponse {
+  deletedCount: number;
+  deletedHealthEvent?: HealthEvent;
+  counts: AppBootstrap["counts"];
+}
+
+export interface DeleteCareItemResponse {
+  deletedCount: number;
+  deletedCareItem?: CareItem;
+  counts: AppBootstrap["counts"];
+}
+
+export type CareLinkedHealthEventRole = "originating" | "completion";
+
+export interface LinkedCareItemConflict {
+  id: string;
+  title: string;
+  role: CareLinkedHealthEventRole;
 }
 
 export interface CloudAiConsent {
