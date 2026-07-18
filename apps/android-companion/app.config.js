@@ -48,6 +48,7 @@ module.exports = {
     },
     plugins: [
       ["./plugins/withDevNetworkSecurity", { allowCleartext }],
+      "react-native-iap",
       "expo-health-connect",
       "expo-secure-store",
       "@react-native-community/datetimepicker",

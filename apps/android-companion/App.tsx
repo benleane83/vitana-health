@@ -6,6 +6,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-cont
 import { StatusBar } from "expo-status-bar";
 import { ChartNoAxesColumnIncreasing, Home, MonitorSmartphone, Plus } from "lucide-react-native";
 import { MobileApiProvider, useMobileApi } from "./src/MobileApiProvider";
+import { EntitlementProvider } from "./src/EntitlementProvider";
 import { PairScreen } from "./src/PairScreen";
 import type { RootStackParamList, TabParamList } from "./src/navigationTypes";
 import { DashboardScreen } from "./src/screens/DashboardScreen";
@@ -21,21 +22,23 @@ const Tabs = createBottomTabNavigator<TabParamList>();
 export default function App() {
   return (
     <SafeAreaProvider>
-      <MobileApiProvider>
-        <NavigationContainer>
-          <Stack.Navigator>
-            <Stack.Screen name="Main" component={MainTabs} options={{ headerShown: false }} />
-            <Stack.Screen name="Pair" component={PairRoute} options={{ presentation: "modal", title: "Pair this phone" }} />
-            <Stack.Screen name="Connection" component={ConnectionScreen} options={{ presentation: "modal", title: "Connection" }} />
-            <Stack.Screen
-              name="TrackDetail"
-              component={TrackDetailScreen}
-              options={({ route }) => ({ title: route.params.displayName })}
-            />
-          </Stack.Navigator>
-        </NavigationContainer>
-        <StatusBar style="dark" />
-      </MobileApiProvider>
+      <EntitlementProvider>
+        <MobileApiProvider>
+          <NavigationContainer>
+            <Stack.Navigator>
+              <Stack.Screen name="Main" component={MainTabs} options={{ headerShown: false }} />
+              <Stack.Screen name="Pair" component={PairRoute} options={{ presentation: "modal", title: "Pair this phone" }} />
+              <Stack.Screen name="Connection" component={ConnectionScreen} options={{ presentation: "modal", title: "Connection" }} />
+              <Stack.Screen
+                name="TrackDetail"
+                component={TrackDetailScreen}
+                options={({ route }) => ({ title: route.params.displayName })}
+              />
+            </Stack.Navigator>
+          </NavigationContainer>
+          <StatusBar style="dark" />
+        </MobileApiProvider>
+      </EntitlementProvider>
     </SafeAreaProvider>
   );
 }
