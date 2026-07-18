@@ -771,24 +771,24 @@ async function hydrateHealthEventRows(
   const immunizations = new Map(immunizationRows.map((row) => [String(row.health_event_id), row]));
   const medications = new Map(medicationRows.map((row) => [String(row.health_event_id), row]));
   return rows.map((row) => {
-    const base = compact({
+    const base = {
       id: String(row.id),
-      kind: String(row.kind),
-      status: String(row.status),
+      kind: String(row.kind) as HealthEvent["kind"],
+      status: String(row.status) as HealthEvent["status"],
       occurredAt: isoTimestamp(row.occurred_at),
       occurredEnd: optionalTimestamp(row.occurred_end),
-      source: String(row.source),
+      source: String(row.source) as HealthEvent["source"],
       provider: optionalString(row.provider),
       notes: optionalString(row.notes),
-      metadata: optionalJson(row.metadata)
-    });
+      metadata: optionalJson<Record<string, unknown>>(row.metadata)
+    };
     const immunization = immunizations.get(String(row.id));
     const medication = medications.get(String(row.id));
     if (immunization) {
       return {
         ...base,
         kind: "immunization",
-        immunization: compact({
+        immunization: {
           vaccine: String(immunization.vaccine),
           targetDisease: optionalString(immunization.target_disease),
           doseNumber: optionalNumber(immunization.dose_number),
@@ -799,22 +799,23 @@ async function hydrateHealthEventRows(
           route: optionalString(immunization.route),
           site: optionalString(immunization.site),
           reaction: optionalString(immunization.reaction)
-        })
+        }
       } satisfies HealthEvent;
     }
     if (medication) {
       return {
         ...base,
         kind: "medication-administration",
-        medicationAdministration: compact({
+        medicationAdministration: {
           medication: String(medication.medication),
           activeIngredient: optionalString(medication.active_ingredient),
           dose: Number(medication.dose),
           unit: String(medication.unit),
           route: optionalString(medication.route)
-        })
+        }
       } satisfies HealthEvent;
     }
+    // Base-only health event records are valid even when no subtype table row exists.
     if (row.kind === "immunization") {
       return { ...base, kind: "immunization" } satisfies HealthEvent;
     }
@@ -826,7 +827,7 @@ async function hydrateHealthEventRows(
 }
 
 function careItemFromRow(row: Record<string, unknown>): CareItem {
-  return compact({
+  return {
     id: String(row.id),
     kind: String(row.kind),
     code: optionalString(row.code),
@@ -834,15 +835,15 @@ function careItemFromRow(row: Record<string, unknown>): CareItem {
     dueStart: optionalTimestamp(row.due_start),
     dueEnd: optionalTimestamp(row.due_end),
     reminderAt: optionalTimestamp(row.reminder_at),
-    priority: String(row.priority),
-    status: String(row.status),
+    priority: String(row.priority) as CareItem["priority"],
+    status: String(row.status) as CareItem["status"],
     scheduleProvenance: optionalString(row.schedule_provenance),
     scheduleVersion: optionalString(row.schedule_version),
     notes: optionalString(row.notes),
     originatingHealthEventId: optionalString(row.originating_health_event_id),
     completedHealthEventId: optionalString(row.completed_health_event_id),
     completedAt: optionalTimestamp(row.completed_at)
-  }) as CareItem;
+  };
 }
 
 function isSummaryCategory(value: unknown): value is HealthDataSummaryTypeRow["category"] {

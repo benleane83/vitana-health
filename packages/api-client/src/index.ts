@@ -13,6 +13,7 @@ import {
   healthDataChartSeriesResponseSchema,
   healthDataDetailResponseSchema,
   healthDataSummaryResponseSchema,
+  healthEventListQuerySchema,
   healthEventMutationResponseSchema,
   healthResponseSchema,
   importMutationResponseSchema,
@@ -119,7 +120,7 @@ export function createApiClient(transport: ApiTransport) {
     importHealthConnect: (payload: Record<string, unknown>) =>
       request(importMutationResponseSchema, "/api/import/health-connect", { method: "POST", body: payload }),
     listHealthEvents: (query: HealthEventListQuery = {}) =>
-      request(paginatedHealthEventsResponseSchema, `/api/care/health-events${careQuery(query, healthEventListQuerySchema.parse(query))}`),
+      request(paginatedHealthEventsResponseSchema, `/api/care/health-events${careQuery(healthEventListQuerySchema.parse(query), query)}`),
     createHealthEvent: (payload: CreateHealthEventInput) =>
       request(healthEventMutationResponseSchema, "/api/care/health-events", { method: "POST", body: createHealthEventInputSchema.parse(payload) }),
     updateHealthEvent: (id: string, payload: CreateHealthEventInput) =>
@@ -127,7 +128,7 @@ export function createApiClient(transport: ApiTransport) {
     deleteHealthEvent: (id: string) =>
       request(deleteHealthEventResponseSchema, `/api/care/health-events/${encodeURIComponent(id)}`, { method: "DELETE" }),
     listCareItems: (query: CareItemListQuery = {}) =>
-      request(paginatedCareItemsResponseSchema, `/api/care/items${careQuery(query, careItemListQuerySchema.parse(query))}`),
+      request(paginatedCareItemsResponseSchema, `/api/care/items${careQuery(careItemListQuerySchema.parse(query), query)}`),
     createCareItem: (payload: CreateCareItemInput) =>
       request(careItemMutationResponseSchema, "/api/care/items", { method: "POST", body: createCareItemInputSchema.parse(payload) }),
     updateCareItem: (id: string, payload: CreateCareItemInput) =>
@@ -150,14 +151,14 @@ export function paginationQuery(page?: { limit?: number; offset?: number }): str
   return values.length ? `?${values.join("&")}` : "";
 }
 
-function careQuery<T extends { [key: string]: unknown }>(raw: T, validated: T): string {
+function careQuery(validated: Record<string, unknown>, raw?: { limit?: number; offset?: number }): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(validated)) {
     if (value === undefined || value === null || value === "") continue;
     params.set(key, String(value));
   }
-  if ((raw as { limit?: number }).limit === undefined) params.delete("limit");
-  if ((raw as { offset?: number }).offset === undefined) params.delete("offset");
+  if (raw?.limit === undefined) params.delete("limit");
+  if (raw?.offset === undefined) params.delete("offset");
   const query = params.toString();
   return query ? `?${query}` : "";
 }

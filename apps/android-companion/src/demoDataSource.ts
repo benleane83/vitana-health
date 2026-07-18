@@ -43,6 +43,8 @@ export function createDemoDataSource(now = new Date()): CompanionDataSource {
   const analytics = makeAnalytics(details, now);
   let healthEvents = makeHealthEvents(now);
   let careItems = makeCareItems(now, healthEvents);
+  let nextHealthEventId = healthEvents.length + 1;
+  let nextCareItemId = careItems.length + 1;
 
   return {
     async bootstrap() { return bootstrap; },
@@ -57,7 +59,7 @@ export function createDemoDataSource(now = new Date()): CompanionDataSource {
       return paginateCollection(filterHealthEvents(healthEvents, query), query);
     },
     async createHealthEvent(payload: CreateHealthEventInput) {
-      const healthEvent: HealthEvent = { id: `demo-event-${healthEvents.length + 1}`, source: "manual-entry", ...payload };
+      const healthEvent: HealthEvent = { id: `demo-event-${nextHealthEventId++}`, source: "manual-entry", ...payload };
       healthEvents = [healthEvent, ...healthEvents];
       return { healthEvent, counts: bootstrap.counts };
     },
@@ -77,14 +79,20 @@ export function createDemoDataSource(now = new Date()): CompanionDataSource {
       return paginateCollection(filterCareItems(careItems, query), query);
     },
     async createCareItem(payload: CreateCareItemInput) {
-      const careItem: CareItem = { id: `demo-care-${careItems.length + 1}`, completedAt: payload.status === "completed" ? now.toISOString() : undefined, ...payload };
+      const careItem: CareItem = { id: `demo-care-${nextCareItemId++}`, completedAt: payload.status === "completed" ? now.toISOString() : undefined, ...payload };
       careItems = [careItem, ...careItems];
       return { careItem, counts: bootstrap.counts };
     },
     async updateCareItem(id: string, payload: CreateCareItemInput) {
       const existing = careItems.find((entry) => entry.id === id);
       if (!existing) throw new Error("Care item not found.");
-      const careItem: CareItem = { ...existing, ...payload, completedAt: payload.status === "completed" ? existing.completedAt ?? now.toISOString() : undefined, completedHealthEventId: payload.status === "completed" ? payload.completedHealthEventId : undefined };
+      const completedAt = payload.status === "completed"
+        ? existing.completedAt ?? now.toISOString()
+        : undefined;
+      const completedHealthEventId = payload.status === "completed"
+        ? payload.completedHealthEventId
+        : undefined;
+      const careItem: CareItem = { ...existing, ...payload, completedAt, completedHealthEventId };
       careItems = careItems.map((entry) => entry.id === id ? careItem : entry);
       return { careItem, counts: bootstrap.counts };
     },

@@ -33,7 +33,7 @@ const measurementCodeParamSchema = z
   .max(120)
   .regex(/^[A-Za-z0-9_-]+$/, "Measurement code contains unsupported characters.");
 
-const observationIdParamSchema = z
+const recordIdParamSchema = z
   .string()
   .trim()
   .min(1)
@@ -176,7 +176,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.patch("/care/health-events/:id", async (request, response, next) => {
     try {
-      const id = observationIdParamSchema.parse(request.params.id);
+      const id = recordIdParamSchema.parse(request.params.id);
       const updated = await requestStore(response).updateHealthEvent(id, createHealthEventInputSchema.parse(request.body));
       if (!updated) {
         response.status(404).json({ error: "Health event not found.", code: "HEALTH_EVENT_NOT_FOUND" });
@@ -190,7 +190,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.delete("/care/health-events/:id", async (request, response, next) => {
     try {
-      const id = observationIdParamSchema.parse(request.params.id);
+      const id = recordIdParamSchema.parse(request.params.id);
       const deleted = await requestStore(response).deleteHealthEvent(id);
       if (!deleted) {
         response.status(404).json({ error: "Health event not found.", code: "HEALTH_EVENT_NOT_FOUND" });
@@ -232,7 +232,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.patch("/care/items/:id", async (request, response, next) => {
     try {
-      const id = observationIdParamSchema.parse(request.params.id);
+      const id = recordIdParamSchema.parse(request.params.id);
       const updated = await requestStore(response).updateCareItem(id, createCareItemInputSchema.parse(request.body));
       if (!updated) {
         response.status(404).json({ error: "Care item not found.", code: "CARE_ITEM_NOT_FOUND" });
@@ -246,7 +246,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.delete("/care/items/:id", async (request, response, next) => {
     try {
-      const id = observationIdParamSchema.parse(request.params.id);
+      const id = recordIdParamSchema.parse(request.params.id);
       const deleted = await requestStore(response).deleteCareItem(id);
       if (!deleted) {
         response.status(404).json({ error: "Care item not found.", code: "CARE_ITEM_NOT_FOUND" });
@@ -260,7 +260,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.patch("/observations/:id", async (request, response, next) => {
     try {
-      const id = observationIdParamSchema.parse(request.params.id);
+      const id = recordIdParamSchema.parse(request.params.id);
       const input = updateObservationBodySchema.parse(request.body);
       const store = activeStore();
       const updated = await store.updateObservation(id, input);
@@ -277,7 +277,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.delete("/observations/:id", async (request, response, next) => {
     try {
-      const id = observationIdParamSchema.parse(request.params.id);
+      const id = recordIdParamSchema.parse(request.params.id);
       const store = activeStore();
       const deleted = await store.deleteObservation(id);
       if (!deleted) {

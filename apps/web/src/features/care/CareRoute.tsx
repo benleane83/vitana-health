@@ -202,8 +202,8 @@ export function CareRoute({
   }
 
   async function deleteHealthEvent(entry: HealthEvent) {
-    const approved = await confirm("Delete health event", `Delete the ${entry.kind} event recorded ${formatWhen(entry.occurredAt)}?`, "Delete", true);
-    if (!approved) return;
+    const confirmed = await confirm("Delete health event", `Delete the ${entry.kind} event recorded ${formatWhen(entry.occurredAt)}?`, "Delete", true);
+    if (!confirmed) return;
     await runAction(async () => {
       try {
         await api.care.deleteHealthEvent(entry.id);
@@ -221,8 +221,8 @@ export function CareRoute({
   }
 
   async function deleteCareItem(entry: CareItem) {
-    const approved = await confirm("Delete care item", `Delete ${entry.title}?`, "Delete", true);
-    if (!approved) return;
+    const confirmed = await confirm("Delete care item", `Delete ${entry.title}?`, "Delete", true);
+    if (!confirmed) return;
     await runAction(async () => {
       await api.care.deleteCareItem(entry.id);
       await Promise.all([loadCareItems(true), onDataChanged()]);
@@ -253,7 +253,7 @@ export function CareRoute({
         <div>
           <p className="eyebrow">Care records</p>
           <h1>Care</h1>
-          <p className="care-subtitle">Track care items and profile-scoped health events without loading the full care collection.</p>
+          <p className="care-subtitle">Track care items and health events for the active profile with on-demand loading.</p>
         </div>
         <button type="button" onClick={beginCreate}>{view === "health-events" ? "Add health event" : "Add care item"}</button>
       </div>
