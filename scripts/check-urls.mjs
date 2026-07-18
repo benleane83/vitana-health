@@ -8,9 +8,16 @@ if (targets.length === 0) throw new Error("At least one Name=URL target is requi
 
 try {
   await Promise.all(targets.map(async ({ name, url }) => {
-    const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
-    if (!response.ok) throw new Error(`${name} returned HTTP ${response.status}`);
-    console.log(`${name} ready: ${url}`);
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+      if (!response.ok) throw new Error(`${name} returned HTTP ${response.status}`);
+      console.log(`${name} ready: ${url}`);
+    } catch (error) {
+      if (error instanceof Error && error.name === "TimeoutError") {
+        throw new Error(`${name} timed out after 10 seconds: ${url}`);
+      }
+      throw error;
+    }
   }));
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);
