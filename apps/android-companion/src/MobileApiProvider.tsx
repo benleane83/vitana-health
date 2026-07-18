@@ -1,6 +1,15 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { AppState } from "react-native";
-import type { AnalyticsSummary, AppBootstrap, HealthDataDetail, HealthDataSummary } from "@local-fitness-advisor/shared";
+import type {
+  AnalyticsSummary,
+  AppBootstrap,
+  CareItemListQuery,
+  CreateCareItemInput,
+  CreateHealthEventInput,
+  HealthDataDetail,
+  HealthDataSummary,
+  HealthEventListQuery
+} from "@local-fitness-advisor/shared";
 import { clearConnection, clearSelectedProfileId, loadConnection } from "./endpointStore";
 import type { ConnectionDetails } from "./endpointStore";
 import { createCompanionApi } from "./api";
@@ -28,6 +37,14 @@ interface MobileApiContextValue {
   refreshDashboard(): Promise<void>;
   refreshTrack(): Promise<void>;
   healthDataDetail(measurementCode: string, page?: DetailPage): Promise<HealthDataDetail>;
+  listHealthEvents(query?: HealthEventListQuery): Promise<Awaited<ReturnType<CompanionDataSource["listHealthEvents"]>>>;
+  createHealthEvent(payload: CreateHealthEventInput): Promise<void>;
+  updateHealthEvent(id: string, payload: CreateHealthEventInput): Promise<void>;
+  deleteHealthEvent(id: string): Promise<void>;
+  listCareItems(query?: CareItemListQuery): Promise<Awaited<ReturnType<CompanionDataSource["listCareItems"]>>>;
+  createCareItem(payload: CreateCareItemInput): Promise<void>;
+  updateCareItem(id: string, payload: CreateCareItemInput): Promise<void>;
+  deleteCareItem(id: string): Promise<void>;
   refreshAfterImport(): Promise<void>;
   clearTransientData(): void;
   disconnect(): Promise<void>;
@@ -124,6 +141,46 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     return source.healthDataDetail(measurementCode, page);
   }, [source]);
 
+  const listHealthEvents = useCallback(async (query?: HealthEventListQuery) => {
+    if (!source) throw new Error("Care data is unavailable while the companion is disconnected.");
+    return source.listHealthEvents(query);
+  }, [source]);
+
+  const createHealthEvent = useCallback(async (payload: CreateHealthEventInput) => {
+    if (!source) throw new Error("Care data is unavailable while the companion is disconnected.");
+    await source.createHealthEvent(payload);
+  }, [source]);
+
+  const updateHealthEvent = useCallback(async (id: string, payload: CreateHealthEventInput) => {
+    if (!source) throw new Error("Care data is unavailable while the companion is disconnected.");
+    await source.updateHealthEvent(id, payload);
+  }, [source]);
+
+  const deleteHealthEvent = useCallback(async (id: string) => {
+    if (!source) throw new Error("Care data is unavailable while the companion is disconnected.");
+    await source.deleteHealthEvent(id);
+  }, [source]);
+
+  const listCareItems = useCallback(async (query?: CareItemListQuery) => {
+    if (!source) throw new Error("Care data is unavailable while the companion is disconnected.");
+    return source.listCareItems(query);
+  }, [source]);
+
+  const createCareItem = useCallback(async (payload: CreateCareItemInput) => {
+    if (!source) throw new Error("Care data is unavailable while the companion is disconnected.");
+    await source.createCareItem(payload);
+  }, [source]);
+
+  const updateCareItem = useCallback(async (id: string, payload: CreateCareItemInput) => {
+    if (!source) throw new Error("Care data is unavailable while the companion is disconnected.");
+    await source.updateCareItem(id, payload);
+  }, [source]);
+
+  const deleteCareItem = useCallback(async (id: string) => {
+    if (!source) throw new Error("Care data is unavailable while the companion is disconnected.");
+    await source.deleteCareItem(id);
+  }, [source]);
+
   const refreshAfterImport = useCallback(async () => {
     await Promise.all([refreshDashboard(), refreshTrack()]);
   }, [refreshDashboard, refreshTrack]);
@@ -184,13 +241,22 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     refreshDashboard,
     refreshTrack,
     healthDataDetail,
+    listHealthEvents,
+    createHealthEvent,
+    updateHealthEvent,
+    deleteHealthEvent,
+    listCareItems,
+    createCareItem,
+    updateCareItem,
+    deleteCareItem,
     refreshAfterImport,
     clearTransientData,
     disconnect
   }), [
-    analytics, bootstrap, clearTransientData, connection, connectionState, dashboardLoading, demoMode,
-    disconnect, error, healthDataDetail, refreshAfterImport, refreshDashboard, refreshTrack, reloadConnection,
-    setDemoMode, summary, trackLoading, transientRevision
+    analytics, bootstrap, clearTransientData, connection, connectionState, createCareItem, createHealthEvent,
+    dashboardLoading, deleteCareItem, deleteHealthEvent, demoMode, disconnect, error, healthDataDetail,
+    listCareItems, listHealthEvents, refreshAfterImport, refreshDashboard, refreshTrack, reloadConnection,
+    setDemoMode, summary, trackLoading, transientRevision, updateCareItem, updateHealthEvent
   ]);
   return <MobileApiContext.Provider value={value}>{children}</MobileApiContext.Provider>;
 }

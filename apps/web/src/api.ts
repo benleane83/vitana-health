@@ -3,8 +3,14 @@ import type {
   BackupCreateRequest,
   BackupInspectResponse,
   BackupRestoreResponse,
+  CareItemListQuery,
+  CreateCareItemInput,
+  CreateHealthEventInput,
   DeleteObservationResponse,
   DeleteObservationsByTypeResponse,
+  DeleteCareItemResponse,
+  DeleteHealthEventResponse,
+  HealthEventListQuery,
   ManualLabEntryPayload,
   ManualObservationPayload,
   Profile,
@@ -21,6 +27,7 @@ import type {
   ModelValidationResponse as SharedModelValidationResponse,
   PairedDevice as SharedPairedDevice,
   PendingPairing as SharedPendingPairing,
+  PaginatedResult,
   ProfilesResponse as SharedProfilesResponse
 } from "@local-fitness-advisor/shared";
 import {
@@ -154,6 +161,10 @@ export type ImportMutationResponse = SharedImportMutationResponse;
 export type DeleteObservationMutationResponse = DeleteObservationResponse;
 export type DeleteObservationsByTypeMutationResponse = DeleteObservationsByTypeResponse;
 export type UpdateObservationMutationResponse = UpdateObservationResponse;
+export type CareItemsResponse = Awaited<ReturnType<typeof sharedApi.listCareItems>>;
+export type HealthEventsResponse = Awaited<ReturnType<typeof sharedApi.listHealthEvents>>;
+export type DeleteCareItemMutationResponse = DeleteCareItemResponse;
+export type DeleteHealthEventMutationResponse = DeleteHealthEventResponse;
 
 export const api = {
   health: sharedApi.health,
@@ -207,6 +218,16 @@ export const api = {
   summary: sharedApi.summary,
   healthDataDetail: sharedApi.healthDataDetail,
   healthDataChartSeries: sharedApi.healthDataChartSeries,
+  care: {
+    listHealthEvents: (query?: HealthEventListQuery) => sharedApi.listHealthEvents(query),
+    createHealthEvent: (payload: CreateHealthEventInput) => sharedApi.createHealthEvent(payload),
+    updateHealthEvent: (id: string, payload: CreateHealthEventInput) => sharedApi.updateHealthEvent(id, payload),
+    deleteHealthEvent: (id: string) => sharedApi.deleteHealthEvent(id),
+    listCareItems: (query?: CareItemListQuery) => sharedApi.listCareItems(query),
+    createCareItem: (payload: CreateCareItemInput) => sharedApi.createCareItem(payload),
+    updateCareItem: (id: string, payload: CreateCareItemInput) => sharedApi.updateCareItem(id, payload),
+    deleteCareItem: (id: string) => sharedApi.deleteCareItem(id)
+  },
   updateObservation: (id: string, input: UpdateObservationInput) =>
     request(updateObservationResponseSchema, `/api/observations/${encodeURIComponent(id)}`, {
       method: "PATCH",
