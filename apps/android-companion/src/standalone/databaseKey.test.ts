@@ -40,4 +40,15 @@ describe("standalone database key", () => {
     })).rejects.toThrow("file is encrypted");
     expect(store.value).toBeNull();
   });
+
+  it("retains an accepted new key when a recoverable migration fails", async () => {
+    const store = fakeStore();
+    await expect(openWithDatabaseKey(
+      store,
+      async () => new Uint8Array(32),
+      async () => { throw new Error("migration interrupted"); },
+      () => false
+    )).rejects.toThrow("migration interrupted");
+    expect(store.value).toBe("00".repeat(32));
+  });
 });

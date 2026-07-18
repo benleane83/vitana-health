@@ -1,7 +1,7 @@
 import { LocalProfileRepository } from "./localRepository";
 import { MemoryLocalStore } from "./memoryLocalStore";
 
-const store = new MemoryLocalStore();
+let store = new MemoryLocalStore();
 
 export async function createStandaloneRepository() {
   const id = globalThis.crypto?.randomUUID?.() ?? `web-${Date.now().toString(36)}`;
@@ -12,4 +12,8 @@ export async function createStandaloneRepository() {
     units: "metric",
     updatedAt: new Date().toISOString()
   });
+}
+
+export async function resetStandaloneStorage(): Promise<void> {
+  store = new MemoryLocalStore();
 }

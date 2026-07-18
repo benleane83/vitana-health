@@ -3,11 +3,18 @@ import type {
   MobileDetailPage,
   MobileProfileRepository
 } from "@local-fitness-advisor/shared";
-import type { CompanionDataSource, CompanionMutationService } from "../companionDataSource";
-import { createStandaloneRepository } from "./createStandaloneRepository";
+import type {
+  CompanionDataSource,
+  CompanionMaintenanceService,
+  CompanionMutationService
+} from "../companionDataSource";
+import {
+  createStandaloneRepository,
+  resetStandaloneStorage
+} from "./createStandaloneRepository";
 
-export function createStandaloneDataSource(): CompanionDataSource & CompanionMutationService {
-  const repository = createStandaloneRepository();
+export function createStandaloneDataSource(): CompanionDataSource & CompanionMutationService & CompanionMaintenanceService {
+  let repository = createStandaloneRepository();
   const getRepository = (): Promise<MobileProfileRepository> => repository;
   return {
     bootstrap: async () => (await getRepository()).bootstrap(),
@@ -16,6 +23,11 @@ export function createStandaloneDataSource(): CompanionDataSource & CompanionMut
     healthDataDetail: async (measurementCode: string, page?: MobileDetailPage) =>
       (await getRepository()).healthDataDetail(measurementCode, page),
     importManualObservations: async (payload: ManualObservationPayload) =>
-      (await getRepository()).importManualObservations(payload)
+      (await getRepository()).importManualObservations(payload),
+    resetLocalData: async () => {
+      await repository.then((current) => current.close()).catch(() => undefined);
+      await resetStandaloneStorage();
+      repository = createStandaloneRepository();
+    }
   };
 }

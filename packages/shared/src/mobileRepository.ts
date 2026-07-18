@@ -36,5 +36,6 @@ export interface MobileProfileRepository {
   healthDataDetail(measurementCode: string, page?: MobileDetailPage): Promise<HealthDataDetail>;
   mergeImport(imported: ParsedImport): Promise<MobileImportResult>;
   importManualObservations(payload: ManualObservationPayload): Promise<MobileImportResult>;
+  reset(): Promise<void>;
   close(): Promise<void>;
 }

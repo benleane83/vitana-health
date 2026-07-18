@@ -22,3 +22,7 @@ export interface CompanionDataSource {
 export interface CompanionMutationService {
   importManualObservations(payload: ManualObservationPayload): Promise<MobileImportResult | unknown>;
 }
+
+export interface CompanionMaintenanceService {
+  resetLocalData(): Promise<void>;
+}

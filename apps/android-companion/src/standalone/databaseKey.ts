@@ -31,13 +31,14 @@ export async function getOrCreateDatabaseKey(
 export async function openWithDatabaseKey<T>(
   store: SecureKeyStore,
   randomBytes: (length: number) => Promise<Uint8Array>,
-  open: (hexKey: string) => Promise<T>
+  open: (hexKey: string) => Promise<T>,
+  shouldRemoveGeneratedKey: (error: unknown) => boolean = () => true
 ): Promise<T> {
   const key = await getOrCreateDatabaseKey(store, randomBytes);
   try {
     return await open(key.hex);
   } catch (error) {
-    if (key.created) await store.remove();
+    if (key.created && shouldRemoveGeneratedKey(error)) await store.remove();
     throw error;
   }
 }

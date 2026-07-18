@@ -1,6 +1,6 @@
 import * as Crypto from "expo-crypto";
 import * as SecureStore from "expo-secure-store";
-import { openDatabaseAsync, type SQLiteDatabase } from "expo-sqlite";
+import { deleteDatabaseAsync, openDatabaseAsync, type SQLiteDatabase } from "expo-sqlite";
 import type {
   MobileImportResult,
   ParsedImport,
@@ -30,6 +30,7 @@ const secureKeyStore: SecureKeyStore = {
 };
 
 export async function openSqliteLocalStore(): Promise<SqliteLocalStore> {
+  let databaseReadable = false;
   return openWithDatabaseKey(secureKeyStore, Crypto.getRandomBytesAsync, async (hexKey) => {
     const database = await openDatabaseAsync(DATABASE_NAME);
     try {
@@ -38,6 +39,9 @@ export async function openSqliteLocalStore(): Promise<SqliteLocalStore> {
       if (!cipher?.cipher_version) {
         throw new Error("SQLCipher is unavailable in this build.");
       }
+
+      await database.getFirstAsync("PRAGMA user_version");
+      databaseReadable = true;
       await database.execAsync(`
         PRAGMA foreign_keys = ON;
         PRAGMA journal_mode = WAL;
@@ -51,7 +55,12 @@ export async function openSqliteLocalStore(): Promise<SqliteLocalStore> {
       const detail = error instanceof Error ? error.message : "Unknown database error";
       throw new Error(`Unable to open the encrypted standalone database safely. ${detail}`);
     }
-  });
+  }, () => !databaseReadable);
+}
+
+export async function resetSqliteLocalStorage(): Promise<void> {
+  await deleteDatabaseAsync(DATABASE_NAME);
+  await secureKeyStore.remove();
 }
 
 export class SqliteLocalStore implements LocalStore {
@@ -293,6 +302,12 @@ export class SqliteLocalStore implements LocalStore {
 
   close(): Promise<void> {
     return this.database.closeAsync();
+  }
+
+  async reset(): Promise<void> {
+    await this.database.closeAsync();
+    await resetSqliteLocalStorage();
+    this.profileId = undefined;
   }
 
   private requireProfileId(): string {

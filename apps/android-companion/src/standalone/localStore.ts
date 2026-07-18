@@ -50,6 +50,7 @@ export interface LocalStore {
   recentObservations(limit: number): Promise<Observation[]>;
   observationAggregates(): Promise<LocalObservationAggregate[]>;
   observationsByCode(measurementCode: string, limit: number, offset: number): Promise<LocalObservationPage>;
+  reset(): Promise<void>;
   close(): Promise<void>;
 }
 

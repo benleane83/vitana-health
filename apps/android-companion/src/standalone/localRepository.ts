@@ -184,6 +184,12 @@ export class LocalProfileRepository implements MobileProfileRepository {
     await this.store.close();
   }
 
+  async reset(): Promise<void> {
+    if (this.initialized) await this.initialized;
+    await this.store.reset();
+    this.initialized = undefined;
+  }
+
   private ensureInitialized(): Promise<void> {
     this.initialized ??= this.store.initialize(this.defaultProfile);
     return this.initialized;

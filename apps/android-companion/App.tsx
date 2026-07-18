@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator, type NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -90,7 +90,17 @@ function PairRoute({ navigation }: NativeStackScreenProps<RootStackParamList, "P
 }
 
 function ConnectionScreen({ navigation }: NativeStackScreenProps<RootStackParamList, "Connection">) {
-  const { bootstrap, connection, connectionState, demoMode, disconnect, error, setDemoMode, standaloneMode } = useMobileApi();
+  const {
+    bootstrap,
+    connection,
+    connectionState,
+    demoMode,
+    disconnect,
+    error,
+    resetStandaloneData,
+    setDemoMode,
+    standaloneMode
+  } = useMobileApi();
   return (
     <Screen>
       <Card>
@@ -116,6 +126,20 @@ function ConnectionScreen({ navigation }: NativeStackScreenProps<RootStackParamL
         <Button secondary onPress={() => {
           void disconnect().then(() => navigation.goBack()).catch(() => undefined);
         }}>Revoke and disconnect</Button>
+      ) : null}
+      {standaloneMode && !demoMode ? (
+        <Button secondary onPress={() => Alert.alert(
+          "Reset standalone data?",
+          "This permanently deletes the local profile and all readings stored by this test app.",
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Delete local data",
+              style: "destructive",
+              onPress: () => { void resetStandaloneData(); }
+            }
+          ]
+        )}>Reset local data</Button>
       ) : null}
       <Message
         title={demoMode ? "Your connection is unchanged" : "Local-first connection"}

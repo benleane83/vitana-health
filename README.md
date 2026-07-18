@@ -151,6 +151,19 @@ Recommended commands from the repo root:
 npm run build:android:preview -w apps/android-companion
 ```
 
+To build the standalone proof-of-concept APK:
+
+```powershell
+npm run build:android:standalone-poc -w apps/android-companion
+```
+
+This internal-distribution APK installs as **Local Fitness Standalone Test** with package ID
+`com.localfitnessadvisor.companion.standalone`, so it can coexist with the companion app. It
+stores its local profile and manual observations in a SQLCipher database protected by a
+device-backed SecureStore key. Dashboard and Track read from that database. The test build has
+OTA updates disabled; rebuild it for each test version. Use **Connection → Reset local data** if
+the device key is lost or the test database can no longer be opened.
+
 After the first install on your phone, publish most code changes over-the-air (OTA) without rebuilding the APK:
 
 ```powershell

@@ -1,6 +1,6 @@
 import * as Crypto from "expo-crypto";
 import { LocalProfileRepository } from "./localRepository";
-import { openSqliteLocalStore } from "./sqliteLocalStore";
+import { openSqliteLocalStore, resetSqliteLocalStorage } from "./sqliteLocalStore";
 
 export async function createStandaloneRepository() {
   const store = await openSqliteLocalStore();
@@ -12,3 +12,5 @@ export async function createStandaloneRepository() {
     updatedAt: new Date().toISOString()
   });
 }
+
+export const resetStandaloneStorage = resetSqliteLocalStorage;

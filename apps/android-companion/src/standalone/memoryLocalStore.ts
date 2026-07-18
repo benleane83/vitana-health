@@ -155,6 +155,22 @@ export class MemoryLocalStore implements LocalStore {
 
   async close(): Promise<void> {}
 
+  async reset(): Promise<void> {
+    const profileId = this.requireProfileId();
+    this.state.profiles.delete(profileId);
+    for (const values of [
+      this.state.sourceImports,
+      this.state.dataSources,
+      this.state.observationGroups,
+      this.state.observations
+    ]) {
+      for (const entryKey of values.keys()) {
+        if (entryKey.startsWith(`${profileId}\u0000`)) values.delete(entryKey);
+      }
+    }
+    this.profileId = undefined;
+  }
+
   private requireProfileId(): string {
     if (!this.profileId) throw new Error("The local profile has not been initialized.");
     return this.profileId;

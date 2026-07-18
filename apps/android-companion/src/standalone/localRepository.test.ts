@@ -46,6 +46,9 @@ describe("local profile repository", () => {
     const reopened = new LocalProfileRepository(new MemoryLocalStore(state), profile("profile-a"));
     expect((await reopened.bootstrap()).counts.observations).toBe(1);
     expect((await reopened.healthDataDetail("weight")).entries).toHaveLength(1);
+    await reopened.reset();
+    const afterReset = new LocalProfileRepository(new MemoryLocalStore(state), profile("profile-a"));
+    expect((await afterReset.bootstrap()).counts.observations).toBe(0);
   });
 
   it("isolates stable import IDs between family profiles", async () => {

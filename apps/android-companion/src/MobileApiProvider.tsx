@@ -12,7 +12,11 @@ import type { ConnectionDetails } from "./endpointStore";
 import { createCompanionApi } from "./api";
 import { pinnedFetch } from "./pinnedFetch";
 import { connectionStateForError, type ConnectionState } from "./connectionState";
-import type { CompanionDataSource, DetailPage } from "./companionDataSource";
+import type {
+  CompanionDataSource,
+  CompanionMaintenanceService,
+  DetailPage
+} from "./companionDataSource";
 import { createDemoDataSource } from "./demoDataSource";
 import { loadDemoMode, saveDemoMode } from "./demoModeStore";
 import type { CompanionMutationService } from "./companionDataSource";
@@ -39,6 +43,7 @@ interface MobileApiContextValue {
   refreshTrack(): Promise<void>;
   healthDataDetail(measurementCode: string, page?: DetailPage): Promise<HealthDataDetail>;
   importManualObservations(payload: ManualObservationPayload): Promise<unknown>;
+  resetStandaloneData(): Promise<void>;
   refreshAfterImport(): Promise<void>;
   clearTransientData(): void;
   disconnect(): Promise<void>;
@@ -60,11 +65,11 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
   const [transientRevision, setTransientRevision] = useState(0);
   const generation = useRef(0);
   const demoSource = useMemo(() => createDemoDataSource(), []);
-  const standaloneSource = useMemo(() => createStandaloneDataSource(), []);
+  const standaloneSource = useMemo(() => standalonePoc ? createStandaloneDataSource() : undefined, []);
   const source = useMemo<CompanionDataSource | undefined>(() => {
     if (!preferencesLoaded) return undefined;
     if (demoMode) return demoSource;
-    if (standalonePoc) return standaloneSource;
+    if (standalonePoc && standaloneSource) return standaloneSource;
     return connection?.token ? createCompanionApi(connection) : undefined;
   }, [connection, demoMode, demoSource, preferencesLoaded, standaloneSource]);
 
@@ -145,6 +150,16 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     return createCompanionApi(connection).importManualObservations(payload);
   }, [connection, demoMode, source]);
 
+  const resetStandaloneData = useCallback(async () => {
+    if (!standalonePoc || !standaloneSource) throw new Error("Standalone storage is unavailable in this build.");
+    await (standaloneSource as CompanionMaintenanceService).resetLocalData();
+    generation.current += 1;
+    clearHealthData();
+    setError(undefined);
+    setConnectionState("online");
+    await Promise.all([refreshDashboard(), refreshTrack()]);
+  }, [clearHealthData, refreshDashboard, refreshTrack, standaloneSource]);
+
   const refreshAfterImport = useCallback(async () => {
     await Promise.all([refreshDashboard(), refreshTrack()]);
   }, [refreshDashboard, refreshTrack]);
@@ -207,12 +222,14 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     refreshTrack,
     healthDataDetail,
     importManualObservations,
+    resetStandaloneData,
     refreshAfterImport,
     clearTransientData,
     disconnect
   }), [
     analytics, bootstrap, clearTransientData, connection, connectionState, dashboardLoading, demoMode,
     disconnect, error, healthDataDetail, importManualObservations, refreshAfterImport, refreshDashboard, refreshTrack, reloadConnection,
+    resetStandaloneData,
     setDemoMode, summary, trackLoading, transientRevision
   ]);
   return <MobileApiContext.Provider value={value}>{children}</MobileApiContext.Provider>;
