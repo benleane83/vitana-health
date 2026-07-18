@@ -143,7 +143,8 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
   }, [source]);
 
   const importManualObservations = useCallback(async (payload: ManualObservationPayload) => {
-    if (!source || demoMode) throw new Error("Manual import is unavailable in Demo mode.");
+    if (demoMode) throw new Error("Manual import is unavailable in Demo mode.");
+    if (!source) throw new Error("Manual import is unavailable until a data source is ready.");
     const mutations = source as Partial<CompanionMutationService>;
     if (mutations.importManualObservations) return mutations.importManualObservations(payload);
     if (!connection?.token) throw new Error("Pair with a PC before importing readings.");

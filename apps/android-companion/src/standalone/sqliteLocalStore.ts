@@ -37,7 +37,7 @@ export async function openSqliteLocalStore(): Promise<SqliteLocalStore> {
       await database.execAsync(`PRAGMA key = "x'${hexKey}'";`);
       const cipher = await database.getFirstAsync<{ cipher_version: string }>("PRAGMA cipher_version");
       if (!cipher?.cipher_version) {
-        throw new Error("SQLCipher is unavailable in this build.");
+        throw new Error("SQLCipher is unavailable. Reinstall the standalone test build with SQLCipher enabled.");
       }
 
       await database.getFirstAsync("PRAGMA user_version");
@@ -53,7 +53,7 @@ export async function openSqliteLocalStore(): Promise<SqliteLocalStore> {
     } catch (error) {
       await database.closeAsync().catch(() => undefined);
       const detail = error instanceof Error ? error.message : "Unknown database error";
-      throw new Error(`Unable to open the encrypted standalone database safely. ${detail}`);
+      throw new Error(`Unable to open the encrypted standalone database safely: ${detail}`);
     }
   }, () => !databaseReadable);
 }
