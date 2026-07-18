@@ -90,13 +90,13 @@ function PairRoute({ navigation }: NativeStackScreenProps<RootStackParamList, "P
 }
 
 function ConnectionScreen({ navigation }: NativeStackScreenProps<RootStackParamList, "Connection">) {
-  const { bootstrap, connection, connectionState, demoMode, disconnect, error, setDemoMode } = useMobileApi();
+  const { bootstrap, connection, connectionState, demoMode, disconnect, error, setDemoMode, standaloneMode } = useMobileApi();
   return (
     <Screen>
       <Card>
         <Text style={styles.label}>Status</Text>
-        <Text style={styles.heading}>{demoMode ? "Sample data" : connectionState.replaceAll("-", " ")}</Text>
-        <Text style={styles.meta}>{demoMode ? "Read-only demo" : connection?.url ?? "No paired PC"}</Text>
+        <Text style={styles.heading}>{demoMode ? "Sample data" : standaloneMode ? "Standalone" : connectionState.replaceAll("-", " ")}</Text>
+        <Text style={styles.meta}>{demoMode ? "Read-only demo" : standaloneMode ? "Encrypted storage on this phone" : connection?.url ?? "No paired PC"}</Text>
         {bootstrap ? <Text style={styles.meta}>Assigned to {bootstrap.profile.displayName}</Text> : null}
         {error ? <Message title="Connection issue" detail={error} tone="danger" /> : null}
       </Card>
@@ -111,8 +111,8 @@ function ConnectionScreen({ navigation }: NativeStackScreenProps<RootStackParamL
           onValueChange={(enabled) => { void setDemoMode(enabled); }}
         />
       </View>
-      {!demoMode ? <Button onPress={() => navigation.navigate("Pair")}>{connection ? "Re-pair" : "Pair with PC"}</Button> : null}
-      {connection && !demoMode ? (
+      {!demoMode && !standaloneMode ? <Button onPress={() => navigation.navigate("Pair")}>{connection ? "Re-pair" : "Pair with PC"}</Button> : null}
+      {connection && !demoMode && !standaloneMode ? (
         <Button secondary onPress={() => {
           void disconnect().then(() => navigation.goBack()).catch(() => undefined);
         }}>Revoke and disconnect</Button>
@@ -121,7 +121,9 @@ function ConnectionScreen({ navigation }: NativeStackScreenProps<RootStackParamL
         title={demoMode ? "Your connection is unchanged" : "Local-first connection"}
         detail={demoMode
           ? "Turn off Demo mode to return to your paired PC. Sample data is stored separately from your health records."
-          : "Health data is fetched only while your paired PC is reachable and is not cached on this phone."}
+          : standaloneMode
+            ? "This test build keeps health data in a SQLCipher database protected by a device-backed key."
+            : "Health data is fetched only while your paired PC is reachable and is not cached on this phone."}
       />
     </Screen>
   );

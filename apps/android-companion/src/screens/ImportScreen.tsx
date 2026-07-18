@@ -39,14 +39,14 @@ type ImportSource = "sync" | "scan" | "manual";
 type ScanKind = "body-composition" | "blood-test";
 
 export function ImportScreen() {
-  const { demoMode } = useMobileApi();
+  const { demoMode, standaloneMode } = useMobileApi();
   const navigation = useNavigation<BottomTabNavigationProp<TabParamList, "Import">>();
   const [source, setSource] = useState<ImportSource>();
   useEffect(() => {
     if (demoMode) setSource(undefined);
   }, [demoMode]);
 
-  if (!source || demoMode) return <ImportSourceChooser demoMode={demoMode} onSelect={setSource} onConnect={() => {
+  if (!source || demoMode) return <ImportSourceChooser demoMode={demoMode} standaloneMode={standaloneMode} onSelect={setSource} onConnect={() => {
     navigation.getParent<NativeStackNavigationProp<RootStackParamList>>()?.navigate("Connection");
   }} />;
 
@@ -69,10 +69,12 @@ export function ImportScreen() {
 
 function ImportSourceChooser({
   demoMode,
+  standaloneMode,
   onConnect,
   onSelect
 }: {
   demoMode: boolean;
+  standaloneMode: boolean;
   onConnect: () => void;
   onSelect: (source: ImportSource) => void;
 }) {
@@ -153,14 +155,18 @@ function ImportSourceChooser({
           ))}
         </View>
         {demoMode ? <Button onPress={onConnect}>Leave Demo mode</Button> : null}
-        <Text style={styles.localNote}>Data travels only between this phone and your paired PC over your local connection.</Text>
+        <Text style={styles.localNote}>
+          {standaloneMode
+            ? "Readings are stored only in this phone's encrypted local database."
+            : "Data travels only between this phone and your paired PC over your local connection."}
+        </Text>
       </ScrollView>
     </Screen>
   );
 }
 
 function ManualImport() {
-  const { bootstrap, connection, refreshAfterImport } = useMobileApi();
+  const { bootstrap, importManualObservations, refreshAfterImport } = useMobileApi();
   const measurements = bootstrap?.measurementTypes?.length ? bootstrap.measurementTypes : defaultMeasurementTypes;
   const templates = filterManualGroupTemplates(bootstrap?.manualObservationGroupTemplates ?? []);
   const groups = [...manualGroupDefaults.map((group) => group.label), ...templates.map((template) => template.label)];
@@ -171,7 +177,6 @@ function ManualImport() {
   const [status, setStatus] = useState("");
   const [statusTone, setStatusTone] = useState<"success" | "danger">("success");
   const [busy, setBusy] = useState(false);
-  const client = useMemo(() => connection?.token ? createCompanionApi(connection) : undefined, [connection]);
   const selectedDefault = manualGroupDefaults.find((entry) => entry.label === group);
   const selectedTemplate = templates.find((entry) => entry.normalizedLabel === normalizeGroupLabel(group));
   const allowedMeasurements = useMemo(() => {
@@ -213,7 +218,7 @@ function ManualImport() {
   }
 
   async function submit() {
-    if (!client || busy) return;
+    if (busy) return;
     setBusy(true);
     try {
       const observations = rows.map((row) => {
@@ -227,7 +232,7 @@ function ManualImport() {
         label: group,
         observations
       };
-      await client.importManualObservations(payload);
+      await importManualObservations(payload);
       setStatusTone("success");
       setStatus(`${observations.length} ${observations.length === 1 ? "reading" : "readings"} imported. View them in Track.`);
       selectGroup(group);

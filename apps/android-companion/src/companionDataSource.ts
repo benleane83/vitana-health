@@ -2,7 +2,9 @@ import type {
   AnalyticsSummary,
   AppBootstrap,
   HealthDataDetail,
-  HealthDataSummary
+  HealthDataSummary,
+  ManualObservationPayload,
+  MobileImportResult
 } from "@local-fitness-advisor/shared";
 
 export interface DetailPage {
@@ -15,4 +17,8 @@ export interface CompanionDataSource {
   analytics(): Promise<AnalyticsSummary>;
   summary(): Promise<HealthDataSummary>;
   healthDataDetail(measurementCode: string, page?: DetailPage): Promise<HealthDataDetail>;
+}
+
+export interface CompanionMutationService {
+  importManualObservations(payload: ManualObservationPayload): Promise<MobileImportResult | unknown>;
 }

@@ -1,6 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { AppState } from "react-native";
-import type { AnalyticsSummary, AppBootstrap, HealthDataDetail, HealthDataSummary } from "@local-fitness-advisor/shared";
+import type {
+  AnalyticsSummary,
+  AppBootstrap,
+  HealthDataDetail,
+  HealthDataSummary,
+  ManualObservationPayload
+} from "@local-fitness-advisor/shared";
 import { clearConnection, clearSelectedProfileId, loadConnection } from "./endpointStore";
 import type { ConnectionDetails } from "./endpointStore";
 import { createCompanionApi } from "./api";
@@ -9,13 +15,17 @@ import { connectionStateForError, type ConnectionState } from "./connectionState
 import type { CompanionDataSource, DetailPage } from "./companionDataSource";
 import { createDemoDataSource } from "./demoDataSource";
 import { loadDemoMode, saveDemoMode } from "./demoModeStore";
+import type { CompanionMutationService } from "./companionDataSource";
+import { createStandaloneDataSource } from "./standalone/standaloneDataSource";
 
 export type { ConnectionState } from "./connectionState";
+export const standalonePoc = process.env.EXPO_PUBLIC_LFA_STANDALONE_POC === "1";
 
 interface MobileApiContextValue {
   connection: ConnectionDetails | null;
   connectionState: ConnectionState;
   demoMode: boolean;
+  standaloneMode: boolean;
   bootstrap?: AppBootstrap;
   analytics?: AnalyticsSummary;
   summary?: HealthDataSummary;
@@ -28,6 +38,7 @@ interface MobileApiContextValue {
   refreshDashboard(): Promise<void>;
   refreshTrack(): Promise<void>;
   healthDataDetail(measurementCode: string, page?: DetailPage): Promise<HealthDataDetail>;
+  importManualObservations(payload: ManualObservationPayload): Promise<unknown>;
   refreshAfterImport(): Promise<void>;
   clearTransientData(): void;
   disconnect(): Promise<void>;
@@ -49,11 +60,13 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
   const [transientRevision, setTransientRevision] = useState(0);
   const generation = useRef(0);
   const demoSource = useMemo(() => createDemoDataSource(), []);
+  const standaloneSource = useMemo(() => createStandaloneDataSource(), []);
   const source = useMemo<CompanionDataSource | undefined>(() => {
     if (!preferencesLoaded) return undefined;
     if (demoMode) return demoSource;
+    if (standalonePoc) return standaloneSource;
     return connection?.token ? createCompanionApi(connection) : undefined;
-  }, [connection, demoMode, demoSource, preferencesLoaded]);
+  }, [connection, demoMode, demoSource, preferencesLoaded, standaloneSource]);
 
   const clearHealthData = useCallback(() => {
     setBootstrap(undefined);
@@ -72,7 +85,7 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     setConnection(next);
     clearHealthData();
     setError(undefined);
-    setConnectionState(demoMode ? "online" : next?.token ? "connecting" : "unpaired");
+    setConnectionState(demoMode || standalonePoc ? "online" : next?.token ? "connecting" : "unpaired");
   }, [clearHealthData, demoMode]);
 
   const setDemoMode = useCallback(async (enabled: boolean) => {
@@ -81,7 +94,7 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     setDemoModeState(enabled);
     clearHealthData();
     setError(undefined);
-    setConnectionState(enabled ? "online" : connection?.token ? "connecting" : "unpaired");
+    setConnectionState(enabled || standalonePoc ? "online" : connection?.token ? "connecting" : "unpaired");
   }, [clearHealthData, connection]);
 
   const refreshDashboard = useCallback(async () => {
@@ -124,6 +137,14 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     return source.healthDataDetail(measurementCode, page);
   }, [source]);
 
+  const importManualObservations = useCallback(async (payload: ManualObservationPayload) => {
+    if (!source || demoMode) throw new Error("Manual import is unavailable in Demo mode.");
+    const mutations = source as Partial<CompanionMutationService>;
+    if (mutations.importManualObservations) return mutations.importManualObservations(payload);
+    if (!connection?.token) throw new Error("Pair with a PC before importing readings.");
+    return createCompanionApi(connection).importManualObservations(payload);
+  }, [connection, demoMode, source]);
+
   const refreshAfterImport = useCallback(async () => {
     await Promise.all([refreshDashboard(), refreshTrack()]);
   }, [refreshDashboard, refreshTrack]);
@@ -153,7 +174,7 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
       generation.current += 1;
       setConnection(nextConnection);
       setDemoModeState(nextDemoMode);
-      setConnectionState(nextDemoMode ? "online" : nextConnection?.token ? "connecting" : "unpaired");
+      setConnectionState(nextDemoMode || standalonePoc ? "online" : nextConnection?.token ? "connecting" : "unpaired");
       setPreferencesLoaded(true);
     });
     return () => { current = false; };
@@ -172,6 +193,7 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     connection,
     connectionState,
     demoMode,
+    standaloneMode: standalonePoc,
     bootstrap,
     analytics,
     summary,
@@ -184,12 +206,13 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     refreshDashboard,
     refreshTrack,
     healthDataDetail,
+    importManualObservations,
     refreshAfterImport,
     clearTransientData,
     disconnect
   }), [
     analytics, bootstrap, clearTransientData, connection, connectionState, dashboardLoading, demoMode,
-    disconnect, error, healthDataDetail, refreshAfterImport, refreshDashboard, refreshTrack, reloadConnection,
+    disconnect, error, healthDataDetail, importManualObservations, refreshAfterImport, refreshDashboard, refreshTrack, reloadConnection,
     setDemoMode, summary, trackLoading, transientRevision
   ]);
   return <MobileApiContext.Provider value={value}>{children}</MobileApiContext.Provider>;

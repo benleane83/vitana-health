@@ -23,7 +23,8 @@ export function DashboardScreen() {
     dashboardLoading,
     demoMode,
     error,
-    refreshDashboard
+    refreshDashboard,
+    standaloneMode
   } = useMobileApi();
 
   useFocusEffect(useCallback(() => { void refreshDashboard(); }, [refreshDashboard]));
@@ -56,9 +57,11 @@ export function DashboardScreen() {
   const visibleMetrics = analytics.latestMetrics.slice(0, 4);
   const connectionLabel = demoMode
     ? "Sample data · read only"
-    : connectionState === "online"
-      ? "Connected · refreshed just now"
-      : `${connectionState.replaceAll("-", " ")} · showing current session data`;
+    : standaloneMode
+      ? "Standalone · encrypted on this phone"
+      : connectionState === "online"
+        ? "Connected · refreshed just now"
+        : `${connectionState.replaceAll("-", " ")} · showing current session data`;
   return (
     <Screen>
       <ScrollView
