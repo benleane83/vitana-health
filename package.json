@@ -36,7 +36,7 @@
     "validate:storage": "npm run test:integration && npm run test:durability",
     "preview:mobile:demo": "npm run preview:web:demo -w apps/android-companion",
     "preview:mobile:health": "npm run preview:web:health -w apps/android-companion",
-    "dev:health": "node -e \"Promise.all(['http://127.0.0.1:4317/api/health','http://127.0.0.1:5173'].map(async url=>{const response=await fetch(url);if(!response.ok)throw new Error(url+' returned HTTP '+response.status)})).then(()=>console.log('API and web preview ready'))\"",
+    "dev:health": "node ./scripts/check-urls.mjs \"API=http://127.0.0.1:4317/api/health\" \"Web=http://127.0.0.1:5173\"",
     "package:desktop": "npm run build && npm run package -w @local-fitness-advisor/desktop",
     "package:desktop:signed": "npm run build && npm run package:signed -w @local-fitness-advisor/desktop",
     "audit:ci": "node ./scripts/audit-ci.mjs",
