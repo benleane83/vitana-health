@@ -138,7 +138,7 @@ For a deterministic preview that starts with read-only sample data and does not 
 npm run preview:mobile:demo
 ```
 
-After Expo reports that the web bundle is ready, verify it from another terminal with `npm run preview:mobile:health`, then open `http://127.0.0.1:8082`. For the PC app, run `npm run dev`; `npm run dev:health` verifies both its API and web UI before browser inspection.
+After Expo reports that the web bundle is ready, verify it from another terminal with `npm run preview:mobile:health`, then open `http://127.0.0.1:8082`. For the PC app, run `npm run dev`. Before browser inspection, use `npm run dev:health` to verify both its API and web UI.
 
 This is a rendering preview rather than a second companion client. The Android pairing flow is unchanged, and camera capture, Health Connect, native secure storage, certificate pinning, and Android permission behavior still require an Android development or preview build. Use the web preview for navigation, layout, forms, dashboard and Track presentation, loading states, and other platform-neutral UI work.
 
