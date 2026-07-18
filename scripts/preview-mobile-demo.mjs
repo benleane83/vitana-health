@@ -13,6 +13,11 @@ child.on("error", (error) => {
   console.error(`Unable to start the mobile demo preview: ${error.message}`);
   process.exitCode = 1;
 });
-child.on("exit", (code) => {
+child.on("exit", (code, signal) => {
+  if (signal) {
+    console.error(`Mobile demo preview stopped by ${signal}.`);
+    process.exitCode = 1;
+    return;
+  }
   process.exitCode = code ?? 1;
 });
