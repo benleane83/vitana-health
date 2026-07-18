@@ -1,5 +1,21 @@
 import { LOCAL_SCHEMA_VERSION } from "./localStore";
 
+export interface MigrationDatabase {
+  getFirstAsync<T>(query: string): Promise<T | null>;
+  execAsync(query: string): Promise<void>;
+  withTransactionAsync(task: () => Promise<void>): Promise<void>;
+}
+
+export async function migrate(database: MigrationDatabase): Promise<void> {
+  const row = await database.getFirstAsync<{ user_version: number }>("PRAGMA user_version");
+  const currentVersion = row?.user_version ?? 0;
+  validateSchemaVersion(currentVersion);
+  if (currentVersion === LOCAL_SCHEMA_VERSION) return;
+  await database.withTransactionAsync(async () => {
+    await database.execAsync(migrationSql(currentVersion));
+  });
+}
+
 export function validateSchemaVersion(currentVersion: number): void {
   if (!Number.isInteger(currentVersion) || currentVersion < 0) {
     throw new Error(`Invalid database schema version ${currentVersion}.`);

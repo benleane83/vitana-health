@@ -24,13 +24,13 @@
     },
     "standalone-poc": {
       "distribution": "internal",
+      "autoIncrement": true,
       "android": {
         "buildType": "apk"
       },
       "env": {
         "LFA_ALLOW_CLEARTEXT": "0",
-        "LFA_STANDALONE_POC": "1",
-        "EXPO_PUBLIC_LFA_STANDALONE_POC": "1"
+        "LFA_STANDALONE_POC": "1"
       }
     },
     "production": {

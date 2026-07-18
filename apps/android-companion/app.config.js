@@ -4,7 +4,7 @@ const standalonePoc = process.env.LFA_STANDALONE_POC === "1";
 module.exports = {
   expo: {
     name: standalonePoc ? "Local Fitness Standalone Test" : "Local Fitness Companion",
-    slug: standalonePoc ? "local-fitness-standalone-test" : "local-fitness-companion",
+    slug: "local-fitness-companion",
     version: "1.0.0",
     orientation: "portrait",
     icon: "./assets/icon.png",

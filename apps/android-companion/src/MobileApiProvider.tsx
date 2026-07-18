@@ -14,21 +14,28 @@ import { pinnedFetch } from "./pinnedFetch";
 import { connectionStateForError, type ConnectionState } from "./connectionState";
 import type {
   CompanionDataSource,
+  CompanionLifecycleService,
   CompanionMaintenanceService,
   DetailPage
 } from "./companionDataSource";
 import { createDemoDataSource } from "./demoDataSource";
 import { loadDemoMode, saveDemoMode } from "./demoModeStore";
+import {
+  loadOperatingMode,
+  resolveOperatingMode,
+  saveOperatingMode,
+  type CompanionOperatingMode
+} from "./operatingModeStore";
 import type { CompanionMutationService } from "./companionDataSource";
 import { createStandaloneDataSource } from "./standalone/standaloneDataSource";
 
 export type { ConnectionState } from "./connectionState";
-export const standalonePoc = process.env.EXPO_PUBLIC_LFA_STANDALONE_POC === "1";
 
 interface MobileApiContextValue {
   connection: ConnectionDetails | null;
   connectionState: ConnectionState;
   demoMode: boolean;
+  operatingMode: CompanionOperatingMode;
   standaloneMode: boolean;
   bootstrap?: AppBootstrap;
   analytics?: AnalyticsSummary;
@@ -39,6 +46,7 @@ interface MobileApiContextValue {
   transientRevision: number;
   reloadConnection(): Promise<void>;
   setDemoMode(enabled: boolean): Promise<void>;
+  setOperatingMode(mode: CompanionOperatingMode): Promise<void>;
   refreshDashboard(): Promise<void>;
   refreshTrack(): Promise<void>;
   healthDataDetail(measurementCode: string, page?: DetailPage): Promise<HealthDataDetail>;
@@ -55,6 +63,7 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
   const [connection, setConnection] = useState<ConnectionDetails | null>(null);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [demoMode, setDemoModeState] = useState(false);
+  const [operatingMode, setOperatingModeState] = useState<CompanionOperatingMode>("standalone");
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const [bootstrap, setBootstrap] = useState<AppBootstrap>();
   const [analytics, setAnalytics] = useState<AnalyticsSummary>();
@@ -65,13 +74,16 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
   const [transientRevision, setTransientRevision] = useState(0);
   const generation = useRef(0);
   const demoSource = useMemo(() => createDemoDataSource(), []);
-  const standaloneSource = useMemo(() => standalonePoc ? createStandaloneDataSource() : undefined, []);
+  const standaloneSource = useMemo(
+    () => preferencesLoaded && operatingMode === "standalone" ? createStandaloneDataSource() : undefined,
+    [operatingMode, preferencesLoaded]
+  );
   const source = useMemo<CompanionDataSource | undefined>(() => {
     if (!preferencesLoaded) return undefined;
     if (demoMode) return demoSource;
-    if (standalonePoc && standaloneSource) return standaloneSource;
+    if (operatingMode === "standalone") return standaloneSource;
     return connection?.token ? createCompanionApi(connection) : undefined;
-  }, [connection, demoMode, demoSource, preferencesLoaded, standaloneSource]);
+  }, [connection, demoMode, demoSource, operatingMode, preferencesLoaded, standaloneSource]);
 
   const clearHealthData = useCallback(() => {
     setBootstrap(undefined);
@@ -90,8 +102,8 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     setConnection(next);
     clearHealthData();
     setError(undefined);
-    setConnectionState(demoMode || standalonePoc ? "online" : next?.token ? "connecting" : "unpaired");
-  }, [clearHealthData, demoMode]);
+    setConnectionState(demoMode || operatingMode === "standalone" ? "online" : next?.token ? "connecting" : "unpaired");
+  }, [clearHealthData, demoMode, operatingMode]);
 
   const setDemoMode = useCallback(async (enabled: boolean) => {
     await saveDemoMode(enabled);
@@ -99,7 +111,17 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     setDemoModeState(enabled);
     clearHealthData();
     setError(undefined);
-    setConnectionState(enabled || standalonePoc ? "online" : connection?.token ? "connecting" : "unpaired");
+    setConnectionState(enabled || operatingMode === "standalone" ? "online" : connection?.token ? "connecting" : "unpaired");
+  }, [clearHealthData, connection, operatingMode]);
+
+  const setOperatingMode = useCallback(async (mode: CompanionOperatingMode) => {
+    if (mode === "connected" && !connection?.token) throw new Error("Pair with a PC before using Connected mode.");
+    await saveOperatingMode(mode);
+    generation.current += 1;
+    setOperatingModeState(mode);
+    clearHealthData();
+    setError(undefined);
+    setConnectionState(mode === "standalone" ? "online" : "connecting");
   }, [clearHealthData, connection]);
 
   const refreshDashboard = useCallback(async () => {
@@ -152,14 +174,14 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
   }, [connection, demoMode, source]);
 
   const resetStandaloneData = useCallback(async () => {
-    if (!standalonePoc || !standaloneSource) throw new Error("Standalone storage is unavailable in this build.");
+    if (operatingMode !== "standalone" || !standaloneSource) throw new Error("Switch to Standalone mode before resetting local storage.");
     await (standaloneSource as CompanionMaintenanceService).resetLocalData();
     generation.current += 1;
     clearHealthData();
     setError(undefined);
     setConnectionState("online");
     await Promise.all([refreshDashboard(), refreshTrack()]);
-  }, [clearHealthData, refreshDashboard, refreshTrack, standaloneSource]);
+  }, [clearHealthData, operatingMode, refreshDashboard, refreshTrack, standaloneSource]);
 
   const refreshAfterImport = useCallback(async () => {
     await Promise.all([refreshDashboard(), refreshTrack()]);
@@ -185,19 +207,25 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let current = true;
-    void Promise.all([loadConnection(), loadDemoMode()]).then(([nextConnection, nextDemoMode]) => {
+    void Promise.all([loadConnection(), loadDemoMode(), loadOperatingMode()]).then(([nextConnection, nextDemoMode, storedMode]) => {
       if (!current) return;
+      const nextOperatingMode = resolveOperatingMode(storedMode, Boolean(nextConnection?.token));
       generation.current += 1;
       setConnection(nextConnection);
       setDemoModeState(nextDemoMode);
-      setConnectionState(nextDemoMode || standalonePoc ? "online" : nextConnection?.token ? "connecting" : "unpaired");
+      setOperatingModeState(nextOperatingMode);
+      setConnectionState(nextDemoMode || nextOperatingMode === "standalone" ? "online" : nextConnection?.token ? "connecting" : "unpaired");
       setPreferencesLoaded(true);
+      if (!storedMode) void saveOperatingMode(nextOperatingMode).catch(() => undefined);
     });
     return () => { current = false; };
   }, []);
   useEffect(() => {
     if (source) void Promise.all([refreshDashboard(), refreshTrack()]);
   }, [source, refreshDashboard, refreshTrack]);
+  useEffect(() => () => {
+    void (source as Partial<CompanionLifecycleService> | undefined)?.dispose?.();
+  }, [source]);
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
       if (state !== "active") clearTransientData();
@@ -209,7 +237,8 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     connection,
     connectionState,
     demoMode,
-    standaloneMode: standalonePoc,
+    operatingMode,
+    standaloneMode: operatingMode === "standalone",
     bootstrap,
     analytics,
     summary,
@@ -219,6 +248,7 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     transientRevision,
     reloadConnection,
     setDemoMode,
+    setOperatingMode,
     refreshDashboard,
     refreshTrack,
     healthDataDetail,
@@ -229,9 +259,9 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     disconnect
   }), [
     analytics, bootstrap, clearTransientData, connection, connectionState, dashboardLoading, demoMode,
-    disconnect, error, healthDataDetail, importManualObservations, refreshAfterImport, refreshDashboard, refreshTrack, reloadConnection,
+    disconnect, error, healthDataDetail, importManualObservations, operatingMode, refreshAfterImport, refreshDashboard, refreshTrack, reloadConnection,
     resetStandaloneData,
-    setDemoMode, summary, trackLoading, transientRevision
+    setDemoMode, setOperatingMode, summary, trackLoading, transientRevision
   ]);
   return <MobileApiContext.Provider value={value}>{children}</MobileApiContext.Provider>;
 }

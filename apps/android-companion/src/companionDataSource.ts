@@ -26,3 +26,7 @@ export interface CompanionMutationService {
 export interface CompanionMaintenanceService {
   resetLocalData(): Promise<void>;
 }
+
+export interface CompanionLifecycleService {
+  dispose(): Promise<void>;
+}

@@ -43,8 +43,8 @@ export function ImportScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<TabParamList, "Import">>();
   const [source, setSource] = useState<ImportSource>();
   useEffect(() => {
-    if (demoMode) setSource(undefined);
-  }, [demoMode]);
+    if (demoMode || (standaloneMode && source !== "manual")) setSource(undefined);
+  }, [demoMode, standaloneMode]);
 
   if (!source || demoMode) return <ImportSourceChooser demoMode={demoMode} standaloneMode={standaloneMode} onSelect={setSource} onConnect={() => {
     navigation.getParent<NativeStackNavigationProp<RootStackParamList>>()?.navigate("Connection");
@@ -129,30 +129,34 @@ function ImportSourceChooser({
           />
         ) : null}
         <View style={styles.sourceList}>
-          {sources.map(({ source, title, detail, icon: Icon, color, background }) => (
-            <Pressable
-              accessibilityHint={demoMode ? "Unavailable in Demo mode" : `Opens the ${title} flow`}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: demoMode }}
-              disabled={demoMode}
-              key={source}
-              onPress={() => onSelect(source)}
-              style={({ pressed }) => [styles.sourceRow, pressed && !demoMode && styles.sourcePressed, demoMode && styles.sourceDisabled]}
-            >
-              <View style={[styles.sourceIcon, { backgroundColor: background }]}>
-                <Icon color={color} size={23} strokeWidth={2.1} />
-              </View>
-              <View style={styles.sourceText}>
-                <View style={styles.sourceNameRow}>
-                  <Text style={styles.sourceName}>{title}</Text>
-                  {source === "sync" ? <Text style={styles.recommended}>Recommended</Text> : null}
+          {sources.map(({ source, title, detail, icon: Icon, color, background }) => {
+            const unavailableInStandalone = standaloneMode && source !== "manual";
+            const disabled = demoMode || unavailableInStandalone;
+            return (
+              <Pressable
+                accessibilityHint={disabled ? `Unavailable in ${demoMode ? "Demo" : "Standalone"} mode` : `Opens the ${title} flow`}
+                accessibilityRole="button"
+                accessibilityState={{ disabled }}
+                disabled={disabled}
+                key={source}
+                onPress={() => onSelect(source)}
+                style={({ pressed }) => [styles.sourceRow, pressed && !disabled && styles.sourcePressed, disabled && styles.sourceDisabled]}
+              >
+                <View style={[styles.sourceIcon, { backgroundColor: background }]}>
+                  <Icon color={color} size={23} strokeWidth={2.1} />
                 </View>
-                <Text style={styles.sourceDetail}>{detail}</Text>
-                {demoMode ? <Text style={styles.demoUnavailable}>Unavailable in Demo mode</Text> : null}
-              </View>
-              {!demoMode ? <ChevronRight color={colors.muted} size={20} /> : null}
-            </Pressable>
-          ))}
+                <View style={styles.sourceText}>
+                  <View style={styles.sourceNameRow}>
+                    <Text style={styles.sourceName}>{title}</Text>
+                    {source === "sync" && !standaloneMode ? <Text style={styles.recommended}>Recommended</Text> : null}
+                  </View>
+                  <Text style={styles.sourceDetail}>{detail}</Text>
+                  {disabled ? <Text style={styles.demoUnavailable}>Unavailable in {demoMode ? "Demo" : "Standalone"} mode</Text> : null}
+                </View>
+                {!disabled ? <ChevronRight color={colors.muted} size={20} /> : null}
+              </Pressable>
+            );
+          })}
         </View>
         {demoMode ? <Button onPress={onConnect}>Leave Demo mode</Button> : null}
         <Text style={styles.localNote}>

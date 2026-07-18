@@ -28,6 +28,22 @@ describe("standalone database key", () => {
     expect(random).not.toHaveBeenCalled();
   });
 
+  it("serializes concurrent first-use key creation", async () => {
+    const store = fakeStore();
+    const random = vi.fn(async () => Uint8Array.from({ length: 32 }, () => 0xab));
+
+    const keys = await Promise.all([
+      getOrCreateDatabaseKey(store, random),
+      getOrCreateDatabaseKey(store, random)
+    ]);
+
+    expect(random).toHaveBeenCalledOnce();
+    expect(keys).toEqual([
+      { hex: "ab".repeat(32), created: true },
+      { hex: "ab".repeat(32), created: false }
+    ]);
+  });
+
   it("fails closed for malformed keys", async () => {
     await expect(getOrCreateDatabaseKey(fakeStore("not-a-key"), async () => new Uint8Array(32)))
       .rejects.toThrow("cannot be opened safely");

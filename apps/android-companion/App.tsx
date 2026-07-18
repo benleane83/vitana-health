@@ -97,10 +97,29 @@ function ConnectionScreen({ navigation }: NativeStackScreenProps<RootStackParamL
     demoMode,
     disconnect,
     error,
+    operatingMode,
     resetStandaloneData,
     setDemoMode,
+    setOperatingMode,
     standaloneMode
   } = useMobileApi();
+  const connectedAvailable = Boolean(connection?.token);
+
+  function confirmOperatingMode(nextMode: "standalone" | "connected") {
+    if (nextMode === operatingMode) return;
+    const label = nextMode === "standalone" ? "Standalone" : "Connected";
+    Alert.alert(
+      `Switch to ${label}?`,
+      nextMode === "standalone"
+        ? "The app will use encrypted data stored on this phone. Your PC pairing and PC data will remain unchanged."
+        : "The app will use data from your paired PC. Local data on this phone will remain separate and unchanged.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: `Use ${label}`, onPress: () => { void setOperatingMode(nextMode); } }
+      ]
+    );
+  }
+
   return (
     <Screen>
       <Card>
@@ -110,6 +129,38 @@ function ConnectionScreen({ navigation }: NativeStackScreenProps<RootStackParamL
         {bootstrap ? <Text style={styles.meta}>Assigned to {bootstrap.profile.displayName}</Text> : null}
         {error ? <Message title="Connection issue" detail={error} tone="danger" /> : null}
       </Card>
+      <View style={styles.modeSetting}>
+        <View style={styles.settingText}>
+          <Text style={styles.settingTitle}>Operating mode</Text>
+          <Text style={styles.meta}>Choose which data source the app uses. Data is not copied between modes.</Text>
+        </View>
+        <View accessibilityRole="radiogroup" style={styles.modeControl}>
+          {(["standalone", "connected"] as const).map((mode) => {
+            const selected = operatingMode === mode;
+            const disabled = demoMode || (mode === "connected" && !connectedAvailable);
+            return (
+              <Pressable
+                accessibilityRole="radio"
+                accessibilityState={{ checked: selected, disabled }}
+                disabled={disabled}
+                key={mode}
+                onPress={() => confirmOperatingMode(mode)}
+                style={({ pressed }) => [
+                  styles.modeOption,
+                  selected && styles.modeOptionSelected,
+                  pressed && !disabled && styles.modeOptionPressed,
+                  disabled && styles.modeOptionDisabled
+                ]}
+              >
+                <Text style={[styles.modeOptionText, selected && styles.modeOptionTextSelected]}>
+                  {mode === "standalone" ? "Standalone" : "Connected"}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        {!connectedAvailable ? <Text style={styles.modeHint}>Pair with a PC to enable Connected mode.</Text> : null}
+      </View>
       <View style={styles.settingRow}>
         <View style={styles.settingText}>
           <Text style={styles.settingTitle}>Demo mode</Text>
@@ -121,11 +172,11 @@ function ConnectionScreen({ navigation }: NativeStackScreenProps<RootStackParamL
           onValueChange={(enabled) => { void setDemoMode(enabled); }}
         />
       </View>
-      {!demoMode && !standaloneMode ? <Button onPress={() => navigation.navigate("Pair")}>{connection ? "Re-pair" : "Pair with PC"}</Button> : null}
-      {connection && !demoMode && !standaloneMode ? (
+      {!demoMode ? <Button onPress={() => navigation.navigate("Pair")}>{connection ? "Re-pair with PC" : "Pair with PC"}</Button> : null}
+      {connection && !demoMode ? (
         <Button secondary onPress={() => {
           void disconnect().then(() => navigation.goBack()).catch(() => undefined);
-        }}>Revoke and disconnect</Button>
+        }}>Revoke and unpair</Button>
       ) : null}
       {standaloneMode && !demoMode ? (
         <Button secondary onPress={() => Alert.alert(
@@ -144,9 +195,9 @@ function ConnectionScreen({ navigation }: NativeStackScreenProps<RootStackParamL
       <Message
         title={demoMode ? "Your connection is unchanged" : "Local-first connection"}
         detail={demoMode
-          ? "Turn off Demo mode to return to your paired PC. Sample data is stored separately from your health records."
+          ? "Turn off Demo mode to return to your selected operating mode. Sample data is stored separately from your health records."
           : standaloneMode
-            ? "This test build keeps health data in a SQLCipher database protected by a device-backed key."
+            ? "Health data is kept in a SQLCipher database protected by a device-backed key. Pairing with a PC does not upload it."
             : "Health data is fetched only while your paired PC is reachable and is not cached on this phone."}
       />
     </Screen>
@@ -164,5 +215,14 @@ const styles = StyleSheet.create({
   meta: { color: colors.muted, fontSize: type.body, lineHeight: 20 },
   settingRow: { alignItems: "center", flexDirection: "row", gap: spacing.md, justifyContent: "space-between", paddingVertical: spacing.sm },
   settingText: { flex: 1, gap: spacing.xs },
-  settingTitle: { color: colors.text, fontSize: type.title, fontWeight: "700" }
+  settingTitle: { color: colors.text, fontSize: type.title, fontWeight: "700" },
+  modeSetting: { gap: spacing.sm, paddingVertical: spacing.sm },
+  modeControl: { backgroundColor: colors.surfaceMuted, borderRadius: radii.sm, flexDirection: "row", padding: spacing.xs },
+  modeOption: { alignItems: "center", borderRadius: radii.sm, flex: 1, justifyContent: "center", minHeight: 44, paddingHorizontal: spacing.sm },
+  modeOptionSelected: { backgroundColor: colors.surface },
+  modeOptionPressed: { opacity: 0.78 },
+  modeOptionDisabled: { opacity: 0.5 },
+  modeOptionText: { color: colors.muted, fontSize: type.label, fontWeight: "700" },
+  modeOptionTextSelected: { color: colors.primary },
+  modeHint: { color: colors.muted, fontSize: type.label, lineHeight: 18 }
 });

@@ -5,6 +5,7 @@ import type {
 } from "@local-fitness-advisor/shared";
 import type {
   CompanionDataSource,
+  CompanionLifecycleService,
   CompanionMaintenanceService,
   CompanionMutationService
 } from "../companionDataSource";
@@ -13,7 +14,7 @@ import {
   resetStandaloneStorage
 } from "./createStandaloneRepository";
 
-export function createStandaloneDataSource(): CompanionDataSource & CompanionMutationService & CompanionMaintenanceService {
+export function createStandaloneDataSource(): CompanionDataSource & CompanionMutationService & CompanionMaintenanceService & CompanionLifecycleService {
   let repository = createStandaloneRepository();
   const getRepository = (): Promise<MobileProfileRepository> => repository;
   return {
@@ -28,6 +29,9 @@ export function createStandaloneDataSource(): CompanionDataSource & CompanionMut
       await repository.then((current) => current.close()).catch(() => undefined);
       await resetStandaloneStorage();
       repository = createStandaloneRepository();
+    },
+    dispose: async () => {
+      await repository.then((current) => current.close()).catch(() => undefined);
     }
   };
 }

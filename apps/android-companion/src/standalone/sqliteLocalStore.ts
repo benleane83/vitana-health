@@ -7,6 +7,7 @@ import type {
   Profile
 } from "@local-fitness-advisor/shared";
 import { openWithDatabaseKey, type SecureKeyStore } from "./databaseKey";
+import { deleteEmptyPlaintextDatabase, isFileNotDatabaseError } from "./databaseRecovery";
 import {
   LOCAL_SCHEMA_VERSION,
   emptyCounts,
@@ -16,7 +17,7 @@ import {
   type LocalStore,
   type LocalStoreCounts
 } from "./localStore";
-import { migrationSql, validateSchemaVersion } from "./migrations";
+import { migrate } from "./migrations";
 
 const DATABASE_NAME = "standalone-health.db";
 const DATABASE_KEY_NAME = "local-fitness-advisor.standaloneDatabaseKey.v1";
@@ -30,30 +31,51 @@ const secureKeyStore: SecureKeyStore = {
 };
 
 export async function openSqliteLocalStore(): Promise<SqliteLocalStore> {
+  try {
+    return await openSqliteLocalStoreOnce();
+  } catch (error) {
+    if (!isFileNotDatabaseError(error)) throw error;
+    const removed = await deleteEmptyPlaintextDatabase(
+      () => openDatabaseAsync(DATABASE_NAME),
+      () => deleteDatabaseAsync(DATABASE_NAME)
+    );
+    if (!removed) throw error;
+
+    await secureKeyStore.remove();
+    return openSqliteLocalStoreOnce();
+  }
+}
+
+async function openSqliteLocalStoreOnce(): Promise<SqliteLocalStore> {
   let databaseReadable = false;
   return openWithDatabaseKey(secureKeyStore, Crypto.getRandomBytesAsync, async (hexKey) => {
     const database = await openDatabaseAsync(DATABASE_NAME);
+    let phase = "applying the encryption key";
     try {
       await database.execAsync(`PRAGMA key = "x'${hexKey}'";`);
+      phase = "checking SQLCipher availability";
       const cipher = await database.getFirstAsync<{ cipher_version: string }>("PRAGMA cipher_version");
       if (!cipher?.cipher_version) {
         throw new Error("SQLCipher is unavailable. Reinstall the standalone test build with SQLCipher enabled.");
       }
 
+      phase = "verifying the encrypted database";
       await database.getFirstAsync("PRAGMA user_version");
       databaseReadable = true;
+      phase = "configuring the encrypted database";
       await database.execAsync(`
         PRAGMA foreign_keys = ON;
         PRAGMA journal_mode = WAL;
         PRAGMA synchronous = FULL;
         PRAGMA secure_delete = ON;
       `);
+      phase = "migrating the encrypted database";
       await migrate(database);
       return new SqliteLocalStore(database);
     } catch (error) {
       await database.closeAsync().catch(() => undefined);
       const detail = error instanceof Error ? error.message : "Unknown database error";
-      throw new Error(`Unable to open the encrypted standalone database safely: ${detail}`);
+      throw new Error(`Unable to open the encrypted standalone database safely while ${phase}: ${detail}`);
     }
   }, () => !databaseReadable);
 }
@@ -111,7 +133,8 @@ export class SqliteLocalStore implements LocalStore {
       observations: 0
     };
     const profileId = this.requireProfileId();
-    await this.database.withExclusiveTransactionAsync(async (transaction) => {
+    await this.database.withTransactionAsync(async () => {
+      const transaction = this.database;
       const sourceImport = imported.sourceImport;
       accepted.sourceImports += (await transaction.runAsync(
         `INSERT OR IGNORE INTO source_imports
@@ -316,12 +339,3 @@ export class SqliteLocalStore implements LocalStore {
   }
 }
 
-export async function migrate(database: SQLiteDatabase): Promise<void> {
-  const row = await database.getFirstAsync<{ user_version: number }>("PRAGMA user_version");
-  const currentVersion = row?.user_version ?? 0;
-  validateSchemaVersion(currentVersion);
-  if (currentVersion === LOCAL_SCHEMA_VERSION) return;
-  await database.withExclusiveTransactionAsync(async (transaction) => {
-    await transaction.execAsync(migrationSql(currentVersion));
-  });
-}

@@ -9,23 +9,36 @@ export interface DatabaseKey {
   created: boolean;
 }
 
+let keyOperation = Promise.resolve();
+
 export async function getOrCreateDatabaseKey(
   store: SecureKeyStore,
   randomBytes: (length: number) => Promise<Uint8Array>
 ): Promise<DatabaseKey> {
-  const existing = await store.get();
-  if (existing !== null) {
-    if (!/^[a-f0-9]{64}$/i.test(existing)) {
-      throw new Error("The standalone database key is invalid. Local data cannot be opened safely.");
-    }
-    return { hex: existing.toLowerCase(), created: false };
-  }
+  const previousOperation = keyOperation;
+  let releaseOperation: () => void;
+  keyOperation = new Promise<void>((resolve) => {
+    releaseOperation = resolve;
+  });
+  await previousOperation;
 
-  const bytes = await randomBytes(32);
-  if (bytes.length !== 32) throw new Error("Unable to generate a 256-bit database key.");
-  const hex = Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
-  await store.set(hex);
-  return { hex, created: true };
+  try {
+    const existing = await store.get();
+    if (existing !== null) {
+      if (!/^[a-f0-9]{64}$/i.test(existing)) {
+        throw new Error("The standalone database key is invalid. Local data cannot be opened safely.");
+      }
+      return { hex: existing.toLowerCase(), created: false };
+    }
+
+    const bytes = await randomBytes(32);
+    if (bytes.length !== 32) throw new Error("Unable to generate a 256-bit database key.");
+    const hex = Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+    await store.set(hex);
+    return { hex, created: true };
+  } finally {
+    releaseOperation!();
+  }
 }
 
 export async function openWithDatabaseKey<T>(
