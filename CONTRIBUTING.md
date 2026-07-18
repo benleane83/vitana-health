@@ -27,7 +27,7 @@ This project follows basic open-source norms: be respectful, assume good faith, 
 - Documentation fixes and improvements.
 - Test coverage for untested code paths.
 
-**Please open an issue or start a discussion before beginning significant new features.** The project has a deliberate local-first, single-user, privacy-first scope, and substantial new features should be validated against that direction first.
+**Please open an issue or start a discussion before beginning significant new features.** The project has a deliberate local-first, multi-profile, privacy-first scope, and substantial new features should be validated against that direction first.
 
 ## Non-medical use boundaries
 
@@ -35,9 +35,11 @@ All contributions must stay within the app's defined safety boundaries: wellness
 
 ## Development setup
 
+Use Node.js 22 and npm 10, as pinned by `.nvmrc`, `package.json`, and CI.
+
 ```powershell
 # Install dependencies
-npm install
+npm ci
 
 # Run API and web UI together
 npm run dev
@@ -50,6 +52,38 @@ npm run typecheck
 ```
 
 The API binds to `127.0.0.1:4317` and the web UI to `127.0.0.1:5173`.
+
+## Codebase map
+
+This npm workspace is organized around these dependency boundaries:
+
+| Area | Path | Depends on | Responsibility |
+|---|---|---|---|
+| Shared domain | `packages/shared` | — | Schemas, parsers, analytics, and platform-neutral domain logic |
+| API client | `packages/api-client` | Shared | Typed API transport used by browser and companion clients |
+| API and storage | `apps/api` | Shared | Express API, profile lifecycle, encrypted DuckDB repositories, imports, analytics, pairing, and reports |
+| PC web UI | `apps/web` | Shared, API client | React/Vite desktop browser interface |
+| Mobile companion | `apps/android-companion` | Shared, API client | Expo/React Native companion, demo mode, pairing, and native adapters |
+| Desktop host | `apps/desktop` | API; packaged web output | Electron secure storage, process lifecycle, and Windows installer |
+
+Keep database-specific operations behind the storage abstractions in `apps/api/src/storage`. Runtime code must not restore the retired JSON profile backend or perform whole-profile reads. Shared and API-client changes can affect every app and therefore require broader validation than leaf-workspace changes.
+
+## Validation commands
+
+Use the narrowest command that covers a change, then run `npm run validate:fast` before submitting ordinary changes.
+
+| Changed area | Command | Additional boundary validation |
+|---|---|---|
+| Shared domain | `npm run validate:shared` | Run affected app validation because all apps consume it |
+| API routes and services | `npm run validate:api` | `npm run test:integration` for HTTP or lifecycle behavior |
+| Web UI | `npm run validate:web` | `npm run test:integration` for full UI/API flows |
+| Android companion | `npm run validate:android` | Use manually dispatched Android native CI for native modules or permissions |
+| Electron/packaging | `npm run validate:desktop` | Use manually dispatched Windows desktop smoke CI for packaging changes |
+| Storage, encryption, or recovery | `npm run validate:storage` | Includes integration and durability suites; Windows CI remains authoritative |
+
+`npm run validate:fast` runs workspace type-checking, production builds, core tests, and desktop tests. `npm run validate:all` additionally runs integration, durability, and dependency-audit checks.
+
+The Copilot cloud agent uses `.github/workflows/copilot-setup-steps.yml` to install locked dependencies, rebuild DuckDB, and build shared workspaces before an agent starts. Changes to that workflow or the root package manifests run the setup workflow as a normal check; it can also be run manually from the Actions tab. The setup file must be present on the default branch before Copilot uses it.
 
 ## Test suites
 

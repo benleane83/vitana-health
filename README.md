@@ -6,7 +6,7 @@ A local-first health analytics app for Android Health Connect sync, manual blood
 
 - Frontend: React + Vite
 - API: Node.js + TypeScript + Express
-- Storage: one encrypted DuckDB database per profile on Windows x64; retained encrypted JSON rollback architecture
+- Storage: one encrypted DuckDB database per profile on Windows x64
 - AI: optional local Ollama runtime or cloud OpenAI-compatible Responses API endpoint
 
 ## Quick start
@@ -18,9 +18,9 @@ npm run dev
 
 On Windows x64, the normal development command verifies the pinned, signed DuckDB extension and selects encrypted DuckDB. The API binds to `127.0.0.1:4317`, and the Vite UI runs on `127.0.0.1:5173`.
 
-On first use, existing encrypted JSON profiles are parity-checked and imported into encrypted DuckDB databases. Later launches open those databases directly; retained JSON files are no longer required by runtime startup. New profiles are created directly in DuckDB. The API startup record reports whether startup performed initial migration or reopened canonical storage.
+On first use, the app creates its initial profile directly in an encrypted DuckDB database. Additional family-member profiles, including children and pets, receive separate encrypted databases. Runtime startup opens these canonical databases directly and does not load or migrate legacy JSON profiles.
 
-See [Encrypted DuckDB Architecture](docs/ENCRYPTED_DUCKDB_ARCHITECTURE.md) for migration, key lifecycle, and platform limits.
+See [Encrypted DuckDB Architecture](docs/ENCRYPTED_DUCKDB_ARCHITECTURE.md) for initialization, key lifecycle, and platform limits.
 
 The API generates and persists its owner credential automatically. A browser running on the same computer obtains an `HttpOnly` local session, so users never copy or enter a token.
 
@@ -42,7 +42,7 @@ For signing, verification, checksums, and the protected Windows release process,
 
 ## Privacy model
 
-- Personal health data is stored locally in one encrypted DuckDB database per profile. Encrypted `health-store-*.enc` files are retained as activation baselines for explicit rollback.
+- Personal health data is stored locally in one encrypted DuckDB database per profile.
 - Raw imports are stored inside the encrypted local store and are omitted from normal API responses.
 - No external telemetry, cloud sync, or vendor data upload paths are implemented. Storage lifecycle events are recorded locally without profile data.
 - The only optional off-device path is model prompt text when you configure a cloud model provider yourself.
@@ -131,6 +131,14 @@ npm run preview:web -w apps/android-companion
 ```
 
 Open `http://127.0.0.1:8082` and use the browser's responsive device toolbar to test phone-sized layouts. Changes to React Native components refresh locally without an EAS build or update. Coding agents can open the same URL in the VS Code integrated browser to inspect the accessibility tree, interact with controls, and capture desktop or mobile-sized screenshots.
+
+For a deterministic preview that starts with read-only sample data and does not require a paired PC:
+
+```powershell
+npm run preview:mobile:demo
+```
+
+After Expo reports that the web bundle is ready, verify it from another terminal with `npm run preview:mobile:health`, then open `http://127.0.0.1:8082`. For the PC app, run `npm run dev`; `npm run dev:health` verifies both its API and web UI before browser inspection.
 
 This is a rendering preview rather than a second companion client. The Android pairing flow is unchanged, and camera capture, Health Connect, native secure storage, certificate pinning, and Android permission behavior still require an Android development or preview build. Use the web preview for navigation, layout, forms, dashboard and Track presentation, loading states, and other platform-neutral UI work.
 
