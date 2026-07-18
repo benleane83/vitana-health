@@ -1,8 +1,12 @@
 import type duckdb from "duckdb";
 import {
+  type CareItem,
+  type CareItemListQuery,
   biologicalAgeMeasurementCodes,
   classifyValue,
   computeAnalyticsFromInput,
+  type HealthEvent,
+  type HealthEventListQuery,
   type AnalyticsSummary,
   type AppBootstrap,
   type BiologicalAgeSource,
@@ -13,6 +17,7 @@ import {
   type HealthDataSummaryTypeRow,
   type MeasurementType,
   type ObservationGroup,
+  type PaginatedResult,
   type Profile,
   getReferenceRange
 } from "@local-fitness-advisor/shared";
@@ -31,6 +36,7 @@ import {
   isoTimestamp,
   measurementTypeFromRow,
   observationFromRow,
+  optionalJson,
   optionalNumber,
   optionalString,
   optionalTimestamp,
@@ -582,6 +588,95 @@ export async function countActivities(connection: duckdb.Connection, options: Du
   }));
 }
 
+export async function listHealthEvents(
+  connection: duckdb.Connection,
+  query: HealthEventListQuery
+): Promise<PaginatedResult<HealthEvent>> {
+  const normalized = normalizeHealthEventListQuery(query);
+  const { whereSql, params } = buildHealthEventWhere(normalized);
+  const rows = await allWithParams(
+    connection,
+    `SELECT * EXCLUDE (ordinal)
+      FROM health_events
+      ${whereSql}
+      ORDER BY COALESCE(occurred_end, occurred_at) DESC, id DESC
+      LIMIT ? OFFSET ?;`,
+    ...params,
+    normalized.limit,
+    normalized.offset
+  );
+  const totalRows = await allWithParams(
+    connection,
+    `SELECT COUNT(*) AS count FROM health_events ${whereSql};`,
+    ...params
+  );
+  const items = await hydrateHealthEventRows(connection, rows);
+  if (normalized.includeId && !items.some((event) => event.id === normalized.includeId)) {
+    const includedRows = await allWithParams(
+      connection,
+      "SELECT * EXCLUDE (ordinal) FROM health_events WHERE id = ?;",
+      normalized.includeId
+    );
+    if (includedRows[0]) {
+      items.push(...await hydrateHealthEventRows(connection, includedRows));
+    }
+  }
+  const total = Number(totalRows[0]?.count ?? 0);
+  return {
+    items,
+    total,
+    offset: normalized.offset,
+    limit: normalized.limit,
+    hasMore: normalized.offset + rows.length < total
+  };
+}
+
+export async function listCareItems(
+  connection: duckdb.Connection,
+  query: CareItemListQuery
+): Promise<PaginatedResult<CareItem>> {
+  const normalized = normalizeCareItemListQuery(query);
+  const { whereSql, params } = buildCareItemWhere(normalized);
+  const rows = await allWithParams(
+    connection,
+    `SELECT * EXCLUDE (ordinal)
+      FROM care_items
+      ${whereSql}
+      ORDER BY
+        CASE WHEN COALESCE(due_start, due_end) IS NULL THEN 1 ELSE 0 END,
+        COALESCE(due_start, due_end) ASC,
+        id ASC
+      LIMIT ? OFFSET ?;`,
+    ...params,
+    normalized.limit,
+    normalized.offset
+  );
+  const totalRows = await allWithParams(
+    connection,
+    `SELECT COUNT(*) AS count FROM care_items ${whereSql};`,
+    ...params
+  );
+  const items = rows.map(careItemFromRow);
+  if (normalized.includeId && !items.some((item) => item.id === normalized.includeId)) {
+    const includedRows = await allWithParams(
+      connection,
+      "SELECT * EXCLUDE (ordinal) FROM care_items WHERE id = ?;",
+      normalized.includeId
+    );
+    if (includedRows[0]) {
+      items.push(careItemFromRow(includedRows[0]));
+    }
+  }
+  const total = Number(totalRows[0]?.count ?? 0);
+  return {
+    items,
+    total,
+    offset: normalized.offset,
+    limit: normalized.limit,
+    hasMore: normalized.offset + rows.length < total
+  };
+}
+
 export async function storageCounts(connection: duckdb.Connection): Promise<AppBootstrap["counts"]> {
   const rows = await all(connection, `
     SELECT
@@ -660,6 +755,96 @@ function measurementDetailEntryFromRow(
   return { ...base, note: detailNotes.join(" • ") };
 }
 
+async function hydrateHealthEventRows(
+  connection: duckdb.Connection,
+  rows: Array<Record<string, unknown>>
+): Promise<HealthEvent[]> {
+  if (rows.length === 0) {
+    return [];
+  }
+  const ids = rows.map((row) => String(row.id));
+  const placeholders = ids.map(() => "?").join(", ");
+  const [immunizationRows, medicationRows] = await Promise.all([
+    allWithParams(connection, `SELECT * FROM immunizations WHERE health_event_id IN (${placeholders});`, ...ids),
+    allWithParams(connection, `SELECT * FROM medication_administrations WHERE health_event_id IN (${placeholders});`, ...ids)
+  ]);
+  const immunizations = new Map(immunizationRows.map((row) => [String(row.health_event_id), row]));
+  const medications = new Map(medicationRows.map((row) => [String(row.health_event_id), row]));
+  return rows.map((row) => {
+    const base = compact({
+      id: String(row.id),
+      kind: String(row.kind),
+      status: String(row.status),
+      occurredAt: isoTimestamp(row.occurred_at),
+      occurredEnd: optionalTimestamp(row.occurred_end),
+      source: String(row.source),
+      provider: optionalString(row.provider),
+      notes: optionalString(row.notes),
+      metadata: optionalJson(row.metadata)
+    });
+    const immunization = immunizations.get(String(row.id));
+    const medication = medications.get(String(row.id));
+    if (immunization) {
+      return {
+        ...base,
+        kind: "immunization",
+        immunization: compact({
+          vaccine: String(immunization.vaccine),
+          targetDisease: optionalString(immunization.target_disease),
+          doseNumber: optionalNumber(immunization.dose_number),
+          series: optionalString(immunization.series),
+          manufacturer: optionalString(immunization.manufacturer),
+          lotNumber: optionalString(immunization.lot_number),
+          expiresAt: immunization.expires_at ? dateOnly(immunization.expires_at) : undefined,
+          route: optionalString(immunization.route),
+          site: optionalString(immunization.site),
+          reaction: optionalString(immunization.reaction)
+        })
+      } satisfies HealthEvent;
+    }
+    if (medication) {
+      return {
+        ...base,
+        kind: "medication-administration",
+        medicationAdministration: compact({
+          medication: String(medication.medication),
+          activeIngredient: optionalString(medication.active_ingredient),
+          dose: Number(medication.dose),
+          unit: String(medication.unit),
+          route: optionalString(medication.route)
+        })
+      } satisfies HealthEvent;
+    }
+    if (row.kind === "immunization") {
+      return { ...base, kind: "immunization" } satisfies HealthEvent;
+    }
+    if (row.kind === "medication-administration") {
+      return { ...base, kind: "medication-administration" } satisfies HealthEvent;
+    }
+    return { ...base, kind: "other" } satisfies HealthEvent;
+  });
+}
+
+function careItemFromRow(row: Record<string, unknown>): CareItem {
+  return compact({
+    id: String(row.id),
+    kind: String(row.kind),
+    code: optionalString(row.code),
+    title: String(row.title),
+    dueStart: optionalTimestamp(row.due_start),
+    dueEnd: optionalTimestamp(row.due_end),
+    reminderAt: optionalTimestamp(row.reminder_at),
+    priority: String(row.priority),
+    status: String(row.status),
+    scheduleProvenance: optionalString(row.schedule_provenance),
+    scheduleVersion: optionalString(row.schedule_version),
+    notes: optionalString(row.notes),
+    originatingHealthEventId: optionalString(row.originating_health_event_id),
+    completedHealthEventId: optionalString(row.completed_health_event_id),
+    completedAt: optionalTimestamp(row.completed_at)
+  }) as CareItem;
+}
+
 function isSummaryCategory(value: unknown): value is HealthDataSummaryTypeRow["category"] {
   return value === "activity" || value === "cardio" || value === "sleep" || value === "body" ||
     value === "lab" || value === "derived" || value === "uncategorized";
@@ -703,6 +888,114 @@ function validDateOnly(value: string, name: string): string {
     throw new Error(`DuckDB activity query ${name} must be a valid YYYY-MM-DD date.`);
   }
   return value;
+}
+
+interface NormalizedHealthEventListQuery {
+  limit: number;
+  offset: number;
+  search?: string;
+  kind?: HealthEventListQuery["kind"];
+  status?: HealthEventListQuery["status"];
+  occurredFrom?: string;
+  occurredTo?: string;
+  includeId?: string;
+}
+
+function normalizeHealthEventListQuery(query: HealthEventListQuery): NormalizedHealthEventListQuery {
+  return {
+    limit: Math.min(Math.max(Number(query.limit ?? 20), 1), 100),
+    offset: Math.max(Number(query.offset ?? 0), 0),
+    search: query.search?.trim() || undefined,
+    kind: query.kind,
+    status: query.status,
+    occurredFrom: query.occurredFrom,
+    occurredTo: query.occurredTo,
+    includeId: query.includeId?.trim() || undefined
+  };
+}
+
+function buildHealthEventWhere(query: NormalizedHealthEventListQuery): { whereSql: string; params: unknown[] } {
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+  if (query.kind) {
+    clauses.push("kind = ?");
+    params.push(query.kind);
+  }
+  if (query.status) {
+    clauses.push("status = ?");
+    params.push(query.status);
+  }
+  if (query.occurredFrom) {
+    clauses.push("occurred_at >= ?");
+    params.push(query.occurredFrom);
+  }
+  if (query.occurredTo) {
+    clauses.push("COALESCE(occurred_end, occurred_at) <= ?");
+    params.push(query.occurredTo);
+  }
+  if (query.search) {
+    clauses.push("(LOWER(kind) LIKE ? OR LOWER(COALESCE(provider, '')) LIKE ? OR LOWER(COALESCE(notes, '')) LIKE ?)");
+    const token = `%${query.search.toLowerCase()}%`;
+    params.push(token, token, token);
+  }
+  return {
+    whereSql: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "",
+    params
+  };
+}
+
+interface NormalizedCareItemListQuery {
+  limit: number;
+  offset: number;
+  search?: string;
+  status?: CareItemListQuery["status"];
+  priority?: CareItemListQuery["priority"];
+  dueFrom?: string;
+  dueTo?: string;
+  includeId?: string;
+}
+
+function normalizeCareItemListQuery(query: CareItemListQuery): NormalizedCareItemListQuery {
+  return {
+    limit: Math.min(Math.max(Number(query.limit ?? 20), 1), 100),
+    offset: Math.max(Number(query.offset ?? 0), 0),
+    search: query.search?.trim() || undefined,
+    status: query.status,
+    priority: query.priority,
+    dueFrom: query.dueFrom,
+    dueTo: query.dueTo,
+    includeId: query.includeId?.trim() || undefined
+  };
+}
+
+function buildCareItemWhere(query: NormalizedCareItemListQuery): { whereSql: string; params: unknown[] } {
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+  if (query.status) {
+    clauses.push("status = ?");
+    params.push(query.status);
+  }
+  if (query.priority) {
+    clauses.push("priority = ?");
+    params.push(query.priority);
+  }
+  if (query.dueFrom) {
+    clauses.push("COALESCE(due_start, due_end) >= ?");
+    params.push(query.dueFrom);
+  }
+  if (query.dueTo) {
+    clauses.push("COALESCE(due_end, due_start) <= ?");
+    params.push(query.dueTo);
+  }
+  if (query.search) {
+    clauses.push("(LOWER(title) LIKE ? OR LOWER(kind) LIKE ? OR LOWER(COALESCE(notes, '')) LIKE ?)");
+    const token = `%${query.search.toLowerCase()}%`;
+    params.push(token, token, token);
+  }
+  return {
+    whereSql: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "",
+    params
+  };
 }
 
 export interface DuckDbDailyMetric {

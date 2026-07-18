@@ -8,6 +8,8 @@ const authorizationSchemaVersion = 2;
 export type CompanionCapability =
   | "profiles:list-minimal"
   | "assigned-profile:read"
+  | "care:read"
+  | "care:write"
   | "observations:import-manual"
   | "reports:preview"
   | "reports:commit"
@@ -16,6 +18,8 @@ export type CompanionCapability =
 export const companionCapabilities: readonly CompanionCapability[] = [
   "profiles:list-minimal",
   "assigned-profile:read",
+  "care:read",
+  "care:write",
   "observations:import-manual",
   "reports:preview",
   "reports:commit",

@@ -73,4 +73,27 @@ describe("persisted health store schema", () => {
     });
     expect(result.data).not.toHaveProperty("labPanels");
   });
+
+  it("accepts base-only health event kinds without specialist payloads", () => {
+    const result = parsePersistedHealthStore(store({
+      healthEvents: [{
+        id: "event-1",
+        kind: "immunization",
+        status: "completed",
+        occurredAt: "2026-01-01T00:00:00.000Z",
+        source: "manual-entry"
+      }, {
+        id: "event-2",
+        kind: "medication-administration",
+        status: "completed",
+        occurredAt: "2026-01-02T00:00:00.000Z",
+        source: "manual-entry"
+      }]
+    }));
+
+    expect(result.data.healthEvents).toEqual([
+      expect.objectContaining({ id: "event-1", kind: "immunization" }),
+      expect.objectContaining({ id: "event-2", kind: "medication-administration" })
+    ]);
+  });
 });

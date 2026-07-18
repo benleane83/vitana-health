@@ -9,4 +9,5 @@ export type TabParamList = {
   Dashboard: undefined;
   Import: undefined;
   Track: undefined;
+  Care: undefined;
 };

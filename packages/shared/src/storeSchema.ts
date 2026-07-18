@@ -97,7 +97,7 @@ const storeFields = {
         vaccine: z.string(), targetDisease: z.string().optional(), doseNumber: z.number().int().positive().optional(),
         series: z.string().optional(), manufacturer: z.string().optional(), lotNumber: z.string().optional(),
         expiresAt: z.string().optional(), route: z.string().optional(), site: z.string().optional(), reaction: z.string().optional()
-      }).strict()
+      }).strict().optional()
     }).strict(),
     z.object({
       id: z.string(), kind: z.literal("medication-administration"), status: z.enum(["completed", "entered-in-error"]),
@@ -105,7 +105,7 @@ const storeFields = {
       notes: z.string().optional(), metadata: stringRecord.optional(),
       medicationAdministration: z.object({
         medication: z.string(), activeIngredient: z.string().optional(), dose: z.number(), unit: z.string(), route: z.string().optional()
-      }).strict()
+      }).strict().optional()
     }).strict(),
     z.object({
       id: z.string(), kind: z.literal("other"), status: z.enum(["completed", "entered-in-error"]),

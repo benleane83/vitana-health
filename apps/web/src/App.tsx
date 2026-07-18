@@ -9,13 +9,15 @@ import { InsightsRoute } from "./features/insights/InsightsRoute.js";
 import { ExportRoute } from "./features/export/ExportRoute.js";
 import { TrackRoute } from "./features/track/TrackRoute.js";
 import { DashboardRoute } from "./features/dashboard/DashboardRoute.js";
+import { CareRoute } from "./features/care/CareRoute.js";
 
-const mainRoutes: AppRoute[] = ["dashboard", "import", "track", "insights", "export"];
+const mainRoutes: AppRoute[] = ["dashboard", "import", "track", "care", "insights", "export"];
 
 export function App() {
   const [message, setMessage] = useState<string>();
   const [route, setRoute] = useState<AppRoute>(() => routeFromPathname(window.location.pathname));
   const [insightsTab, setInsightsTab] = useState<InsightsTab>(() => insightsTabFromPathname(window.location.pathname));
+  const [careView, setCareView] = useState(() => careViewFromPathname(window.location.pathname));
   const [importMode, setImportMode] = useState<ImportMode>(() => importModeFromPathname(window.location.pathname));
   const [summaryDetailCode, setSummaryDetailCode] = useState<string | undefined>(
     () => summaryDetailCodeFromPathname(window.location.pathname)
@@ -49,6 +51,7 @@ export function App() {
       normalizeLegacyImportPath();
       setRoute(routeFromPathname(window.location.pathname));
       setInsightsTab(insightsTabFromPathname(window.location.pathname));
+      setCareView(careViewFromPathname(window.location.pathname));
       setImportMode(importModeFromPathname(window.location.pathname));
       setSummaryDetailCode(summaryDetailCodeFromPathname(window.location.pathname));
     };
@@ -85,6 +88,7 @@ export function App() {
       dashboard: "/",
       import: importModePath(nextImportMode),
       track: trackPath(),
+      care: carePath(careView),
       insights: insightsPath(insightsTab),
       export: "/export",
       settings: "/settings"
@@ -94,6 +98,13 @@ export function App() {
     if (nextRoute === "import") setImportMode(nextImportMode);
     if (nextRoute === "track") setSummaryDetailCode(undefined);
     setRoute(nextRoute);
+  }
+
+  function navigateCare(nextView: "items" | "health-events") {
+    const nextPath = carePath(nextView);
+    if (window.location.pathname !== nextPath) window.history.pushState({}, "", nextPath);
+    setCareView(nextView);
+    setRoute("care");
   }
 
   function navigateInsights(nextTab: InsightsTab) {
@@ -140,6 +151,7 @@ export function App() {
     dashboard: "nav-tab-dashboard",
     import: "nav-tab-import",
     track: "nav-tab-track",
+    care: "nav-tab-care",
     insights: "nav-tab-insights",
     export: "nav-tab-export",
     settings: "nav-tab-settings"
@@ -170,6 +182,7 @@ export function App() {
               dashboard: "Dashboard",
               import: "Import",
               track: "Track",
+              care: "Care",
               insights: "Insights",
               export: "Export",
               settings: "Settings"
@@ -343,6 +356,19 @@ export function App() {
         ) : null}
       </div>
 
+      <div id="route-panel-care" role="tabpanel" aria-labelledby={navTabIds.care} hidden={route !== "care"}>
+        {route === "care" ? (
+          <CareRoute
+            view={careView}
+            activeProfileId={activeProfileId}
+            onViewChange={navigateCare}
+            onDataChanged={profileLifecycle.refresh}
+            onNotice={setMessage}
+            confirm={confirm}
+          />
+        ) : null}
+      </div>
+
       <div id="route-panel-insights" role="tabpanel" aria-labelledby={navTabIds.insights} hidden={route !== "insights"}>
         {route === "insights" ? (
           <InsightsRoute
@@ -391,6 +417,7 @@ export function App() {
 function routeFromPathname(pathname: string): AppRoute {
   if (pathname === "/insights" || pathname.startsWith("/insights/")) return "insights";
   if (pathname === "/track" || pathname.startsWith("/track/")) return "track";
+  if (pathname === "/care" || pathname.startsWith("/care/")) return "care";
   if (pathname === "/import" || pathname.startsWith("/import/") || pathname === "/labs") return "import";
   if (pathname === "/export") return "export";
   if (pathname === "/settings") return "settings";
@@ -400,6 +427,11 @@ function routeFromPathname(pathname: string): AppRoute {
 function insightsTabFromPathname(pathname: string): InsightsTab {
   if (pathname === "/insights/ai-query") return "ai-query";
   return "biological-age";
+}
+
+function careViewFromPathname(pathname: string): "items" | "health-events" {
+  if (pathname === "/care/health-events") return "health-events";
+  return "items";
 }
 
 function summaryDetailCodeFromPathname(pathname: string): string | undefined {
@@ -453,3 +485,6 @@ function trackPath(measurementCode?: string): string {
   return measurementCode ? `/track/${encodeURIComponent(measurementCode)}` : "/track";
 }
 
+function carePath(view: "items" | "health-events"): string {
+  return view === "health-events" ? "/care/health-events" : "/care/items";
+}

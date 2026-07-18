@@ -1,9 +1,19 @@
 import type {
   AppBootstrap,
+  CareItemListQuery,
+  CareItemMutationResponse,
+  CreateCareItemInput,
+  CreateHealthEventInput,
+  DeleteCareItemResponse,
+  DeleteHealthEventResponse,
   DeleteObservationResponse,
   DeleteObservationsByTypeResponse,
   HealthDataChartSeriesOptions,
+  HealthEventListQuery,
   HealthStoreData,
+  HealthEventMutationResponse,
+  UpdateCareItemInput,
+  UpdateHealthEventInput,
   UpdateObservationInput,
   UpdateObservationResponse
 } from "@local-fitness-advisor/shared";
@@ -146,6 +156,38 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
     return this.enqueueMutation(async () => {
       return this.repository.exportData();
     });
+  }
+
+  listHealthEvents(query: HealthEventListQuery) {
+    return this.repository.listHealthEvents(query);
+  }
+
+  createHealthEvent(input: CreateHealthEventInput): Promise<HealthEventMutationResponse> {
+    return this.enqueueMutation(async () => this.repository.createHealthEvent(input));
+  }
+
+  updateHealthEvent(id: string, input: UpdateHealthEventInput): Promise<HealthEventMutationResponse | undefined> {
+    return this.enqueueMutation(async () => this.repository.updateHealthEvent(id, input));
+  }
+
+  deleteHealthEvent(id: string): Promise<DeleteHealthEventResponse | undefined> {
+    return this.enqueueMutation(async () => this.repository.deleteHealthEvent(id));
+  }
+
+  listCareItems(query: CareItemListQuery) {
+    return this.repository.listCareItems(query);
+  }
+
+  createCareItem(input: CreateCareItemInput): Promise<CareItemMutationResponse> {
+    return this.enqueueMutation(async () => this.repository.createCareItem(input));
+  }
+
+  updateCareItem(id: string, input: UpdateCareItemInput): Promise<CareItemMutationResponse | undefined> {
+    return this.enqueueMutation(async () => this.repository.updateCareItem(id, input));
+  }
+
+  deleteCareItem(id: string): Promise<DeleteCareItemResponse | undefined> {
+    return this.enqueueMutation(async () => this.repository.deleteCareItem(id));
   }
 
   runCompiledQuery(sql: string): Promise<Array<Record<string, unknown>>> {

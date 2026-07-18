@@ -4,15 +4,29 @@ import {
   appBootstrapResponseSchema,
   assignedProfilesResponseSchema,
   bodyCompositionDraftResponseSchema,
+  careItemMutationResponseSchema,
+  careItemListQuerySchema,
+  createCareItemInputSchema,
+  createHealthEventInputSchema,
+  deleteCareItemResponseSchema,
+  deleteHealthEventResponseSchema,
   healthDataChartSeriesResponseSchema,
   healthDataDetailResponseSchema,
   healthDataSummaryResponseSchema,
+  healthEventMutationResponseSchema,
   healthResponseSchema,
   importMutationResponseSchema,
+  linkedHealthEventConflictSchema,
+  paginatedCareItemsResponseSchema,
+  paginatedHealthEventsResponseSchema,
   uploadImportDraftResponseSchema
 } from "@local-fitness-advisor/shared";
 import type {
   BodyCompositionDraftCommitPayload,
+  CareItemListQuery,
+  CreateCareItemInput,
+  CreateHealthEventInput,
+  HealthEventListQuery,
   ManualObservationPayload,
   UploadImportCommitPayload,
   UploadImportPreviewPayload
@@ -20,7 +34,7 @@ import type {
 
 export interface ApiTransportRequest {
   path: string;
-  method: "GET" | "POST";
+  method: "GET" | "POST" | "PATCH" | "DELETE" | "PUT";
   headers: Readonly<Record<string, string>>;
   body?: string;
 }
@@ -45,7 +59,8 @@ export class ApiError extends Error {
     message: string,
     readonly status: number,
     readonly code: string,
-    readonly correlationId?: string
+    readonly correlationId?: string,
+    readonly details?: unknown
   ) {
     super(message);
     this.name = "ApiError";
@@ -56,7 +71,7 @@ export function createApiClient(transport: ApiTransport) {
   async function request<T>(
     schema: ResponseSchema<T>,
     path: string,
-    options: { method?: "GET" | "POST"; body?: unknown } = {}
+    options: { method?: "GET" | "POST" | "PATCH" | "DELETE" | "PUT"; body?: unknown } = {}
   ): Promise<T> {
     const response = await transport({
       path,
@@ -102,7 +117,23 @@ export function createApiClient(transport: ApiTransport) {
     commitStructuredUpload: (payload: UploadImportCommitPayload) =>
       request(importMutationResponseSchema, "/api/import/upload/commit", { method: "POST", body: payload }),
     importHealthConnect: (payload: Record<string, unknown>) =>
-      request(importMutationResponseSchema, "/api/import/health-connect", { method: "POST", body: payload })
+      request(importMutationResponseSchema, "/api/import/health-connect", { method: "POST", body: payload }),
+    listHealthEvents: (query: HealthEventListQuery = {}) =>
+      request(paginatedHealthEventsResponseSchema, `/api/care/health-events${careQuery(query, healthEventListQuerySchema.parse(query))}`),
+    createHealthEvent: (payload: CreateHealthEventInput) =>
+      request(healthEventMutationResponseSchema, "/api/care/health-events", { method: "POST", body: createHealthEventInputSchema.parse(payload) }),
+    updateHealthEvent: (id: string, payload: CreateHealthEventInput) =>
+      request(healthEventMutationResponseSchema, `/api/care/health-events/${encodeURIComponent(id)}`, { method: "PATCH", body: createHealthEventInputSchema.parse(payload) }),
+    deleteHealthEvent: (id: string) =>
+      request(deleteHealthEventResponseSchema, `/api/care/health-events/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    listCareItems: (query: CareItemListQuery = {}) =>
+      request(paginatedCareItemsResponseSchema, `/api/care/items${careQuery(query, careItemListQuerySchema.parse(query))}`),
+    createCareItem: (payload: CreateCareItemInput) =>
+      request(careItemMutationResponseSchema, "/api/care/items", { method: "POST", body: createCareItemInputSchema.parse(payload) }),
+    updateCareItem: (id: string, payload: CreateCareItemInput) =>
+      request(careItemMutationResponseSchema, `/api/care/items/${encodeURIComponent(id)}`, { method: "PATCH", body: createCareItemInputSchema.parse(payload) }),
+    deleteCareItem: (id: string) =>
+      request(deleteCareItemResponseSchema, `/api/care/items/${encodeURIComponent(id)}`, { method: "DELETE" })
   };
 }
 
@@ -117,6 +148,18 @@ export function paginationQuery(page?: { limit?: number; offset?: number }): str
   if (page?.limit !== undefined) values.push(`limit=${encodeURIComponent(String(page.limit))}`);
   if (page?.offset !== undefined) values.push(`offset=${encodeURIComponent(String(page.offset))}`);
   return values.length ? `?${values.join("&")}` : "";
+}
+
+function careQuery<T extends { [key: string]: unknown }>(raw: T, validated: T): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(validated)) {
+    if (value === undefined || value === null || value === "") continue;
+    params.set(key, String(value));
+  }
+  if ((raw as { limit?: number }).limit === undefined) params.delete("limit");
+  if ((raw as { offset?: number }).offset === undefined) params.delete("offset");
+  const query = params.toString();
+  return query ? `?${query}` : "";
 }
 
 function chartQuery(options?: { range?: "all" | "1y" | "3m" | "1m"; mode?: "auto" | "raw" }): string {
@@ -147,6 +190,9 @@ async function apiErrorFromResponse(response: ApiTransportResponse): Promise<Api
     parsed.success ? parsed.data.error : text || response.statusText || "API request failed.",
     response.status,
     parsed.success ? parsed.data.code : "HTTP_ERROR",
-    correlationId
+    correlationId,
+    linkedHealthEventConflictSchema.safeParse(payload).success
+      ? linkedHealthEventConflictSchema.parse(payload).linkedCareItems
+      : parsed.success ? parsed.data : undefined
   );
 }
