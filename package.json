@@ -4,6 +4,11 @@
   "license": "AGPL-3.0-only",
   "private": true,
   "type": "module",
+  "packageManager": "npm@10.9.2",
+  "engines": {
+    "node": ">=22 <23",
+    "npm": ">=10 <11"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -21,6 +26,17 @@
     "test:durability": "vitest run --config vitest.durability.config.ts",
     "test:desktop": "npm run test -w @local-fitness-advisor/desktop",
     "test:coverage": "vitest run --config vitest.config.ts --coverage",
+    "validate:fast": "npm run typecheck && npm run build && npm run test:core && npm run test:desktop",
+    "validate:all": "npm run validate:fast && npm run test:integration && npm run test:durability && npm run audit:ci",
+    "validate:shared": "npm run build -w packages/shared && npm run test -w packages/shared",
+    "validate:api": "npm run build -w packages/shared && npm run typecheck -w apps/api && npm run test -w apps/api",
+    "validate:web": "npm run build -w packages/shared && npm run build -w packages/api-client && npm run build -w apps/web && npm run test -w apps/web",
+    "validate:android": "npm run build -w packages/shared && npm run build -w packages/api-client && npm run typecheck -w apps/android-companion && npm run test -w apps/android-companion",
+    "validate:desktop": "npm run build && npm run test:desktop",
+    "validate:storage": "npm run test:integration && npm run test:durability",
+    "preview:mobile:demo": "npm run preview:web:demo -w apps/android-companion",
+    "preview:mobile:health": "npm run preview:web:health -w apps/android-companion",
+    "dev:health": "node ./scripts/check-urls.mjs \"API=http://127.0.0.1:4317/api/health\" \"Web=http://127.0.0.1:5173\"",
     "package:desktop": "npm run build && npm run package -w @local-fitness-advisor/desktop",
     "package:desktop:signed": "npm run build && npm run package:signed -w @local-fitness-advisor/desktop",
     "audit:ci": "node ./scripts/audit-ci.mjs",

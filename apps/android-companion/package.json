@@ -41,6 +41,8 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "preview:web": "expo start --web --port 8082",
+    "preview:web:demo": "node ../../scripts/preview-mobile-demo.mjs",
+    "preview:web:health": "node ../../scripts/check-urls.mjs \"Mobile demo=http://127.0.0.1:8082\"",
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit",
     "eas-build-post-install": "npm run build -w @local-fitness-advisor/shared && npm run build -w @local-fitness-advisor/api-client",
