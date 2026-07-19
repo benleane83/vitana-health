@@ -145,7 +145,7 @@ function isAsciiDigits(value: string): boolean {
 }
 
 function parseStructuredDate(value: string): StructuredDate | undefined {
-  const normalizedValue = value.trim();
+  const normalizedValue = value.trim().replace(/\s*([/\-.])\s*/g, "$1");
   let timeStart = normalizedValue.length;
   while (timeStart > 0 && !isWhitespace(normalizedValue[timeStart - 1])) timeStart -= 1;
   const timeParts = normalizedValue.slice(timeStart).split(":");
@@ -201,16 +201,18 @@ export function normalizeStructuredDate(year: number, month: number, day: number
 
 export function readReportDate(text: string, excludedDates: readonly string[] = []): string | undefined {
   const maxDateWhitespaceGap = 20;
+  const reportDateLabel = "(?:reported|report(?:\\s+date)?|tested|test(?:\\s+date(?:\\s*\\/\\s*time)?)?)";
+  const numericDateTime = "\\d{1,2}\\s*[\\/\\-.]\\s*\\d{1,2}\\s*[\\/\\-.]\\s*\\d{2,4}(?:\\s+\\d{1,2}:\\d{2}(?::\\d{2})?)?";
   const datePatterns = [
-    new RegExp(`(?:reported|report(?:\\s+date)?|tested|test(?:\\s+date)?)\\s{0,${maxDateWhitespaceGap}}[:\\-]?\\s{0,${maxDateWhitespaceGap}}(\\d{1,2}[\\/\\-.][A-Za-z]{3,9}[\\/\\-.]\\d{2,4}(?:\\s+\\d{1,2}:\\d{2}(?::\\d{2})?)?)`, "i"),
-    new RegExp(`(?:reported|report(?:\\s+date)?|tested|test(?:\\s+date)?)\\s{0,${maxDateWhitespaceGap}}[:\\-]?\\s{0,${maxDateWhitespaceGap}}(\\d{1,2}[\\/\\-.]\\d{1,2}[\\/\\-.]\\d{2,4})`, "i"),
-    new RegExp(`(?:reported|report(?:\\s+date)?|tested|test(?:\\s+date)?)\\s{0,${maxDateWhitespaceGap}}[:\\-]?\\s{0,${maxDateWhitespaceGap}}([A-Za-z]{3,9}\\s{1,${maxDateWhitespaceGap}}\\d{1,2},?\\s{1,${maxDateWhitespaceGap}}\\d{4})`, "i"),
+    new RegExp(`${reportDateLabel}\\s{0,${maxDateWhitespaceGap}}[:\\-]?\\s{0,${maxDateWhitespaceGap}}(\\d{1,2}[\\/\\-.][A-Za-z]{3,9}[\\/\\-.]\\d{2,4}(?:\\s+\\d{1,2}:\\d{2}(?::\\d{2})?)?)`, "i"),
+    new RegExp(`${reportDateLabel}\\s{0,${maxDateWhitespaceGap}}[:\\-]?\\s{0,${maxDateWhitespaceGap}}(${numericDateTime})`, "i"),
+    new RegExp(`${reportDateLabel}\\s{0,${maxDateWhitespaceGap}}[:\\-]?\\s{0,${maxDateWhitespaceGap}}([A-Za-z]{3,9}\\s{1,${maxDateWhitespaceGap}}\\d{1,2},?\\s{1,${maxDateWhitespaceGap}}\\d{4})`, "i"),
     new RegExp(`(?:scan|measurement|measured|date)\\s{0,${maxDateWhitespaceGap}}(?:date)?\\s{0,${maxDateWhitespaceGap}}[:\\-]?\\s{0,${maxDateWhitespaceGap}}(\\d{1,2}[\\/\\-.][A-Za-z]{3,9}[\\/\\-.]\\d{2,4}(?:\\s+\\d{1,2}:\\d{2}(?::\\d{2})?)?)`, "i"),
     new RegExp(`(?:scan|measurement|measured|date)\\s{0,${maxDateWhitespaceGap}}(?:date)?\\s{0,${maxDateWhitespaceGap}}[:\\-]?\\s{0,${maxDateWhitespaceGap}}(\\d{1,2}[\\/\\-.]\\d{1,2}[\\/\\-.]\\d{2,4})`, "i"),
     new RegExp(`(?:scan|measurement|measured|date)\\s{0,${maxDateWhitespaceGap}}(?:date)?\\s{0,${maxDateWhitespaceGap}}[:\\-]?\\s{0,${maxDateWhitespaceGap}}([A-Za-z]{3,9}\\s{1,${maxDateWhitespaceGap}}\\d{1,2},?\\s{1,${maxDateWhitespaceGap}}\\d{4})`, "i"),
     /\b(\d{1,2}[\/\-.][A-Za-z]{3,9}[\/\-.]\d{2,4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?)\b/,
     /\b(\d{4}[\/\-.]\d{1,2}[\/\-.]\d{1,2})\b/,
-    /\b(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})\b/
+    /\b(\d{1,2}\s*[\/\-.]\s*\d{1,2}\s*[\/\-.]\s*\d{2,4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?)\b/
   ];
   const excludedDateKeys = new Set(excludedDates.map(readDate).filter((date): date is string => Boolean(date)).map(dateKey));
   for (const pattern of datePatterns) {

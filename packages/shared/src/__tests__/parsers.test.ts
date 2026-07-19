@@ -250,6 +250,55 @@ describe("parseBodyCompositionText", () => {
     );
     expect(result.reportDate).toContain("2026-06-06T12:36:00.000Z");
   });
+
+  it("parses an InBody Test Date /Time timestamp with spaces around numeric separators", () => {
+    const result = parseBodyCompositionText(
+      "BodyComp_InBody_1.pdf",
+      "ID Height Age Gender Test Date /Time\nbrl83 187.9cm 35 Male 23. 03. 2019 14:13\nWeight 76.7 kg"
+    );
+
+    expect(result.reportDate).toBe("2019-03-23T14:13:00.000Z");
+  });
+
+  it("skips values in a body composition history section and resumes at current-data sections", () => {
+    const result = parseBodyCompositionText(
+      "inbody.pdf",
+      [
+        "Skeletal Muscle Mass 34.9 kg",
+        "BODYCOMPOSITION HISTORY",
+        "Weight kg 72.7 73.9 76.7",
+        "Skeletal Muscle Mass kg 33.8 34.1 34.9",
+        "Additional Data",
+        "Basal Metabolic Rate 1721 kcal"
+      ].join("\n")
+    );
+
+    expect(result.rows.filter((row) => row.measurementCode === "skeletal_muscle_mass")).toEqual([
+      expect.objectContaining({ value: 34.9, included: true })
+    ]);
+    expect(result.rows).toContainEqual(expect.objectContaining({ measurementCode: "basal_metabolic_rate", value: 1721, included: true }));
+    expect(result.diagnostics).toContain("Skipped measurements in a body composition history section.");
+  });
+
+  it("continues parsing reports without a history section", () => {
+    const result = parseBodyCompositionText(
+      "BodyComp-Ben-Jun62026.pdf",
+      [
+        "06/JUN/2026 12:36",
+        "WEIGHT 74.8kg",
+        "FAT % 16.3 %",
+        "MUSCLE MASS 59.5kg",
+        "DESIRABLE RANGE"
+      ].join("\n")
+    );
+
+    expect(result.rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ measurementCode: "weight", value: 74.8, included: true }),
+      expect.objectContaining({ measurementCode: "body_fat_pct", value: 16.3, included: true }),
+      expect.objectContaining({ measurementCode: "skeletal_muscle_mass", value: 59.5, included: true })
+    ]));
+    expect(result.diagnostics).not.toContain("Skipped measurements in a body composition history section.");
+  });
 });
 
 describe("buildBodyCompositionImportFromDraft", () => {

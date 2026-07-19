@@ -37,7 +37,6 @@ async function extractPdfText(buffer: Buffer): Promise<BodyCompositionExtractRes
     const textResult = await parser.getText();
     const embeddedText = textResult.text.trim();
     if (embeddedText.length >= minUsefulPdfTextChars) {
-      diagnostics.push("Extracted embedded PDF text locally.");
       return { text: embeddedText, diagnostics };
     }
 

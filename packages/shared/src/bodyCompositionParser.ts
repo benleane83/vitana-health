@@ -29,9 +29,19 @@ export function parseBodyCompositionText(fileName: string, sourceText: string, i
   const rows = new Map<string, BodyCompositionDraftRow>();
 
   const lines = normalizedText.split("\n").map((item) => item.trim()).filter(Boolean);
+  let skippingHistory = false;
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
     if (/\bdesirable\s+range\b/i.test(line)) break;
+    if (isBodyCompositionHistoryHeading(line)) {
+      skippingHistory = true;
+      diagnostics.push("Skipped measurements in a body composition history section.");
+      continue;
+    }
+    if (skippingHistory) {
+      if (!isBodyCompositionHistoryEndHeading(line)) continue;
+      skippingHistory = false;
+    }
     const parseLine = /\bbmr\b/i.test(line) && lines[index + 1] ? `${line} ${lines[index + 1]}` : line;
     const candidates = parseBodyCompositionLine(parseLine);
     for (const candidate of candidates) {
@@ -156,6 +166,28 @@ interface BodyCompositionLineCandidate {
   value: number;
   unit?: string;
   confidence: BodyCompositionDraftConfidence;
+}
+
+function isBodyCompositionHistoryHeading(line: string): boolean {
+  return compactHeading(line).includes("bodycompositionhistory");
+}
+
+function isBodyCompositionHistoryEndHeading(line: string): boolean {
+  const heading = compactHeading(line);
+  return [
+    "inbody",
+    "inbodyscore",
+    "weightcontrol",
+    "obesityevaluation",
+    "bodybalanceevaluation",
+    "segmentalfatanalysis",
+    "additionaldata",
+    "impedance"
+  ].some((prefix) => heading.startsWith(prefix));
+}
+
+function compactHeading(line: string): string {
+  return line.toLowerCase().replace(/[^a-z]/g, "");
 }
 
 const knownBodyCompositionLabels = [
