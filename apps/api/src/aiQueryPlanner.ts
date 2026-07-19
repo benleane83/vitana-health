@@ -23,15 +23,37 @@ export const TimeRangeSchema = z.object({
 });
 export type TimeRange = z.infer<typeof TimeRangeSchema>;
 
+export const QueryFiltersSchema = z.object({
+  kind: z.string().trim().min(1).max(80).optional(),
+  status: z.enum(["completed", "entered-in-error", "open", "cancelled", "skipped"]).optional(),
+  source: z.enum([
+    "health-connect",
+    "manual-entry",
+    "blood-test-csv",
+    "observation-csv",
+    "structured-upload",
+    "blood-test-report",
+    "body-composition-report",
+    "derived"
+  ]).optional(),
+  provider: z.string().trim().min(1).max(120).optional(),
+  priority: z.enum(["low", "normal", "high"]).optional(),
+  code: z.string().trim().min(1).max(80).optional(),
+  completion: z.enum(["completed", "incomplete"]).optional(),
+  dueWithinRange: z.boolean().optional()
+}).strict();
+
 export const QueryDSLSchema = z.object({
-  intent: z.enum(["timeseries", "aggregation", "top_n", "latest", "list_activities"]),
+  source: z.enum(["metrics", "activities", "health_events", "care_items"]).optional(),
+  intent: z.enum(["timeseries", "aggregation", "top_n", "latest", "list_activities", "list", "count", "overdue"]),
   metric: z.string().nullable(),
   aggregation: z.enum(["avg", "max", "min", "sum", "count", "latest"]),
-  groupBy: z.enum(["day", "week", "month"]).nullable(),
+  groupBy: z.enum(["day", "week", "month", "kind", "status", "source", "priority", "due_bucket"]).nullable(),
   timeRange: TimeRangeSchema,
   sort: z.enum(["asc", "desc"]),
   limit: z.number().int().min(1).max(200),
-  chartType: z.enum(["line", "bar", "none"]).nullable()
+  chartType: z.enum(["line", "bar", "none"]).nullable(),
+  filters: QueryFiltersSchema.optional()
 });
 export type QueryDSL = z.infer<typeof QueryDSLSchema>;
 
@@ -128,16 +150,18 @@ Return ONLY a valid JSON object matching the schema below. No prose, no code blo
 
 Schema:
 {
-  "intent": one of "timeseries" | "aggregation" | "top_n" | "latest" | "list_activities",
-  "metric": measurement code string or null for activities,
+  "source": one of "metrics" | "activities" | "health_events" | "care_items" (omit for existing metric/activity questions),
+  "intent": one of "timeseries" | "aggregation" | "top_n" | "latest" | "list_activities" | "list" | "count" | "overdue",
+  "metric": measurement code string for metrics, otherwise null,
   "aggregation": one of "avg" | "max" | "min" | "sum" | "count" | "latest",
-  "groupBy": one of "day" | "week" | "month" or null,
+  "groupBy": one of "day" | "week" | "month" | "kind" | "status" | "source" | "priority" | "due_bucket" or null,
   "timeRange": {
     "preset": one of "this_month" | "last_month" | "this_week" | "last_week" | "last_30d" | "last_90d" | "all_time"
   },
   "sort": "asc" or "desc",
   "limit": integer 1-200,
-  "chartType": "line" | "bar" | "none" or null
+  "chartType": "line" | "bar" | "none" or null,
+  "filters": optional object with "kind", "status", "source", "provider", "priority", "code", "completion", or "dueWithinRange"
 }
 
 Allowed metric codes: ${ALLOWED_METRICS}
@@ -148,6 +172,13 @@ Rules:
 - "top_n" intent: sort desc by aggregation, limit 5-20
 - "latest" intent: aggregation="latest", sort="desc", limit=1
 - "list_activities" intent: metric=null, aggregation="count"
+- Health event questions: source="health_events"; use list, count, latest, or timeseries (day/week)
+- Care item questions: source="care_items"; use list, count, or overdue; group counts by status, priority, kind, or due_bucket
+- For health events, filters support kind, status, source, and provider (contains)
+- For care items, filters support kind, code, status, priority, and completion
+- Use timeRange as the occurred range for health events
+- For a requested care-item due window, set filters.dueWithinRange=true and use timeRange as the due range; otherwise omit it
+- Unsupported cross-source comparisons are not allowed
 - For "this month" / "last month" use the exact preset
 - Default time range is "last_30d" unless specified
 - Maximum limit is 200`;

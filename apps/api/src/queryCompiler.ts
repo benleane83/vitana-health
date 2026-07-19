@@ -3,7 +3,13 @@ import { resolveTimeRange } from "./aiQueryPlanner.js";
 
 // ─── Whitelist ─────────────────────────────────────────────────────────────────
 
-const ALLOWED_TABLES = new Set(["v_daily_metrics", "v_weekly_metrics", "activities"]);
+const ALLOWED_TABLES = new Set([
+  "v_daily_metrics",
+  "v_weekly_metrics",
+  "activities",
+  "v_ai_health_events",
+  "v_ai_care_items"
+]);
 
 const ALLOWED_COLUMNS = new Set([
   // v_daily_metrics
@@ -24,10 +30,24 @@ const ALLOWED_COLUMNS = new Set([
   "duration_minutes",
   "energy_kcal",
   "distance_meters",
-  "source_id"
+  "source_id",
+  // AI care/event views
+  "kind",
+  "status",
+  "occurred_at",
+  "occurred_end",
+  "source",
+  "provider",
+  "notes",
+  "code",
+  "title",
+  "due_start",
+  "due_end",
+  "priority",
+  "completed_at"
 ]);
 
-const ALLOWED_OUTPUT_ALIASES = new Set(["value", "count", "month_start"]);
+const ALLOWED_OUTPUT_ALIASES = new Set(["value", "count", "month_start", "due_bucket"]);
 
 // DuckDB SQL keywords and functions that we allow to appear in compiler output.
 // This set is used only by the validator to avoid blocking our own generated SQL.
@@ -109,6 +129,8 @@ const DISALLOWED_TOKENS = [
   /\bset\b/i,
   /\bcall\b/i,
   /\bxp_/i,
+  /--/,
+  /\/\*/,
   /;/
 ];
 
@@ -145,6 +167,10 @@ function sanitizeIdentifier(value: string): string {
   // Metric codes in the registry only use these characters (e.g. "heart_rate", "hrv_rmssd").
   // Any other character would indicate an unexpected/injected value and is dropped defensively.
   return value.replace(/[^a-zA-Z0-9_\-.]/g, "");
+}
+
+function sqlString(value: string): string {
+  return value.replace(/'/g, "''");
 }
 
 function aggregationSql(agg: QueryDSL["aggregation"], column: string): string {
@@ -187,11 +213,27 @@ export function compileQueryDSL(dsl: QueryDSL): CompileOutcome {
   const sortDir = dsl.sort === "asc" ? "ASC" : "DESC";
 
   let sql: string;
+  const source = dsl.source ?? (dsl.intent === "list_activities" ? "activities" : "metrics");
 
-  if (dsl.intent === "list_activities") {
+  if (source === "health_events") {
+    const outcome = buildHealthEventsSql(dsl, resolvedTime, limit, sortDir);
+    if (typeof outcome !== "string") return { ok: false, error: outcome.error };
+    sql = outcome;
+  } else if (source === "care_items") {
+    const outcome = buildCareItemsSql(dsl, resolvedTime, limit, sortDir);
+    if (typeof outcome !== "string") return { ok: false, error: outcome.error };
+    sql = outcome;
+  } else if (source === "activities" && dsl.intent === "list_activities") {
+    if (dsl.filters) return { ok: false, error: "Activity queries do not support domain filters." };
     sql = buildActivitiesSql(dsl, resolvedTime, limit, sortDir);
+  } else if (source === "activities") {
+    return { ok: false, error: `Source "activities" supports only the list_activities intent.` };
+  } else if (dsl.intent === "list_activities") {
+    return { ok: false, error: `Intent "list_activities" requires the activities source.` };
+  } else if (dsl.filters) {
+    return { ok: false, error: "Metric queries do not support health event or care item filters." };
   } else if (dsl.metric === null) {
-    return { ok: false, error: "A metric is required for non-activity intents." };
+    return { ok: false, error: "A metric is required for metric intents." };
   } else if (dsl.intent === "timeseries") {
     sql = buildTimeseriesSql(dsl, resolvedTime, limit, sortDir);
   } else if (dsl.intent === "aggregation") {
@@ -336,6 +378,189 @@ function buildActivitiesSql(
   ].join("\n");
 }
 
+function buildHealthEventsSql(
+  dsl: QueryDSL,
+  time: { start: string; end: string },
+  limit: number,
+  sortDir: string
+): string | CompileError {
+  const allowedIntents: Array<QueryDSL["intent"]> = ["list", "count", "latest", "timeseries"];
+  if (!allowedIntents.includes(dsl.intent)) {
+    return { error: `Source "health_events" supports list, count, latest, and timeseries intents.` };
+  }
+  if (dsl.filters?.status && !["completed", "entered-in-error"].includes(dsl.filters.status)) {
+    return { error: `Health event status "${dsl.filters.status}" is unsupported.` };
+  }
+  if (dsl.filters?.kind && !["immunization", "medication-administration", "other"].includes(dsl.filters.kind)) {
+    return { error: `Health event kind "${dsl.filters.kind}" is unsupported.` };
+  }
+  if (dsl.filters?.priority || dsl.filters?.code || dsl.filters?.completion || dsl.filters?.dueWithinRange) {
+    return { error: "Health event queries do not support priority, code, completion, or due-range filters." };
+  }
+
+  const where = healthEventWhere(dsl, time);
+  if (dsl.intent === "list" || dsl.intent === "latest") {
+    const appliedLimit = dsl.intent === "latest" ? 1 : limit;
+    const appliedSort = dsl.intent === "latest" ? "DESC" : sortDir;
+    return [
+      "SELECT id, kind, status, occurred_at, occurred_end, source, provider, notes",
+      "FROM v_ai_health_events",
+      `WHERE ${where.join("\n  AND ")}`,
+      `ORDER BY occurred_at ${appliedSort}`,
+      `LIMIT ${appliedLimit}`
+    ].join("\n");
+  }
+
+  const groupBy = dsl.intent === "timeseries" ? (dsl.groupBy ?? "day") : dsl.groupBy;
+  if (groupBy === null) {
+    return [
+      "SELECT COUNT(*) AS count",
+      "FROM v_ai_health_events",
+      `WHERE ${where.join("\n  AND ")}`,
+      "LIMIT 1"
+    ].join("\n");
+  }
+
+  const group = healthEventGroup(groupBy);
+  if (!group) {
+    return { error: `Health event counts support grouping by day, week, kind, status, or source.` };
+  }
+  return [
+    `SELECT ${group.expression} AS ${group.alias}, COUNT(*) AS count`,
+    "FROM v_ai_health_events",
+    `WHERE ${where.join("\n  AND ")}`,
+    `GROUP BY ${group.expression}`,
+    `ORDER BY ${group.alias} ${sortDir}`,
+    `LIMIT ${limit}`
+  ].join("\n");
+}
+
+function healthEventWhere(dsl: QueryDSL, time: { start: string; end: string }): string[] {
+  const clauses = [
+    `occurred_at >= TIMESTAMP '${time.start} 00:00:00'`,
+    `occurred_at <= TIMESTAMP '${time.end} 23:59:59'`
+  ];
+  const filters = dsl.filters;
+  if (filters?.kind) clauses.push(`kind = '${sqlString(filters.kind)}'`);
+  if (filters?.status) clauses.push(`status = '${filters.status}'`);
+  if (filters?.source) clauses.push(`source = '${filters.source}'`);
+  if (filters?.provider) {
+    clauses.push(`LOWER(COALESCE(provider, '')) LIKE LOWER('%${sqlString(filters.provider)}%')`);
+  }
+  return clauses;
+}
+
+function healthEventGroup(groupBy: QueryDSL["groupBy"]): { expression: string; alias: string } | null {
+  switch (groupBy) {
+    case "day": return { expression: "DATE(occurred_at)", alias: "day" };
+    case "week": return { expression: "DATE_TRUNC('week', occurred_at)", alias: "week_start" };
+    case "kind":
+    case "status":
+    case "source":
+      return { expression: groupBy, alias: groupBy };
+    default:
+      return null;
+  }
+}
+
+function buildCareItemsSql(
+  dsl: QueryDSL,
+  time: { start: string; end: string },
+  limit: number,
+  sortDir: string
+): string | CompileError {
+  const allowedIntents: Array<QueryDSL["intent"]> = ["list", "count", "overdue"];
+  if (!allowedIntents.includes(dsl.intent)) {
+    return { error: `Source "care_items" supports list, count, and overdue intents.` };
+  }
+  if (dsl.filters?.status && !["open", "completed", "cancelled", "skipped"].includes(dsl.filters.status)) {
+    return { error: `Care item status "${dsl.filters.status}" is unsupported.` };
+  }
+  if (dsl.filters?.source || dsl.filters?.provider) {
+    return { error: "Care item queries do not support source or provider filters." };
+  }
+  if (dsl.intent === "overdue" && dsl.filters?.status && dsl.filters.status !== "open") {
+    return { error: "Overdue care item queries only support open status." };
+  }
+
+  const where = careItemWhere(dsl, time, dsl.intent !== "overdue" && dsl.filters?.dueWithinRange === true);
+  if (dsl.intent === "overdue") {
+    where.push("status = 'open'", "COALESCE(due_start, due_end) < CURRENT_DATE");
+  }
+  if (dsl.intent === "list") {
+    return [
+      "SELECT id, kind, code, title, due_start, due_end, priority, status, completed_at, notes",
+      "FROM v_ai_care_items",
+      careItemWhereSql(where),
+      `ORDER BY COALESCE(due_start, due_end) ${sortDir}`,
+      `LIMIT ${limit}`
+    ].join("\n");
+  }
+
+  if (dsl.intent === "overdue" || dsl.groupBy === null) {
+    return [
+      "SELECT COUNT(*) AS count",
+      "FROM v_ai_care_items",
+      careItemWhereSql(where),
+      "LIMIT 1"
+    ].join("\n");
+  }
+
+  const group = careItemGroup(dsl.groupBy);
+  if (!group) {
+    return { error: "Care item counts support grouping by status, priority, kind, or due_bucket." };
+  }
+  return [
+    `SELECT ${group.expression} AS ${group.alias}, COUNT(*) AS count`,
+    "FROM v_ai_care_items",
+    careItemWhereSql(where),
+    `GROUP BY ${group.expression}`,
+    `ORDER BY ${group.alias} ${sortDir}`,
+    `LIMIT ${limit}`
+  ].join("\n");
+}
+
+function careItemWhere(
+  dsl: QueryDSL,
+  time: { start: string; end: string },
+  includeDueRange: boolean
+): string[] {
+  const due = "COALESCE(due_start, due_end)";
+  const clauses = includeDueRange
+    ? [
+        `${due} >= TIMESTAMP '${time.start} 00:00:00'`,
+        `${due} <= TIMESTAMP '${time.end} 23:59:59'`
+      ]
+    : [];
+  const filters = dsl.filters;
+  if (filters?.kind) clauses.push(`kind = '${sqlString(filters.kind)}'`);
+  if (filters?.code) clauses.push(`code = '${sqlString(filters.code)}'`);
+  if (filters?.status) clauses.push(`status = '${filters.status}'`);
+  if (filters?.priority) clauses.push(`priority = '${filters.priority}'`);
+  if (filters?.completion === "completed") clauses.push("completed_at IS NOT NULL");
+  if (filters?.completion === "incomplete") clauses.push("completed_at IS NULL");
+  return clauses;
+}
+
+function careItemWhereSql(clauses: string[]): string {
+  return clauses.length > 0 ? `WHERE ${clauses.join("\n  AND ")}` : "";
+}
+
+function careItemGroup(groupBy: QueryDSL["groupBy"]): { expression: string; alias: string } | null {
+  if (groupBy === "status" || groupBy === "priority" || groupBy === "kind") {
+    return { expression: groupBy, alias: groupBy };
+  }
+  if (groupBy === "due_bucket") {
+    return {
+      expression: "CASE WHEN COALESCE(due_start, due_end) IS NULL THEN 'unscheduled' " +
+        "WHEN COALESCE(due_start, due_end) < CURRENT_DATE THEN 'overdue' " +
+        "WHEN COALESCE(due_start, due_end) <= CURRENT_DATE + INTERVAL '7 days' THEN 'next_7_days' ELSE 'later' END",
+      alias: "due_bucket"
+    };
+  }
+  return null;
+}
+
 // ─── SQL Validator ─────────────────────────────────────────────────────────────
 
 export interface SqlValidationResult {
@@ -345,7 +570,8 @@ export interface SqlValidationResult {
 
 export function validateCompiledSql(sql: string): SqlValidationResult {
   const violations: string[] = [];
-  const lower = sql.toLowerCase();
+  const withoutStrings = sql.replace(/'(?:''|[^'])*'/g, "''").replace(/"[^"]*"/g, '""');
+  const lower = withoutStrings.toLowerCase();
 
   // Must start with SELECT
   if (!/^\s*select\b/i.test(sql)) {
@@ -362,7 +588,6 @@ export function validateCompiledSql(sql: string): SqlValidationResult {
   // Check that all identifiers (bare words) are either allowed SQL tokens,
   // whitelisted table/column names, number literals, or quoted strings.
   // Extract word tokens (skip quoted strings and date literals).
-  const withoutStrings = sql.replace(/'[^']*'/g, "''").replace(/"[^"]*"/g, '""');
   const wordTokens = withoutStrings.match(/\b[a-zA-Z_][a-zA-Z0-9_]*\b/g) ?? [];
   for (const token of wordTokens) {
     const t = token.toLowerCase();
