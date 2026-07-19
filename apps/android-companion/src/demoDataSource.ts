@@ -6,6 +6,7 @@ import {
   classifyValue,
   defaultMeasurementTypes,
   getReferenceRange,
+  resolveReferenceRange,
   type AnalyticsSummary,
   type AppBootstrap,
   type HealthEvent,
@@ -218,6 +219,7 @@ function makeDetail(metric: DemoMetric, now: Date): HealthDataDetail {
       unit: entry.unit,
       referenceRange: entry.referenceRange
     })),
+    referenceRange: resolveReferenceRange(measurementType, metric.unit, undefined, "adult"),
     counts: { ...counts, total: entries.length },
     deletion: { observationEntries: counts.observations, deletableEntries: 0 },
     pagination: { limit: entries.length, loaded: entries.length, total: entries.length, hasMore: false }

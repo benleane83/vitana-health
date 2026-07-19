@@ -24,6 +24,7 @@ import {
   type LinkedCareItemConflict,
   type Observation,
   type PersonalReferenceRange,
+  type PersonalReferenceRangeInput,
   type Profile,
   type UpdateCareItemInput,
   type UpdateHealthEventInput,
@@ -109,7 +110,7 @@ export async function addInsight(
 export async function upsertPersonalReferenceRange(
   connection: duckdb.Connection,
   measurementCode: string,
-  input: Pick<PersonalReferenceRange, "low" | "high" | "unit">
+  input: PersonalReferenceRangeInput
 ): Promise<PersonalReferenceRange> {
   if (input.low === undefined && input.high === undefined) {
     throw new RepositoryValidationError("Enter a lower bound, an upper bound, or both.");
@@ -143,16 +144,19 @@ export async function upsertPersonalReferenceRange(
   }
   const range = {
     measurementCode,
-    ...(low === undefined ? {} : { low }),
-    ...(high === undefined ? {} : { high }),
+    ...(low === undefined ? {} : { normalLow: low }),
+    ...(high === undefined ? {} : { normalHigh: high }),
     unit: type.canonicalUnit,
     updatedAt: new Date().toISOString()
   };
   await run(connection, `
-    INSERT INTO personal_reference_ranges VALUES (?, ?, ?, ?, ?)
+    INSERT INTO personal_reference_ranges
+      (measurement_code, normal_low, normal_high, optimal_low, optimal_high, unit, updated_at)
+      VALUES (?, ?, ?, NULL, NULL, ?, ?)
     ON CONFLICT (measurement_code) DO UPDATE SET
-      low = EXCLUDED.low, high = EXCLUDED.high, unit = EXCLUDED.unit, updated_at = EXCLUDED.updated_at;
-  `, range.measurementCode, range.low ?? null, range.high ?? null, range.unit, range.updatedAt);
+      normal_low = EXCLUDED.normal_low, normal_high = EXCLUDED.normal_high,
+      unit = EXCLUDED.unit, updated_at = EXCLUDED.updated_at;
+  `, range.measurementCode, range.normalLow ?? null, range.normalHigh ?? null, range.unit, range.updatedAt);
   await insertAudit(connection, "personal-reference-range-set", `Personal reference range set for ${measurementCode}.`);
   return range;
 }

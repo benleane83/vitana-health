@@ -3,7 +3,7 @@ import { healthEventKindCodes } from "./types.js";
 import type { HealthStoreData, InsightModel } from "./types.js";
 import { defaultMeasurementTypes } from "./registry.js";
 
-export const CURRENT_SCHEMA_VERSION = 5 as const;
+export const CURRENT_SCHEMA_VERSION = 6 as const;
 
 const sourceKind = z.enum([
   "health-connect", "manual-entry", "blood-test-csv", "observation-csv", "structured-upload",
@@ -59,18 +59,31 @@ const measurementTypeSchema = z.object({
 
 const personalReferenceRangeSchema = z.object({
   measurementCode: z.string().trim().min(1),
+  normalLow: z.number().finite().optional(),
+  normalHigh: z.number().finite().optional(),
+  optimalLow: z.number().finite().optional(),
+  optimalHigh: z.number().finite().optional(),
+  unit: z.string().trim().min(1),
+  updatedAt: z.string()
+}).strict().superRefine((range, context) => {
+  if (range.normalLow === undefined && range.normalHigh === undefined) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "At least one normal reference-range bound is required." });
+  }
+  if (range.normalLow !== undefined && range.normalHigh !== undefined && range.normalLow > range.normalHigh) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["normalHigh"], message: "Normal upper bound must be greater than or equal to lower bound." });
+  }
+  if (range.optimalLow !== undefined && range.optimalHigh !== undefined && range.optimalLow > range.optimalHigh) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["optimalHigh"], message: "Optimal upper bound must be greater than or equal to lower bound." });
+  }
+});
+
+const version5PersonalReferenceRangeSchema = z.object({
+  measurementCode: z.string().trim().min(1),
   low: z.number().finite().optional(),
   high: z.number().finite().optional(),
   unit: z.string().trim().min(1),
   updatedAt: z.string()
-}).strict().superRefine((range, context) => {
-  if (range.low === undefined && range.high === undefined) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: "At least one reference-range bound is required." });
-  }
-  if (range.low !== undefined && range.high !== undefined && range.low > range.high) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["high"], message: "Upper bound must be greater than or equal to lower bound." });
-  }
-});
+}).strict();
 
 const storeFields = {
   profile: profileSchema,
@@ -147,6 +160,13 @@ export const healthStoreDataSchema = z.object({
 
 const version4StoreSchema = healthStoreDataSchema.extend({ schemaVersion: z.literal(4) });
 const version2StoreSchema = healthStoreDataSchema.extend({ schemaVersion: z.literal(2) });
+const version5StoreSchema = healthStoreDataSchema.extend({
+  schemaVersion: z.literal(5),
+  measurementTypes: z.array(measurementTypeSchema.extend({
+    category: z.enum(["activity", "cardio", "sleep", "body", "lab", "metabolic", "derived"])
+  })),
+  personalReferenceRanges: z.array(version5PersonalReferenceRangeSchema).default([])
+});
 
 const retiredMetabolicStoreSchema = healthStoreDataSchema.extend({
   measurementTypes: z.array(measurementTypeSchema.extend({
@@ -222,6 +242,32 @@ export function parsePersistedHealthStore(data: unknown): { data: HealthStoreDat
     });
     return {
       data: healthStoreDataSchema.parse({ ...retired, measurementTypes }) as HealthStoreData,
+      migrated: true
+    };
+  }
+  if (version === 5) {
+    const legacy = version5StoreSchema.parse(data);
+    const defaultsByCode = new Map(defaultMeasurementTypes.map((type) => [type.code, type]));
+    return {
+      data: healthStoreDataSchema.parse({
+        ...legacy,
+        schemaVersion: CURRENT_SCHEMA_VERSION,
+        measurementTypes: legacy.measurementTypes.map((type) => {
+          if (type.category !== "metabolic") return type;
+          const replacement = defaultsByCode.get(type.code);
+          if (!replacement) {
+            throw new Error(`Retired metabolic measurement type ${type.code} has no current registry definition.`);
+          }
+          return replacement;
+        }),
+        personalReferenceRanges: legacy.personalReferenceRanges.map((range) => ({
+          measurementCode: range.measurementCode,
+          ...(range.low === undefined ? {} : { normalLow: range.low }),
+          ...(range.high === undefined ? {} : { normalHigh: range.high }),
+          unit: range.unit,
+          updatedAt: range.updatedAt
+        }))
+      }),
       migrated: true
     };
   }

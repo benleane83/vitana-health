@@ -650,6 +650,7 @@ describe("App — measurement detail", () => {
           note: "2026-07-14T08:00:00.000Z → 2026-07-14T09:00:00.000Z", canDelete: false
         }],
         chartPoints: [{ kind: "activity", timestamp: "2026-07-14T08:30:00.000Z", value: 8400, unit: "count" }],
+        referenceRange: { source: "none" },
         counts: { observations: 0, samples: 0, activities: 1, total: 1 },
         deletion: { observationEntries: 0, deletableEntries: 0 },
         pagination: { limit: 50, loaded: 1, total: 1, hasMore: false }
@@ -688,6 +689,7 @@ describe("App — measurement detail", () => {
           importFileName: "lab-2026-07-14.manual-entry", note: "Manual observation from Lab", canDelete: true
         }],
         chartPoints: [{ kind: "observation", timestamp: "2026-07-14T00:00:00.000Z", value: 5.2, unit: "mmol/L" }],
+        referenceRange: { source: "none" },
         counts: { observations: 1, samples: 0, activities: 0, total: 1 },
         deletion: { observationEntries: 1, deletableEntries: 1 },
         pagination: { limit: 50, loaded: 1, total: 1, hasMore: false }
@@ -716,6 +718,7 @@ describe("App — measurement detail", () => {
       },
       entries: [],
       chartPoints: [],
+      referenceRange: { source: "none" },
       counts: { observations: 0, samples: 0, activities: 0, total: 0 },
       deletion: { observationEntries: 0, deletableEntries: 0 },
       pagination: { limit: 50, loaded: 0, total: 0, hasMore: false }
@@ -765,6 +768,7 @@ describe("App — measurement detail", () => {
         sourceLabel: "Manual observations: Lab", sourceKind: "manual-entry", note: "Fasting", canDelete: true
       }],
       chartPoints: [{ kind: "observation", timestamp: "2026-07-14T08:30:00.000Z", value: 5.2, unit: "mmol/L" }],
+      referenceRange: { source: "none" },
       counts: { observations: 1, samples: 0, activities: 0, total: 1 },
       deletion: { observationEntries: 1, deletableEntries: 1 },
       pagination: { limit: 50, loaded: 1, total: 1, hasMore: false }

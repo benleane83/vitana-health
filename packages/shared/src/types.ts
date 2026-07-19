@@ -386,8 +386,10 @@ export interface ReferenceRange {
 
 export interface PersonalReferenceRange {
   measurementCode: string;
-  low?: number;
-  high?: number;
+  normalLow?: number;
+  normalHigh?: number;
+  optimalLow?: number;
+  optimalHigh?: number;
   unit: string;
   updatedAt: string;
 }
@@ -395,7 +397,7 @@ export interface PersonalReferenceRange {
 export type ReferenceRangeSource = "personal" | "catalog" | "none";
 
 export interface ReferenceRangeState {
-  personal?: PersonalReferenceRange;
+  personal?: ReferenceRange;
   catalog?: ReferenceRange;
   effective?: ReferenceRange;
   source: ReferenceRangeSource;
@@ -513,7 +515,7 @@ export interface AuditEvent {
 }
 
 export interface HealthStoreData {
-  schemaVersion: 2 | 3 | 4 | 5;
+  schemaVersion: 2 | 3 | 4 | 5 | 6;
   profile: Profile;
   sourceImports: SourceImport[];
   dataSources: DataSource[];

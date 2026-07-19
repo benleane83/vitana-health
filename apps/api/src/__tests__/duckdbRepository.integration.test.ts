@@ -54,8 +54,10 @@ describe("DuckDbRepository fidelity", () => {
       const snapshot = await repository.snapshot();
       expect(snapshot.personalReferenceRanges[0]).toMatchObject({
         measurementCode: "weight",
-        low: 58.967,
-        high: 90.718,
+        normalLow: 58.967,
+        normalHigh: 90.718,
+        optimalLow: 65,
+        optimalHigh: 85,
         unit: "kg"
       });
       expect((await repository.measurementDetail("weight")).entries[0]?.status).toBe("normal");

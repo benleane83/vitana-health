@@ -19,7 +19,7 @@ import {
   type HealthEventMutationResponse,
   type HealthStoreData,
   type Observation,
-  type PersonalReferenceRange,
+  type PersonalReferenceRangeInput,
   type Profile,
   type UpdateCareItemInput,
   type UpdateHealthEventInput,
@@ -336,7 +336,7 @@ export class DuckDbRepository implements ProfileRepository {
 
   async upsertPersonalReferenceRange(
     measurementCode: string,
-    input: Pick<PersonalReferenceRange, "low" | "high" | "unit">
+    input: PersonalReferenceRangeInput
   ) {
     this.assertOpen();
     return this.transaction(async () => {

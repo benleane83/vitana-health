@@ -11,7 +11,7 @@ import type {
   HealthDataChartSeriesOptions,
   HealthEventListQuery,
   HealthStoreData,
-  PersonalReferenceRange,
+  PersonalReferenceRangeInput,
   HealthEventMutationResponse,
   UpdateCareItemInput,
   UpdateHealthEventInput,
@@ -119,7 +119,7 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
 
   upsertPersonalReferenceRange(
     measurementCode: string,
-    input: Pick<PersonalReferenceRange, "low" | "high" | "unit">
+    input: PersonalReferenceRangeInput
   ) {
     return this.enqueueMutation(() => this.repository.upsertPersonalReferenceRange(measurementCode, input));
   }

@@ -20,7 +20,7 @@ import type {
   HealthStoreData,
   LinkedCareItemConflict,
   PaginatedResult,
-  PersonalReferenceRange,
+  PersonalReferenceRangeInput,
   CareItem,
   HealthEvent,
   Profile,
@@ -108,7 +108,7 @@ export interface ProfileRepository {
   measurementChartSeries(measurementCode: string, options: HealthDataChartSeriesOptions): Promise<HealthDataChartSeries>;
   upsertPersonalReferenceRange(
     measurementCode: string,
-    input: Pick<PersonalReferenceRange, "low" | "high" | "unit">
+    input: PersonalReferenceRangeInput
   ): Promise<ReferenceRangeState>;
   deletePersonalReferenceRange(measurementCode: string): Promise<ReferenceRangeState>;
   runCompiledQuery(sql: string): Promise<Array<Record<string, unknown>>>;

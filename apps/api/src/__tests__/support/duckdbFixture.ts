@@ -66,8 +66,10 @@ export function createDuckDbHealthStoreFixture(): HealthStoreData {
     }, ...defaultMeasurementTypes.filter((measurement) => measurement.code === "activity_sessions")],
     personalReferenceRanges: [{
       measurementCode: "weight",
-      low: 60,
-      high: 90,
+      normalLow: 60,
+      normalHigh: 90,
+      optimalLow: 65,
+      optimalHigh: 85,
       unit: "kg",
       updatedAt: "2026-07-12T10:00:00.000Z"
     }],

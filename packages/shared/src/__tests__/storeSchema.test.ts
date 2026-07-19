@@ -23,19 +23,38 @@ describe("persisted health store schema", () => {
     const result = parsePersistedHealthStore(legacy);
     expect(result).toMatchObject({
       migrated: true,
-      data: { schemaVersion: 5, personalReferenceRanges: [] }
+      data: { schemaVersion: CURRENT_SCHEMA_VERSION, personalReferenceRanges: [] }
     });
   });
 
   it("validates personal range bounds", () => {
     expect(parsePersistedHealthStore(store({
       personalReferenceRanges: [{
-        measurementCode: "glucose", low: 4, high: 6, unit: "mmol/L", updatedAt: "2026-01-01T00:00:00.000Z"
+        measurementCode: "glucose", normalLow: 4, normalHigh: 6, optimalLow: 4.5, optimalHigh: 5.5,
+        unit: "mmol/L", updatedAt: "2026-01-01T00:00:00.000Z"
       }]
-    })).data.personalReferenceRanges).toHaveLength(1);
+    })).data.personalReferenceRanges[0]).toMatchObject({
+      normalLow: 4, normalHigh: 6, optimalLow: 4.5, optimalHigh: 5.5
+    });
     expect(() => parsePersistedHealthStore(store({
       personalReferenceRanges: [{ measurementCode: "glucose", unit: "mmol/L", updatedAt: "2026-01-01T00:00:00.000Z" }]
     }))).toThrow(/bound/i);
+  });
+
+  it("migrates v5 low and high bounds to normal bounds", () => {
+    const result = parsePersistedHealthStore(store({
+      schemaVersion: 5,
+      personalReferenceRanges: [{
+        measurementCode: "glucose", low: 4, high: 6, unit: "mmol/L", updatedAt: "2026-01-01T00:00:00.000Z"
+      }]
+    }));
+    expect(result).toMatchObject({
+      migrated: true,
+      data: {
+        schemaVersion: CURRENT_SCHEMA_VERSION,
+        personalReferenceRanges: [{ normalLow: 4, normalHigh: 6 }]
+      }
+    });
   });
 
   it("migrates persisted metabolic measurement types to the current registry category", () => {

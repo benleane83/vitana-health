@@ -98,21 +98,24 @@ export function resolveReferenceRange(
   if (!personal) {
     return catalog ? { catalog, effective: catalog, source: "catalog" } : { source: "none" };
   }
-  const low = personal.low === undefined
+  const low = personal.normalLow === undefined
     ? undefined
-    : convertMeasurementValue(personal.low, type, personal.unit, unit);
-  const high = personal.high === undefined
+    : convertMeasurementValue(personal.normalLow, type, personal.unit, unit);
+  const high = personal.normalHigh === undefined
     ? undefined
-    : convertMeasurementValue(personal.high, type, personal.unit, unit);
-  if ((personal.low !== undefined && low === undefined) || (personal.high !== undefined && high === undefined)) {
-    return { personal, ...(catalog ? { catalog } : {}), source: "none" };
+    : convertMeasurementValue(personal.normalHigh, type, personal.unit, unit);
+  if ((personal.normalLow !== undefined && low === undefined) || (personal.normalHigh !== undefined && high === undefined)) {
+    return { ...(catalog ? { catalog } : {}), source: "none" };
   }
-  const effective = {
+  const normalRange = {
     ...(low === undefined ? {} : { low }),
     ...(high === undefined ? {} : { high }),
     unit
   };
-  return { personal, ...(catalog ? { catalog } : {}), effective, source: "personal" };
+  if (low === undefined && high === undefined) {
+    return { ...(catalog ? { catalog } : {}), source: "none" };
+  }
+  return { personal: normalRange, ...(catalog ? { catalog } : {}), effective: normalRange, source: "personal" };
 }
 
 export function classifyValueWithRange(

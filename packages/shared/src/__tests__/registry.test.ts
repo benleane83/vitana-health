@@ -68,7 +68,8 @@ describe("classifyValue", () => {
   it("resolves personal ranges before adult catalog ranges and converts them", () => {
     const glucose = defaultMeasurementTypes.find((type) => type.code === "glucose")!;
     const personal = {
-      measurementCode: "glucose", low: 4, high: 6, unit: "mmol/L", updatedAt: "2026-01-01T00:00:00.000Z"
+      measurementCode: "glucose", normalLow: 4, normalHigh: 6, optimalLow: 4.5, optimalHigh: 5.5,
+      unit: "mmol/L", updatedAt: "2026-01-01T00:00:00.000Z"
     };
     expect(resolveReferenceRange(glucose, "mg/dL", personal, "adult")).toMatchObject({
       source: "personal",

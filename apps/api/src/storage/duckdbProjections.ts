@@ -819,8 +819,10 @@ export async function referenceRangeState(
 function personalReferenceRangeFromRow(row: Record<string, unknown>): PersonalReferenceRange {
   return compact({
     measurementCode: String(row.measurement_code),
-    low: optionalNumber(row.low),
-    high: optionalNumber(row.high),
+    normalLow: optionalNumber(row.normal_low),
+    normalHigh: optionalNumber(row.normal_high),
+    optimalLow: optionalNumber(row.optimal_low),
+    optimalHigh: optionalNumber(row.optimal_high),
     unit: String(row.unit),
     updatedAt: isoTimestamp(row.updated_at)
   }) as unknown as PersonalReferenceRange;

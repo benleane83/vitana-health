@@ -86,8 +86,10 @@ export async function snapshot(
     "SELECT * FROM personal_reference_ranges ORDER BY measurement_code;"
   )).map((row) => compact({
     measurementCode: row.measurement_code,
-    low: optionalNumber(row.low),
-    high: optionalNumber(row.high),
+    normalLow: optionalNumber(row.normal_low),
+    normalHigh: optionalNumber(row.normal_high),
+    optimalLow: optionalNumber(row.optimal_low),
+    optimalHigh: optionalNumber(row.optimal_high),
     unit: row.unit,
     updatedAt: isoTimestamp(row.updated_at)
   }));
@@ -214,9 +216,14 @@ export async function insertStore(connection: duckdb.Connection, store: HealthSt
   await insertRows(connection, "INSERT INTO measurement_types VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);",
     store.measurementTypes.map((entry, ordinal) => [ordinal, entry.code, entry.display, entry.category, entry.kind,
       entry.canonicalUnit, json(entry.aliases), entry.aggregation, json(measurementTypeProperties(entry))]));
-  await insertRows(connection, "INSERT INTO personal_reference_ranges VALUES (?, ?, ?, ?, ?);",
+  await insertRows(connection, `
+    INSERT INTO personal_reference_ranges
+      (measurement_code, normal_low, normal_high, optimal_low, optimal_high, unit, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?);
+  `,
     store.personalReferenceRanges.map((entry) => [
-      entry.measurementCode, entry.low ?? null, entry.high ?? null, entry.unit, entry.updatedAt
+      entry.measurementCode, entry.normalLow ?? null, entry.normalHigh ?? null,
+      entry.optimalLow ?? null, entry.optimalHigh ?? null, entry.unit, entry.updatedAt
     ]));
   await insertRows(connection, "INSERT INTO observation_groups VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
     store.observationGroups.map((entry, ordinal) => [ordinal, entry.id, entry.kind, entry.label, entry.sourceId ?? null,
