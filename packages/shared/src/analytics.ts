@@ -1,5 +1,5 @@
-import type { AnalyticsSummary, HealthStoreData, MeasurementType, Observation, SubjectKind, UnitSystem } from "./types.js";
-import { classifyValue, getReferenceRange, toPreferredMeasurementValue } from "./measurementRegistry.js";
+import type { AnalyticsSummary, HealthStoreData, MeasurementType, Observation, PersonalReferenceRange, SubjectKind, UnitSystem } from "./types.js";
+import { classifyValueWithRange, resolveReferenceRange, toPreferredMeasurementValue } from "./measurementRegistry.js";
 
 export function computeAnalytics(store: HealthStoreData): AnalyticsSummary {
   const counts = {
@@ -15,6 +15,7 @@ export function computeAnalytics(store: HealthStoreData): AnalyticsSummary {
     counts: counts as AnalyticsSummary["counts"],
     measurementTypes: store.measurementTypes,
     observations: store.observations,
+    personalReferenceRanges: store.personalReferenceRanges,
     units: store.profile.units,
     subjectKind: store.profile.subjectKind
   });
@@ -26,6 +27,7 @@ export interface AnalyticsInput {
   observations: Observation[];
   units?: UnitSystem;
   subjectKind?: SubjectKind;
+  personalReferenceRanges?: PersonalReferenceRange[];
 }
 
 export function computeAnalyticsFromInput(input: AnalyticsInput): AnalyticsSummary {
@@ -37,7 +39,8 @@ export function computeAnalyticsFromInput(input: AnalyticsInput): AnalyticsSumma
       observations,
       registry.get(code),
       input.units ?? "metric",
-      input.subjectKind ?? "adult"
+      input.subjectKind ?? "adult",
+      input.personalReferenceRanges?.find((range) => range.measurementCode === code)
     ))
     .filter((metric): metric is NonNullable<typeof metric> => metric !== undefined)
     .sort((a, b) => b.observedAt.localeCompare(a.observedAt))
@@ -48,13 +51,17 @@ export function computeAnalyticsFromInput(input: AnalyticsInput): AnalyticsSumma
     .filter((card): card is NonNullable<typeof card> => card !== undefined)
     .slice(0, 8);
 
-  const labAlerts = input.subjectKind && input.subjectKind !== "adult"
-    ? []
-    : [...observationsByCode.entries()]
+  const labAlerts = [...observationsByCode.entries()]
         .filter(([code]) => registry.get(code)?.category === "lab")
         .map(([code, observations]) => {
           const latest = [...observations].sort((a, b) => b.observedAt.localeCompare(a.observedAt))[0];
-          return labAlert(latest, registry.get(code), input.units ?? "metric");
+          return labAlert(
+            latest,
+            registry.get(code),
+            input.units ?? "metric",
+            input.subjectKind ?? "adult",
+            input.personalReferenceRanges?.find((range) => range.measurementCode === code)
+          );
         })
         .filter((alert): alert is NonNullable<typeof alert> => alert !== undefined)
         .sort((a, b) => b.observedAt.localeCompare(a.observedAt))
@@ -84,7 +91,8 @@ function latestMetric(
   observations: Observation[],
   type: MeasurementType | undefined,
   units: UnitSystem,
-  subjectKind: SubjectKind
+  subjectKind: SubjectKind,
+  personalRange: PersonalReferenceRange | undefined
 ) {
   if (!type || observations.length === 0) return undefined;
   const latest = [...observations].sort((a, b) => b.observedAt.localeCompare(a.observedAt))[0];
@@ -95,7 +103,10 @@ function latestMetric(
     value: display.value,
     unit: display.unit,
     observedAt: latest.observedAt,
-    status: subjectKind === "adult" ? classifyValue(latest.value, type, latest.unit) : "unknown" as const
+    status: classifyValueWithRange(
+      latest.value,
+      resolveReferenceRange(type, latest.unit, personalRange, subjectKind).effective
+    )
   };
 }
 
@@ -120,11 +131,20 @@ function trendCard(code: string, observations: Observation[], type: MeasurementT
   };
 }
 
-function labAlert(observation: Observation, type: MeasurementType | undefined, units: UnitSystem) {
+function labAlert(
+  observation: Observation,
+  type: MeasurementType | undefined,
+  units: UnitSystem,
+  subjectKind: SubjectKind,
+  personalRange: PersonalReferenceRange | undefined
+) {
   if (!type) return undefined;
-  const status = classifyValue(observation.value, type, observation.unit);
+  const status = classifyValueWithRange(
+    observation.value,
+    resolveReferenceRange(type, observation.unit, personalRange, subjectKind).effective
+  );
   const display = toPreferredMeasurementValue(observation.value, observation.unit, type, units);
-  const range = getReferenceRange(type, display.unit);
+  const range = resolveReferenceRange(type, display.unit, personalRange, subjectKind).effective;
   if (!range || status === "normal") return undefined;
   return {
     code: observation.measurementCode,

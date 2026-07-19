@@ -81,6 +81,16 @@ export async function snapshot(
     ...(optionalJson<Record<string, unknown>>(row.custom_properties) ?? {}),
     aggregation: row.aggregation
   }));
+  const personalReferenceRanges = (await all(
+    connection,
+    "SELECT * FROM personal_reference_ranges ORDER BY measurement_code;"
+  )).map((row) => compact({
+    measurementCode: row.measurement_code,
+    low: optionalNumber(row.low),
+    high: optionalNumber(row.high),
+    unit: row.unit,
+    updatedAt: isoTimestamp(row.updated_at)
+  }));
   const observationGroups = (await orderedRows(connection, "observation_groups")).map((row) => compact({
     id: row.id,
     kind: row.kind,
@@ -169,6 +179,7 @@ export async function snapshot(
     dataSources,
     devices,
     measurementTypes,
+    personalReferenceRanges,
     observations,
     observationGroups,
     timeSeriesSamples,
@@ -203,6 +214,10 @@ export async function insertStore(connection: duckdb.Connection, store: HealthSt
   await insertRows(connection, "INSERT INTO measurement_types VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);",
     store.measurementTypes.map((entry, ordinal) => [ordinal, entry.code, entry.display, entry.category, entry.kind,
       entry.canonicalUnit, json(entry.aliases), entry.aggregation, json(measurementTypeProperties(entry))]));
+  await insertRows(connection, "INSERT INTO personal_reference_ranges VALUES (?, ?, ?, ?, ?);",
+    store.personalReferenceRanges.map((entry) => [
+      entry.measurementCode, entry.low ?? null, entry.high ?? null, entry.unit, entry.updatedAt
+    ]));
   await insertRows(connection, "INSERT INTO observation_groups VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
     store.observationGroups.map((entry, ordinal) => [ordinal, entry.id, entry.kind, entry.label, entry.sourceId ?? null,
       entry.importId ?? null, entry.startAt ?? null, entry.endAt ?? null, entry.collectedAt ?? null, optionalJsonValue(entry.metadata)]));

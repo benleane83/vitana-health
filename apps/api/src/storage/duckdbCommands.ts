@@ -3,6 +3,7 @@ import {
   careItemSchema,
   createCareItemInputSchema,
   createHealthEventInputSchema,
+  convertMeasurementValue,
   isHealthEventKind,
   insightSchema,
   profileSchema,
@@ -22,6 +23,7 @@ import {
   type HealthStoreData,
   type LinkedCareItemConflict,
   type Observation,
+  type PersonalReferenceRange,
   type Profile,
   type UpdateCareItemInput,
   type UpdateHealthEventInput,
@@ -33,6 +35,7 @@ import {
   all,
   allWithParams,
   json,
+  measurementTypeFromRow,
   observationFromRow,
   isoTimestamp,
   optionalJson,
@@ -101,6 +104,65 @@ export async function addInsight(
   );
   await insertAudit(connection, "insight-generated", `${validatedInsight.model} insight generated.`);
   return validatedInsight;
+}
+
+export async function upsertPersonalReferenceRange(
+  connection: duckdb.Connection,
+  measurementCode: string,
+  input: Pick<PersonalReferenceRange, "low" | "high" | "unit">
+): Promise<PersonalReferenceRange> {
+  if (input.low === undefined && input.high === undefined) {
+    throw new RepositoryValidationError("Enter a lower bound, an upper bound, or both.");
+  }
+  if ((input.low !== undefined && !Number.isFinite(input.low)) || (input.high !== undefined && !Number.isFinite(input.high))) {
+    throw new RepositoryValidationError("Reference-range bounds must be finite numbers.");
+  }
+  if (input.low !== undefined && input.high !== undefined && input.low > input.high) {
+    throw new RepositoryValidationError("Upper bound must be greater than or equal to lower bound.");
+  }
+  if (!input.unit.trim()) {
+    throw new RepositoryValidationError("Reference-range unit is required.");
+  }
+  const typeRows = await allWithParams(
+    connection,
+    "SELECT * EXCLUDE (ordinal) FROM measurement_types WHERE code = ?;",
+    measurementCode
+  );
+  if (!typeRows[0]) {
+    throw new RepositoryValidationError(`Unknown measurement type "${measurementCode}".`);
+  }
+  const type = measurementTypeFromRow(typeRows[0]);
+  const low = input.low === undefined
+    ? undefined
+    : convertMeasurementValue(input.low, type, input.unit, type.canonicalUnit);
+  const high = input.high === undefined
+    ? undefined
+    : convertMeasurementValue(input.high, type, input.unit, type.canonicalUnit);
+  if ((input.low !== undefined && low === undefined) || (input.high !== undefined && high === undefined)) {
+    throw new RepositoryValidationError(`Unit "${input.unit}" is not supported for ${type.display}.`);
+  }
+  const range = {
+    measurementCode,
+    ...(low === undefined ? {} : { low }),
+    ...(high === undefined ? {} : { high }),
+    unit: type.canonicalUnit,
+    updatedAt: new Date().toISOString()
+  };
+  await run(connection, `
+    INSERT INTO personal_reference_ranges VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT (measurement_code) DO UPDATE SET
+      low = EXCLUDED.low, high = EXCLUDED.high, unit = EXCLUDED.unit, updated_at = EXCLUDED.updated_at;
+  `, range.measurementCode, range.low ?? null, range.high ?? null, range.unit, range.updatedAt);
+  await insertAudit(connection, "personal-reference-range-set", `Personal reference range set for ${measurementCode}.`);
+  return range;
+}
+
+export async function deletePersonalReferenceRange(
+  connection: duckdb.Connection,
+  measurementCode: string
+): Promise<void> {
+  await run(connection, "DELETE FROM personal_reference_ranges WHERE measurement_code = ?;", measurementCode);
+  await insertAudit(connection, "personal-reference-range-removed", `Personal reference range removed for ${measurementCode}.`);
 }
 
 export async function insertObservationRecord(

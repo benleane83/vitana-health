@@ -1,4 +1,11 @@
-import type { MeasurementType, ReferenceRange, UnitSystem } from "./types.js";
+import type {
+  MeasurementType,
+  PersonalReferenceRange,
+  ReferenceRange,
+  ReferenceRangeState,
+  SubjectKind,
+  UnitSystem
+} from "./types.js";
 import { defaultMeasurementTypes } from "./registry.js";
 
 export function findMeasurementType(input: string, registry = defaultMeasurementTypes): MeasurementType | undefined {
@@ -79,6 +86,43 @@ export function getReferenceRange(type: MeasurementType, unit: string): Referenc
     return undefined;
   }
   return { ...source, ...(low === undefined ? {} : { low }), ...(high === undefined ? {} : { high }), unit };
+}
+
+export function resolveReferenceRange(
+  type: MeasurementType,
+  unit: string,
+  personal: PersonalReferenceRange | undefined,
+  subjectKind: SubjectKind = "adult"
+): ReferenceRangeState {
+  const catalog = subjectKind === "adult" ? getReferenceRange(type, unit) : undefined;
+  if (!personal) {
+    return catalog ? { catalog, effective: catalog, source: "catalog" } : { source: "none" };
+  }
+  const low = personal.low === undefined
+    ? undefined
+    : convertMeasurementValue(personal.low, type, personal.unit, unit);
+  const high = personal.high === undefined
+    ? undefined
+    : convertMeasurementValue(personal.high, type, personal.unit, unit);
+  if ((personal.low !== undefined && low === undefined) || (personal.high !== undefined && high === undefined)) {
+    return { personal, ...(catalog ? { catalog } : {}), source: "none" };
+  }
+  const effective = {
+    ...(low === undefined ? {} : { low }),
+    ...(high === undefined ? {} : { high }),
+    unit
+  };
+  return { personal, ...(catalog ? { catalog } : {}), effective, source: "personal" };
+}
+
+export function classifyValueWithRange(
+  value: number,
+  range: ReferenceRange | undefined
+): "low" | "normal" | "high" | "unknown" {
+  if (!range) return "unknown";
+  if (range.low !== undefined && value < range.low) return "low";
+  if (range.high !== undefined && value > range.high) return "high";
+  return range.low !== undefined || range.high !== undefined ? "normal" : "unknown";
 }
 
 export function normalizeMeasurementUnit(type: MeasurementType, unit: string): string {
