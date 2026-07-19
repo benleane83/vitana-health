@@ -124,13 +124,15 @@ The API import pipeline uses deterministic IDs so re-running sync keeps existing
 
 ### Preview the companion on Windows
 
-Use Expo Web for the fastest UI development loop before publishing an EAS Update:
+Use the watcher-free Expo Web preview before publishing an EAS Update:
 
 ```powershell
 npm run preview:web -w apps/android-companion
 ```
 
-Open `http://127.0.0.1:8082` and use the browser's responsive device toolbar to test phone-sized layouts. Changes to React Native components refresh locally without an EAS build or update. Coding agents can open the same URL in the VS Code integrated browser to inspect the accessibility tree, interact with controls, and capture desktop or mobile-sized screenshots.
+Open `http://127.0.0.1:8082` and use the browser's responsive device toolbar to test phone-sized layouts. The command creates a fresh static export before serving it, avoiding Metro's unreliable recursive file watcher on Windows mapped drives. Restart the command after source changes to rebuild the preview. Coding agents can open the same URL in the VS Code integrated browser to inspect the accessibility tree, interact with controls, and capture desktop or mobile-sized screenshots.
+
+For hot reload on a local drive or a system with Watchman, use `npm run web -w apps/android-companion` instead.
 
 For a deterministic preview that starts with read-only sample data and does not require a paired PC:
 
@@ -164,6 +166,19 @@ Recommended commands from the repo root:
 ```powershell
 npm run build:android:preview -w apps/android-companion
 ```
+
+To build the standalone proof-of-concept APK:
+
+```powershell
+npm run build:android:standalone-poc -w apps/android-companion
+```
+
+This internal-distribution APK installs as **Local Fitness Standalone Test** with package ID
+`com.localfitnessadvisor.companion.standalone`, so it can coexist with the companion app. It
+stores its local profile and manual observations in a SQLCipher database protected by a
+device-backed SecureStore key. Dashboard and Track read from that database. The test build has
+OTA updates disabled; rebuild it for each test version. Use **Connection → Reset local data** if
+the device key is lost or the test database can no longer be opened.
 
 After the first install on your phone, publish most code changes over-the-air (OTA) without rebuilding the APK:
 

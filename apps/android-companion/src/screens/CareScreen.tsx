@@ -30,6 +30,7 @@ export function CareScreen() {
     connectionState,
     demoMode,
     error,
+    standaloneMode,
     listCareItems,
     listHealthEvents,
     createCareItem,
@@ -53,6 +54,14 @@ export function CareScreen() {
   const [message, setMessage] = useState<string>();
 
   const load = useCallback(async () => {
+    if (standaloneMode) {
+      setItems([]);
+      setEvents([]);
+      setPickerEvents([]);
+      setLoading(false);
+      setMessage(undefined);
+      return;
+    }
     setLoading(true);
     try {
       const [nextItems, nextEvents] = await Promise.all([
@@ -67,18 +76,18 @@ export function CareScreen() {
     } finally {
       setLoading(false);
     }
-  }, [listCareItems, listHealthEvents, view]);
+  }, [listCareItems, listHealthEvents, standaloneMode, view]);
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
   useEffect(() => {
-    if (view !== "items" || editorMode === "closed") return;
+    if (standaloneMode || view !== "items" || editorMode === "closed") return;
     let current = true;
     void listHealthEvents({ limit: 20, search: eventSearch || undefined, includeId: careItemDraft.originatingHealthEventId ?? careItemDraft.completedHealthEventId }).then((response) => {
       if (current) setPickerEvents(response.items);
     }).catch(() => undefined);
     return () => { current = false; };
-  }, [careItemDraft.completedHealthEventId, careItemDraft.originatingHealthEventId, editorMode, eventSearch, listHealthEvents, view]);
+  }, [careItemDraft.completedHealthEventId, careItemDraft.originatingHealthEventId, editorMode, eventSearch, listHealthEvents, standaloneMode, view]);
 
   async function save() {
     setBusy(true);
@@ -136,6 +145,17 @@ export function CareScreen() {
     setEditingId(entry.id);
     setCareItemDraft({ title: entry.title, kind: entry.kind, dueStart: entry.dueStart, dueEnd: entry.dueEnd, reminderAt: entry.reminderAt, priority: entry.priority, status: entry.status, notes: entry.notes ?? "", originatingHealthEventId: entry.originatingHealthEventId, completedHealthEventId: entry.completedHealthEventId });
     setEditorMode("edit");
+  }
+
+  if (standaloneMode) {
+    return (
+      <Screen>
+        <Message
+          title="Care requires Connected mode"
+          detail="Switch to Connected mode to view and manage Care records on your paired PC. Standalone health data remains separate and unchanged."
+        />
+      </Screen>
+    );
   }
 
   return (

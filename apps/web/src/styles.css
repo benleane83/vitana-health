@@ -133,7 +133,7 @@ textarea {
 
 input::placeholder,
 textarea::placeholder {
-  color: var(--muted);
+  color: var(--muted-2);
   opacity: 1;
 }
 
@@ -2102,6 +2102,19 @@ h3 {
 .dashboard-ai-review {
   grid-column: 1 / -1;
   border-top: 1px solid var(--line);
+}
+
+.dashboard-ai-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.dashboard-generated {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0;
 }
 
 .profile-form {

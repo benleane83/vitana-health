@@ -251,9 +251,8 @@ export function CareRoute({
     <section className="panel care-panel">
       <div className="care-header">
         <div>
-          <p className="eyebrow">Care records</p>
           <h1>Care</h1>
-          <p className="care-subtitle">Track care items and health events for the active profile with on-demand loading.</p>
+          <p className="care-subtitle">Track care items and health events for the active profile.</p>
         </div>
         <button type="button" onClick={beginCreate}>{view === "health-events" ? "Add health event" : "Add care item"}</button>
       </div>

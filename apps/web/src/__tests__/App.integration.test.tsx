@@ -267,13 +267,16 @@ describe("App feature flows", () => {
 // ─── Import tab navigation ────────────────────────────────────────────────────
 
 describe("App — import tab", () => {
-  it("dismisses a global notification after it has been read", () => {
+  it("dismisses a global notification after it has been read", async () => {
     render(<App />);
     fireEvent.click(screen.getByRole("tab", { name: /^import$/i }));
     fireEvent.click(screen.getByRole("tab", { name: /^upload$/i }));
+    fireEvent.change(screen.getByLabelText(/select observation file/i), {
+      target: { files: [new File([], "empty.csv", { type: "text/csv" })] }
+    });
     fireEvent.click(screen.getByRole("button", { name: /^preview upload$/i }));
 
-    expect(screen.getByRole("status")).toHaveTextContent("Select a CSV or TSV file before preview.");
+    expect(await screen.findByRole("status")).toHaveTextContent("The selected file is empty.");
     fireEvent.click(screen.getByRole("button", { name: /dismiss notification/i }));
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
@@ -310,8 +313,16 @@ describe("App — import tab", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("tab", { name: /^import$/i }));
     fireEvent.click(screen.getByRole("tab", { name: /^upload$/i }));
+    const upload = new File(
+      ["observedAt,measurement,value,unit\n2026-07-08,weight,80,kg"],
+      "labs.csv",
+      { type: "text/csv" }
+    );
+    Object.defineProperty(upload, "text", {
+      value: () => Promise.resolve("observedAt,measurement,value,unit\n2026-07-08,weight,80,kg")
+    });
     fireEvent.change(screen.getByLabelText(/select observation file/i), {
-      target: { files: [new File(["observedAt,measurement,value,unit\n2026-07-08,weight,80,kg"], "labs.csv", { type: "text/csv" })] }
+      target: { files: [upload] }
     });
     fireEvent.click(screen.getByRole("button", { name: /^preview upload$/i }));
 
@@ -645,7 +656,7 @@ describe("App — measurement detail", () => {
     });
 
     render(<App />);
-    expect(await screen.findByText("Health Connect · Android companion")).toBeInTheDocument();
+  expect(await screen.findByText("Health Connect · Android")).toBeInTheDocument();
     expect(screen.queryByText(/2026-07-14T08:00:00\.000Z/)).not.toBeInTheDocument();
     expect(screen.queryByText(/health-connect-steps\.ndjson/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/android-companion/i)).not.toBeInTheDocument();
