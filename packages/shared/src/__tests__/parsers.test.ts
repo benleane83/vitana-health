@@ -214,6 +214,32 @@ describe("parseBloodTestScanText", () => {
     ]);
     expect(result.reportDate).toBe("2026-07-08T18:49:00.000Z");
   });
+
+  it("prioritizes report dates and excludes the active profile birth date", () => {
+    const result = parseBloodTestScanText(
+      "LabResults_CliniPath_2.pdf",
+      [
+        "Birthdate: 21/08/1980 Sex: F",
+        "17/12/2008 Requested: 16/12/2008 Collected: 16/12/2008 Reported: 10:46",
+        "Ferritin 50 ug/L"
+      ].join("\n"),
+      undefined,
+      { excludedDates: ["1980-08-21"] }
+    );
+
+    expect(result.reportDate).toBe("2008-12-17T00:00:00.000Z");
+  });
+
+  it("prefers explicitly reported dates over other document dates", () => {
+    const result = parseBloodTestScanText(
+      "results.pdf",
+      "Birthdate: 21/08/1980\nCollected: 16/12/2008\nReported: 17/12/2008\nFerritin 50 ug/L",
+      undefined,
+      { excludedDates: ["1980-08-21"] }
+    );
+
+    expect(result.reportDate).toBe("2008-12-17T00:00:00.000Z");
+  });
 });
 
 describe("parseBodyCompositionText", () => {

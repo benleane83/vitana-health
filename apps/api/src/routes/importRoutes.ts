@@ -223,7 +223,10 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
         return;
       }
       const extracted = await extractBodyCompositionText(buffer, parsed.mimeType);
-      const draft = parseBloodTestScanText(parsed.fileName, extracted.text);
+      const profile = await requestStore(response).getProfile();
+      const draft = parseBloodTestScanText(parsed.fileName, extracted.text, undefined, {
+        excludedDates: profile.birthDate ? [profile.birthDate] : []
+      });
       response.json({ ...draft, diagnostics: [...extracted.diagnostics, ...draft.diagnostics].slice(0, 75) });
     } catch (error) {
       next(error);

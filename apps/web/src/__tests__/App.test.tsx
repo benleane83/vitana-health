@@ -180,6 +180,11 @@ describe("App smoke", () => {
   it("keeps PDF and image report imports available in the unified Upload tab", () => {
     globalThis.history.replaceState({}, "", "/import/upload");
     render(<App />);
+    expect([...screen.getByLabelText("Upload type").querySelectorAll("option")].map((option) => option.textContent)).toEqual([
+      "Body composition report",
+      "Lab results report",
+      "CSV or TSV observations"
+    ]);
     fireEvent.change(screen.getByLabelText("Upload type"), {
       target: { value: "body-composition" }
     });

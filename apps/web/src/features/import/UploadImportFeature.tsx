@@ -40,9 +40,9 @@ export function UploadImportFeature(props: {
             value={uploadKind}
             onChange={(event) => setUploadKind(event.target.value as UploadKind)}
           >
-            <option value="structured">CSV or TSV observations</option>
             <option value="body-composition">Body composition report</option>
             <option value="blood-test">Lab results report</option>
+            <option value="structured">CSV or TSV observations</option>
           </select>
         </div>
       </section>

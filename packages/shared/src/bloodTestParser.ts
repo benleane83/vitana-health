@@ -20,11 +20,19 @@ import type {
   ParsedImport
 } from "./parserTypes.js";
 
-export function parseBloodTestScanText(fileName: string, sourceText: string, importedAt = new Date().toISOString()): BloodTestDraft {
+export function parseBloodTestScanText(
+  fileName: string,
+  sourceText: string,
+  importedAt = new Date().toISOString(),
+  options: { excludedDates?: readonly string[] } = {}
+): BloodTestDraft {
   const normalizedText = sourceText.replace(/\r/g, "").trim();
   const sourceChecksum = checksum(normalizedText || fileName);
   const diagnostics: string[] = [];
-  const reportDate = readBloodTestReportDate(normalizedText) ?? readReportDate(normalizedText) ?? readDateFromFileName(fileName);
+  const reportDate = readBloodTestReportDate(normalizedText, false)
+    ?? readReportDate(normalizedText, options.excludedDates)
+    ?? readBloodTestReportDate(normalizedText)
+    ?? readDateFromFileName(fileName);
   const rows = new Map<string, BodyCompositionDraftRow>();
   for (const line of normalizedText.split("\n").map((item) => item.trim()).filter(Boolean)) {
     const knownCandidate = parseKnownBloodTestLine(line);
@@ -146,8 +154,11 @@ function containsCalendarDate(value: string): boolean {
   return /\b\d{1,4}[\/\-.]\d{1,2}[\/\-.]\d{1,4}\b/.test(value);
 }
 
-function readBloodTestReportDate(text: string): string | undefined {
-  const match = text.match(/(?:collection|collected|receiving|authorised|authorized|report)\s+date\s*[:\-]?\s*(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/i);
+function readBloodTestReportDate(text: string, includeCollection = true): string | undefined {
+  const dateLabel = includeCollection
+    ? "(?:collection|collected|receiving|authorised|authorized|report)"
+    : "(?:receiving|authorised|authorized|report)";
+  const match = text.match(new RegExp(`${dateLabel}\\s+date\\s*[:\\-]?\\s*(\\d{1,2})[\\/\\-.](\\d{1,2})[\\/\\-.](\\d{2,4})(?:\\s+(\\d{1,2}):(\\d{2})(?::(\\d{2}))?)?`, "i"));
   if (!match) return undefined;
   const structured = normalizeStructuredDate(
     Number.parseInt(match[3], 10),
