@@ -1,13 +1,30 @@
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Picker } from "@react-native-picker/picker";
-import type { CareItem, CreateCareItemInput, CreateHealthEventInput, HealthEvent } from "@local-fitness-advisor/shared";
+import {
+  careItemKindCodes,
+  careItemKindLabels,
+  careItemReminderAt,
+  careItemReminderLead,
+  careItemReminderLeadCodes,
+  careItemReminderLeadLabels,
+  healthEventKindCodes,
+  healthEventKindLabels,
+  isCareItemKind,
+  normalizedCareItemKind,
+  type CareItem,
+  type CareItemReminderLead,
+  type CreateCareItemInput,
+  type CreateHealthEventInput,
+  type HealthEvent
+} from "@local-fitness-advisor/shared";
 import { useFocusEffect } from "@react-navigation/native";
 import { useMobileApi } from "../MobileApiProvider";
 import { Button, Card, Message, Screen } from "../ui/components";
 import { colors, spacing } from "../ui/theme";
 
 type CareView = "items" | "health-events";
+type ReminderSelection = "" | CareItemReminderLead | "existing";
 
 const defaultHealthEvent: CreateHealthEventInput = {
   kind: "other",
@@ -19,7 +36,7 @@ const defaultHealthEvent: CreateHealthEventInput = {
 
 const defaultCareItem: CreateCareItemInput = {
   title: "",
-  kind: "Follow-up",
+  kind: "follow-up",
   priority: "normal",
   status: "open",
   notes: ""
@@ -48,7 +65,7 @@ export function CareScreen() {
   const [editingId, setEditingId] = useState<string>();
   const [healthEventDraft, setHealthEventDraft] = useState<CreateHealthEventInput>(defaultHealthEvent);
   const [careItemDraft, setCareItemDraft] = useState<CreateCareItemInput>(defaultCareItem);
-  const [eventSearch, setEventSearch] = useState("");
+  const [reminderSelection, setReminderSelection] = useState<ReminderSelection>("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();
 
@@ -74,11 +91,11 @@ export function CareScreen() {
   useEffect(() => {
     if (view !== "items" || editorMode === "closed") return;
     let current = true;
-    void listHealthEvents({ limit: 20, search: eventSearch || undefined, includeId: careItemDraft.originatingHealthEventId ?? careItemDraft.completedHealthEventId }).then((response) => {
+    void listHealthEvents({ limit: 100, includeId: careItemDraft.originatingHealthEventId ?? careItemDraft.completedHealthEventId }).then((response) => {
       if (current) setPickerEvents(response.items);
     }).catch(() => undefined);
     return () => { current = false; };
-  }, [careItemDraft.completedHealthEventId, careItemDraft.originatingHealthEventId, editorMode, eventSearch, listHealthEvents, view]);
+  }, [careItemDraft.completedHealthEventId, careItemDraft.originatingHealthEventId, editorMode, listHealthEvents, view]);
 
   async function save() {
     setBusy(true);
@@ -88,7 +105,7 @@ export function CareScreen() {
         if (editorMode === "edit" && editingId) await updateHealthEvent(editingId, payload);
         else await createHealthEvent(payload);
       } else {
-        const payload = normalizeCareItem(careItemDraft);
+        const payload = normalizeCareItem(careItemDraft, reminderSelection);
         if (editorMode === "edit" && editingId) await updateCareItem(editingId, payload);
         else await createCareItem(payload);
       }
@@ -122,6 +139,7 @@ export function CareScreen() {
     setEditorMode("create");
     setHealthEventDraft(defaultHealthEvent);
     setCareItemDraft(defaultCareItem);
+    setReminderSelection("");
   }
 
   function startEditHealthEvent(entry: HealthEvent) {
@@ -134,7 +152,8 @@ export function CareScreen() {
   function startEditCareItem(entry: CareItem) {
     setView("items");
     setEditingId(entry.id);
-    setCareItemDraft({ title: entry.title, kind: entry.kind, dueStart: entry.dueStart, dueEnd: entry.dueEnd, reminderAt: entry.reminderAt, priority: entry.priority, status: entry.status, notes: entry.notes ?? "", originatingHealthEventId: entry.originatingHealthEventId, completedHealthEventId: entry.completedHealthEventId });
+    setCareItemDraft({ title: entry.title, kind: normalizedCareItemKind(entry.kind), dueStart: entry.dueStart, dueEnd: entry.dueEnd, reminderAt: entry.reminderAt, priority: entry.priority, status: entry.status, notes: entry.notes ?? "", originatingHealthEventId: entry.originatingHealthEventId, completedHealthEventId: entry.completedHealthEventId });
+    setReminderSelection(careItemReminderLead(entry.dueStart, entry.reminderAt) ?? (entry.reminderAt ? "existing" : ""));
     setEditorMode("edit");
   }
 
@@ -156,7 +175,7 @@ export function CareScreen() {
         {message ? <Message title="Care" detail={message} /> : null}
         {view === "health-events" ? events.map((entry) => (
           <Card key={entry.id}>
-            <Text style={styles.title}>{humanize(entry.kind)}</Text>
+            <Text style={styles.title}>{healthEventKindLabels[entry.kind]}</Text>
             <Text style={styles.meta}>{formatWhen(entry.occurredAt)}{entry.provider ? ` • ${entry.provider}` : ""}</Text>
             <Text style={styles.meta}>{entry.status}{entry.notes ? ` • ${entry.notes}` : ""}</Text>
             {!demoMode ? <View style={styles.actions}><Button secondary onPress={() => startEditHealthEvent(entry)}>Edit</Button><Button secondary onPress={() => { void remove(entry.id); }}>Delete</Button></View> : null}
@@ -164,7 +183,7 @@ export function CareScreen() {
         )) : items.map((entry) => (
           <Card key={entry.id}>
             <Text style={styles.title}>{entry.title}</Text>
-            <Text style={styles.meta}>{entry.status} • {entry.priority} • {entry.kind}</Text>
+            <Text style={styles.meta}>{entry.status} • {careItemKindLabel(entry.kind)}</Text>
             <Text style={styles.meta}>{entry.dueStart ? `Due ${formatWhen(entry.dueStart)}` : "No due time"}</Text>
             {!demoMode ? <View style={styles.actions}><Button secondary onPress={() => startEditCareItem(entry)}>Edit</Button><Button secondary onPress={() => { void remove(entry.id); }}>Delete</Button></View> : null}
           </Card>
@@ -176,9 +195,7 @@ export function CareScreen() {
               <>
                 <Text style={styles.label}>Kind</Text>
                 <Picker selectedValue={healthEventDraft.kind} onValueChange={(value) => setHealthEventDraft((current) => ({ ...current, kind: value as CreateHealthEventInput["kind"] }))}>
-                  <Picker.Item label="Immunization" value="immunization" />
-                  <Picker.Item label="Medication administration" value="medication-administration" />
-                  <Picker.Item label="Other" value="other" />
+                  {healthEventKindCodes.map((kind) => <Picker.Item key={kind} label={healthEventKindLabels[kind]} value={kind} />)}
                 </Picker>
                 <Text style={styles.label}>Status</Text>
                 <Picker selectedValue={healthEventDraft.status} onValueChange={(value) => setHealthEventDraft((current) => ({ ...current, status: value as CreateHealthEventInput["status"] }))}>
@@ -193,7 +210,10 @@ export function CareScreen() {
             ) : (
               <>
                 <TextInput accessibilityLabel="Title" style={styles.input} value={careItemDraft.title} onChangeText={(value) => setCareItemDraft((current) => ({ ...current, title: value }))} />
-                <TextInput accessibilityLabel="Kind" style={styles.input} value={careItemDraft.kind} onChangeText={(value) => setCareItemDraft((current) => ({ ...current, kind: value }))} />
+                <Text style={styles.label}>Kind</Text>
+                <Picker selectedValue={careItemDraft.kind} onValueChange={(value) => setCareItemDraft((current) => ({ ...current, kind: value as CreateCareItemInput["kind"] }))}>
+                  {careItemKindCodes.map((kind) => <Picker.Item key={kind} label={careItemKindLabels[kind]} value={kind} />)}
+                </Picker>
                 <Text style={styles.label}>Status</Text>
                 <Picker selectedValue={careItemDraft.status} onValueChange={(value) => setCareItemDraft((current) => ({ ...current, status: value as CreateCareItemInput["status"] }))}>
                   <Picker.Item label="Open" value="open" />
@@ -201,25 +221,26 @@ export function CareScreen() {
                   <Picker.Item label="Cancelled" value="cancelled" />
                   <Picker.Item label="Skipped" value="skipped" />
                 </Picker>
-                <Text style={styles.label}>Priority</Text>
-                <Picker selectedValue={careItemDraft.priority} onValueChange={(value) => setCareItemDraft((current) => ({ ...current, priority: value as CreateCareItemInput["priority"] }))}>
-                  <Picker.Item label="Low" value="low" />
-                  <Picker.Item label="Normal" value="normal" />
-                  <Picker.Item label="High" value="high" />
-                </Picker>
-                <TextInput accessibilityLabel="Due start" style={styles.input} value={careItemDraft.dueStart ?? ""} onChangeText={(value) => setCareItemDraft((current) => ({ ...current, dueStart: value || undefined }))} />
+                <TextInput accessibilityLabel="Due start" style={styles.input} value={careItemDraft.dueStart ?? ""} onChangeText={(value) => {
+                  setCareItemDraft((current) => ({ ...current, dueStart: value || undefined }));
+                  if (reminderSelection === "existing") setReminderSelection("");
+                }} />
                 <TextInput accessibilityLabel="Due end" style={styles.input} value={careItemDraft.dueEnd ?? ""} onChangeText={(value) => setCareItemDraft((current) => ({ ...current, dueEnd: value || undefined }))} />
-                <TextInput accessibilityLabel="Reminder" style={styles.input} value={careItemDraft.reminderAt ?? ""} onChangeText={(value) => setCareItemDraft((current) => ({ ...current, reminderAt: value || undefined }))} />
-                <TextInput accessibilityLabel="Search events" style={styles.input} value={eventSearch} onChangeText={setEventSearch} />
+                <Text style={styles.label}>Reminder</Text>
+                <Picker selectedValue={reminderSelection} enabled={!!careItemDraft.dueStart || reminderSelection === "existing"} onValueChange={(value) => setReminderSelection(value as ReminderSelection)}>
+                  <Picker.Item label="No reminder" value="" />
+                  {careItemReminderLeadCodes.map((lead) => <Picker.Item key={lead} label={careItemReminderLeadLabels[lead]} value={lead} />)}
+                  {reminderSelection === "existing" ? <Picker.Item label={`Existing reminder (${formatWhen(careItemDraft.reminderAt!)})`} value="existing" /> : null}
+                </Picker>
                 <Text style={styles.label}>Originating event</Text>
                 <Picker selectedValue={careItemDraft.originatingHealthEventId ?? ""} onValueChange={(value) => setCareItemDraft((current) => ({ ...current, originatingHealthEventId: value || undefined }))}>
                   <Picker.Item label="None" value="" />
-                  {pickerEvents.map((entry) => <Picker.Item key={`origin-${entry.id}`} label={`${humanize(entry.kind)} • ${formatWhen(entry.occurredAt)}`} value={entry.id} />)}
+                  {pickerEvents.map((entry) => <Picker.Item key={`origin-${entry.id}`} label={`${healthEventKindLabels[entry.kind]} • ${formatWhen(entry.occurredAt)}`} value={entry.id} />)}
                 </Picker>
                 <Text style={styles.label}>Completion event</Text>
                 <Picker selectedValue={careItemDraft.completedHealthEventId ?? ""} onValueChange={(value) => setCareItemDraft((current) => ({ ...current, completedHealthEventId: value || undefined }))}>
                   <Picker.Item label="None" value="" />
-                  {pickerEvents.map((entry) => <Picker.Item key={`completion-${entry.id}`} label={`${humanize(entry.kind)} • ${formatWhen(entry.occurredAt)}`} value={entry.id} />)}
+                  {pickerEvents.map((entry) => <Picker.Item key={`completion-${entry.id}`} label={`${healthEventKindLabels[entry.kind]} • ${formatWhen(entry.occurredAt)}`} value={entry.id} />)}
                 </Picker>
                 <TextInput accessibilityLabel="Notes" multiline style={styles.input} value={careItemDraft.notes ?? ""} onChangeText={(value) => setCareItemDraft((current) => ({ ...current, notes: value }))} />
               </>
@@ -236,12 +257,18 @@ function normalizeHealthEvent(draft: CreateHealthEventInput): CreateHealthEventI
   return { ...draft, provider: draft.provider?.trim() || undefined, notes: draft.notes?.trim() || undefined };
 }
 
-function normalizeCareItem(draft: CreateCareItemInput): CreateCareItemInput {
-  return { ...draft, title: draft.title.trim(), kind: draft.kind.trim(), notes: draft.notes?.trim() || undefined, originatingHealthEventId: draft.originatingHealthEventId || undefined, completedHealthEventId: draft.completedHealthEventId || undefined };
+function normalizeCareItem(draft: CreateCareItemInput, reminderSelection: ReminderSelection): CreateCareItemInput {
+  const reminderAt = reminderSelection === "existing"
+    ? draft.reminderAt
+    : reminderSelection
+      ? careItemReminderAt(draft.dueStart, reminderSelection)
+      : undefined;
+  return { ...draft, title: draft.title.trim(), reminderAt, notes: draft.notes?.trim() || undefined, originatingHealthEventId: draft.originatingHealthEventId || undefined, completedHealthEventId: draft.completedHealthEventId || undefined };
 }
 
-function humanize(value: string): string {
-  return value.replaceAll("-", " ").replace(/\b\w/g, (segment) => segment.toUpperCase());
+function careItemKindLabel(kind: string): string {
+  if (isCareItemKind(kind)) return careItemKindLabels[kind];
+  return kind;
 }
 
 function formatWhen(value: string): string {

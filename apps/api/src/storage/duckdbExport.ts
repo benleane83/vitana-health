@@ -3,6 +3,7 @@ import type duckdb from "duckdb";
 import {
   CURRENT_SCHEMA_VERSION,
   healthStoreDataSchema,
+  isHealthEventKind,
   type HealthEvent,
   type HealthStoreData
 } from "@local-fitness-advisor/shared";
@@ -134,9 +135,9 @@ export async function snapshot(
     const medication = medications.get(String(row.id));
     if (immunization) return { ...base, kind: "immunization", immunization: compact({ vaccine: immunization.vaccine, targetDisease: immunization.target_disease, doseNumber: optionalNumber(immunization.dose_number), series: immunization.series, manufacturer: immunization.manufacturer, lotNumber: immunization.lot_number, expiresAt: immunization.expires_at ? String(immunization.expires_at).slice(0, 10) : undefined, route: immunization.route, site: immunization.site, reaction: immunization.reaction }) };
     if (medication) return { ...base, kind: "medication-administration", medicationAdministration: compact({ medication: medication.medication, activeIngredient: medication.active_ingredient, dose: Number(medication.dose), unit: medication.unit, route: medication.route }) };
-    if (row.kind === "immunization") return { ...base, kind: "immunization" };
-    if (row.kind === "medication-administration") return { ...base, kind: "medication-administration" };
-    return { ...base, kind: "other" };
+    const kind = String(row.kind);
+    if (!isHealthEventKind(kind)) throw new Error(`Unsupported health event kind "${kind}".`);
+    return { ...base, kind };
   });
   const careItems = (await orderedRows(connection, "care_items")).map((row) => compact({
     id: row.id, kind: row.kind, code: row.code, title: row.title, dueStart: optionalTimestamp(row.due_start), dueEnd: optionalTimestamp(row.due_end),
@@ -214,7 +215,7 @@ export async function insertStore(connection: duckdb.Connection, store: HealthSt
       entry.durationMinutes ?? null, entry.energyKcal ?? null, entry.distanceMeters ?? null, entry.sourceId,
       entry.sourceJson !== undefined, optionalJsonValue(entry.sourceJson)]));
   await insertHealthEventRows(connection, store.healthEvents ?? []);
-  await insertRows(connection, "INSERT INTO care_items VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+  await insertRows(connection, "INSERT INTO care_items VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
     (store.careItems ?? []).map((entry, ordinal) => [ordinal, entry.id, entry.kind, entry.code ?? null, entry.title, entry.dueStart ?? null, entry.dueEnd ?? null, entry.reminderAt ?? null, entry.priority, entry.status, entry.scheduleProvenance ?? null, entry.scheduleVersion ?? null, entry.notes ?? null, entry.originatingHealthEventId ?? null, entry.completedHealthEventId ?? null, entry.completedAt ?? null]));
   await insertRows(connection, "INSERT INTO insights VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);",
     store.insights.map((entry, ordinal) => [ordinal, entry.id, entry.createdAt, entry.title, entry.body,

@@ -35,7 +35,48 @@ export interface Profile {
   updatedAt: string;
 }
 
-export type HealthEventKind = "immunization" | "medication-administration" | "other";
+export const healthEventKindCodes = [
+  "visit",
+  "condition",
+  "symptom",
+  "injury",
+  "test",
+  "procedure",
+  "treatment",
+  "medication-administration",
+  "immunization",
+  "allergy-reaction",
+  "dental",
+  "other"
+] as const;
+export type HealthEventKind = typeof healthEventKindCodes[number];
+export const healthEventKindLabels: Record<HealthEventKind, string> = {
+  visit: "Visit or consultation",
+  condition: "Illness or diagnosis",
+  symptom: "Symptom or concern",
+  injury: "Injury or accident",
+  test: "Test or screening",
+  procedure: "Procedure or surgery",
+  treatment: "Treatment or therapy",
+  "medication-administration": "Medication",
+  immunization: "Immunization",
+  "allergy-reaction": "Allergy or reaction",
+  dental: "Dental or oral care",
+  other: "Other health event"
+};
+export const generalHealthEventKindCodes = [
+  "visit",
+  "condition",
+  "symptom",
+  "injury",
+  "test",
+  "procedure",
+  "treatment",
+  "allergy-reaction",
+  "dental",
+  "other"
+] as const satisfies readonly HealthEventKind[];
+export type GeneralHealthEventKind = typeof generalHealthEventKindCodes[number];
 export type HealthEventStatus = "completed" | "entered-in-error";
 export interface ImmunizationDetails {
   vaccine: string;
@@ -75,11 +116,97 @@ export interface MedicationAdministrationEvent extends HealthEventBase {
   kind: "medication-administration";
   medicationAdministration?: MedicationAdministrationDetails;
 }
-export interface OtherHealthEvent extends HealthEventBase { kind: "other"; }
-export type HealthEvent = ImmunizationEvent | MedicationAdministrationEvent | OtherHealthEvent;
+export interface GeneralHealthEvent extends HealthEventBase { kind: GeneralHealthEventKind; }
+export type OtherHealthEvent = GeneralHealthEvent & { kind: "other" };
+export type HealthEvent = ImmunizationEvent | MedicationAdministrationEvent | GeneralHealthEvent;
 
 export type CareItemStatus = "open" | "completed" | "cancelled" | "skipped";
 export type CareItemPriority = "low" | "normal" | "high";
+export const careItemKindCodes = [
+  "routine-checkup",
+  "follow-up",
+  "immunization",
+  "medication",
+  "test-screening",
+  "procedure",
+  "treatment-therapy",
+  "monitoring",
+  "dental",
+  "other"
+] as const;
+export type CareItemKind = typeof careItemKindCodes[number];
+export const careItemKindLabels: Record<CareItemKind, string> = {
+  "routine-checkup": "Routine check-up",
+  "follow-up": "Follow-up or recheck",
+  immunization: "Immunization or booster",
+  medication: "Medication or refill",
+  "test-screening": "Test or screening",
+  procedure: "Procedure or surgery",
+  "treatment-therapy": "Treatment or therapy",
+  monitoring: "Monitoring or measurement",
+  dental: "Dental or oral care",
+  other: "Other care item"
+};
+export const careItemReminderLeadCodes = ["one-day", "one-week", "one-month"] as const;
+export type CareItemReminderLead = typeof careItemReminderLeadCodes[number];
+export const careItemReminderLeadLabels: Record<CareItemReminderLead, string> = {
+  "one-day": "1 day before",
+  "one-week": "1 week before",
+  "one-month": "1 month before"
+};
+
+export function isHealthEventKind(value: string): value is HealthEventKind {
+  return (healthEventKindCodes as readonly string[]).includes(value);
+}
+
+export function isCareItemKind(value: string): value is CareItemKind {
+  return (careItemKindCodes as readonly string[]).includes(value);
+}
+
+export function normalizedCareItemKind(value: string): CareItemKind {
+  const normalized = value.trim().toLowerCase().replaceAll("_", "-").replace(/\s+/g, "-");
+  if (isCareItemKind(normalized)) return normalized;
+  if (normalized === "appointment" || normalized === "check-up" || normalized === "checkup") return "routine-checkup";
+  if (normalized === "followup") return "follow-up";
+  return "other";
+}
+
+export function careItemReminderAt(dueStart: string | undefined, lead: CareItemReminderLead): string | undefined {
+  if (!dueStart) return undefined;
+  const reminder = new Date(dueStart);
+  if (!Number.isFinite(reminder.getTime())) return undefined;
+  if (lead === "one-day") {
+    reminder.setDate(reminder.getDate() - 1);
+  } else if (lead === "one-week") {
+    reminder.setDate(reminder.getDate() - 7);
+  } else {
+    const day = reminder.getDate();
+    reminder.setDate(1);
+    reminder.setMonth(reminder.getMonth() - 1);
+    const lastDay = new Date(reminder.getFullYear(), reminder.getMonth() + 1, 0).getDate();
+    reminder.setDate(Math.min(day, lastDay));
+  }
+  return reminder.toISOString();
+}
+
+export function careItemReminderLead(
+  dueStart: string | undefined,
+  reminderAt: string | undefined
+): CareItemReminderLead | undefined {
+  if (!dueStart || !reminderAt) return undefined;
+  const expectedTime = new Date(reminderAt).getTime();
+  if (!Number.isFinite(expectedTime)) return undefined;
+  return careItemReminderLeadCodes.find((lead) => {
+    const candidate = careItemReminderAt(dueStart, lead);
+    return candidate ? new Date(candidate).getTime() === expectedTime : false;
+  });
+}
+export interface HealthEventReference {
+  id: string;
+  kind: HealthEventKind;
+  occurredAt: string;
+  provider?: string;
+}
 export interface CareItem {
   id: string;
   kind: string;
@@ -96,6 +223,8 @@ export interface CareItem {
   originatingHealthEventId?: string;
   completedHealthEventId?: string;
   completedAt?: string;
+  originatingHealthEvent?: HealthEventReference;
+  completedHealthEvent?: HealthEventReference;
 }
 export interface CarePagination {
   total: number;
@@ -143,7 +272,7 @@ export type UpdateHealthEventInput = CreateHealthEventInput;
 
 export interface CreateCareItemInput {
   title: string;
-  kind: string;
+  kind: CareItemKind;
   dueStart?: string;
   dueEnd?: string;
   reminderAt?: string;

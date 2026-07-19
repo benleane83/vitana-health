@@ -88,12 +88,19 @@ describe("persisted health store schema", () => {
         status: "completed",
         occurredAt: "2026-01-02T00:00:00.000Z",
         source: "manual-entry"
+      }, {
+        id: "event-3",
+        kind: "visit",
+        status: "completed",
+        occurredAt: "2026-01-03T00:00:00.000Z",
+        source: "manual-entry"
       }]
     }));
 
     expect(result.data.healthEvents).toEqual([
       expect.objectContaining({ id: "event-1", kind: "immunization" }),
-      expect.objectContaining({ id: "event-2", kind: "medication-administration" })
+      expect.objectContaining({ id: "event-2", kind: "medication-administration" }),
+      expect.objectContaining({ id: "event-3", kind: "visit" })
     ]);
   });
 });
