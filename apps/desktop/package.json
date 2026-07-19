@@ -14,7 +14,7 @@
   "scripts": {
     "prepackage": "node ../../scripts/prepare-duckdb-httpfs.mjs --output build/duckdb-extensions --skip-runtime-verification",
     "start": "electron .",
-    "test": "node --test secure-store-key.test.cjs package-config.test.cjs",
+    "test": "node --test secure-store-key.test.cjs startup-diagnostics.test.cjs package-config.test.cjs",
     "package": "electron-builder",
     "package:signed": "electron-builder --config.forceCodeSigning=true"
   },
@@ -31,6 +31,7 @@
     "files": [
       "main.cjs",
       "secure-store-key.cjs",
+      "startup-diagnostics.cjs",
       "package.json",
       "!**/node_modules/duckdb/src{,/**}",
       "!**/node_modules/duckdb/test{,/**}",

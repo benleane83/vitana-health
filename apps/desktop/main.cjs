@@ -2,11 +2,28 @@ const { app, BrowserWindow, dialog, safeStorage, session } = require("electron")
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { loadOrCreateSecureStoreKey } = require("./secure-store-key.cjs");
+const { createStartupDiagnostics } = require("./startup-diagnostics.cjs");
 
 let apiServer;
 let shutdownStarted = false;
+const diagnostics = createStartupDiagnostics({ userDataPath: app.getPath("userData") });
+
+diagnostics.info(`Process started (Electron ${process.versions.electron}, Node ${process.versions.node})`);
+process.on("uncaughtException", (error) => {
+  diagnostics.error("Uncaught exception", error);
+});
+process.on("unhandledRejection", (error) => {
+  diagnostics.error("Unhandled rejection", error);
+});
+app.on("child-process-gone", (_event, details) => {
+  diagnostics.error(`Child process exited (${details.type}, reason ${details.reason}, exit code ${details.exitCode})`);
+});
+app.on("render-process-gone", (_event, _webContents, details) => {
+  diagnostics.error(`Renderer process exited (reason ${details.reason}, exit code ${details.exitCode})`);
+});
 
 async function launch() {
+  diagnostics.info("Electron ready; starting embedded API");
   const packaged = app.isPackaged;
   process.env.NODE_ENV = "production";
   process.env.HOST = "0.0.0.0";
@@ -23,6 +40,7 @@ async function launch() {
 
   const serverPath = require.resolve("@local-fitness-advisor/api");
   const { configureAiCredentialProtector, startServer } = await import(pathToFileURL(serverPath).href);
+  diagnostics.info("Embedded API module loaded");
   configureAiCredentialProtector({
     encryptString: (value) => safeStorage.encryptString(value),
     decryptString: (value) => safeStorage.decryptString(value)
@@ -41,6 +59,7 @@ async function launch() {
       : { passphrase: secureKey.passphrase, securityMode: "os-secure-storage" }
   });
   secureKey?.finalize();
+  diagnostics.info(`Embedded API listening on port ${process.env.PORT}`);
 
   session.defaultSession.setCertificateVerifyProc((request, callback) => {
     callback(request.hostname === "127.0.0.1" || request.hostname === "localhost" ? 0 : -3);
@@ -58,9 +77,11 @@ async function launch() {
     }
   });
   await window.loadURL(`https://127.0.0.1:${process.env.PORT}`);
+  diagnostics.info("Main window loaded");
 }
 
 app.whenReady().then(launch).catch((error) => {
+  diagnostics.error("Startup failed", error);
   console.error(error);
   dialog.showErrorBox(
     "Local Fitness Advisor could not start",
@@ -71,6 +92,7 @@ app.whenReady().then(launch).catch((error) => {
 
 app.on("window-all-closed", () => app.quit());
 app.on("before-quit", (event) => {
+  diagnostics.info("Application shutdown requested");
   if (shutdownStarted || !apiServer) {
     return;
   }
@@ -79,6 +101,7 @@ app.on("before-quit", (event) => {
   void apiServer.shutdown()
     .then(() => app.quit())
     .catch((error) => {
+      diagnostics.error("Embedded API shutdown failed", error);
       console.error(error);
       app.exit(1);
     });
