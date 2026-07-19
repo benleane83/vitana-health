@@ -5,7 +5,8 @@ import type {
   ObservationGroup,
   ParsedImport,
   Profile,
-  SourceImport
+  SourceImport,
+  UpdateObservationInput
 } from "@local-fitness-advisor/shared";
 import {
   emptyCounts,
@@ -151,6 +152,30 @@ export class MemoryLocalStore implements LocalStore {
         };
       })
     };
+  }
+
+  async updateObservation(id: string, input: UpdateObservationInput): Promise<Observation | undefined> {
+    const observationKey = key(this.requireProfileId(), id);
+    const existing = this.state.observations.get(observationKey);
+    if (!existing) return undefined;
+    const updated = {
+      ...existing,
+      measurementCode: input.measurementCode,
+      observedAt: input.observedAt,
+      value: input.value,
+      unit: input.unit,
+      note: input.note
+    };
+    this.state.observations.set(observationKey, updated);
+    return structuredClone(updated);
+  }
+
+  async deleteObservation(id: string): Promise<Observation | undefined> {
+    const observationKey = key(this.requireProfileId(), id);
+    const existing = this.state.observations.get(observationKey);
+    if (!existing) return undefined;
+    this.state.observations.delete(observationKey);
+    return structuredClone(existing);
   }
 
   async close(): Promise<void> {}

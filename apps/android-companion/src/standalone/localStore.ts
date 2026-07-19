@@ -3,7 +3,8 @@ import type {
   Observation,
   ParsedImport,
   Profile,
-  SourceKind
+  SourceKind,
+  UpdateObservationInput
 } from "@local-fitness-advisor/shared";
 
 export const LOCAL_SCHEMA_VERSION = 1;
@@ -50,6 +51,8 @@ export interface LocalStore {
   recentObservations(limit: number): Promise<Observation[]>;
   observationAggregates(): Promise<LocalObservationAggregate[]>;
   observationsByCode(measurementCode: string, limit: number, offset: number): Promise<LocalObservationPage>;
+  updateObservation(id: string, input: UpdateObservationInput): Promise<Observation | undefined>;
+  deleteObservation(id: string): Promise<Observation | undefined>;
   reset(): Promise<void>;
   close(): Promise<void>;
 }

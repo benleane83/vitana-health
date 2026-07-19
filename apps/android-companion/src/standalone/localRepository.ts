@@ -13,7 +13,8 @@ import {
   type MobileImportResult,
   type MobileProfileRepository,
   type ParsedImport,
-  type Profile
+  type Profile,
+  type UpdateObservationInput
 } from "@local-fitness-advisor/shared";
 import type { LocalStore } from "./localStore";
 
@@ -133,7 +134,7 @@ export class LocalProfileRepository implements MobileProfileRepository {
         } : undefined,
         referenceRange,
         status: measurement ? classifyValue(record.value, measurement, record.unit) : "unknown" as const,
-        canDelete: false
+        canDelete: true
       };
     });
     return {
@@ -163,7 +164,7 @@ export class LocalProfileRepository implements MobileProfileRepository {
           )
         : { source: "none" },
       counts: { observations: result.total, samples: 0, activities: 0, total: result.total },
-      deletion: { observationEntries: result.total, deletableEntries: 0 },
+      deletion: { observationEntries: result.total, deletableEntries: result.total },
       pagination: {
         limit,
         loaded: Math.min(offset + entries.length, result.total),
@@ -171,6 +172,22 @@ export class LocalProfileRepository implements MobileProfileRepository {
         hasMore: offset + entries.length < result.total
       }
     };
+  }
+
+  async updateObservation(id: string, input: UpdateObservationInput) {
+    await this.ensureInitialized();
+    const updatedObservation = await this.store.updateObservation(id, input);
+    return updatedObservation
+      ? { updatedObservation, counts: await this.bootstrap().then((value) => value.counts) }
+      : undefined;
+  }
+
+  async deleteObservation(id: string) {
+    await this.ensureInitialized();
+    const deletedObservation = await this.store.deleteObservation(id);
+    return deletedObservation
+      ? { deletedCount: 1, deletedObservation, counts: await this.bootstrap().then((value) => value.counts) }
+      : undefined;
   }
 
   async mergeImport(imported: ParsedImport): Promise<MobileImportResult> {

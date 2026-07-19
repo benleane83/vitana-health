@@ -10,6 +10,7 @@ import {
   createHealthEventInputSchema,
   deleteCareItemResponseSchema,
   deleteHealthEventResponseSchema,
+  deleteObservationResponseSchema,
   healthDataChartSeriesResponseSchema,
   healthDataDetailResponseSchema,
   healthDataSummaryResponseSchema,
@@ -22,6 +23,7 @@ import {
   paginatedHealthEventsResponseSchema,
   personalReferenceRangeInputSchema,
   referenceRangeStateResponseSchema,
+  updateObservationResponseSchema,
   uploadImportDraftResponseSchema
 } from "@local-fitness-advisor/shared";
 import type {
@@ -32,6 +34,7 @@ import type {
   HealthEventListQuery,
   ManualObservationPayload,
   PersonalReferenceRangeInput,
+  UpdateObservationInput,
   UploadImportCommitPayload,
   UploadImportPreviewPayload
 } from "@local-fitness-advisor/shared";
@@ -120,6 +123,18 @@ export function createApiClient(transport: ApiTransport) {
       ),
     importManualObservations: (payload: ManualObservationPayload) =>
       request(importMutationResponseSchema, "/api/import/observations/manual", { method: "POST", body: payload }),
+    updateObservation: (id: string, input: UpdateObservationInput) =>
+      request(
+        updateObservationResponseSchema,
+        `/api/observations/${encodeURIComponent(id)}`,
+        { method: "PATCH", body: input }
+      ),
+    deleteObservation: (id: string) =>
+      request(
+        deleteObservationResponseSchema,
+        `/api/observations/${encodeURIComponent(id)}`,
+        { method: "DELETE" }
+      ),
     previewBodyCompositionReport: (payload: ReportPreviewPayload) =>
       request(bodyCompositionDraftResponseSchema, "/api/import/body-composition/preview", { method: "POST", body: payload }),
     previewBloodTestReport: (payload: ReportPreviewPayload) =>

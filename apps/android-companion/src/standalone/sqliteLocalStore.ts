@@ -3,8 +3,10 @@ import * as SecureStore from "expo-secure-store";
 import { deleteDatabaseAsync, openDatabaseAsync, type SQLiteDatabase } from "expo-sqlite";
 import type {
   MobileImportResult,
+  Observation,
   ParsedImport,
-  Profile
+  Profile,
+  UpdateObservationInput
 } from "@local-fitness-advisor/shared";
 import { openWithDatabaseKey, type SecureKeyStore } from "./databaseKey";
 import { deleteEmptyPlaintextDatabase, isFileNotDatabaseError } from "./databaseRecovery";
@@ -323,6 +325,43 @@ export class SqliteLocalStore implements LocalStore {
     };
   }
 
+  async updateObservation(id: string, input: UpdateObservationInput): Promise<Observation | undefined> {
+    const existing = await this.observationById(id);
+    if (!existing) return undefined;
+    const result = await this.database.runAsync(
+      `UPDATE observations
+       SET measurement_code = ?, observed_at = ?, value = ?, unit = ?, note = ?
+       WHERE profile_id = ? AND id = ?`,
+      input.measurementCode,
+      input.observedAt,
+      input.value,
+      input.unit,
+      input.note ?? null,
+      this.requireProfileId(),
+      id
+    );
+    if (result.changes !== 1) return undefined;
+    return {
+      ...existing,
+      measurementCode: input.measurementCode,
+      observedAt: input.observedAt,
+      value: input.value,
+      unit: input.unit,
+      note: input.note
+    };
+  }
+
+  async deleteObservation(id: string): Promise<Observation | undefined> {
+    const existing = await this.observationById(id);
+    if (!existing) return undefined;
+    const result = await this.database.runAsync(
+      "DELETE FROM observations WHERE profile_id = ? AND id = ?",
+      this.requireProfileId(),
+      id
+    );
+    return result.changes === 1 ? existing : undefined;
+  }
+
   close(): Promise<void> {
     return this.database.closeAsync();
   }
@@ -337,5 +376,33 @@ export class SqliteLocalStore implements LocalStore {
     if (!this.profileId) throw new Error("The local profile has not been initialized.");
     return this.profileId;
   }
-}
 
+  private async observationById(id: string): Promise<Observation | undefined> {
+    const row = await this.database.getFirstAsync<{
+      id: string;
+      measurementCode: string;
+      observedAt: string;
+      value: number;
+      unit: string;
+      sourceId: string;
+      observationGroupId: string | null;
+      deviceId: string | null;
+      note: string | null;
+      sourceJson: string | null;
+    }>(`
+      SELECT id, measurement_code AS measurementCode, observed_at AS observedAt, value, unit,
+        source_id AS sourceId, observation_group_id AS observationGroupId, device_id AS deviceId,
+        note, source_json AS sourceJson
+      FROM observations
+      WHERE profile_id = ? AND id = ?
+    `, this.requireProfileId(), id);
+    if (!row) return undefined;
+    return {
+      ...row,
+      observationGroupId: row.observationGroupId ?? undefined,
+      deviceId: row.deviceId ?? undefined,
+      note: row.note ?? undefined,
+      sourceJson: row.sourceJson ? JSON.parse(row.sourceJson) : undefined
+    };
+  }
+}

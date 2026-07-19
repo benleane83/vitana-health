@@ -8,6 +8,7 @@ import type {
   CreateHealthEventInput,
   DeleteCareItemResponse,
   DeleteHealthEventResponse,
+  DeleteObservationResponse,
   HealthDataDetail,
   HealthDataSummary,
   ManualObservationPayload,
@@ -15,7 +16,9 @@ import type {
   HealthEvent,
   HealthEventListQuery,
   HealthEventMutationResponse,
-  PaginatedResult
+  PaginatedResult,
+  UpdateObservationInput,
+  UpdateObservationResponse
 } from "@local-fitness-advisor/shared";
 
 export interface DetailPage {
@@ -32,6 +35,11 @@ export interface CompanionDataSource {
 
 export interface CompanionMutationService {
   importManualObservations(payload: ManualObservationPayload): Promise<MobileImportResult | unknown>;
+}
+
+export interface CompanionObservationMutationService {
+  updateObservation(id: string, input: UpdateObservationInput): Promise<UpdateObservationResponse>;
+  deleteObservation(id: string): Promise<DeleteObservationResponse>;
 }
 
 export interface CompanionMaintenanceService {
