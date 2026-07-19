@@ -52,6 +52,7 @@ module.exports = {
     },
     plugins: [
       ["./plugins/withDevNetworkSecurity", { allowCleartext }],
+      "react-native-iap",
       "expo-health-connect",
       ["expo-secure-store", { configureAndroidBackup: true }],
       ["expo-sqlite", { useSQLCipher: true }],

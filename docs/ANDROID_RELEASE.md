@@ -36,6 +36,11 @@ The release owner owns the user-visible application version in `apps/android-com
 
 ## Production build and submission
 
+Before the first billing-enabled build, create a managed one-time product in Play Console with
+the product ID `scan_sync_unlock` and activate it for the app. Add license tester accounts, then
+exercise purchase, cancellation, pending payment, acknowledgement, reinstall, and restore using
+Google's test payment methods; license testers are not charged.
+
 Run these commands from the repository root after the version bump is committed:
 
 ```powershell
@@ -71,6 +76,7 @@ Demo mode does not contact a local PC, alter pairing credentials, or write sampl
 - [ ] Development, preview, and production EAS environments are distinct; production has no development-only values.
 - [ ] Repository checks pass: workspace typecheck, build, tests, and Android production dependency audit.
 - [ ] Production AAB build completes with a new remote Android version code, `production` channel, and cleartext disabled.
+- [ ] The active `scan_sync_unlock` one-time product is tested with Play license testers for purchase, cancellation, pending payment, acknowledgement, reinstall, and restore.
 - [ ] The exact AAB is tested on a physical Android device with the phone assigned to a profile different from the PC active profile: Dashboard refresh, Track search/detail/pagination, manual import, both camera/gallery scan types and row exclusion, HTTPS certificate-pin validation, Health Connect selected-category/cursor sync, revoke/disconnect, PC restart, maintenance, and offline recovery.
 - [ ] Report drafts clear on backgrounding, cancellation, commit, and disconnect; small and large accessibility font scales remain usable.
 - [ ] AsyncStorage and SecureStore inspection confirms that report images, OCR text, manual-entry payloads, Dashboard responses, and Track responses are not persisted.
