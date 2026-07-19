@@ -1,4 +1,4 @@
-import { CURRENT_SCHEMA_VERSION, type HealthStoreData } from "@local-fitness-advisor/shared";
+import { CURRENT_SCHEMA_VERSION, defaultMeasurementTypes, type HealthStoreData } from "@local-fitness-advisor/shared";
 
 export function createDuckDbHealthStoreFixture(): HealthStoreData {
   return {
@@ -63,7 +63,7 @@ export function createDuckDbHealthStoreFixture(): HealthStoreData {
       normalHigh: 100,
       referenceRanges: [{ low: 50, high: 100, unit: "kg", label: "Fixture range", source: "fixture" }],
       aggregation: "latest"
-    }],
+    }, ...defaultMeasurementTypes.filter((measurement) => measurement.code === "activity_sessions")],
     observationGroups: [{
       id: "group-1",
       kind: "custom",
