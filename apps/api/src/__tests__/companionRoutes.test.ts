@@ -35,6 +35,14 @@ function store(profileId: string) {
     listCareItems: vi.fn(async () => ({ items: [{ id: `${profileId}-care`, title: "Follow up", kind: "follow-up", priority: "normal", status: "open" }], total: 1, offset: 0, limit: 20, hasMore: false })),
     createCareItem: vi.fn(async () => ({ careItem: { id: `${profileId}-care`, title: "Follow up", kind: "follow-up", priority: "normal", status: "open" }, counts: { imports: 0, observations: 0, samples: 0, activities: 0, healthEvents: 0, careItems: 1 } })),
     deleteCareItem: vi.fn(async () => ({ deletedCount: 1, counts: { imports: 0, observations: 0, samples: 0, activities: 0, healthEvents: 0, careItems: 0 } })),
+    updateObservation: vi.fn(async (id: string, input: object) => ({
+      updatedObservation: { id, ...input, sourceId: "manual" },
+      counts: { imports: 1, observations: 1, samples: 0, activities: 0, healthEvents: 0, careItems: 0 }
+    })),
+    deleteObservation: vi.fn(async () => ({
+      deletedCount: 1,
+      counts: { imports: 1, observations: 0, samples: 0, activities: 0, healthEvents: 0, careItems: 0 }
+    })),
     mergeImport: vi.fn(async () => ({
       outcome: outcome(),
       counts: { imports: 1, observations: 1, samples: 0, activities: 0 }
@@ -124,13 +132,24 @@ describe("companion route profile isolation", () => {
     expect((await request(app).get("/api/care/items").set(headers)).status).toBe(200);
     expect((await request(app).post("/api/care/health-events").set(headers).send({ kind: "other", status: "completed", occurredAt: "2026-01-01T00:00:00.000Z" })).status).toBe(201);
     expect((await request(app).post("/api/care/items").set(headers).send({ title: "Follow up", kind: "follow-up", priority: "normal", status: "open" })).status).toBe(201);
-    expect((await request(app).delete("/api/observations/missing").set(headers)).status).toBe(403);
+    const observationInput = {
+      measurementCode: "weight",
+      observedAt: "2026-01-02T08:00:00.000Z",
+      value: 69,
+      unit: "kg"
+    };
+    expect((await request(app).patch("/api/observations/phone-observation").set(headers).send(observationInput)).status).toBe(200);
+    expect((await request(app).delete("/api/observations/phone-observation").set(headers)).status).toBe(200);
     expect((await request(app).get("/api/settings/ai").set(headers)).status).toBe(403);
     expect((await request(app).post("/api/query/ai").set(headers).send({ question: "test" })).status).toBe(403);
     expect(assigned.listHealthEvents).toHaveBeenCalledOnce();
     expect(assigned.listCareItems).toHaveBeenCalledOnce();
     expect(assigned.createHealthEvent).toHaveBeenCalledOnce();
     expect(assigned.createCareItem).toHaveBeenCalledOnce();
+    expect(assigned.updateObservation).toHaveBeenCalledWith("phone-observation", observationInput);
+    expect(assigned.deleteObservation).toHaveBeenCalledWith("phone-observation");
+    expect(active.updateObservation).not.toHaveBeenCalled();
+    expect(active.deleteObservation).not.toHaveBeenCalled();
   });
 
   it("leaves owner reads on the active store", async () => {

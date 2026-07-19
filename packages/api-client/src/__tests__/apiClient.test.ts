@@ -48,9 +48,50 @@ describe("createApiClient", () => {
       path: "/api/summary/blood%20pressure/reference-range",
       body: JSON.stringify({ low: 4, high: 6, unit: "mmol/L" })
     });
+
     expect(seen[1]).toMatchObject({
       method: "DELETE",
       path: "/api/summary/blood%20pressure/reference-range"
+    });
+  });
+
+  it("updates and deletes encoded observation IDs", async () => {
+    const seen: ApiTransportRequest[] = [];
+    const transport = async (request: ApiTransportRequest) => {
+      seen.push(request);
+      return response(request.method === "PATCH"
+        ? {
+            updatedObservation: {
+              id: "observation/1",
+              measurementCode: "weight",
+              observedAt: "2026-07-19T08:00:00.000Z",
+              value: 71,
+              unit: "kg",
+              sourceId: "manual"
+            },
+            counts: {}
+          }
+        : { deletedCount: 1, counts: {} });
+    };
+    const client = createApiClient(transport);
+    const input = {
+      measurementCode: "weight",
+      observedAt: "2026-07-19T08:00:00.000Z",
+      value: 71,
+      unit: "kg"
+    };
+
+    await client.updateObservation("observation/1", input);
+    await client.deleteObservation("observation/1");
+
+    expect(seen[0]).toMatchObject({
+      method: "PATCH",
+      path: "/api/observations/observation%2F1",
+      body: JSON.stringify(input)
+    });
+    expect(seen[1]).toMatchObject({
+      method: "DELETE",
+      path: "/api/observations/observation%2F1"
     });
   });
 
