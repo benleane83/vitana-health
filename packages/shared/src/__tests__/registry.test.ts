@@ -8,6 +8,7 @@ import {
   findMeasurementType,
   getPreferredUnit,
   getReferenceRange,
+  resolveReferenceRange,
   normalizeMeasurementUnit
 } from "../measurementRegistry.js";
 import type { MeasurementType } from "../types.js";
@@ -62,6 +63,22 @@ describe("classifyValue", () => {
     // normalLow=50, normalHigh=100 for heart_rate
     expect(classifyValue(50, heartRate)).toBe("normal");
     expect(classifyValue(100, heartRate)).toBe("normal");
+  });
+
+  it("resolves personal ranges before adult catalog ranges and converts them", () => {
+    const glucose = defaultMeasurementTypes.find((type) => type.code === "glucose")!;
+    const personal = {
+      measurementCode: "glucose", normalLow: 4, normalHigh: 6, optimalLow: 4.5, optimalHigh: 5.5,
+      unit: "mmol/L", updatedAt: "2026-01-01T00:00:00.000Z"
+    };
+    expect(resolveReferenceRange(glucose, "mg/dL", personal, "adult")).toMatchObject({
+      source: "personal",
+      effective: { low: expect.any(Number), high: expect.any(Number), unit: "mg/dL" },
+      catalog: expect.any(Object)
+    });
+    expect(resolveReferenceRange(glucose, "mmol/L", undefined, "adult").source).toBe("catalog");
+    expect(resolveReferenceRange(glucose, "mmol/L", undefined, "child")).toEqual({ source: "none" });
+    expect(resolveReferenceRange(glucose, "mmol/L", personal, "pet").source).toBe("personal");
   });
 });
 

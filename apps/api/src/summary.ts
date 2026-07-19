@@ -7,7 +7,12 @@ import type {
   HealthStoreData,
   MeasurementType
 } from "@local-fitness-advisor/shared";
-import { classifyValue, getReferenceRange, toPreferredMeasurementValue } from "@local-fitness-advisor/shared";
+import {
+  classifyValueWithRange,
+  getPreferredUnit,
+  resolveReferenceRange,
+  toPreferredMeasurementValue
+} from "@local-fitness-advisor/shared";
 
 const categoryLabels: Record<HealthDataSummaryTypeRow["category"], string> = {
   activity: "Activity",
@@ -120,7 +125,12 @@ export function listHealthDataDetailEntries(store: HealthStoreData, measurementC
       const type = measurementTypes.get(entry.measurementCode);
       const group = entry.observationGroupId ? observationGroups.get(entry.observationGroupId) : undefined;
       const display = type ? toPreferredMeasurementValue(entry.value, entry.unit, type, store.profile.units) : entry;
-      const referenceRange = type ? getReferenceRange(type, display.unit) : undefined;
+      const referenceRange = type ? resolveReferenceRange(
+        type,
+        display.unit,
+        store.personalReferenceRanges.find((range) => range.measurementCode === entry.measurementCode),
+        store.profile.subjectKind
+      ).effective : undefined;
       return {
         kind: "observation",
         id: entry.id,
@@ -138,7 +148,7 @@ export function listHealthDataDetailEntries(store: HealthStoreData, measurementC
           ? { id: group.id, kind: group.kind, label: group.label, collectedAt: group.collectedAt }
           : undefined,
         referenceRange,
-        status: type ? classifyValue(entry.value, type, entry.unit) : "unknown",
+        status: classifyValueWithRange(entry.value, referenceRange),
         canDelete: true,
         deleteLabel: "Delete"
       };
@@ -151,7 +161,12 @@ export function listHealthDataDetailEntries(store: HealthStoreData, measurementC
       const imported = source?.importId ? sourceImports.get(source.importId) : undefined;
       const type = measurementTypes.get(entry.measurementCode);
       const display = type ? toPreferredMeasurementValue(entry.value, entry.unit, type, store.profile.units) : entry;
-      const referenceRange = type ? getReferenceRange(type, display.unit) : undefined;
+      const referenceRange = type ? resolveReferenceRange(
+        type,
+        display.unit,
+        store.personalReferenceRanges.find((range) => range.measurementCode === entry.measurementCode),
+        store.profile.subjectKind
+      ).effective : undefined;
       return {
         kind: "sample",
         id: entry.id,
@@ -166,7 +181,7 @@ export function listHealthDataDetailEntries(store: HealthStoreData, measurementC
         importedAt: imported?.importedAt,
         note: entry.startAt && entry.endAt && entry.startAt !== entry.endAt ? `${entry.startAt} → ${entry.endAt}` : undefined,
         referenceRange,
-        status: type ? classifyValue(entry.value, type, entry.unit) : "unknown"
+        status: classifyValueWithRange(entry.value, referenceRange)
       };
     });
 
@@ -213,7 +228,17 @@ export function listHealthDataDetailEntries(store: HealthStoreData, measurementC
 export function summarizeMeasurementDetail(store: HealthStoreData, measurementCode: string): HealthDataDetail {
   const measurementTypes = new Map(store.measurementTypes.map((item) => [item.code, item]));
   const entries = listHealthDataDetailEntries(store, measurementCode);
-  return summarizeMeasurementEntries(measurementCode, measurementTypes.get(measurementCode), entries);
+  const type = measurementTypes.get(measurementCode);
+  return summarizeMeasurementEntries(measurementCode, type, entries, {
+    referenceRange: type
+      ? resolveReferenceRange(
+          type,
+          getPreferredUnit(type, store.profile.units),
+          store.personalReferenceRanges.find((range) => range.measurementCode === measurementCode),
+          store.profile.subjectKind
+        )
+      : { source: "none" }
+  });
 }
 
 export function summarizeMeasurementEntries(
@@ -224,6 +249,7 @@ export function summarizeMeasurementEntries(
     counts?: HealthDataSummarySourceCounts & { total: number };
     latestTimestamp?: string;
     pagination?: HealthDataDetail["pagination"];
+    referenceRange?: HealthDataDetail["referenceRange"];
   } = {}
 ): HealthDataDetail {
   const entryCounts = entries.reduce<HealthDataSummarySourceCounts & { total: number }>(
@@ -257,6 +283,7 @@ export function summarizeMeasurementEntries(
   return {
     generatedAt: new Date().toISOString(),
     measurement,
+    referenceRange: options.referenceRange ?? { source: "none" },
     entries,
     chartPoints,
     counts,

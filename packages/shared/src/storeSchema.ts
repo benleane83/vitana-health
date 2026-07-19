@@ -3,7 +3,7 @@ import { healthEventKindCodes } from "./types.js";
 import type { HealthStoreData, InsightModel } from "./types.js";
 import { defaultMeasurementTypes } from "./registry.js";
 
-export const CURRENT_SCHEMA_VERSION = 4 as const;
+export const CURRENT_SCHEMA_VERSION = 6 as const;
 
 const sourceKind = z.enum([
   "health-connect", "manual-entry", "blood-test-csv", "observation-csv", "structured-upload",
@@ -57,6 +57,34 @@ const measurementTypeSchema = z.object({
   aggregation: z.enum(["sum", "average", "min", "max", "latest", "none"])
 }).strict();
 
+const personalReferenceRangeSchema = z.object({
+  measurementCode: z.string().trim().min(1),
+  normalLow: z.number().finite().optional(),
+  normalHigh: z.number().finite().optional(),
+  optimalLow: z.number().finite().optional(),
+  optimalHigh: z.number().finite().optional(),
+  unit: z.string().trim().min(1),
+  updatedAt: z.string()
+}).strict().superRefine((range, context) => {
+  if (range.normalLow === undefined && range.normalHigh === undefined) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "At least one normal reference-range bound is required." });
+  }
+  if (range.normalLow !== undefined && range.normalHigh !== undefined && range.normalLow > range.normalHigh) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["normalHigh"], message: "Normal upper bound must be greater than or equal to lower bound." });
+  }
+  if (range.optimalLow !== undefined && range.optimalHigh !== undefined && range.optimalLow > range.optimalHigh) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["optimalHigh"], message: "Optimal upper bound must be greater than or equal to lower bound." });
+  }
+});
+
+const version5PersonalReferenceRangeSchema = z.object({
+  measurementCode: z.string().trim().min(1),
+  low: z.number().finite().optional(),
+  high: z.number().finite().optional(),
+  unit: z.string().trim().min(1),
+  updatedAt: z.string()
+}).strict();
+
 const storeFields = {
   profile: profileSchema,
   sourceImports: z.array(z.object({
@@ -71,6 +99,7 @@ const storeFields = {
     id: z.string(), label: z.string(), manufacturer: z.string().optional(), model: z.string().optional(), sourceId: z.string().optional()
   }).strict()),
   measurementTypes: z.array(measurementTypeSchema),
+  personalReferenceRanges: z.array(personalReferenceRangeSchema).default([]),
   observations: z.array(z.object({
     id: z.string(), measurementCode: z.string(), observedAt: z.string(), effectiveStart: z.string().optional(), effectiveEnd: z.string().optional(),
     value: z.number(), unit: z.string(), sourceId: z.string(), observationGroupId: z.string().optional(), deviceId: z.string().optional(),
@@ -119,7 +148,7 @@ const storeFields = {
   insights: z.array(insightSchema),
   auditEvents: z.array(z.object({
     id: z.string(), createdAt: z.string(),
-    eventType: z.enum(["store-created", "profile-updated", "migration-applied", "import-processed", "insight-generated", "export-created", "observation-updated", "observation-deleted", "observation-type-deleted", "health-event-created", "health-event-updated", "health-event-deleted", "care-item-created", "care-item-updated", "care-item-completed", "care-item-cancelled", "care-item-deleted"]),
+    eventType: z.enum(["store-created", "profile-updated", "migration-applied", "import-processed", "insight-generated", "export-created", "observation-updated", "observation-deleted", "observation-type-deleted", "health-event-created", "health-event-updated", "health-event-deleted", "care-item-created", "care-item-updated", "care-item-completed", "care-item-cancelled", "care-item-deleted", "personal-reference-range-set", "personal-reference-range-removed"]),
     detail: z.string()
   }).strict())
 };
@@ -129,7 +158,15 @@ export const healthStoreDataSchema = z.object({
   ...storeFields
 }).strict();
 
+const version4StoreSchema = healthStoreDataSchema.extend({ schemaVersion: z.literal(4) });
 const version2StoreSchema = healthStoreDataSchema.extend({ schemaVersion: z.literal(2) });
+const version5StoreSchema = healthStoreDataSchema.extend({
+  schemaVersion: z.literal(5),
+  measurementTypes: z.array(measurementTypeSchema.extend({
+    category: z.enum(["activity", "cardio", "sleep", "body", "lab", "metabolic", "derived"])
+  })),
+  personalReferenceRanges: z.array(version5PersonalReferenceRangeSchema).default([])
+});
 
 const retiredMetabolicStoreSchema = healthStoreDataSchema.extend({
   measurementTypes: z.array(measurementTypeSchema.extend({
@@ -208,8 +245,41 @@ export function parsePersistedHealthStore(data: unknown): { data: HealthStoreDat
       migrated: true
     };
   }
+  if (version === 5) {
+    const legacy = version5StoreSchema.parse(data);
+    const defaultsByCode = new Map(defaultMeasurementTypes.map((type) => [type.code, type]));
+    return {
+      data: healthStoreDataSchema.parse({
+        ...legacy,
+        schemaVersion: CURRENT_SCHEMA_VERSION,
+        measurementTypes: legacy.measurementTypes.map((type) => {
+          if (type.category !== "metabolic") return type;
+          const replacement = defaultsByCode.get(type.code);
+          if (!replacement) {
+            throw new Error(`Retired metabolic measurement type ${type.code} has no current registry definition.`);
+          }
+          return replacement;
+        }),
+        personalReferenceRanges: legacy.personalReferenceRanges.map((range) => ({
+          measurementCode: range.measurementCode,
+          ...(range.low === undefined ? {} : { normalLow: range.low }),
+          ...(range.high === undefined ? {} : { normalHigh: range.high }),
+          unit: range.unit,
+          updatedAt: range.updatedAt
+        }))
+      }),
+      migrated: true
+    };
+  }
   if (version === 2) {
     const legacy = version2StoreSchema.parse(data);
+    return {
+      data: healthStoreDataSchema.parse({ ...legacy, schemaVersion: CURRENT_SCHEMA_VERSION }),
+      migrated: true
+    };
+  }
+  if (version === 4) {
+    const legacy = version4StoreSchema.parse(data);
     return {
       data: healthStoreDataSchema.parse({ ...legacy, schemaVersion: CURRENT_SCHEMA_VERSION }),
       migrated: true

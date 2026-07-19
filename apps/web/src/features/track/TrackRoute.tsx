@@ -8,6 +8,7 @@ import type {
   HealthDataDetailEntry,
   HealthDataSummary,
   MeasurementType,
+  PersonalReferenceRangeInput,
   UpdateObservationInput
 } from "@local-fitness-advisor/shared";
 import { api } from "../../api.js";
@@ -170,6 +171,38 @@ export function TrackRoute({
     });
   }
 
+  async function setPersonalReferenceRange(input: PersonalReferenceRangeInput) {
+    if (!detailCode) return;
+    setActionBusy(true);
+    try {
+      await api.setPersonalReferenceRange(detailCode, input);
+      await refreshAfterMutation(detailCode);
+      onNotice("Personal reference range saved.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to save the reference range.";
+      onNotice(message);
+      throw error;
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function removePersonalReferenceRange() {
+    if (!detailCode) return;
+    setActionBusy(true);
+    try {
+      await api.removePersonalReferenceRange(detailCode);
+      await refreshAfterMutation(detailCode);
+      onNotice("Personal reference range removed.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to remove the reference range.";
+      onNotice(message);
+      throw error;
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
   async function deleteAll() {
     if (!detailCode || !detail.data) return;
     const observationCount = detail.data.deletion.observationEntries;
@@ -237,6 +270,7 @@ export function TrackRoute({
     <>
       {detailCode ? (
         <ObservationTypeDetailPage
+          key={`${activeProfileId ?? ""}:${detailCode}`}
           detail={detail.data}
           chartSeries={chartSeries.data}
           chartRange={chartRange}
@@ -255,6 +289,9 @@ export function TrackRoute({
           onChartRangeChange={setChartRange}
           onChartModeChange={setChartMode}
           onAddManualObservation={addManualObservation}
+          onSetPersonalReferenceRange={setPersonalReferenceRange}
+          onRemovePersonalReferenceRange={removePersonalReferenceRange}
+          measurementType={measurementTypes.find((measurement) => measurement.code === detailCode)}
           defaultUnit={defaultUnit}
         />
       ) : (

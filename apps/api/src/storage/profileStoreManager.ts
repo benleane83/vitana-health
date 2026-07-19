@@ -273,6 +273,7 @@ function createEmptyStore(profileId = "self", displayName = "Local user"): Healt
     dataSources: [],
     devices: [],
     measurementTypes: defaultMeasurementTypes,
+    personalReferenceRanges: [],
     observations: [],
     observationGroups: [],
     timeSeriesSamples: [],

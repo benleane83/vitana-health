@@ -4,6 +4,7 @@ import {
   computeAnalyticsFromInput,
   defaultMeasurementTypes,
   getReferenceRange,
+  resolveReferenceRange,
   type AppBootstrap,
   type HealthDataDetail,
   type HealthDataSummary,
@@ -153,6 +154,14 @@ export class LocalProfileRepository implements MobileProfileRepository {
         unit: entry.unit,
         referenceRange: entry.referenceRange
       })),
+      referenceRange: measurement
+        ? resolveReferenceRange(
+            measurement,
+            entries[0]?.unit ?? measurement.canonicalUnit,
+            undefined,
+            this.defaultProfile.subjectKind ?? "adult"
+          )
+        : { source: "none" },
       counts: { observations: result.total, samples: 0, activities: 0, total: result.total },
       deletion: { observationEntries: result.total, deletableEntries: 0 },
       pagination: {

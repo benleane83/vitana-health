@@ -3,7 +3,7 @@ import {
   type CareItem,
   type CareItemListQuery,
   biologicalAgeMeasurementCodes,
-  classifyValue,
+  classifyValueWithRange,
   computeAnalyticsFromInput,
   isHealthEventKind,
   type HealthEvent,
@@ -20,8 +20,11 @@ import {
   type MeasurementType,
   type ObservationGroup,
   type PaginatedResult,
+  type PersonalReferenceRange,
   type Profile,
-  getReferenceRange
+  type ReferenceRangeState,
+  getPreferredUnit,
+  resolveReferenceRange
 } from "@local-fitness-advisor/shared";
 import type { ClinicianReportSourceImport } from "../clinicianReport.js";
 import {
@@ -94,7 +97,7 @@ export async function appBootstrap(connection: duckdb.Connection): Promise<AppBo
 }
 
 export async function analyticsSummary(connection: duckdb.Connection): Promise<AnalyticsSummary> {
-  const [profileRows, measurementRows, observationRows, countRows] = await Promise.all([
+  const [profileRows, measurementRows, observationRows, personalRangeRows, countRows] = await Promise.all([
     all(connection, "SELECT units, subject_kind FROM profile;"),
     all(connection, "SELECT * EXCLUDE (ordinal) FROM measurement_types ORDER BY ordinal;"),
     all(connection, `
@@ -113,6 +116,7 @@ export async function analyticsSummary(connection: duckdb.Connection): Promise<A
       WHERE measurement_rank <= 12 OR category = 'lab'
       ORDER BY ordinal;
     `),
+    all(connection, "SELECT * FROM personal_reference_ranges ORDER BY measurement_code;"),
     all(connection, `
       SELECT
         (SELECT COUNT(*) FROM imports) AS imports,
@@ -141,7 +145,8 @@ export async function analyticsSummary(connection: duckdb.Connection): Promise<A
     measurementTypes: measurementRows.map(measurementTypeFromRow),
     observations: observationRows.map(observationFromRow),
     units: String(profileRows[0].units) as Profile["units"],
-    subjectKind: String(profileRows[0].subject_kind ?? "adult") as Profile["subjectKind"]
+    subjectKind: String(profileRows[0].subject_kind ?? "adult") as Profile["subjectKind"],
+    personalReferenceRanges: personalRangeRows.map(personalReferenceRangeFromRow)
   });
 }
 
@@ -236,7 +241,7 @@ export async function measurementDetail(
   measurementCode: string,
   page: MeasurementDetailPage = { offset: 0, limit: 100 }
 ) {
-  const [typeRows, rows, countRows] = await Promise.all([
+  const [typeRows, rows, countRows, profileRows, personalRows] = await Promise.all([
     allWithParams(connection, "SELECT * EXCLUDE (ordinal) FROM measurement_types WHERE code = ?;", measurementCode),
     allWithParams(connection, `
       SELECT * FROM (
@@ -286,11 +291,15 @@ export async function measurementDetail(
         (SELECT MAX(observed_at) FROM observations WHERE measurement_code = ?) AS observation_latest,
         (SELECT MAX(end_at) FROM time_series_samples WHERE measurement_code = ?) AS sample_latest,
         (SELECT MAX(COALESCE(end_at, start_at)) FROM activities WHERE ? = 'activity_sessions') AS activity_latest;
-    `, measurementCode, measurementCode, measurementCode, measurementCode, measurementCode, measurementCode)
+    `, measurementCode, measurementCode, measurementCode, measurementCode, measurementCode, measurementCode),
+    all(connection, "SELECT units, subject_kind FROM profile;"),
+    allWithParams(connection, "SELECT * FROM personal_reference_ranges WHERE measurement_code = ?;", measurementCode)
   ]);
   const type = typeRows[0] ? measurementTypeFromRow(typeRows[0]) : undefined;
+  const personalRange = personalRows[0] ? personalReferenceRangeFromRow(personalRows[0]) : undefined;
+  const subjectKind = String(profileRows[0]?.subject_kind ?? "adult") as NonNullable<Profile["subjectKind"]>;
   const displayName = type?.display ?? humanizeCode(measurementCode);
-  const entries = rows.map((row) => measurementDetailEntryFromRow(row, type, displayName));
+  const entries = rows.map((row) => measurementDetailEntryFromRow(row, type, displayName, personalRange, subjectKind));
   const countRow = countRows[0] ?? {};
   const counts = {
     observations: Number(countRow.observations ?? 0),
@@ -311,7 +320,15 @@ export async function measurementDetail(
       loaded: page.offset + entries.length,
       total,
       hasMore: page.offset + entries.length < total
-    }
+    },
+    referenceRange: type
+      ? resolveReferenceRange(
+          type,
+          getPreferredUnit(type, String(profileRows[0]?.units ?? "metric") as Profile["units"]),
+          personalRange,
+          subjectKind
+        )
+      : { source: "none" }
   });
 }
 
@@ -320,12 +337,14 @@ export async function measurementChartSeries(
   measurementCode: string,
   options: HealthDataChartSeriesOptions
 ): Promise<HealthDataChartSeries> {
-  const typeRows = await allWithParams(
-    connection,
-    "SELECT * EXCLUDE (ordinal) FROM measurement_types WHERE code = ?;",
-    measurementCode
-  );
+  const [typeRows, profileRows, personalRows] = await Promise.all([
+    allWithParams(connection, "SELECT * EXCLUDE (ordinal) FROM measurement_types WHERE code = ?;", measurementCode),
+    all(connection, "SELECT subject_kind FROM profile;"),
+    allWithParams(connection, "SELECT * FROM personal_reference_ranges WHERE measurement_code = ?;", measurementCode)
+  ]);
   const type = typeRows[0] ? measurementTypeFromRow(typeRows[0]) : undefined;
+  const personalRange = personalRows[0] ? personalReferenceRangeFromRow(personalRows[0]) : undefined;
+  const subjectKind = String(profileRows[0]?.subject_kind ?? "adult") as NonNullable<Profile["subjectKind"]>;
   const aggregation = type?.aggregation ?? "none";
   const cutoff = chartRangeCutoff(options.range);
 
@@ -338,7 +357,7 @@ export async function measurementChartSeries(
     const truncated = rows.length > maxRawChartPoints;
     const points = (truncated ? rows.slice(0, maxRawChartPoints) : rows)
       .reverse()
-      .map((row) => chartPointFromRow(row, type));
+      .map((row) => chartPointFromRow(row, type, personalRange, subjectKind));
     return {
       generatedAt: new Date().toISOString(),
       measurementCode,
@@ -364,7 +383,7 @@ export async function measurementChartSeries(
     requestedMode: options.mode,
     granularity: useWeeklyBuckets ? "weekly" : "daily",
     aggregation,
-    points: rows.map((row) => chartPointFromRow(row, type)),
+    points: rows.map((row) => chartPointFromRow(row, type, personalRange, subjectKind)),
     totalPoints: rows.length,
     truncated: false
   };
@@ -464,7 +483,9 @@ function chartRangeCutoff(range: HealthDataChartSeriesOptions["range"]): string 
 
 function chartPointFromRow(
   row: Record<string, unknown>,
-  type: MeasurementType | undefined
+  type: MeasurementType | undefined,
+  personalRange: PersonalReferenceRange | undefined,
+  subjectKind: NonNullable<Profile["subjectKind"]>
 ): HealthDataChartSeriesPoint {
   const unit = String(row.unit);
   return {
@@ -474,7 +495,7 @@ function chartPointFromRow(
     count: Number(row.count),
     minValue: optionalNumber(row.min_value),
     maxValue: optionalNumber(row.max_value),
-    referenceRange: type ? getReferenceRange(type, unit) : undefined
+    referenceRange: type ? resolveReferenceRange(type, unit, personalRange, subjectKind).effective : undefined
   };
 }
 
@@ -716,7 +737,9 @@ export async function storageCounts(connection: duckdb.Connection): Promise<AppB
 function measurementDetailEntryFromRow(
   row: Record<string, unknown>,
   type: MeasurementType | undefined,
-  displayName: string
+  displayName: string,
+  personalRange: PersonalReferenceRange | undefined,
+  subjectKind: NonNullable<Profile["subjectKind"]>
 ): HealthDataDetailEntry {
   const kind = String(row.kind) as HealthDataDetailEntry["kind"];
   const base = {
@@ -733,7 +756,7 @@ function measurementDetailEntryFromRow(
     importedAt: optionalTimestamp(row.imported_at)
   };
   if (kind === "observation") {
-    const referenceRange = type ? getReferenceRange(type, base.unit) : undefined;
+    const referenceRange = type ? resolveReferenceRange(type, base.unit, personalRange, subjectKind).effective : undefined;
     const groupId = optionalString(row.group_id);
     return {
       ...base,
@@ -747,7 +770,7 @@ function measurementDetailEntryFromRow(
           }
         : undefined,
       referenceRange,
-      status: type ? classifyValue(base.value, type, base.unit) : "unknown",
+      status: classifyValueWithRange(base.value, referenceRange),
       canDelete: true,
       deleteLabel: "Delete"
     };
@@ -758,16 +781,51 @@ function measurementDetailEntryFromRow(
     return {
       ...base,
       note: startAt !== endAt ? `${startAt} → ${endAt}` : undefined,
-      referenceRange: type ? getReferenceRange(type, base.unit) : undefined,
-      status: type ? classifyValue(base.value, type, base.unit) : "unknown"
+      referenceRange: type ? resolveReferenceRange(type, base.unit, personalRange, subjectKind).effective : undefined,
+      status: classifyValueWithRange(
+        base.value,
+        type ? resolveReferenceRange(type, base.unit, personalRange, subjectKind).effective : undefined
+      )
     };
   }
+
   const detailNotes = [
     `Type: ${String(row.activity_type)}`,
     row.energy_kcal === null || row.energy_kcal === undefined ? undefined : `Energy: ${Number(row.energy_kcal).toFixed(1)} kcal`,
     row.distance_meters === null || row.distance_meters === undefined ? undefined : `Distance: ${Number(row.distance_meters).toFixed(1)} m`
   ].filter((note): note is string => Boolean(note));
   return { ...base, note: detailNotes.join(" • ") };
+}
+
+export async function referenceRangeState(
+  connection: duckdb.Connection,
+  measurementCode: string
+): Promise<ReferenceRangeState> {
+  const [typeRows, profileRows, personalRows] = await Promise.all([
+    allWithParams(connection, "SELECT * EXCLUDE (ordinal) FROM measurement_types WHERE code = ?;", measurementCode),
+    all(connection, "SELECT units, subject_kind FROM profile;"),
+    allWithParams(connection, "SELECT * FROM personal_reference_ranges WHERE measurement_code = ?;", measurementCode)
+  ]);
+  const type = typeRows[0] ? measurementTypeFromRow(typeRows[0]) : undefined;
+  if (!type) return { source: "none" };
+  return resolveReferenceRange(
+    type,
+    getPreferredUnit(type, String(profileRows[0]?.units ?? "metric") as Profile["units"]),
+    personalRows[0] ? personalReferenceRangeFromRow(personalRows[0]) : undefined,
+    String(profileRows[0]?.subject_kind ?? "adult") as NonNullable<Profile["subjectKind"]>
+  );
+}
+
+function personalReferenceRangeFromRow(row: Record<string, unknown>): PersonalReferenceRange {
+  return compact({
+    measurementCode: String(row.measurement_code),
+    normalLow: optionalNumber(row.normal_low),
+    normalHigh: optionalNumber(row.normal_high),
+    optimalLow: optionalNumber(row.optimal_low),
+    optimalHigh: optionalNumber(row.optimal_high),
+    unit: String(row.unit),
+    updatedAt: isoTimestamp(row.updated_at)
+  }) as unknown as PersonalReferenceRange;
 }
 
 async function hydrateHealthEventRows(

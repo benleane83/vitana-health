@@ -20,6 +20,7 @@ function createTestStoreData(profileId = "test-user", displayName = "Test User")
     dataSources: [],
     devices: [],
     measurementTypes: defaultMeasurementTypes,
+    personalReferenceRanges: [],
     observations: [
       { id: "obs-1", measurementCode: "body-weight", observedAt: "2024-01-15T10:00:00.000Z", value: 75.5, unit: "kg", sourceId: "src-1" }
     ],

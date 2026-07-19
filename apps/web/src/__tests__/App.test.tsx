@@ -65,6 +65,7 @@ beforeEach(() => {
         },
         entries: [],
         chartPoints: [],
+        referenceRange: { source: "none" },
         counts: { observations: 1, samples: 0, activities: 0, total: 1 },
         deletion: { observationEntries: 1, deletableEntries: 1 },
         pagination: { limit: 100, loaded: 0, total: 1, hasMore: false }

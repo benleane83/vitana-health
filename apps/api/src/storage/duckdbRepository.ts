@@ -19,6 +19,7 @@ import {
   type HealthEventMutationResponse,
   type HealthStoreData,
   type Observation,
+  type PersonalReferenceRangeInput,
   type Profile,
   type UpdateCareItemInput,
   type UpdateHealthEventInput,
@@ -54,6 +55,7 @@ import {
   deleteCareItem as deleteDuckDbCareItem,
   deleteHealthEvent as deleteDuckDbHealthEvent,
   deleteObservation as deleteDuckDbObservation,
+  deletePersonalReferenceRange as deleteDuckDbPersonalReferenceRange,
   deleteObservationRecord as deleteDuckDbObservationRecord,
   deleteObservationRecordsByMeasurementCode as deleteDuckDbObservationRecordsByMeasurementCode,
   deleteObservationsByMeasurementCode as deleteDuckDbObservationsByMeasurementCode,
@@ -62,7 +64,8 @@ import {
   replaceProfile as replaceDuckDbProfile,
   updateCareItem as updateDuckDbCareItem,
   updateHealthEvent as updateDuckDbHealthEvent,
-  updateObservation as updateDuckDbObservation
+  updateObservation as updateDuckDbObservation,
+  upsertPersonalReferenceRange as upsertDuckDbPersonalReferenceRange
 } from "./duckdbCommands.js";
 import {
   importObservationRecords as importDuckDbObservationRecords,
@@ -82,6 +85,7 @@ import {
   measurementDetail as readMeasurementDetail,
   measurementChartSeries as readMeasurementChartSeries,
   measurementDetails as readMeasurementDetails,
+  referenceRangeState as readReferenceRangeState,
   storageCounts as readStorageCounts,
   summary as readSummary,
   weeklyMetrics as readWeeklyMetrics,
@@ -328,6 +332,25 @@ export class DuckDbRepository implements ProfileRepository {
   async measurementChartSeries(measurementCode: string, options: HealthDataChartSeriesOptions) {
     this.assertOpen();
     return readMeasurementChartSeries(this.connection, measurementCode, options);
+  }
+
+  async upsertPersonalReferenceRange(
+    measurementCode: string,
+    input: PersonalReferenceRangeInput
+  ) {
+    this.assertOpen();
+    return this.transaction(async () => {
+      await upsertDuckDbPersonalReferenceRange(this.connection, measurementCode, input);
+      return readReferenceRangeState(this.connection, measurementCode);
+    });
+  }
+
+  async deletePersonalReferenceRange(measurementCode: string) {
+    this.assertOpen();
+    return this.transaction(async () => {
+      await deleteDuckDbPersonalReferenceRange(this.connection, measurementCode);
+      return readReferenceRangeState(this.connection, measurementCode);
+    });
   }
 
   async dailyMetrics(measurementCode?: string): Promise<DuckDbDailyMetric[]> {

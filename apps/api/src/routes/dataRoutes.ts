@@ -13,6 +13,8 @@ import {
   linkedHealthEventConflictSchema,
   paginatedCareItemsResponseSchema,
   paginatedHealthEventsResponseSchema,
+  personalReferenceRangeInputSchema,
+  referenceRangeStateResponseSchema,
   type DeleteObservationResponse,
   type DeleteObservationsByTypeResponse,
   type UpdateObservationResponse
@@ -139,6 +141,29 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
       const measurementCode = measurementCodeParamSchema.parse(request.params.measurementCode);
       const options = chartSeriesQuerySchema.parse(request.query);
       response.json(await requestStore(response).measurementChartSeries(measurementCode, options));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.put("/summary/:measurementCode/reference-range", async (request, response, next) => {
+    try {
+      const measurementCode = measurementCodeParamSchema.parse(request.params.measurementCode);
+      const input = personalReferenceRangeInputSchema.parse(request.body);
+      response.json(referenceRangeStateResponseSchema.parse(
+        await requestStore(response).upsertPersonalReferenceRange(measurementCode, input)
+      ));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.delete("/summary/:measurementCode/reference-range", async (request, response, next) => {
+    try {
+      const measurementCode = measurementCodeParamSchema.parse(request.params.measurementCode);
+      response.json(referenceRangeStateResponseSchema.parse(
+        await requestStore(response).deletePersonalReferenceRange(measurementCode)
+      ));
     } catch (error) {
       next(error);
     }

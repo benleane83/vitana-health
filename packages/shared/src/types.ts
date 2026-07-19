@@ -384,6 +384,25 @@ export interface ReferenceRange {
   source?: string;
 }
 
+export interface PersonalReferenceRange {
+  measurementCode: string;
+  normalLow?: number;
+  normalHigh?: number;
+  optimalLow?: number;
+  optimalHigh?: number;
+  unit: string;
+  updatedAt: string;
+}
+
+export type ReferenceRangeSource = "personal" | "catalog" | "none";
+
+export interface ReferenceRangeState {
+  personal?: ReferenceRange;
+  catalog?: ReferenceRange;
+  effective?: ReferenceRange;
+  source: ReferenceRangeSource;
+}
+
 export type ObservationGroupKind =
   | "lab_panel"
   | "body_composition_report"
@@ -489,17 +508,20 @@ export interface AuditEvent {
     | "care-item-updated"
     | "care-item-completed"
     | "care-item-cancelled"
-    | "care-item-deleted";
+    | "care-item-deleted"
+    | "personal-reference-range-set"
+    | "personal-reference-range-removed";
   detail: string;
 }
 
 export interface HealthStoreData {
-  schemaVersion: 2 | 3 | 4;
+  schemaVersion: 2 | 3 | 4 | 5 | 6;
   profile: Profile;
   sourceImports: SourceImport[];
   dataSources: DataSource[];
   devices: Device[];
   measurementTypes: MeasurementType[];
+  personalReferenceRanges: PersonalReferenceRange[];
   observations: Observation[];
   observationGroups: ObservationGroup[];
   timeSeriesSamples: TimeSeriesSample[];
@@ -710,6 +732,7 @@ export interface HealthDataChartSeries {
 export interface HealthDataDetail {
   generatedAt: string;
   measurement: HealthDataSummaryTypeRow;
+  referenceRange: ReferenceRangeState;
   entries: HealthDataDetailEntry[];
   chartPoints: HealthDataDetailChartPoint[];
   counts: HealthDataSummarySourceCounts & {

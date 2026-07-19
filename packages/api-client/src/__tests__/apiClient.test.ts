@@ -32,6 +32,28 @@ describe("createApiClient", () => {
     expect(paginationQuery()).toBe("");
   });
 
+  it("sets and removes encoded personal reference ranges", async () => {
+    const seen: ApiTransportRequest[] = [];
+    const transport = async (request: ApiTransportRequest) => {
+      seen.push(request);
+      return response({ source: request.method === "PUT" ? "personal" : "catalog" });
+    };
+    const client = createApiClient(transport);
+
+    await client.setPersonalReferenceRange("blood pressure", { low: 4, high: 6, unit: "mmol/L" });
+    await client.removePersonalReferenceRange("blood pressure");
+
+    expect(seen[0]).toMatchObject({
+      method: "PUT",
+      path: "/api/summary/blood%20pressure/reference-range",
+      body: JSON.stringify({ low: 4, high: 6, unit: "mmol/L" })
+    });
+    expect(seen[1]).toMatchObject({
+      method: "DELETE",
+      path: "/api/summary/blood%20pressure/reference-range"
+    });
+  });
+
   it("serializes JSON requests while leaving authentication to the transport", async () => {
     const seen: ApiTransportRequest[] = [];
     const transport = async (request: ApiTransportRequest) => {

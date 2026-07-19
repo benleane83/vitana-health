@@ -64,6 +64,15 @@ export function createDuckDbHealthStoreFixture(): HealthStoreData {
       referenceRanges: [{ low: 50, high: 100, unit: "kg", label: "Fixture range", source: "fixture" }],
       aggregation: "latest"
     }, ...defaultMeasurementTypes.filter((measurement) => measurement.code === "activity_sessions")],
+    personalReferenceRanges: [{
+      measurementCode: "weight",
+      normalLow: 60,
+      normalHigh: 90,
+      optimalLow: 65,
+      optimalHigh: 85,
+      unit: "kg",
+      updatedAt: "2026-07-12T10:00:00.000Z"
+    }],
     observationGroups: [{
       id: "group-1",
       kind: "custom",

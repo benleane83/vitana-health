@@ -41,6 +41,33 @@ afterEach(() => {
 });
 
 describe("DuckDbRepository fidelity", () => {
+  it.skipIf(!httpfsExtensionPath)("persists, replaces, and removes canonical personal reference ranges", async () => {
+    const databasePath = join(root, "databases", "health-store-reference-range.duckdb-poc");
+    const fixture = createDuckDbHealthStoreFixture();
+    const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
+    try {
+      expect((await repository.measurementDetail("weight")).referenceRange).toMatchObject({
+        source: "personal",
+        personal: { low: 60, high: 90, unit: "kg" }
+      });
+      await repository.upsertPersonalReferenceRange("weight", { low: 130, high: 200, unit: "lb" });
+      const snapshot = await repository.snapshot();
+      expect(snapshot.personalReferenceRanges[0]).toMatchObject({
+        measurementCode: "weight",
+        normalLow: 58.967,
+        normalHigh: 90.718,
+        optimalLow: 65,
+        optimalHigh: 85,
+        unit: "kg"
+      });
+      expect((await repository.measurementDetail("weight")).entries[0]?.status).toBe("normal");
+      expect((await repository.deletePersonalReferenceRange("weight")).source).toBe("catalog");
+      expect((await repository.snapshot()).personalReferenceRanges).toEqual([]);
+    } finally {
+      await repository.close();
+    }
+  }, 30_000);
+
   it.skipIf(!httpfsExtensionPath)("creates and rehydrates care items", async () => {
     const databasePath = join(root, "databases", "health-store-care-item.duckdb-poc");
     const fixture = createDuckDbHealthStoreFixture();
@@ -814,7 +841,7 @@ describe("DuckDbRepository fidelity", () => {
 
     const upgraded = await DuckDbRepository.open(root, databasePath, key, options);
     try {
-      expect(await upgraded.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6]);
+      expect(await upgraded.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7]);
       expect(await upgraded.dailyMetrics()).toEqual([]);
       expect(await upgraded.weeklyMetrics()).toEqual([]);
     } finally {
@@ -841,7 +868,7 @@ describe("DuckDbRepository fidelity", () => {
 
     const reopened = await DuckDbRepository.open(root, databasePath, key, options);
     try {
-      expect(await reopened.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6]);
+      expect(await reopened.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7]);
     } finally {
       await reopened.close();
     }

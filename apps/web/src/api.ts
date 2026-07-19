@@ -218,6 +218,8 @@ export const api = {
   summary: sharedApi.summary,
   healthDataDetail: sharedApi.healthDataDetail,
   healthDataChartSeries: sharedApi.healthDataChartSeries,
+  setPersonalReferenceRange: sharedApi.setPersonalReferenceRange,
+  removePersonalReferenceRange: sharedApi.removePersonalReferenceRange,
   care: {
     listHealthEvents: (query?: HealthEventListQuery) => sharedApi.listHealthEvents(query),
     createHealthEvent: (payload: CreateHealthEventInput) => sharedApi.createHealthEvent(payload),

@@ -229,22 +229,26 @@ export function DetailTrendChart({
           {rangeOption.label}
         </button>
       ))}
-      <span className="summary-detail-chart-toolbar-separator" aria-hidden="true" />
-      {(["auto", "raw"] as const).map((modeOption) => (
-        <button
-          type="button"
-          key={modeOption}
-          className={mode === modeOption ? "active" : ""}
-          aria-pressed={mode === modeOption}
-          title={modeOption === "auto" ? "Adjust detail to the selected time range" : "Show individual recorded readings"}
-          onClick={() => {
-            onModeChange(modeOption);
-            setActivePoint(undefined);
-          }}
-        >
-          {modeOption === "auto" ? "Adaptive" : "Readings"}
-        </button>
-      ))}
+      {series?.aggregation !== "latest" ? (
+        <>
+          <span className="summary-detail-chart-toolbar-separator" aria-hidden="true" />
+          {(["auto", "raw"] as const).map((modeOption) => (
+            <button
+              type="button"
+              key={modeOption}
+              className={mode === modeOption ? "active" : ""}
+              aria-pressed={mode === modeOption}
+              title={modeOption === "auto" ? "Adjust detail to the selected time range" : "Show individual recorded readings"}
+              onClick={() => {
+                onModeChange(modeOption);
+                setActivePoint(undefined);
+              }}
+            >
+              {modeOption === "auto" ? "Adaptive" : "Readings"}
+            </button>
+          ))}
+        </>
+      ) : null}
     </div>
   );
 

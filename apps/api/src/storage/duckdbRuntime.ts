@@ -9,7 +9,7 @@ import {
 } from "../analyticalViews.js";
 
 const markerName = ".lfa-duckdb-poc";
-const schemaVersion = 6;
+const schemaVersion = 8;
 
 export interface DuckDbOptions {
   httpfsExtensionPath?: string;
@@ -365,11 +365,32 @@ const schemaVersion6Sql = `
   INSERT OR IGNORE INTO poc_metadata VALUES (6, CURRENT_TIMESTAMP, 'AI query views for health events and care items');
 `;
 
+const schemaVersion7Sql = `
+  CREATE TABLE IF NOT EXISTS personal_reference_ranges (
+    measurement_code VARCHAR PRIMARY KEY,
+    low DOUBLE,
+    high DOUBLE,
+    unit VARCHAR NOT NULL,
+    updated_at TIMESTAMP NOT NULL
+  );
+  INSERT OR IGNORE INTO poc_metadata VALUES (7, CURRENT_TIMESTAMP, 'Profile-owned personal reference ranges');
+`;
+
+const schemaVersion8Sql = `
+  ALTER TABLE personal_reference_ranges RENAME COLUMN low TO normal_low;
+  ALTER TABLE personal_reference_ranges RENAME COLUMN high TO normal_high;
+  ALTER TABLE personal_reference_ranges ADD COLUMN optimal_low DOUBLE;
+  ALTER TABLE personal_reference_ranges ADD COLUMN optimal_high DOUBLE;
+  INSERT OR IGNORE INTO poc_metadata VALUES (8, CURRENT_TIMESTAMP, 'Normal and optimal personal reference range bounds');
+`;
+
 const schemaMigrations = [
   { version: 1, sql: schemaVersion1Sql },
   { version: 2, sql: schemaVersion2Sql },
   { version: 3, sql: schemaVersion3Sql },
   { version: 4, sql: schemaVersion4Sql },
   { version: 5, sql: schemaVersion5Sql },
-  { version: 6, sql: schemaVersion6Sql }
+  { version: 6, sql: schemaVersion6Sql },
+  { version: 7, sql: schemaVersion7Sql },
+  { version: 8, sql: schemaVersion8Sql }
 ] as const;

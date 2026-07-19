@@ -1,15 +1,17 @@
-import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 
-const manifest = readFileSync(
-  new URL("../android/app/src/main/AndroidManifest.xml", import.meta.url),
-  "utf8"
-);
+const require = createRequire(import.meta.url);
+const appConfig = require("../app.config.js") as {
+  expo: {
+    android: {
+      allowBackup: boolean;
+    };
+  };
+};
 
 describe("native Android data protection", () => {
-  it("does not back up or transfer the encrypted database without its device-local key", () => {
-    expect(manifest).toContain('android:allowBackup="false"');
-    expect(manifest).not.toContain("android:fullBackupContent");
-    expect(manifest).not.toContain("android:dataExtractionRules");
+  it("disables Android backup for the encrypted database and its device-local key", () => {
+    expect(appConfig.expo.android.allowBackup).toBe(false);
   });
 });

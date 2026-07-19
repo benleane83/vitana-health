@@ -19,6 +19,7 @@ import type {
   Insight,
   Profile,
   ProfileListEntry,
+  ReferenceRangeState,
   UpdateObservationResponse
 } from "./types.js";
 import type { BodyCompositionDraft, UploadImportDraft } from "./parsers.js";
@@ -198,6 +199,7 @@ export const biologicalAgeResponseSchema = objectResponseSchema<BiologicalAgeRep
 export const healthDataSummaryResponseSchema = objectResponseSchema<HealthDataSummary>();
 export const healthDataDetailResponseSchema = objectResponseSchema<HealthDataDetail>();
 export const healthDataChartSeriesResponseSchema = objectResponseSchema<HealthDataChartSeries>();
+export const referenceRangeStateResponseSchema = objectResponseSchema<ReferenceRangeState>();
 export const profileResponseSchema = objectResponseSchema<Profile>();
 export const cloudAiConsentResponseSchema = objectResponseSchema<CloudAiConsent>();
 export const bodyCompositionDraftResponseSchema = objectResponseSchema<BodyCompositionDraft>();
@@ -209,6 +211,20 @@ export const deleteObservationsByTypeResponseSchema = objectResponseSchema<Delet
 
 const isoTimestampSchema = z.string().datetime({ offset: true });
 const optionalTrimmedString = (max: number) => z.string().trim().max(max).optional();
+
+export const personalReferenceRangeInputSchema = z.object({
+  low: z.number().finite().optional(),
+  high: z.number().finite().optional(),
+  unit: z.string().trim().min(1).max(80)
+}).strict().superRefine((range, context) => {
+  if (range.low === undefined && range.high === undefined) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Enter a lower bound, an upper bound, or both." });
+  }
+  if (range.low !== undefined && range.high !== undefined && range.low > range.high) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["high"], message: "Upper bound must be greater than or equal to lower bound." });
+  }
+});
+export type PersonalReferenceRangeInput = z.infer<typeof personalReferenceRangeInputSchema>;
 
 export const healthEventSchema: z.ZodType<HealthEvent> = z.object({
   id: z.string(),

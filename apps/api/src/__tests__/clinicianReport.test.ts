@@ -9,6 +9,7 @@ function store(): HealthStoreData {
     sourceImports: [{ id: "import-1", sourceKind: "blood-test-csv", fileName: "labs.csv", importedAt: "2026-01-02T00:00:00.000Z", parserVersion: "1", checksum: "private", rowCount: 1, status: "processed", diagnostics: [], rawContent: "private" }],
     dataSources: [], devices: [],
     measurementTypes: [{ code: "cholesterol", display: "Cholesterol", description: "The amount of cholesterol in your blood.", category: "lab", kind: "panel-component", canonicalUnit: "mmol/L", aliases: [], aggregation: "latest", normalLow: 3, normalHigh: 5, referenceRanges: [{ low: 3, high: 5, unit: "mmol/L" }] }],
+    personalReferenceRanges: [],
     observations: [{ id: "obs-1", measurementCode: "cholesterol", observedAt: "2026-01-01T00:00:00.000Z", value: 7, unit: "mmol/L", sourceId: "source-1" }],
     observationGroups: [],
     timeSeriesSamples: [],

@@ -13,6 +13,7 @@ const detail: HealthDataDetail = {
     counts: { observations: 3, samples: 0, activities: 0, total: 3 },
     lastMeasuredAt: "2026-07-15T00:00:00.000Z"
   },
+  referenceRange: { source: "none" },
   entries: [],
   chartPoints: [
     {
@@ -79,6 +80,19 @@ describe("DetailTrendChart", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "1M" }));
     expect(onRangeChange).toHaveBeenCalledWith("1m");
+    expect(screen.getByRole("button", { name: "Adaptive" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Readings" })).toBeInTheDocument();
+  });
+
+  it("hides aggregation mode controls for latest measurements while retaining time controls", () => {
+    const latestSeries = { ...series, aggregation: "latest" as const };
+
+    render(<DetailTrendChart detail={detail} series={latestSeries} range="all" mode="auto" busy={false} onRangeChange={vi.fn()} onModeChange={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: "All" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "1M" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Adaptive" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Readings" })).not.toBeInTheDocument();
   });
 
   it("renders duplicate readings as separate selectable points", () => {
