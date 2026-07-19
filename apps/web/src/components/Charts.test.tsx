@@ -13,6 +13,7 @@ const detail: HealthDataDetail = {
     counts: { observations: 3, samples: 0, activities: 0, total: 3 },
     lastMeasuredAt: "2026-07-15T00:00:00.000Z"
   },
+  referenceRange: { source: "none" },
   entries: [],
   chartPoints: [
     {

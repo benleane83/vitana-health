@@ -1,12 +1,14 @@
 import { useState } from "react";
-import { compareSummaryRows } from "@local-fitness-advisor/shared";
+import { compareSummaryRows, convertMeasurementValue } from "@local-fitness-advisor/shared";
 import type {
   HealthDataChartMode,
   HealthDataChartRange,
   HealthDataChartSeries,
   HealthDataDetail,
   HealthDataDetailEntry,
-  HealthDataSummary
+  HealthDataSummary,
+  MeasurementType,
+  PersonalReferenceRangeInput
 } from "@local-fitness-advisor/shared";
 import { DetailTrendChart } from "../components/Charts.js";
 import { formatTimestamp, formatShortTimestamp, formatDetailValue } from "../utils.js";
@@ -31,6 +33,20 @@ function Stat({ label, value, onClick }: { label: string; value: number; onClick
 
 function detailKindLabel(kind: HealthDataDetailEntry["kind"]): string {
   return { observation: "Observation", sample: "Sample", activity: "Activity" }[kind];
+}
+
+function formatReferenceRange(range: HealthDataDetail["referenceRange"]["effective"]): string {
+  if (!range) return "Not set";
+  if (range.low !== undefined && range.high !== undefined) {
+    return `${formatDetailValue(range.low)}–${formatDetailValue(range.high)} ${range.unit}`;
+  }
+  if (range.high !== undefined) return `≤ ${formatDetailValue(range.high)} ${range.unit}`;
+  if (range.low !== undefined) return `≥ ${formatDetailValue(range.low)} ${range.unit}`;
+  return "Not set";
+}
+
+function referenceRangeSourceLabel(source: HealthDataDetail["referenceRange"]["source"]): string {
+  return { personal: "Personal range", catalog: "Catalog range", none: "Not set" }[source];
 }
 
 function normalizeContextToken(value: string): string {
@@ -251,6 +267,9 @@ export function ObservationTypeDetailPage({
   onChartRangeChange,
   onChartModeChange,
   onAddManualObservation,
+  onSetPersonalReferenceRange,
+  onRemovePersonalReferenceRange,
+  measurementType,
   defaultUnit
 }: {
   detail?: HealthDataDetail;
@@ -271,12 +290,20 @@ export function ObservationTypeDetailPage({
   onChartRangeChange: (range: HealthDataChartRange) => void;
   onChartModeChange: (mode: HealthDataChartMode) => void;
   onAddManualObservation: (input: { observedAt: string; value: number; unit: string; note: string }) => void | Promise<void>;
+  onSetPersonalReferenceRange: (input: PersonalReferenceRangeInput) => Promise<void>;
+  onRemovePersonalReferenceRange: () => Promise<void>;
+  measurementType?: MeasurementType;
   defaultUnit: string;
 }) {
   const [manualObservedAt, setManualObservedAt] = useState(() => new Date().toISOString().slice(0, 10));
   const [manualValue, setManualValue] = useState("");
   const [manualUnit, setManualUnit] = useState("");
   const [manualNote, setManualNote] = useState("");
+  const [editingRange, setEditingRange] = useState(false);
+  const [rangeLow, setRangeLow] = useState("");
+  const [rangeHigh, setRangeHigh] = useState("");
+  const [rangeUnit, setRangeUnit] = useState("");
+  const [rangeError, setRangeError] = useState<string>();
   const deleteAllCount = detail?.deletion.observationEntries ?? 0;
   const primaryTile = detail ? primaryCountTile(detail.counts) : { label: "Entries", value: 0 };
   const latestEntry = detail?.entries.reduce<HealthDataDetailEntry | undefined>((latest, entry) =>
@@ -284,6 +311,75 @@ export function ObservationTypeDetailPage({
   , undefined);
   const entryKinds = new Set(detail?.entries.map((entry) => entry.kind) ?? []);
   const showKind = entryKinds.size > 1;
+  const rangeUnits = [...new Set([
+    measurementType?.canonicalUnit,
+    ...Object.values(measurementType?.preferredUnits ?? {}),
+    detail?.referenceRange.effective?.unit,
+    latestEntry?.unit
+  ].filter((unit): unit is string => Boolean(unit)))];
+
+  function beginRangeEdit() {
+    const range = detail?.referenceRange.personal ?? detail?.referenceRange.effective;
+    setRangeLow(range?.low === undefined ? "" : String(range.low));
+    setRangeHigh(range?.high === undefined ? "" : String(range.high));
+    setRangeUnit(range?.unit ?? rangeUnits[0] ?? defaultUnit);
+    setRangeError(undefined);
+    setEditingRange(true);
+  }
+
+  function changeRangeUnit(nextUnit: string) {
+    if (!measurementType || !rangeUnit || nextUnit === rangeUnit) {
+      setRangeUnit(nextUnit);
+      return;
+    }
+    const low = rangeLow === "" ? undefined : Number(rangeLow);
+    const high = rangeHigh === "" ? undefined : Number(rangeHigh);
+    const convertedLow = low === undefined ? undefined : convertMeasurementValue(low, measurementType, rangeUnit, nextUnit);
+    const convertedHigh = high === undefined ? undefined : convertMeasurementValue(high, measurementType, rangeUnit, nextUnit);
+    if ((low !== undefined && convertedLow === undefined) || (high !== undefined && convertedHigh === undefined)) {
+      setRangeError(`Values cannot be converted from ${rangeUnit} to ${nextUnit}.`);
+      return;
+    }
+    setRangeLow(convertedLow === undefined ? "" : String(convertedLow));
+    setRangeHigh(convertedHigh === undefined ? "" : String(convertedHigh));
+    setRangeUnit(nextUnit);
+    setRangeError(undefined);
+  }
+
+  async function submitRange(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const low = rangeLow.trim() === "" ? undefined : Number(rangeLow);
+    const high = rangeHigh.trim() === "" ? undefined : Number(rangeHigh);
+    if (low === undefined && high === undefined) {
+      setRangeError("Enter a lower bound, an upper bound, or both.");
+      return;
+    }
+    if ((low !== undefined && !Number.isFinite(low)) || (high !== undefined && !Number.isFinite(high))) {
+      setRangeError("Bounds must be finite numbers.");
+      return;
+    }
+    if (low !== undefined && high !== undefined && low > high) {
+      setRangeError("Upper bound must be greater than or equal to lower bound.");
+      return;
+    }
+    try {
+      await onSetPersonalReferenceRange({ low, high, unit: rangeUnit });
+      setEditingRange(false);
+      setRangeError(undefined);
+    } catch (error) {
+      setRangeError(error instanceof Error ? error.message : "Unable to save the reference range.");
+    }
+  }
+
+  async function removeRange() {
+    try {
+      await onRemovePersonalReferenceRange();
+      setEditingRange(false);
+      setRangeError(undefined);
+    } catch (error) {
+      setRangeError(error instanceof Error ? error.message : "Unable to remove the reference range.");
+    }
+  }
 
   function submitManualObservation(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -356,6 +452,67 @@ export function ObservationTypeDetailPage({
               <strong>{primaryTile.value}</strong>
             </div>
           </div>
+
+          <section className="summary-reference-range" aria-labelledby="reference-range-heading">
+            <div>
+              <h2 id="reference-range-heading">Reference range</h2>
+              {!editingRange ? (
+                <>
+                  <strong>{formatReferenceRange(detail.referenceRange.effective)}</strong>
+                  <span>{referenceRangeSourceLabel(detail.referenceRange.source)}</span>
+                </>
+              ) : null}
+            </div>
+            {!editingRange ? (
+              <button type="button" onClick={beginRangeEdit} disabled={actionBusy}>
+                {detail.referenceRange.personal ? "Edit" : "Set range"}
+              </button>
+            ) : (
+              <form className="summary-reference-range-editor" onSubmit={(event) => void submitRange(event)}>
+                <label>
+                  Lower bound
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    step="any"
+                    value={rangeLow}
+                    onChange={(event) => setRangeLow(event.target.value)}
+                    disabled={actionBusy}
+                  />
+                </label>
+                <label>
+                  Upper bound
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    step="any"
+                    value={rangeHigh}
+                    onChange={(event) => setRangeHigh(event.target.value)}
+                    disabled={actionBusy}
+                  />
+                </label>
+                <label>
+                  Unit
+                  <select value={rangeUnit} onChange={(event) => changeRangeUnit(event.target.value)} disabled={actionBusy}>
+                    {rangeUnits.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
+                  </select>
+                </label>
+                <p className="summary-reference-range-copy">
+                  This changes status labels and chart guides only. It does not provide medical advice.
+                </p>
+                {rangeError ? <p className="summary-reference-range-error" role="alert">{rangeError}</p> : null}
+                <div className="summary-reference-range-actions">
+                  <button type="submit" disabled={actionBusy}>{actionBusy ? "Saving…" : "Save"}</button>
+                  <button type="button" onClick={() => setEditingRange(false)} disabled={actionBusy}>Cancel</button>
+                  {detail.referenceRange.personal ? (
+                    <button type="button" className="danger" onClick={() => void removeRange()} disabled={actionBusy}>
+                      Remove personal range
+                    </button>
+                  ) : null}
+                </div>
+              </form>
+            )}
+          </section>
 
           {detail.counts.total === 0 ? (
             <p className="empty" role="status">No entries are currently stored for this measurement type.</p>

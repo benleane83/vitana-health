@@ -14,6 +14,7 @@ function makeEmptyStore(): HealthStoreData {
     dataSources: [],
     devices: [],
     measurementTypes: [],
+    personalReferenceRanges: [],
     observations: [],
     observationGroups: [],
     timeSeriesSamples: [],
@@ -813,4 +814,3 @@ describe("App — measurement detail", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: /edit observation/i })).not.toBeInTheDocument());
   });
 });
-

@@ -20,6 +20,8 @@ import {
   linkedHealthEventConflictSchema,
   paginatedCareItemsResponseSchema,
   paginatedHealthEventsResponseSchema,
+  personalReferenceRangeInputSchema,
+  referenceRangeStateResponseSchema,
   uploadImportDraftResponseSchema
 } from "@local-fitness-advisor/shared";
 import type {
@@ -29,6 +31,7 @@ import type {
   CreateHealthEventInput,
   HealthEventListQuery,
   ManualObservationPayload,
+  PersonalReferenceRangeInput,
   UploadImportCommitPayload,
   UploadImportPreviewPayload
 } from "@local-fitness-advisor/shared";
@@ -102,6 +105,18 @@ export function createApiClient(transport: ApiTransport) {
       request(
         healthDataChartSeriesResponseSchema,
         `/api/summary/${encodeURIComponent(measurementCode)}/chart${chartQuery(options)}`
+      ),
+    setPersonalReferenceRange: (measurementCode: string, input: PersonalReferenceRangeInput) =>
+      request(
+        referenceRangeStateResponseSchema,
+        `/api/summary/${encodeURIComponent(measurementCode)}/reference-range`,
+        { method: "PUT", body: personalReferenceRangeInputSchema.parse(input) }
+      ),
+    removePersonalReferenceRange: (measurementCode: string) =>
+      request(
+        referenceRangeStateResponseSchema,
+        `/api/summary/${encodeURIComponent(measurementCode)}/reference-range`,
+        { method: "DELETE" }
       ),
     importManualObservations: (payload: ManualObservationPayload) =>
       request(importMutationResponseSchema, "/api/import/observations/manual", { method: "POST", body: payload }),

@@ -1169,6 +1169,70 @@ h3 {
   font-size: 1rem;
 }
 
+.summary-reference-range {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.summary-reference-range > div:first-child {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.summary-reference-range h2 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.summary-reference-range span,
+.summary-reference-range-copy {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.summary-reference-range-editor {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(8rem, 1fr));
+  align-items: end;
+  gap: var(--space-3);
+}
+
+.summary-reference-range-editor label {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.summary-reference-range-copy,
+.summary-reference-range-error,
+.summary-reference-range-actions {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.summary-reference-range-error {
+  color: var(--danger);
+}
+
+.summary-reference-range-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.summary-reference-range-actions .danger {
+  margin-left: auto;
+  color: var(--danger);
+}
+
 .summary-row-actions {
   display: flex;
   gap: var(--space-2);
@@ -3430,6 +3494,19 @@ button.stat {
 
   .summary-manual-observation {
     grid-template-columns: 1fr;
+  }
+
+  .summary-reference-range {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .summary-reference-range-editor {
+    grid-template-columns: 1fr;
+  }
+
+  .summary-reference-range-editor > * {
+    grid-column: auto;
   }
 
   .summary-manual-observation > div:first-child,
