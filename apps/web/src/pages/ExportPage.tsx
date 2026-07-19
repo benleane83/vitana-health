@@ -90,7 +90,6 @@ export function ExportPage({
     <section className="export-page">
       <div className="export-header">
         <div>
-          <p className="eyebrow">Reports and portable copies</p>
           <h1>Export</h1>
         </div>
         <p className="export-copy">Download a shareable report or create and restore encrypted local profile backups.</p>

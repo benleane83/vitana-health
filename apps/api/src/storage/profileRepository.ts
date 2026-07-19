@@ -2,16 +2,30 @@ import type {
   AppBootstrap,
   AnalyticsSummary,
   BiologicalAgeSource,
+  CareItemListQuery,
+  CareItemMutationResponse,
+  CreateCareItemInput,
+  CreateHealthEventInput,
   DataSource,
+  DeleteCareItemResponse,
+  DeleteHealthEventResponse,
   DeleteObservationResponse,
   DeleteObservationsByTypeResponse,
   HealthDataChartSeries,
   HealthDataChartSeriesOptions,
   HealthDataDetail,
   HealthDataSummary,
+  HealthEventListQuery,
+  HealthEventMutationResponse,
   HealthStoreData,
+  LinkedCareItemConflict,
+  PaginatedResult,
+  CareItem,
+  HealthEvent,
   Profile,
   SourceImport,
+  UpdateCareItemInput,
+  UpdateHealthEventInput,
   UpdateObservationInput,
   UpdateObservationResponse
 } from "@local-fitness-advisor/shared";
@@ -49,6 +63,22 @@ export interface ImportMutationResult {
   auditEvent: HealthStoreData["auditEvents"][number];
 }
 
+export class RepositoryValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RepositoryValidationError";
+  }
+}
+
+export class HealthEventDeleteConflictError extends Error {
+  readonly code = "CARE_HEALTH_EVENT_LINK_CONFLICT" as const;
+
+  constructor(readonly linkedCareItems: LinkedCareItemConflict[]) {
+    super("This health event is still linked to one or more care items.");
+    this.name = "HealthEventDeleteConflictError";
+  }
+}
+
 export interface ProfileRepository {
   appBootstrap(): Promise<AppBootstrap>;
   analyticsSummary(): Promise<AnalyticsSummary>;
@@ -60,6 +90,14 @@ export interface ProfileRepository {
   mergeImport(imported: ProfileImport): Promise<ImportMutationResult>;
   addInsight(insight: HealthStoreData["insights"][number]): Promise<HealthStoreData["insights"][number]>;
   exportData(): Promise<HealthStoreData>;
+  listHealthEvents(query: HealthEventListQuery): Promise<PaginatedResult<HealthEvent>>;
+  createHealthEvent(input: CreateHealthEventInput): Promise<HealthEventMutationResponse>;
+  updateHealthEvent(id: string, input: UpdateHealthEventInput): Promise<HealthEventMutationResponse | undefined>;
+  deleteHealthEvent(id: string): Promise<DeleteHealthEventResponse | undefined>;
+  listCareItems(query: CareItemListQuery): Promise<PaginatedResult<CareItem>>;
+  createCareItem(input: CreateCareItemInput): Promise<CareItemMutationResponse>;
+  updateCareItem(id: string, input: UpdateCareItemInput): Promise<CareItemMutationResponse | undefined>;
+  deleteCareItem(id: string): Promise<DeleteCareItemResponse | undefined>;
   updateObservation(id: string, input: UpdateObservationInput): Promise<UpdateObservationResponse | undefined>;
   deleteObservation(id: string): Promise<DeleteObservationResponse | undefined>;
   deleteObservationsByMeasurementCode(measurementCode: string): Promise<DeleteObservationsByTypeResponse>;

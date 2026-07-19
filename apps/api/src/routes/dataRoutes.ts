@@ -2,6 +2,17 @@ import express from "express";
 import { z } from "zod";
 import {
   calculateBiologicalAge,
+  careItemListQuerySchema,
+  careItemMutationResponseSchema,
+  createCareItemInputSchema,
+  createHealthEventInputSchema,
+  deleteCareItemResponseSchema,
+  deleteHealthEventResponseSchema,
+  healthEventListQuerySchema,
+  healthEventMutationResponseSchema,
+  linkedHealthEventConflictSchema,
+  paginatedCareItemsResponseSchema,
+  paginatedHealthEventsResponseSchema,
   type DeleteObservationResponse,
   type DeleteObservationsByTypeResponse,
   type UpdateObservationResponse
@@ -13,6 +24,7 @@ import { buildClinicianReport } from "../clinicianReport.js";
 import { createClinicianReportPdf } from "../pdfReport.js";
 import type { AuthorizationPrincipal } from "../requestPrincipal.js";
 import { resolvePrincipalStore } from "../requestPrincipal.js";
+import { HealthEventDeleteConflictError, RepositoryValidationError } from "../storage/profileRepository.js";
 
 const measurementCodeParamSchema = z
   .string()
@@ -21,7 +33,7 @@ const measurementCodeParamSchema = z
   .max(120)
   .regex(/^[A-Za-z0-9_-]+$/, "Measurement code contains unsupported characters.");
 
-const observationIdParamSchema = z
+const recordIdParamSchema = z
   .string()
   .trim()
   .min(1)
@@ -142,9 +154,113 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
     }
   });
 
+  router.get("/care/health-events", async (request, response, next) => {
+    try {
+      response.json(paginatedHealthEventsResponseSchema.parse(
+        await requestStore(response).listHealthEvents(healthEventListQuerySchema.parse(request.query))
+      ));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/care/health-events", async (request, response, next) => {
+    try {
+      response.status(201).json(healthEventMutationResponseSchema.parse(
+        await requestStore(response).createHealthEvent(createHealthEventInputSchema.parse(request.body))
+      ));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.patch("/care/health-events/:id", async (request, response, next) => {
+    try {
+      const id = recordIdParamSchema.parse(request.params.id);
+      const updated = await requestStore(response).updateHealthEvent(id, createHealthEventInputSchema.parse(request.body));
+      if (!updated) {
+        response.status(404).json({ error: "Health event not found.", code: "HEALTH_EVENT_NOT_FOUND" });
+        return;
+      }
+      response.json(healthEventMutationResponseSchema.parse(updated));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.delete("/care/health-events/:id", async (request, response, next) => {
+    try {
+      const id = recordIdParamSchema.parse(request.params.id);
+      const deleted = await requestStore(response).deleteHealthEvent(id);
+      if (!deleted) {
+        response.status(404).json({ error: "Health event not found.", code: "HEALTH_EVENT_NOT_FOUND" });
+        return;
+      }
+      response.json(deleteHealthEventResponseSchema.parse(deleted));
+    } catch (error) {
+      if (error instanceof HealthEventDeleteConflictError) {
+        response.status(409).json(linkedHealthEventConflictSchema.parse({
+          error: error.message,
+          code: error.code,
+          linkedCareItems: error.linkedCareItems
+        }));
+        return;
+      }
+      next(error);
+    }
+  });
+
+  router.get("/care/items", async (request, response, next) => {
+    try {
+      response.json(paginatedCareItemsResponseSchema.parse(
+        await requestStore(response).listCareItems(careItemListQuerySchema.parse(request.query))
+      ));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/care/items", async (request, response, next) => {
+    try {
+      response.status(201).json(careItemMutationResponseSchema.parse(
+        await requestStore(response).createCareItem(createCareItemInputSchema.parse(request.body))
+      ));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.patch("/care/items/:id", async (request, response, next) => {
+    try {
+      const id = recordIdParamSchema.parse(request.params.id);
+      const updated = await requestStore(response).updateCareItem(id, createCareItemInputSchema.parse(request.body));
+      if (!updated) {
+        response.status(404).json({ error: "Care item not found.", code: "CARE_ITEM_NOT_FOUND" });
+        return;
+      }
+      response.json(careItemMutationResponseSchema.parse(updated));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.delete("/care/items/:id", async (request, response, next) => {
+    try {
+      const id = recordIdParamSchema.parse(request.params.id);
+      const deleted = await requestStore(response).deleteCareItem(id);
+      if (!deleted) {
+        response.status(404).json({ error: "Care item not found.", code: "CARE_ITEM_NOT_FOUND" });
+        return;
+      }
+      response.json(deleteCareItemResponseSchema.parse(deleted));
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.patch("/observations/:id", async (request, response, next) => {
     try {
-      const id = observationIdParamSchema.parse(request.params.id);
+      const id = recordIdParamSchema.parse(request.params.id);
       const input = updateObservationBodySchema.parse(request.body);
       const store = activeStore();
       const updated = await store.updateObservation(id, input);
@@ -161,7 +277,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.delete("/observations/:id", async (request, response, next) => {
     try {
-      const id = observationIdParamSchema.parse(request.params.id);
+      const id = recordIdParamSchema.parse(request.params.id);
       const store = activeStore();
       const deleted = await store.deleteObservation(id);
       if (!deleted) {
@@ -233,6 +349,21 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
     } catch (error) {
       next(error);
     }
+  });
+
+  router.use((error: unknown, _request: express.Request, response: express.Response, next: express.NextFunction) => {
+    if (response.headersSent) {
+      next(error);
+      return;
+    }
+    if (error instanceof z.ZodError || error instanceof RepositoryValidationError) {
+      response.status(400).json({
+        error: error instanceof z.ZodError ? error.issues[0]?.message ?? "Validation failed." : error.message,
+        code: "VALIDATION_ERROR"
+      });
+      return;
+    }
+    next(error);
   });
 
   return router;

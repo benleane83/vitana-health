@@ -2,8 +2,9 @@
  * Shared front-end types extracted from App.tsx.
  */
 
-export type AppRoute = "dashboard" | "import" | "track" | "insights" | "export" | "settings";
+export type AppRoute = "dashboard" | "import" | "track" | "care" | "insights" | "export" | "settings";
 export type InsightsTab = "biological-age" | "ai-query";
+export type CareView = "items" | "health-events";
 export type SummarySort = "name" | "count" | "recency";
 export type ImportMode = "manual" | "upload" | "sync";
 

@@ -1,14 +1,21 @@
 import { z } from "zod";
+import { careItemKindCodes, healthEventKindCodes } from "./types.js";
 import type {
   AnalyticsSummary,
   AppBootstrap,
   BiologicalAgeReport,
+  CareItem,
+  CareItemMutationResponse,
   CloudAiConsent,
+  DeleteCareItemResponse,
+  DeleteHealthEventResponse,
   DeleteObservationResponse,
   DeleteObservationsByTypeResponse,
   HealthDataChartSeries,
   HealthDataDetail,
   HealthDataSummary,
+  HealthEvent,
+  HealthEventMutationResponse,
   Insight,
   Profile,
   ProfileListEntry,
@@ -199,3 +206,178 @@ export const insightResponseSchema = objectResponseSchema<Insight>();
 export const updateObservationResponseSchema = objectResponseSchema<UpdateObservationResponse>();
 export const deleteObservationResponseSchema = objectResponseSchema<DeleteObservationResponse>();
 export const deleteObservationsByTypeResponseSchema = objectResponseSchema<DeleteObservationsByTypeResponse>();
+
+const isoTimestampSchema = z.string().datetime({ offset: true });
+const optionalTrimmedString = (max: number) => z.string().trim().max(max).optional();
+
+export const healthEventSchema: z.ZodType<HealthEvent> = z.object({
+  id: z.string(),
+  kind: z.enum(healthEventKindCodes),
+  status: z.enum(["completed", "entered-in-error"]),
+  occurredAt: isoTimestampSchema,
+  occurredEnd: isoTimestampSchema.optional(),
+  source: z.enum(["health-connect", "manual-entry", "blood-test-csv", "observation-csv", "structured-upload", "blood-test-report", "body-composition-report", "derived"]),
+  provider: optionalTrimmedString(160),
+  notes: optionalTrimmedString(4000),
+  metadata: z.record(z.unknown()).optional(),
+  immunization: z.object({
+    vaccine: z.string(),
+    targetDisease: z.string().optional(),
+    doseNumber: z.number().int().positive().optional(),
+    series: z.string().optional(),
+    manufacturer: z.string().optional(),
+    lotNumber: z.string().optional(),
+    expiresAt: z.string().optional(),
+    route: z.string().optional(),
+    site: z.string().optional(),
+    reaction: z.string().optional()
+  }).strict().optional(),
+  medicationAdministration: z.object({
+    medication: z.string(),
+    activeIngredient: z.string().optional(),
+    dose: z.number(),
+    unit: z.string(),
+    route: z.string().optional()
+  }).strict().optional()
+}).strict().superRefine((value, context) => {
+  if (value.immunization && value.kind !== "immunization") {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["immunization"], message: "Immunization details require an immunization event." });
+  }
+  if (value.medicationAdministration && value.kind !== "medication-administration") {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["medicationAdministration"], message: "Medication details require a medication event." });
+  }
+}).transform((value) => value as HealthEvent);
+
+export const careItemSchema: z.ZodType<CareItem> = z.object({
+  id: z.string(),
+  kind: z.string(),
+  code: z.string().optional(),
+  title: z.string(),
+  dueStart: isoTimestampSchema.optional(),
+  dueEnd: isoTimestampSchema.optional(),
+  reminderAt: isoTimestampSchema.optional(),
+  priority: z.enum(["low", "normal", "high"]),
+  status: z.enum(["open", "completed", "cancelled", "skipped"]),
+  scheduleProvenance: z.string().optional(),
+  scheduleVersion: z.string().optional(),
+  notes: z.string().optional(),
+  originatingHealthEventId: z.string().optional(),
+  completedHealthEventId: z.string().optional(),
+  completedAt: isoTimestampSchema.optional(),
+  originatingHealthEvent: z.object({
+    id: z.string(),
+    kind: z.enum(healthEventKindCodes),
+    occurredAt: isoTimestampSchema,
+    provider: z.string().optional()
+  }).strict().optional(),
+  completedHealthEvent: z.object({
+    id: z.string(),
+    kind: z.enum(healthEventKindCodes),
+    occurredAt: isoTimestampSchema,
+    provider: z.string().optional()
+  }).strict().optional()
+}).strict();
+
+const carePaginationSchema = z.object({
+  total: z.number().int().nonnegative(),
+  offset: z.number().int().nonnegative(),
+  limit: z.number().int().positive(),
+  hasMore: z.boolean()
+}).strict();
+
+export const healthEventListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
+  search: optionalTrimmedString(120),
+  kind: z.enum(healthEventKindCodes).optional(),
+  status: z.enum(["completed", "entered-in-error"]).optional(),
+  occurredFrom: isoTimestampSchema.optional(),
+  occurredTo: isoTimestampSchema.optional(),
+  includeId: z.string().trim().min(1).max(160).optional()
+}).strict().superRefine((value, context) => {
+  if (value.occurredFrom && value.occurredTo && value.occurredFrom > value.occurredTo) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["occurredTo"], message: "Occurred end must be on or after occurred start." });
+  }
+});
+export type HealthEventListQueryContract = z.infer<typeof healthEventListQuerySchema>;
+
+export const careItemListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
+  search: optionalTrimmedString(120),
+  status: z.enum(["open", "completed", "cancelled", "skipped"]).optional(),
+  priority: z.enum(["low", "normal", "high"]).optional(),
+  dueFrom: isoTimestampSchema.optional(),
+  dueTo: isoTimestampSchema.optional(),
+  includeId: z.string().trim().min(1).max(160).optional()
+}).strict().superRefine((value, context) => {
+  if (value.dueFrom && value.dueTo && value.dueFrom > value.dueTo) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["dueTo"], message: "Due end must be on or after due start." });
+  }
+});
+export type CareItemListQueryContract = z.infer<typeof careItemListQuerySchema>;
+
+export const createHealthEventInputSchema = z.object({
+  kind: z.enum(healthEventKindCodes),
+  status: z.enum(["completed", "entered-in-error"]),
+  occurredAt: isoTimestampSchema,
+  occurredEnd: isoTimestampSchema.optional(),
+  provider: optionalTrimmedString(160),
+  notes: optionalTrimmedString(4000)
+}).strict().superRefine((value, context) => {
+  if (value.occurredEnd && value.occurredAt > value.occurredEnd) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["occurredEnd"], message: "Occurred end must be on or after occurred start." });
+  }
+});
+export const updateHealthEventInputSchema = createHealthEventInputSchema;
+
+export const createCareItemInputSchema = z.object({
+  title: z.string().trim().min(1).max(160),
+  kind: z.enum(careItemKindCodes),
+  dueStart: isoTimestampSchema.optional(),
+  dueEnd: isoTimestampSchema.optional(),
+  reminderAt: isoTimestampSchema.optional(),
+  priority: z.enum(["low", "normal", "high"]),
+  status: z.enum(["open", "completed", "cancelled", "skipped"]),
+  notes: optionalTrimmedString(4000),
+  originatingHealthEventId: z.string().trim().min(1).max(160).optional(),
+  completedHealthEventId: z.string().trim().min(1).max(160).optional()
+}).strict().superRefine((value, context) => {
+  if (value.dueStart && value.dueEnd && value.dueStart > value.dueEnd) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["dueEnd"], message: "Due end must be on or after due start." });
+  }
+  if (value.reminderAt && !value.dueStart) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["reminderAt"], message: "A due start is required when setting a reminder." });
+  }
+  if (value.reminderAt && value.dueStart && value.reminderAt > value.dueStart) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["reminderAt"], message: "Reminder must be on or before the due start." });
+  }
+  if (value.originatingHealthEventId && value.completedHealthEventId && value.originatingHealthEventId === value.completedHealthEventId) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["completedHealthEventId"], message: "Originating and completion events must be different." });
+  }
+  if (value.status !== "completed" && value.completedHealthEventId) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["completedHealthEventId"], message: "A completion event can be linked only when the care item is completed." });
+  }
+});
+export const updateCareItemInputSchema = createCareItemInputSchema;
+
+export const paginatedHealthEventsResponseSchema = z.object({
+  items: z.array(healthEventSchema),
+  ...carePaginationSchema.shape
+}).strict();
+export const paginatedCareItemsResponseSchema = z.object({
+  items: z.array(careItemSchema),
+  ...carePaginationSchema.shape
+}).strict();
+export const healthEventMutationResponseSchema = objectResponseSchema<HealthEventMutationResponse>();
+export const careItemMutationResponseSchema = objectResponseSchema<CareItemMutationResponse>();
+export const deleteHealthEventResponseSchema = objectResponseSchema<DeleteHealthEventResponse>();
+export const deleteCareItemResponseSchema = objectResponseSchema<DeleteCareItemResponse>();
+export const linkedHealthEventConflictSchema = apiErrorResponseSchema.extend({
+  code: z.literal("CARE_HEALTH_EVENT_LINK_CONFLICT"),
+  linkedCareItems: z.array(z.object({
+    id: z.string(),
+    title: z.string(),
+    role: z.enum(["originating", "completion"])
+  }).strict())
+}).strict();

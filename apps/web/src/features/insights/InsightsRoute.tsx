@@ -117,7 +117,6 @@ export function InsightsRoute({
     <section className="insights-shell">
       <div className="insights-header">
         <div>
-          <p className="eyebrow">Health analysis tools</p>
           <h1>Insights</h1>
         </div>
       </div>

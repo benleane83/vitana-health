@@ -40,15 +40,15 @@ type ImportSource = "sync" | "scan" | "manual";
 type ScanKind = "body-composition" | "blood-test";
 
 export function ImportScreen() {
-  const { demoMode } = useMobileApi();
+  const { demoMode, standaloneMode } = useMobileApi();
   const entitlement = useEntitlement();
   const navigation = useNavigation<BottomTabNavigationProp<TabParamList, "Import">>();
   const [source, setSource] = useState<ImportSource>();
   useEffect(() => {
-    if (demoMode) setSource(undefined);
-  }, [demoMode]);
+    if (demoMode || (standaloneMode && source !== "manual")) setSource(undefined);
+  }, [demoMode, standaloneMode]);
 
-  if (!source || demoMode) return <ImportSourceChooser demoMode={demoMode} unlocked={entitlement.state.status === "owned"} onSelect={setSource} onConnect={() => {
+  if (!source || demoMode) return <ImportSourceChooser demoMode={demoMode} standaloneMode={standaloneMode} unlocked={entitlement.state.status === "owned"} onSelect={setSource} onConnect={() => {
     navigation.getParent<NativeStackNavigationProp<RootStackParamList>>()?.navigate("Connection");
   }} />;
 
@@ -78,11 +78,13 @@ export function ImportScreen() {
 
 function ImportSourceChooser({
   demoMode,
+  standaloneMode,
   unlocked,
   onConnect,
   onSelect
 }: {
   demoMode: boolean;
+  standaloneMode: boolean;
   unlocked: boolean;
   onConnect: () => void;
   onSelect: (source: ImportSource) => void;
@@ -140,33 +142,41 @@ function ImportSourceChooser({
         <View style={styles.sourceList}>
           {sources.map(({ source, title, detail, icon: Icon, color, background }) => {
             const locked = source !== "manual" && !unlocked;
-            return <Pressable
-              accessibilityHint={demoMode ? "Unavailable in Demo mode" : locked ? "Opens purchase options" : `Opens the ${title} flow`}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: demoMode }}
-              disabled={demoMode}
-              key={source}
-              onPress={() => onSelect(source)}
-              style={({ pressed }) => [styles.sourceRow, pressed && !demoMode && styles.sourcePressed, demoMode && styles.sourceDisabled]}
-            >
-              <View style={[styles.sourceIcon, { backgroundColor: background }]}>
-                <Icon color={color} size={23} strokeWidth={2.1} />
-              </View>
-              <View style={styles.sourceText}>
-                <View style={styles.sourceNameRow}>
-                  <Text style={styles.sourceName}>{title}</Text>
-                  {source === "sync" ? <Text style={styles.recommended}>Recommended</Text> : null}
-                  {locked ? <View style={styles.lockedBadge}><LockKeyhole color={colors.muted} size={13} /><Text style={styles.lockedText}>Locked</Text></View> : null}
+            const unavailableInStandalone = standaloneMode && source !== "manual";
+            const disabled = demoMode || unavailableInStandalone;
+            return (
+              <Pressable
+                accessibilityHint={disabled ? `Unavailable in ${demoMode ? "Demo" : "Standalone"} mode` : locked ? "Opens purchase options" : `Opens the ${title} flow`}
+                accessibilityRole="button"
+                accessibilityState={{ disabled }}
+                disabled={disabled}
+                key={source}
+                onPress={() => onSelect(source)}
+                style={({ pressed }) => [styles.sourceRow, pressed && !disabled && styles.sourcePressed, disabled && styles.sourceDisabled]}
+              >
+                <View style={[styles.sourceIcon, { backgroundColor: background }]}>
+                  <Icon color={color} size={23} strokeWidth={2.1} />
                 </View>
-                <Text style={styles.sourceDetail}>{detail}</Text>
-                {demoMode ? <Text style={styles.demoUnavailable}>Unavailable in Demo mode</Text> : null}
-              </View>
-              {!demoMode ? <ChevronRight color={colors.muted} size={20} /> : null}
-            </Pressable>;
+                <View style={styles.sourceText}>
+                  <View style={styles.sourceNameRow}>
+                    <Text style={styles.sourceName}>{title}</Text>
+                    {source === "sync" && !standaloneMode ? <Text style={styles.recommended}>Recommended</Text> : null}
+                    {locked ? <View style={styles.lockedBadge}><LockKeyhole color={colors.muted} size={13} /><Text style={styles.lockedText}>Locked</Text></View> : null}
+                  </View>
+                  <Text style={styles.sourceDetail}>{detail}</Text>
+                  {disabled ? <Text style={styles.demoUnavailable}>Unavailable in {demoMode ? "Demo" : "Standalone"} mode</Text> : null}
+                </View>
+                {!disabled ? <ChevronRight color={colors.muted} size={20} /> : null}
+              </Pressable>
+            );
           })}
         </View>
         {demoMode ? <Button onPress={onConnect}>Leave Demo mode</Button> : null}
-        <Text style={styles.localNote}>Data travels only between this phone and your paired PC over your local connection.</Text>
+        <Text style={styles.localNote}>
+          {standaloneMode
+            ? "Readings are stored only in this phone's encrypted local database."
+            : "Data travels only between this phone and your paired PC over your local connection."}
+        </Text>
       </ScrollView>
     </Screen>
   );
@@ -209,7 +219,7 @@ function LockedImport({
 }
 
 function ManualImport() {
-  const { bootstrap, connection, refreshAfterImport } = useMobileApi();
+  const { bootstrap, importManualObservations, refreshAfterImport } = useMobileApi();
   const measurements = bootstrap?.measurementTypes?.length ? bootstrap.measurementTypes : defaultMeasurementTypes;
   const templates = filterManualGroupTemplates(bootstrap?.manualObservationGroupTemplates ?? []);
   const groups = [...manualGroupDefaults.map((group) => group.label), ...templates.map((template) => template.label)];
@@ -220,7 +230,6 @@ function ManualImport() {
   const [status, setStatus] = useState("");
   const [statusTone, setStatusTone] = useState<"success" | "danger">("success");
   const [busy, setBusy] = useState(false);
-  const client = useMemo(() => connection?.token ? createCompanionApi(connection) : undefined, [connection]);
   const selectedDefault = manualGroupDefaults.find((entry) => entry.label === group);
   const selectedTemplate = templates.find((entry) => entry.normalizedLabel === normalizeGroupLabel(group));
   const allowedMeasurements = useMemo(() => {
@@ -262,7 +271,7 @@ function ManualImport() {
   }
 
   async function submit() {
-    if (!client || busy) return;
+    if (busy) return;
     setBusy(true);
     try {
       const observations = rows.map((row) => {
@@ -276,7 +285,7 @@ function ManualImport() {
         label: group,
         observations
       };
-      await client.importManualObservations(payload);
+      await importManualObservations(payload);
       setStatusTone("success");
       setStatus(`${observations.length} ${observations.length === 1 ? "reading" : "readings"} imported. View them in Track.`);
       selectGroup(group);

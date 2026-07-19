@@ -133,7 +133,7 @@ textarea {
 
 input::placeholder,
 textarea::placeholder {
-  color: var(--muted);
+  color: var(--muted-2);
   opacity: 1;
 }
 
@@ -2104,6 +2104,19 @@ h3 {
   border-top: 1px solid var(--line);
 }
 
+.dashboard-ai-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.dashboard-generated {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
 .profile-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3462,5 +3475,100 @@ button.stat {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+  }
+}
+
+.care-panel {
+  display: grid;
+  gap: var(--space-6);
+}
+
+.care-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.care-subtitle {
+  color: var(--muted);
+  margin: var(--space-2) 0 0;
+}
+
+.care-switch,
+.care-filters,
+.care-row-actions,
+.care-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.care-switch button,
+.care-row-actions button,
+.care-editor-actions button {
+  min-height: 38px;
+}
+
+.care-switch button:not(.active),
+.care-row-actions button:not(:first-child),
+.care-editor-actions button:not(:first-child) {
+  background: var(--surface-2);
+  border-color: var(--line);
+  color: var(--text);
+}
+
+.care-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.care-list-panel,
+.care-editor-panel {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.care-results {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.care-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.care-row p,
+.care-editor label {
+  margin: 0;
+}
+
+.care-editor {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.care-editor label {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+@media (max-width: 900px) {
+  .care-layout {
+    grid-template-columns: 1fr;
   }
 }

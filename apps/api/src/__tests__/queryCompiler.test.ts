@@ -101,6 +101,127 @@ describe("compileQueryDSL — list_activities", () => {
   });
 });
 
+describe("compileQueryDSL — health_events", () => {
+  it("compiles filtered event listings through the AI projection", () => {
+    const result = compileQueryDSL({
+      ...baseDsl,
+      source: "health_events",
+      intent: "list",
+      metric: null,
+      aggregation: "count",
+      groupBy: null,
+      filters: { kind: "immunization", status: "completed", provider: "Local Clinic" }
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.sql).toMatch(/FROM v_ai_health_events/i);
+    expect(result.sql).toContain("kind = 'immunization'");
+    expect(result.sql).toMatch(/provider.*LIKE.*Local Clinic/i);
+    expect(validateCompiledSql(result.sql).valid).toBe(true);
+  });
+
+  it("compiles weekly event count timeseries", () => {
+    const result = compileQueryDSL({
+      ...baseDsl,
+      source: "health_events",
+      intent: "timeseries",
+      metric: null,
+      aggregation: "count",
+      groupBy: "week"
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.sql).toMatch(/DATE_TRUNC\('week', occurred_at\)/i);
+    expect(result.sql).toMatch(/COUNT\(\*\) AS count/i);
+    expect(validateCompiledSql(result.sql).valid).toBe(true);
+  });
+
+  it("rejects unsupported health event filters", () => {
+    const result = compileQueryDSL({
+      ...baseDsl,
+      source: "health_events",
+      intent: "count",
+      metric: null,
+      aggregation: "count",
+      groupBy: null,
+      filters: { priority: "high" }
+    });
+    expect(result).toMatchObject({ ok: false, error: expect.stringMatching(/do not support priority/i) });
+  });
+});
+
+describe("compileQueryDSL — care_items", () => {
+  it("compiles status counts with typed filters", () => {
+    const result = compileQueryDSL({
+      ...baseDsl,
+      source: "care_items",
+      intent: "count",
+      metric: null,
+      aggregation: "count",
+      groupBy: "status",
+      filters: { priority: "high", completion: "incomplete" }
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.sql).toMatch(/FROM v_ai_care_items/i);
+    expect(result.sql).toContain("priority = 'high'");
+    expect(result.sql).toMatch(/completed_at IS NULL/i);
+    expect(result.sql).not.toMatch(/due_start.*>=/i);
+    expect(validateCompiledSql(result.sql).valid).toBe(true);
+  });
+
+  it("applies a due range only when explicitly requested", () => {
+    const result = compileQueryDSL({
+      ...baseDsl,
+      source: "care_items",
+      intent: "list",
+      metric: null,
+      aggregation: "count",
+      groupBy: null,
+      filters: { dueWithinRange: true }
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.sql).toMatch(/COALESCE\(due_start, due_end\) >= TIMESTAMP/i);
+  });
+
+  it("compiles chartable due-bucket counts", () => {
+    const result = compileQueryDSL({
+      ...baseDsl,
+      source: "care_items",
+      intent: "count",
+      metric: null,
+      aggregation: "count",
+      groupBy: "due_bucket"
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.sql).toMatch(/CASE WHEN.*AS due_bucket/i);
+    expect(result.sql).not.toMatch(/WHERE\s+GROUP BY/i);
+    expect(validateCompiledSql(result.sql).valid).toBe(true);
+  });
+
+  it("compiles overdue counts and rejects metric-style intents", () => {
+    const overdue = compileQueryDSL({
+      ...baseDsl,
+      source: "care_items",
+      intent: "overdue",
+      metric: null,
+      aggregation: "count",
+      groupBy: null
+    });
+    expect(overdue.ok).toBe(true);
+    if (overdue.ok) {
+      expect(overdue.sql).toContain("status = 'open'");
+      expect(overdue.sql).toMatch(/< CURRENT_DATE/i);
+      expect(validateCompiledSql(overdue.sql).valid).toBe(true);
+    }
+
+    const unsupported = compileQueryDSL({ ...baseDsl, source: "care_items", intent: "latest", metric: null });
+    expect(unsupported).toMatchObject({ ok: false, error: expect.stringMatching(/supports list, count, and overdue/i) });
+  });
+});
+
 describe("compileQueryDSL — limit capping", () => {
   it("caps the limit at 200", () => {
     const result = compileQueryDSL({ ...baseDsl, limit: 999 });
@@ -170,5 +291,21 @@ describe("validateCompiledSql — injection payloads", () => {
     const result = validateCompiledSql("INSERT INTO foo VALUES (1)");
     expect(result.valid).toBe(false);
     expect(result.violations.some((v) => v.includes("SELECT"))).toBe(true);
+  });
+
+  it("keeps escaped filter values inside SQL string literals", () => {
+    const compiled = compileQueryDSL({
+      ...baseDsl,
+      source: "health_events",
+      intent: "list",
+      metric: null,
+      aggregation: "count",
+      groupBy: null,
+      filters: { provider: "Clinic'; DROP TABLE health_events; --" }
+    });
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+    expect(compiled.sql).toContain("Clinic''; DROP TABLE health_events; --");
+    expect(validateCompiledSql(compiled.sql)).toEqual({ valid: true, violations: [] });
   });
 });

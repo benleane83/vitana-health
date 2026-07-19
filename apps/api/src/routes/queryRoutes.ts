@@ -143,6 +143,8 @@ export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Rout
         assumptions: plannerOutcome.assumptions,
         confidence: plannerOutcome.confidence,
         plan: plannerOutcome.dsl,
+        sourceResolved: resolveQuerySource(plannerOutcome.dsl),
+        intentResolved: plannerOutcome.dsl.intent,
         sql: compileOutcome.sql,
         resolvedTimeRange: compileOutcome.resolvedTimeRange,
         rowCount: rows.length,
@@ -185,7 +187,9 @@ function buildChartSeries(
     const series = rows
       .map((row) => ({
         label: String(row[dateKey] ?? ""),
-        value: typeof row.value === "number" ? row.value : Number(row.value ?? 0)
+        value: typeof (row.value ?? row.count) === "number"
+          ? (row.value ?? row.count) as number
+          : Number(row.value ?? row.count ?? 0)
       }))
       .filter((point) => point.label);
     return { type: dsl.chartType, series };
@@ -204,6 +208,14 @@ function buildChartSeries(
     }));
     return { type: "bar", series };
   }
+  if (dsl.intent === "count" && dsl.groupBy) {
+    const key = dsl.groupBy === "week" ? "week_start" : dsl.groupBy;
+    const series = rows.map((row) => ({
+      label: String(row[key] ?? ""),
+      value: typeof row.count === "number" ? row.count : Number(row.count ?? 0)
+    }));
+    return { type: dsl.chartType ?? "bar", series };
+  }
   return null;
 }
 
@@ -219,6 +231,11 @@ function buildFallbackAnswer(
   if (rows.length === 0) return "No data available for this query.";
   const metric = dsl.metric ?? "value";
   const firstRow = rows[0];
+  const source = resolveQuerySource(dsl).replace("_", " ");
+  if ((dsl.intent === "count" || dsl.intent === "overdue") && firstRow?.count !== undefined) {
+    const prefix = dsl.intent === "overdue" ? "Overdue" : "Count of";
+    return `${prefix} ${source} ${timeLabel}: ${firstRow.count}.`;
+  }
   if (dsl.intent === "latest" && firstRow) {
     const val = firstRow.value ?? firstRow[metric];
     return val !== undefined ? `Latest ${metric}: ${val}.` : "Data found but value could not be formatted.";
@@ -231,4 +248,8 @@ function buildFallbackAnswer(
       : "Aggregation complete.";
   }
   return `Found ${rows.length} result(s) for ${metric} over ${timeLabel}.`;
+}
+
+function resolveQuerySource(dsl: QueryDSL): NonNullable<QueryDSL["source"]> {
+  return dsl.source ?? (dsl.intent === "list_activities" ? "activities" : "metrics");
 }

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { healthEventKindCodes } from "./types.js";
 import type { HealthStoreData, InsightModel } from "./types.js";
 import { defaultMeasurementTypes } from "./registry.js";
 
@@ -88,31 +89,26 @@ const storeFields = {
     id: z.string(), activityType: z.string(), startAt: z.string(), endAt: z.string().optional(), durationMinutes: z.number().optional(),
     energyKcal: z.number().optional(), distanceMeters: z.number().optional(), sourceId: z.string(), sourceJson: z.unknown().optional()
   }).strict()),
-  healthEvents: z.array(z.discriminatedUnion("kind", [
-    z.object({
-      id: z.string(), kind: z.literal("immunization"), status: z.enum(["completed", "entered-in-error"]),
-      occurredAt: z.string(), occurredEnd: z.string().optional(), source: sourceKind, provider: z.string().optional(),
-      notes: z.string().optional(), metadata: stringRecord.optional(),
-      immunization: z.object({
-        vaccine: z.string(), targetDisease: z.string().optional(), doseNumber: z.number().int().positive().optional(),
-        series: z.string().optional(), manufacturer: z.string().optional(), lotNumber: z.string().optional(),
-        expiresAt: z.string().optional(), route: z.string().optional(), site: z.string().optional(), reaction: z.string().optional()
-      }).strict()
-    }).strict(),
-    z.object({
-      id: z.string(), kind: z.literal("medication-administration"), status: z.enum(["completed", "entered-in-error"]),
-      occurredAt: z.string(), occurredEnd: z.string().optional(), source: sourceKind, provider: z.string().optional(),
-      notes: z.string().optional(), metadata: stringRecord.optional(),
-      medicationAdministration: z.object({
-        medication: z.string(), activeIngredient: z.string().optional(), dose: z.number(), unit: z.string(), route: z.string().optional()
-      }).strict()
-    }).strict(),
-    z.object({
-      id: z.string(), kind: z.literal("other"), status: z.enum(["completed", "entered-in-error"]),
-      occurredAt: z.string(), occurredEnd: z.string().optional(), source: sourceKind, provider: z.string().optional(),
-      notes: z.string().optional(), metadata: stringRecord.optional()
-    }).strict()
-  ])).default([]),
+  healthEvents: z.array(z.object({
+    id: z.string(), kind: z.enum(healthEventKindCodes), status: z.enum(["completed", "entered-in-error"]),
+    occurredAt: z.string(), occurredEnd: z.string().optional(), source: sourceKind, provider: z.string().optional(),
+    notes: z.string().optional(), metadata: stringRecord.optional(),
+    immunization: z.object({
+      vaccine: z.string(), targetDisease: z.string().optional(), doseNumber: z.number().int().positive().optional(),
+      series: z.string().optional(), manufacturer: z.string().optional(), lotNumber: z.string().optional(),
+      expiresAt: z.string().optional(), route: z.string().optional(), site: z.string().optional(), reaction: z.string().optional()
+    }).strict().optional(),
+    medicationAdministration: z.object({
+      medication: z.string(), activeIngredient: z.string().optional(), dose: z.number(), unit: z.string(), route: z.string().optional()
+    }).strict().optional()
+  }).strict().superRefine((value, context) => {
+    if (value.immunization && value.kind !== "immunization") {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["immunization"], message: "Immunization details require an immunization event." });
+    }
+    if (value.medicationAdministration && value.kind !== "medication-administration") {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["medicationAdministration"], message: "Medication details require a medication event." });
+    }
+  })).default([]),
   careItems: z.array(z.object({
     id: z.string(), kind: z.string(), code: z.string().optional(), title: z.string(), dueStart: z.string().optional(),
     dueEnd: z.string().optional(), reminderAt: z.string().optional(), priority: z.enum(["low", "normal", "high"]),

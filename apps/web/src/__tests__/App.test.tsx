@@ -87,6 +87,12 @@ beforeEach(() => {
         pagination: { limit: 100, loaded: 0, total: 1, hasMore: false }
       }));
     }
+    if (url.includes("/api/care/health-events")) {
+      return Promise.resolve(mockResponse({ items: [], total: 0, offset: 0, limit: 20, hasMore: false }));
+    }
+    if (url.includes("/api/care/items")) {
+      return Promise.resolve(mockResponse({ items: [], total: 0, offset: 0, limit: 20, hasMore: false }));
+    }
     return Promise.resolve(mockResponse({}));
   });
 });
@@ -114,7 +120,7 @@ describe("App smoke", () => {
     expect(screen.getByRole("main")).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: /page navigation/i })).toBeInTheDocument();
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
-      "Dashboard", "Import", "Track", "Insights", "Export"
+      "Dashboard", "Import", "Track", "Care", "Insights", "Export"
     ]);
     expect(screen.getByRole("button", { name: /settings/i })).toBeInTheDocument();
   });
@@ -201,5 +207,13 @@ describe("App smoke", () => {
     expect(screen.getByRole("tab", { name: /ai query/i })).toHaveAttribute("aria-selected", "true");
     fireEvent.keyDown(screen.getByRole("tab", { name: /ai query/i }), { key: "Home" });
     expect(screen.getByRole("tab", { name: /biological age/i })).toHaveFocus();
+  });
+
+  it("routes to the Care page and shows its two-view switch", () => {
+    globalThis.history.replaceState({}, "", "/care/items");
+    render(<App />);
+    expect(screen.getByRole("tab", { name: /^care$/i })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tablist", { name: /care views/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /add care item/i })).toBeInTheDocument();
   });
 });

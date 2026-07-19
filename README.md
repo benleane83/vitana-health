@@ -124,13 +124,15 @@ The API import pipeline uses deterministic IDs so re-running sync keeps existing
 
 ### Preview the companion on Windows
 
-Use Expo Web for the fastest UI development loop before publishing an EAS Update:
+Use the watcher-free Expo Web preview before publishing an EAS Update:
 
 ```powershell
 npm run preview:web -w apps/android-companion
 ```
 
-Open `http://127.0.0.1:8082` and use the browser's responsive device toolbar to test phone-sized layouts. Changes to React Native components refresh locally without an EAS build or update. Coding agents can open the same URL in the VS Code integrated browser to inspect the accessibility tree, interact with controls, and capture desktop or mobile-sized screenshots.
+Open `http://127.0.0.1:8082` and use the browser's responsive device toolbar to test phone-sized layouts. The command creates a fresh static export before serving it, avoiding Metro's unreliable recursive file watcher on Windows mapped drives. Restart the command after source changes to rebuild the preview. Coding agents can open the same URL in the VS Code integrated browser to inspect the accessibility tree, interact with controls, and capture desktop or mobile-sized screenshots.
+
+For hot reload on a local drive or a system with Watchman, use `npm run web -w apps/android-companion` instead.
 
 For a deterministic preview that starts with read-only sample data and does not require a paired PC:
 
@@ -164,6 +166,19 @@ Recommended commands from the repo root:
 ```powershell
 npm run build:android:preview -w apps/android-companion
 ```
+
+To build the standalone proof-of-concept APK:
+
+```powershell
+npm run build:android:standalone-poc -w apps/android-companion
+```
+
+This internal-distribution APK installs as **Local Fitness Standalone Test** with package ID
+`com.localfitnessadvisor.companion.standalone`, so it can coexist with the companion app. It
+stores its local profile and manual observations in a SQLCipher database protected by a
+device-backed SecureStore key. Dashboard and Track read from that database. The test build has
+OTA updates disabled; rebuild it for each test version. Use **Connection → Reset local data** if
+the device key is lost or the test database can no longer be opened.
 
 After the first install on your phone, publish most code changes over-the-air (OTA) without rebuilding the APK:
 
@@ -259,6 +274,7 @@ Optional fields: `timezone` (IANA string), `debug` (boolean, adds planner timing
 |---|---|
 | `answer` | Natural-language answer from the model |
 | `plan` | The structured DSL returned by the planner |
+| `sourceResolved` / `intentResolved` | The dataset and operation selected by the planner/compiler |
 | `sql` | The compiler-produced SQL that was executed |
 | `rows` | Up to 100 result rows |
 | `chart` | Optional chart-ready series `{ type, series: [{label, value}] }` |
@@ -273,11 +289,13 @@ Optional fields: `timezone` (IANA string), `debug` (boolean, adds planner timing
 - Top-N: `max daily steps this month`, `top 10 step days`
 - Latest reading: `latest heart rate`
 - Activity summaries: `top exercises this month`
+- Health events: `list immunizations this year`, `weekly health event counts`, `latest medication administration`
+- Care items: `open high-priority care items due this month`, `care items by status`, `how many care items are overdue?`
 
 ### Safety guardrails
 
 - **SELECT-only**: Non-SELECT tokens (`DROP`, `DELETE`, `INSERT`, `UPDATE`, `CREATE`, etc.) are blocked at both compile and validate stages.
-- **Table/column whitelist**: Only `v_daily_metrics`, `v_weekly_metrics`, and `activities` with their known columns are allowed.
+- **Table/column whitelist**: Only the metric views, `activities`, `v_ai_health_events`, and `v_ai_care_items` with their known columns are allowed.
 - **Time window cap**: Maximum 366-day time window per query.
 - **Row limit cap**: Maximum 200 rows per query.
 - **Graceful fallback**: Unsupported questions return a clarifying limitations message and suggested rephrase rather than raw model output.
@@ -298,6 +316,8 @@ Calendar month/week boundaries are resolved server-side before SQL compilation:
 
 - The AI planner requires a running model runtime (Ollama or OpenAI-compatible). If the model is unavailable, a graceful error with suggested rephrases is returned.
 - Compound queries (e.g. "steps AND heart rate together") may be simplified to the first metric.
+- Cross-source comparisons are not supported; each query targets one dataset.
+- Health events support list, count, latest, and day/week count trends. Care items support list, grouped count, due-window, and overdue queries.
 - Lab marker questions are not currently supported by the AI query endpoint; review lab results in the Labs and Summary views.
 
 ## Experimental Store-Grounded Query Fallback

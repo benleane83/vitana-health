@@ -353,9 +353,9 @@ Endpoints in this section return `x-lfa-lifecycle` to identify their compatibili
 POST /api/query/ai
 ```
 **Request body:** `{ "question": "<text>", "timezone"?: "<IANA timezone>", "debug"?: false }`
-**Success `200`:** `{ "question", "answer", "limitations", "assumptions", "confidence", "plan", "sql", "resolvedTimeRange", "rowCount", "rows", "chart", "model" }`
+**Success `200`:** `{ "question", "answer", "limitations", "assumptions", "confidence", "plan", "sourceResolved", "intentResolved", "sql", "resolvedTimeRange", "rowCount", "rows", "chart", "model" }`
 
-Runs the product's validated DSL-to-SQL pipeline. See the README for supported query classes and safety limits.
+Runs the product's validated DSL-to-SQL pipeline for metrics, activities, health events, or care items. Queries are single-source, SELECT-only, capped at 200 rows and 366 days, and restricted to whitelisted projection views and columns. See the README for supported query classes and examples.
 
 ---
 

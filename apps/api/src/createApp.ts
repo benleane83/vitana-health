@@ -61,6 +61,16 @@ function companionCapabilityFor(request: express.Request): import("./pairing.js"
     case "GET /analytics":
     case "GET /summary":
       return "assigned-profile:read";
+    case "GET /care/health-events":
+    case "GET /care/items":
+      return "care:read";
+    case "POST /care/health-events":
+    case "PATCH /care/health-events":
+    case "DELETE /care/health-events":
+    case "POST /care/items":
+    case "PATCH /care/items":
+    case "DELETE /care/items":
+      return "care:write";
     case "POST /import/observations/manual":
       return "observations:import-manual";
     case "POST /import/body-composition/preview":
@@ -76,6 +86,10 @@ function companionCapabilityFor(request: express.Request): import("./pairing.js"
     default:
       return request.method === "GET" && /^\/summary\/[^/]+$/.test(request.path)
         ? "assigned-profile:read"
+        : /^\/care\/health-events\/[^/]+$/.test(request.path)
+          ? "care:write"
+          : /^\/care\/items\/[^/]+$/.test(request.path)
+            ? "care:write"
         : null;
   }
 }

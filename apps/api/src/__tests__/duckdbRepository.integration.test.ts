@@ -10,7 +10,13 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { calculateBiologicalAge, computeAnalytics, defaultMeasurementTypes } from "@local-fitness-advisor/shared";
+import {
+  calculateBiologicalAge,
+  careItemReminderAt,
+  computeAnalytics,
+  defaultMeasurementTypes,
+  type HealthStoreData
+} from "@local-fitness-advisor/shared";
 import {
   closeEncryptedDuckDbDatabase,
   createDuckDbSchema,
@@ -35,6 +41,73 @@ afterEach(() => {
 });
 
 describe("DuckDbRepository fidelity", () => {
+  it.skipIf(!httpfsExtensionPath)("creates and rehydrates care items", async () => {
+    const databasePath = join(root, "databases", "health-store-care-item.duckdb-poc");
+    const fixture = createDuckDbHealthStoreFixture();
+    const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
+    let snapshot: HealthStoreData | undefined;
+    const dueStart = "2026-08-18T14:00:00.000Z";
+    const reminderAt = careItemReminderAt(dueStart, "one-week");
+    if (!reminderAt) throw new Error("Expected a reminder timestamp.");
+    try {
+      const event = await repository.createHealthEvent({
+        kind: "visit",
+        status: "completed",
+        occurredAt: "2026-07-18T12:00:00.000Z",
+        provider: "Family clinic"
+      });
+      const created = await repository.createCareItem({
+        kind: "routine-checkup",
+        title: "Annual check-up",
+        dueStart,
+        reminderAt,
+        priority: "normal",
+        status: "open",
+        originatingHealthEventId: event.healthEvent.id
+      });
+      expect(created.careItem).toMatchObject({
+        kind: "routine-checkup",
+        title: "Annual check-up",
+        dueStart,
+        reminderAt,
+        priority: "normal",
+        status: "open"
+      });
+      expect((await repository.listCareItems({})).items).toEqual([{
+        ...created.careItem,
+        originatingHealthEvent: {
+          id: event.healthEvent.id,
+          kind: "visit",
+          occurredAt: "2026-07-18T12:00:00.000Z",
+          provider: "Family clinic"
+        }
+      }]);
+      snapshot = await repository.snapshot();
+    } finally {
+      await repository.close();
+    }
+
+    if (!snapshot) throw new Error("Expected a care-item snapshot.");
+    const rehydratedPath = join(root, "databases", "health-store-care-item-rehydrated.duckdb-poc");
+    const rehydrated = await DuckDbRepository.hydrate(root, rehydratedPath, key, snapshot, { httpfsExtensionPath });
+    try {
+      expect((await rehydrated.listCareItems({})).items).toEqual([
+        expect.objectContaining({
+          title: "Annual check-up",
+          dueStart,
+          reminderAt,
+          originatingHealthEvent: expect.objectContaining({
+            kind: "visit",
+            occurredAt: "2026-07-18T12:00:00.000Z",
+            provider: "Family clinic"
+          })
+        })
+      ]);
+    } finally {
+      await rehydrated.close();
+    }
+  }, 30_000);
+
   it.skipIf(!httpfsExtensionPath)("returns bounded startup data without materializing full health history", async () => {
     const databasePath = join(root, "databases", "health-store-bootstrap.duckdb-poc");
     const fixture = createDuckDbHealthStoreFixture();
@@ -741,7 +814,7 @@ describe("DuckDbRepository fidelity", () => {
 
     const upgraded = await DuckDbRepository.open(root, databasePath, key, options);
     try {
-      expect(await upgraded.schemaVersions()).toEqual([1, 2, 3, 4, 5]);
+      expect(await upgraded.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6]);
       expect(await upgraded.dailyMetrics()).toEqual([]);
       expect(await upgraded.weeklyMetrics()).toEqual([]);
     } finally {
@@ -756,13 +829,19 @@ describe("DuckDbRepository fidelity", () => {
         ORDER BY column_name;`);
       expect(columns.map((row) => row.column_name)).toContain("birth_date");
       expect(columns.map((row) => row.column_name)).not.toContain("birth_year");
+      const views = await querySql(upgradedHandle.connection, `SELECT table_name
+        FROM information_schema.views
+        WHERE table_catalog = current_database()
+          AND table_name IN ('v_ai_health_events', 'v_ai_care_items')
+        ORDER BY table_name;`);
+      expect(views.map((row) => row.table_name)).toEqual(["v_ai_care_items", "v_ai_health_events"]);
     } finally {
       await closeEncryptedDuckDbDatabase(upgradedHandle);
     }
 
     const reopened = await DuckDbRepository.open(root, databasePath, key, options);
     try {
-      expect(await reopened.schemaVersions()).toEqual([1, 2, 3, 4, 5]);
+      expect(await reopened.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6]);
     } finally {
       await reopened.close();
     }
@@ -789,7 +868,7 @@ describe("DuckDbRepository fidelity", () => {
           (2, 'manual-total', 'total_calories_burned', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 500000, 'kcal', 'manual-source', false);
       `);
 
-      expect(await migrateDuckDbSchema(database)).toBe(5);
+      expect(await migrateDuckDbSchema(database)).toBe(6);
       expect(await querySql(database.connection, "SELECT id, value FROM observations ORDER BY ordinal;")).toEqual([
         { id: "health-connect-oxygen", value: 93 },
         { id: "manual-oxygen", value: 9300 }
@@ -799,7 +878,7 @@ describe("DuckDbRepository fidelity", () => {
         { id: "health-connect-active", value: 123.4 },
         { id: "manual-total", value: 500000 }
       ]);
-      expect(await migrateDuckDbSchema(database)).toBe(5);
+      expect(await migrateDuckDbSchema(database)).toBe(6);
       expect(await querySql(database.connection, "SELECT value FROM observations WHERE id = 'health-connect-oxygen';"))
         .toEqual([{ value: 93 }]);
     } finally {
@@ -834,7 +913,8 @@ describe("DuckDbRepository fidelity", () => {
     await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (3, CURRENT_TIMESTAMP, 'synthetic');");
     await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (4, CURRENT_TIMESTAMP, 'synthetic');");
     await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (5, CURRENT_TIMESTAMP, 'synthetic');");
-    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (6, CURRENT_TIMESTAMP, 'future');");
+    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (6, CURRENT_TIMESTAMP, 'synthetic');");
+    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (7, CURRENT_TIMESTAMP, 'future');");
     await execSql(futureHandle.connection, "CHECKPOINT;");
     await closeEncryptedDuckDbDatabase(futureHandle);
     const futureHash = hashFile(futurePath);

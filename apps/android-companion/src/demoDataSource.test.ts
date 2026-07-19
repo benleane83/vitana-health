@@ -47,4 +47,30 @@ describe("demo data source", () => {
     expect(steps.entries[0]).toMatchObject({ status: "unknown" });
     expect(steps.entries[0].referenceRange).toBeUndefined();
   });
+
+  it("supports paginated care reads and demo mutations", async () => {
+    const source = createDemoDataSource(new Date("2026-07-17T12:00:00.000Z"));
+    const events = await source.listHealthEvents({ limit: 1 });
+    const items = await source.listCareItems({ limit: 1, status: "open" });
+
+    expect(events.items).toHaveLength(1);
+    expect(events.hasMore).toBe(true);
+    expect(items.items[0]?.status).toBe("open");
+
+    await source.createHealthEvent({
+      kind: "other",
+      status: "completed",
+      occurredAt: "2026-07-18T09:00:00.000Z",
+      provider: "Demo clinic"
+    });
+    await source.createCareItem({
+      title: "Schedule follow-up",
+      kind: "routine-checkup",
+      priority: "normal",
+      status: "open"
+    });
+
+    expect((await source.listHealthEvents()).total).toBeGreaterThan(events.total);
+    expect((await source.listCareItems()).total).toBeGreaterThanOrEqual(2);
+  });
 });
