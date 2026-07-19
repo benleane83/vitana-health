@@ -75,6 +75,9 @@ jobs:
       - name: Build shared package (required by tests)
         run: npm run build -w packages/shared
 
+      - name: Build api-client package (required by tests)
+        run: npm run build -w packages/api-client
+
       - name: Run core tests
         run: npm run test:core
 
