@@ -48,3 +48,15 @@ export const weeklyMetricsViewSql = `
   FROM v_daily_metrics
   GROUP BY 1, 2
 `;
+
+export const aiHealthEventsViewSql = `
+  CREATE OR REPLACE VIEW v_ai_health_events AS
+  SELECT id, kind, status, occurred_at, occurred_end, source, provider, notes
+  FROM health_events
+`;
+
+export const aiCareItemsViewSql = `
+  CREATE OR REPLACE VIEW v_ai_care_items AS
+  SELECT id, kind, code, title, due_start, due_end, priority, status, completed_at, notes
+  FROM care_items
+`;

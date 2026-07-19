@@ -259,6 +259,7 @@ Optional fields: `timezone` (IANA string), `debug` (boolean, adds planner timing
 |---|---|
 | `answer` | Natural-language answer from the model |
 | `plan` | The structured DSL returned by the planner |
+| `sourceResolved` / `intentResolved` | The dataset and operation selected by the planner/compiler |
 | `sql` | The compiler-produced SQL that was executed |
 | `rows` | Up to 100 result rows |
 | `chart` | Optional chart-ready series `{ type, series: [{label, value}] }` |
@@ -273,11 +274,13 @@ Optional fields: `timezone` (IANA string), `debug` (boolean, adds planner timing
 - Top-N: `max daily steps this month`, `top 10 step days`
 - Latest reading: `latest heart rate`
 - Activity summaries: `top exercises this month`
+- Health events: `list immunizations this year`, `weekly health event counts`, `latest medication administration`
+- Care items: `open high-priority care items due this month`, `care items by status`, `how many care items are overdue?`
 
 ### Safety guardrails
 
 - **SELECT-only**: Non-SELECT tokens (`DROP`, `DELETE`, `INSERT`, `UPDATE`, `CREATE`, etc.) are blocked at both compile and validate stages.
-- **Table/column whitelist**: Only `v_daily_metrics`, `v_weekly_metrics`, and `activities` with their known columns are allowed.
+- **Table/column whitelist**: Only the metric views, `activities`, `v_ai_health_events`, and `v_ai_care_items` with their known columns are allowed.
 - **Time window cap**: Maximum 366-day time window per query.
 - **Row limit cap**: Maximum 200 rows per query.
 - **Graceful fallback**: Unsupported questions return a clarifying limitations message and suggested rephrase rather than raw model output.
@@ -298,6 +301,8 @@ Calendar month/week boundaries are resolved server-side before SQL compilation:
 
 - The AI planner requires a running model runtime (Ollama or OpenAI-compatible). If the model is unavailable, a graceful error with suggested rephrases is returned.
 - Compound queries (e.g. "steps AND heart rate together") may be simplified to the first metric.
+- Cross-source comparisons are not supported; each query targets one dataset.
+- Health events support list, count, latest, and day/week count trends. Care items support list, grouped count, due-window, and overdue queries.
 - Lab marker questions are not currently supported by the AI query endpoint; review lab results in the Labs and Summary views.
 
 ## Experimental Store-Grounded Query Fallback

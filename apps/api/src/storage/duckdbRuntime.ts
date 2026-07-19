@@ -1,10 +1,15 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import duckdb from "duckdb";
-import { dailyMetricsViewSql, weeklyMetricsViewSql } from "../analyticalViews.js";
+import {
+  aiCareItemsViewSql,
+  aiHealthEventsViewSql,
+  dailyMetricsViewSql,
+  weeklyMetricsViewSql
+} from "../analyticalViews.js";
 
 const markerName = ".lfa-duckdb-poc";
-const schemaVersion = 5;
+const schemaVersion = 6;
 
 export interface DuckDbOptions {
   httpfsExtensionPath?: string;
@@ -354,10 +359,17 @@ const schemaVersion5Sql = `
   INSERT OR IGNORE INTO poc_metadata VALUES (5, CURRENT_TIMESTAMP, 'Correct Health Connect percentage and calorie scales');
 `;
 
+const schemaVersion6Sql = `
+  ${aiHealthEventsViewSql};
+  ${aiCareItemsViewSql};
+  INSERT OR IGNORE INTO poc_metadata VALUES (6, CURRENT_TIMESTAMP, 'AI query views for health events and care items');
+`;
+
 const schemaMigrations = [
   { version: 1, sql: schemaVersion1Sql },
   { version: 2, sql: schemaVersion2Sql },
   { version: 3, sql: schemaVersion3Sql },
   { version: 4, sql: schemaVersion4Sql },
-  { version: 5, sql: schemaVersion5Sql }
+  { version: 5, sql: schemaVersion5Sql },
+  { version: 6, sql: schemaVersion6Sql }
 ] as const;
