@@ -61,7 +61,7 @@ export function ImportPage({
           <h1>Import</h1>
         </div>
         <p className="import-copy">
-          Add observations manually, from a structured CSV/TSV upload, or sync your fitness tracker.
+          Add observations manually, from an existing report, or sync your fitness tracker.
         </p>
       </div>
 

@@ -183,7 +183,7 @@ export function DashboardPage({
                       >
                         <span>{alert.marker}</span>
                         <strong>{alert.value} {alert.unit}</strong>
-                        <em>{formatShortTimestamp(alert.observedAt)} / {alert.flag}{alert.reference ? ` / ref ${alert.reference}` : ""}</em>
+                        <em>{alert.flag}{alert.reference ? ` / ref ${alert.reference}` : ""}</em>
                       </button>
                     ))}
                   </div>
@@ -192,9 +192,14 @@ export function DashboardPage({
           </section>
 
           <section className="dashboard-deeper-section dashboard-ai-review">
-            <h2>Guarded AI review</h2>
+            <h2>AI review</h2>
             <p className="safety">{safetyNotice}</p>
-            <button disabled={busy} onClick={onGenerateInsight}>Generate local insight</button>
+            <div className="dashboard-ai-actions">
+              <button disabled={busy} onClick={onGenerateInsight}>Generate insights</button>
+              <p className="dashboard-generated" aria-label={latestInsight?.createdAt ? `Last generated ${formatShortTimestamp(latestInsight.createdAt)}` : "Last generated not available"}>
+                Last generated: {latestInsight?.createdAt ? formatShortTimestamp(latestInsight.createdAt) : "Not generated yet"}
+              </p>
+            </div>
             <InsightCard insight={latestInsight} />
           </section>
         </div>

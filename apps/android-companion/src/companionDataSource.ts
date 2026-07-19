@@ -10,6 +10,8 @@ import type {
   DeleteHealthEventResponse,
   HealthDataDetail,
   HealthDataSummary,
+  ManualObservationPayload,
+  MobileImportResult,
   HealthEvent,
   HealthEventListQuery,
   HealthEventMutationResponse,
@@ -26,6 +28,21 @@ export interface CompanionDataSource {
   analytics(): Promise<AnalyticsSummary>;
   summary(): Promise<HealthDataSummary>;
   healthDataDetail(measurementCode: string, page?: DetailPage): Promise<HealthDataDetail>;
+}
+
+export interface CompanionMutationService {
+  importManualObservations(payload: ManualObservationPayload): Promise<MobileImportResult | unknown>;
+}
+
+export interface CompanionMaintenanceService {
+  resetLocalData(): Promise<void>;
+}
+
+export interface CompanionLifecycleService {
+  dispose(): Promise<void>;
+}
+
+export interface CompanionCareService {
   listHealthEvents(query?: HealthEventListQuery): Promise<PaginatedResult<HealthEvent>>;
   createHealthEvent(payload: CreateHealthEventInput): Promise<HealthEventMutationResponse>;
   updateHealthEvent(id: string, payload: CreateHealthEventInput): Promise<HealthEventMutationResponse>;

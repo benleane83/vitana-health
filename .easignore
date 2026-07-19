@@ -1,5 +1,8 @@
 node_modules/
 dist/
+apps/android-companion/android/.gradle/
+apps/android-companion/android/build/
+apps/android-companion/android/app/build/
 .env
 .env.local
 data/

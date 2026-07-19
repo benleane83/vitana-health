@@ -39,6 +39,8 @@ describe("PairingStore authorization grants", () => {
       capabilities: [
         "profiles:list-minimal",
         "assigned-profile:read",
+        "care:read",
+        "care:write",
         "observations:import-manual",
         "reports:preview",
         "reports:commit",

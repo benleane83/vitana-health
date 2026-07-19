@@ -15,7 +15,7 @@ import {
   type HealthDataSummary,
   type HealthDataSummaryTypeRow
 } from "@local-fitness-advisor/shared";
-import type { CompanionDataSource, DetailPage } from "./companionDataSource";
+import type { CompanionCareService, CompanionDataSource, DetailPage } from "./companionDataSource";
 
 interface DemoMetric {
   code: string;
@@ -35,7 +35,7 @@ const metrics: DemoMetric[] = [
   { code: "glucose", values: [5.1, 5.0, 5.4, 5.2, 5.1, 4.9, 5.0], unit: "mmol/L", kind: "observation", sourceLabel: "Demo laboratory report" }
 ];
 
-export function createDemoDataSource(now = new Date()): CompanionDataSource {
+export function createDemoDataSource(now = new Date()): CompanionDataSource & CompanionCareService {
   const details = new Map(metrics.map((metric) => [metric.code, makeDetail(metric, now)]));
   const rows = metrics.map((metric) => details.get(metric.code)!.measurement);
   const summary = makeSummary(rows, now);
