@@ -157,14 +157,14 @@ describe("createApiClient", () => {
       if (request.path === "/api/care/health-events" && request.method === "POST") {
         return response({ healthEvent: { id: "event-1", kind: "other", status: "completed", occurredAt: "2026-01-01T00:00:00.000Z", source: "manual-entry" }, counts: { imports: 0, observations: 0, samples: 0, activities: 0, healthEvents: 1, careItems: 0 } });
       }
-      return response({ careItem: { id: "care-1", title: "Book check-in", kind: "Appointment", priority: "normal", status: "open" }, counts: { imports: 0, observations: 0, samples: 0, activities: 0, healthEvents: 0, careItems: 1 } });
+      return response({ careItem: { id: "care-1", title: "Book check-in", kind: "routine-checkup", priority: "normal", status: "open" }, counts: { imports: 0, observations: 0, samples: 0, activities: 0, healthEvents: 0, careItems: 1 } });
     };
     const client = createApiClient(transport);
 
     await client.listHealthEvents({ limit: 10, search: "demo" });
     await client.createHealthEvent({ kind: "other", status: "completed", occurredAt: "2026-01-01T00:00:00.000Z" });
     await client.listCareItems({ limit: 10, status: "open" });
-    await client.createCareItem({ title: "Book check-in", kind: "Appointment", priority: "normal", status: "open" });
+    await client.createCareItem({ title: "Book check-in", kind: "routine-checkup", priority: "normal", status: "open" });
 
     expect(seen[0]).toMatchObject({ method: "GET", path: "/api/care/health-events?limit=10&search=demo" });
     expect(seen[1]).toMatchObject({ method: "POST", path: "/api/care/health-events" });

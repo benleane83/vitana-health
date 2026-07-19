@@ -5,7 +5,9 @@ import {
   biologicalAgeMeasurementCodes,
   classifyValue,
   computeAnalyticsFromInput,
+  isHealthEventKind,
   type HealthEvent,
+  type HealthEventReference,
   type HealthEventListQuery,
   type AnalyticsSummary,
   type AppBootstrap,
@@ -639,7 +641,13 @@ export async function listCareItems(
   const { whereSql, params } = buildCareItemWhere(normalized);
   const rows = await allWithParams(
     connection,
-    `SELECT * EXCLUDE (ordinal)
+    `SELECT * EXCLUDE (ordinal),
+        (SELECT kind FROM health_events WHERE id = care_items.originating_health_event_id) AS originating_event_kind,
+        (SELECT occurred_at FROM health_events WHERE id = care_items.originating_health_event_id) AS originating_event_occurred_at,
+        (SELECT provider FROM health_events WHERE id = care_items.originating_health_event_id) AS originating_event_provider,
+        (SELECT kind FROM health_events WHERE id = care_items.completed_health_event_id) AS completed_event_kind,
+        (SELECT occurred_at FROM health_events WHERE id = care_items.completed_health_event_id) AS completed_event_occurred_at,
+        (SELECT provider FROM health_events WHERE id = care_items.completed_health_event_id) AS completed_event_provider
       FROM care_items
       ${whereSql}
       ORDER BY
@@ -660,7 +668,14 @@ export async function listCareItems(
   if (normalized.includeId && !items.some((item) => item.id === normalized.includeId)) {
     const includedRows = await allWithParams(
       connection,
-      "SELECT * EXCLUDE (ordinal) FROM care_items WHERE id = ?;",
+      `SELECT * EXCLUDE (ordinal),
+        (SELECT kind FROM health_events WHERE id = care_items.originating_health_event_id) AS originating_event_kind,
+        (SELECT occurred_at FROM health_events WHERE id = care_items.originating_health_event_id) AS originating_event_occurred_at,
+        (SELECT provider FROM health_events WHERE id = care_items.originating_health_event_id) AS originating_event_provider,
+        (SELECT kind FROM health_events WHERE id = care_items.completed_health_event_id) AS completed_event_kind,
+        (SELECT occurred_at FROM health_events WHERE id = care_items.completed_health_event_id) AS completed_event_occurred_at,
+        (SELECT provider FROM health_events WHERE id = care_items.completed_health_event_id) AS completed_event_provider
+      FROM care_items WHERE id = ?;`,
       normalized.includeId
     );
     if (includedRows[0]) {
@@ -771,9 +786,12 @@ async function hydrateHealthEventRows(
   const immunizations = new Map(immunizationRows.map((row) => [String(row.health_event_id), row]));
   const medications = new Map(medicationRows.map((row) => [String(row.health_event_id), row]));
   return rows.map((row) => {
+    const kind = String(row.kind);
+    if (!isHealthEventKind(kind)) {
+      throw new Error(`Unsupported health event kind "${kind}".`);
+    }
     const base = {
       id: String(row.id),
-      kind: String(row.kind) as HealthEvent["kind"],
       status: String(row.status) as HealthEvent["status"],
       occurredAt: isoTimestamp(row.occurred_at),
       occurredEnd: optionalTimestamp(row.occurred_end),
@@ -816,17 +834,19 @@ async function hydrateHealthEventRows(
       } satisfies HealthEvent;
     }
     // Base-only health event records are valid even when no subtype table row exists.
-    if (row.kind === "immunization") {
+    if (kind === "immunization") {
       return { ...base, kind: "immunization" } satisfies HealthEvent;
     }
-    if (row.kind === "medication-administration") {
+    if (kind === "medication-administration") {
       return { ...base, kind: "medication-administration" } satisfies HealthEvent;
     }
-    return { ...base, kind: "other" } satisfies HealthEvent;
+    return { ...base, kind } satisfies HealthEvent;
   });
 }
 
 function careItemFromRow(row: Record<string, unknown>): CareItem {
+  const originatingHealthEventId = optionalString(row.originating_health_event_id);
+  const completedHealthEventId = optionalString(row.completed_health_event_id);
   return {
     id: String(row.id),
     kind: String(row.kind),
@@ -840,9 +860,27 @@ function careItemFromRow(row: Record<string, unknown>): CareItem {
     scheduleProvenance: optionalString(row.schedule_provenance),
     scheduleVersion: optionalString(row.schedule_version),
     notes: optionalString(row.notes),
-    originatingHealthEventId: optionalString(row.originating_health_event_id),
-    completedHealthEventId: optionalString(row.completed_health_event_id),
-    completedAt: optionalTimestamp(row.completed_at)
+    originatingHealthEventId,
+    completedHealthEventId,
+    completedAt: optionalTimestamp(row.completed_at),
+    originatingHealthEvent: healthEventReferenceFromCareItemRow(row, "originating_event", originatingHealthEventId),
+    completedHealthEvent: healthEventReferenceFromCareItemRow(row, "completed_event", completedHealthEventId)
+  };
+}
+
+function healthEventReferenceFromCareItemRow(
+  row: Record<string, unknown>,
+  prefix: "originating_event" | "completed_event",
+  id: string | undefined
+): HealthEventReference | undefined {
+  const kind = optionalString(row[`${prefix}_kind`]);
+  const occurredAt = optionalTimestamp(row[`${prefix}_occurred_at`]);
+  if (!id || !kind || !occurredAt) return undefined;
+  return {
+    id,
+    kind: kind as HealthEventReference["kind"],
+    occurredAt,
+    provider: optionalString(row[`${prefix}_provider`])
   };
 }
 

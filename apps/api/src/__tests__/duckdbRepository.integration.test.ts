@@ -10,7 +10,13 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { calculateBiologicalAge, computeAnalytics, defaultMeasurementTypes } from "@local-fitness-advisor/shared";
+import {
+  calculateBiologicalAge,
+  careItemReminderAt,
+  computeAnalytics,
+  defaultMeasurementTypes,
+  type HealthStoreData
+} from "@local-fitness-advisor/shared";
 import {
   closeEncryptedDuckDbDatabase,
   createDuckDbSchema,
@@ -35,6 +41,73 @@ afterEach(() => {
 });
 
 describe("DuckDbRepository fidelity", () => {
+  it.skipIf(!httpfsExtensionPath)("creates and rehydrates care items", async () => {
+    const databasePath = join(root, "databases", "health-store-care-item.duckdb-poc");
+    const fixture = createDuckDbHealthStoreFixture();
+    const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
+    let snapshot: HealthStoreData | undefined;
+    const dueStart = "2026-08-18T14:00:00.000Z";
+    const reminderAt = careItemReminderAt(dueStart, "one-week");
+    if (!reminderAt) throw new Error("Expected a reminder timestamp.");
+    try {
+      const event = await repository.createHealthEvent({
+        kind: "visit",
+        status: "completed",
+        occurredAt: "2026-07-18T12:00:00.000Z",
+        provider: "Family clinic"
+      });
+      const created = await repository.createCareItem({
+        kind: "routine-checkup",
+        title: "Annual check-up",
+        dueStart,
+        reminderAt,
+        priority: "normal",
+        status: "open",
+        originatingHealthEventId: event.healthEvent.id
+      });
+      expect(created.careItem).toMatchObject({
+        kind: "routine-checkup",
+        title: "Annual check-up",
+        dueStart,
+        reminderAt,
+        priority: "normal",
+        status: "open"
+      });
+      expect((await repository.listCareItems({})).items).toEqual([{
+        ...created.careItem,
+        originatingHealthEvent: {
+          id: event.healthEvent.id,
+          kind: "visit",
+          occurredAt: "2026-07-18T12:00:00.000Z",
+          provider: "Family clinic"
+        }
+      }]);
+      snapshot = await repository.snapshot();
+    } finally {
+      await repository.close();
+    }
+
+    if (!snapshot) throw new Error("Expected a care-item snapshot.");
+    const rehydratedPath = join(root, "databases", "health-store-care-item-rehydrated.duckdb-poc");
+    const rehydrated = await DuckDbRepository.hydrate(root, rehydratedPath, key, snapshot, { httpfsExtensionPath });
+    try {
+      expect((await rehydrated.listCareItems({})).items).toEqual([
+        expect.objectContaining({
+          title: "Annual check-up",
+          dueStart,
+          reminderAt,
+          originatingHealthEvent: expect.objectContaining({
+            kind: "visit",
+            occurredAt: "2026-07-18T12:00:00.000Z",
+            provider: "Family clinic"
+          })
+        })
+      ]);
+    } finally {
+      await rehydrated.close();
+    }
+  }, 30_000);
+
   it.skipIf(!httpfsExtensionPath)("returns bounded startup data without materializing full health history", async () => {
     const databasePath = join(root, "databases", "health-store-bootstrap.duckdb-poc");
     const fixture = createDuckDbHealthStoreFixture();

@@ -65,7 +65,7 @@ describe("demo data source", () => {
     });
     await source.createCareItem({
       title: "Schedule follow-up",
-      kind: "Appointment",
+      kind: "routine-checkup",
       priority: "normal",
       status: "open"
     });

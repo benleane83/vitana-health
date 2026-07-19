@@ -3,6 +3,7 @@ import {
   careItemSchema,
   createCareItemInputSchema,
   createHealthEventInputSchema,
+  isHealthEventKind,
   insightSchema,
   profileSchema,
   updateCareItemInputSchema,
@@ -317,7 +318,7 @@ export async function createCareItem(
   });
   await run(
     connection,
-    "INSERT INTO care_items VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+    "INSERT INTO care_items VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
     await prependOrdinal(connection, "care_items"),
     careItem.id,
     careItem.kind,
@@ -453,7 +454,7 @@ function healthEventRecord(input: CreateHealthEventInput & { id: string; source:
   }
   return {
     id: input.id,
-    kind: "other",
+    kind: input.kind,
     status: input.status,
     occurredAt: input.occurredAt,
     occurredEnd: input.occurredEnd,
@@ -464,6 +465,10 @@ function healthEventRecord(input: CreateHealthEventInput & { id: string; source:
 }
 
 function healthEventFromRow(row: Record<string, unknown>): HealthEvent {
+  const kind = String(row.kind);
+  if (!isHealthEventKind(kind)) {
+    throw new Error(`Unsupported health event kind "${kind}".`);
+  }
   const base = {
     id: String(row.id),
     status: String(row.status) as HealthEvent["status"],
@@ -474,13 +479,13 @@ function healthEventFromRow(row: Record<string, unknown>): HealthEvent {
     notes: typeof row.notes === "string" ? row.notes : undefined,
     metadata: optionalJson(row.metadata) as Record<string, unknown> | undefined
   };
-  if (row.kind === "immunization") {
+  if (kind === "immunization") {
     return { ...base, kind: "immunization" };
   }
-  if (row.kind === "medication-administration") {
+  if (kind === "medication-administration") {
     return { ...base, kind: "medication-administration" };
   }
-  return { ...base, kind: "other" };
+  return { ...base, kind };
 }
 
 function careItemFromRow(row: Record<string, unknown>): CareItem {

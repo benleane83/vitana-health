@@ -277,7 +277,7 @@ function makeCareItems(now: Date, events: HealthEvent[]): CareItem[] {
   return [{
     id: "demo-care-1",
     title: "Book review visit",
-    kind: "Appointment",
+    kind: "routine-checkup",
     dueStart: daysBefore(now, -2).toISOString(),
     reminderAt: daysBefore(now, -3).toISOString(),
     priority: "normal",
@@ -287,7 +287,7 @@ function makeCareItems(now: Date, events: HealthEvent[]): CareItem[] {
   }, {
     id: "demo-care-2",
     title: "Monitor post-vaccine symptoms",
-    kind: "Observation",
+    kind: "monitoring",
     dueStart: daysBefore(now, -1).toISOString(),
     priority: "low",
     status: "completed",
