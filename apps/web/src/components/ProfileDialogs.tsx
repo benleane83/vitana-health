@@ -211,7 +211,7 @@ export function ProfileEditDialog({
           id="profile-goalSummary"
           name="goalSummary"
           className="wide"
-          defaultValue={profile?.goalSummary ?? "Improve energy, sleep, and metabolic health."}
+          defaultValue={profile?.goalSummary ?? ""}
         />
 
         <button disabled={busy}>Save profile</button>
@@ -277,7 +277,6 @@ export function ProfileManagerDialog({
     >
       <div className="panel-heading-row">
         <div>
-          <p className="eyebrow">Profile-scoped local data</p>
           <h2 id="profile-manager-title">Manage profiles</h2>
         </div>
         <button type="button" onClick={onClose} aria-label="Close profile manager">Close</button>

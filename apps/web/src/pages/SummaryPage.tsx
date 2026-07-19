@@ -130,7 +130,6 @@ export function SummaryPage({
     <section className="panel summary-panel">
       <div className="summary-header">
         <div>
-          <p className="eyebrow">Evidence library</p>
           <h1>Track health data</h1>
         </div>
         <div className="summary-controls" role="group" aria-label="Sort summary rows">
@@ -307,7 +306,6 @@ export function ObservationTypeDetailPage({
           <button type="button" className="summary-back-link" onClick={onBack}>
             ← Back to summary
           </button>
-          <p className="eyebrow">Measurement detail</p>
           <h1>{detail?.measurement.displayName ?? "Measurement detail"}</h1>
           {detail?.measurement.description ? (
             <p className="summary-detail-description">{detail.measurement.description}</p>
