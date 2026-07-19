@@ -1,8 +1,8 @@
 import type { AnalyticsSummary, Insight, Profile } from "@local-fitness-advisor/shared";
 import { safetyNotice } from "@local-fitness-advisor/shared";
-import { MiniChart, DensityBar } from "../components/Charts.js";
+import { MiniChart } from "../components/Charts.js";
 import { MarkdownText } from "../components/MarkdownText.js";
-import { formatBloodType, formatProfileSex, formatProfileType, formatShortTimestamp } from "../utils.js";
+import { formatBloodType, formatDetailValue, formatProfileSex, formatProfileType, formatShortTimestamp } from "../utils.js";
 
 function Stat({ label, value }: { label: string; value: number }) {
   return (
@@ -29,7 +29,6 @@ function InsightCard({ insight }: { insight?: Insight }) {
 export function DashboardPage({
   importCount,
   analytics,
-  density,
   busy,
   latestInsight,
   profile,
@@ -42,7 +41,6 @@ export function DashboardPage({
 }: {
   importCount: number;
   analytics?: AnalyticsSummary;
-  density: number;
   busy: boolean;
   latestInsight?: Insight;
   profile?: Profile;
@@ -88,7 +86,6 @@ export function DashboardPage({
             <div><dt>Latest data</dt><dd>{latestObservedAt ? formatShortTimestamp(latestObservedAt) : "No readings yet"}</dd></div>
             <div><dt>Imports stored</dt><dd>{importCount}</dd></div>
           </dl>
-          <DensityBar density={density} />
         </aside>
       </section>
 
@@ -179,10 +176,10 @@ export function DashboardPage({
                         className="alert metric-link"
                         key={`${alert.code}-${alert.observedAt}`}
                         onClick={() => onNavigateMeasurement(alert.code)}
-                        aria-label={`View details for ${alert.marker}, ${alert.value} ${alert.unit}, ${formatShortTimestamp(alert.observedAt)}, ${alert.flag}${alert.reference ? `, reference ${alert.reference}` : ""}`}
+                        aria-label={`View details for ${alert.marker}, ${formatDetailValue(alert.value)} ${alert.unit}, ${formatShortTimestamp(alert.observedAt)}, ${alert.flag}${alert.reference ? `, reference ${alert.reference}` : ""}`}
                       >
                         <span>{alert.marker}</span>
-                        <strong>{alert.value} {alert.unit}</strong>
+                        <strong>{formatDetailValue(alert.value)} {alert.unit}</strong>
                         <em>{alert.flag}{alert.reference ? ` / ref ${alert.reference}` : ""}</em>
                       </button>
                     ))}

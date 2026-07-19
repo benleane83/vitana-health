@@ -477,32 +477,36 @@ textarea {
 
 .dashboard-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.72fr);
-  gap: var(--space-6);
+  grid-template-columns: minmax(290px, 0.74fr) minmax(0, 1.6fr);
+  gap: var(--space-5);
   align-items: center;
-  margin-bottom: var(--space-8);
+  margin-bottom: var(--space-5);
 }
 
 .dashboard-hero-copy {
-  display: grid;
-  align-items: center;
-  min-height: 188px;
-  padding: var(--space-5) clamp(var(--space-4), 3vw, var(--space-8));
-  border-radius: var(--radius-lg);
-  background: linear-gradient(145deg, var(--lavender-soft), var(--primary-soft) 52%, var(--info-soft));
+  min-width: 0;
+  padding: var(--space-3) 0;
 }
 
 .vitara-lockup {
+  position: relative;
   display: grid;
-  justify-items: center;
-  text-align: center;
+  gap: 2px;
+  justify-items: start;
+  min-height: 48px;
+  padding-left: 50px;
+  text-align: left;
 }
 
 .vitara-mark {
-  position: relative;
   width: 96px;
   height: 104px;
-  margin: 18px 0 var(--space-2);
+  position: absolute;
+  top: 50%;
+  left: 0;
+  margin: 0;
+  transform: translateY(-50%) scale(0.44);
+  transform-origin: left center;
 }
 
 .vitara-petal,
@@ -574,7 +578,7 @@ textarea {
 
 .vitara-wordmark {
   color: var(--text-strong);
-  font-size: 2rem;
+  font-size: 1.18rem;
   font-weight: 500;
   letter-spacing: 0.22em;
   line-height: 1;
@@ -583,14 +587,14 @@ textarea {
 }
 
 .vitara-tagline {
-  margin-top: var(--space-2);
+  margin-top: 0;
   color: var(--text);
-  font-size: 0.94rem;
+  font-size: 0.78rem;
   font-weight: 600;
 }
 
 .vitara-rule {
-  display: flex;
+  display: none;
   align-items: center;
   gap: var(--space-3);
   width: min(100%, 210px);
@@ -614,7 +618,7 @@ textarea {
 .vitara-promise {
   max-width: none;
   color: var(--primary);
-  font-size: 1.08rem;
+  font-size: 0.8rem;
   font-weight: 600;
   line-height: 1.2;
 }
@@ -712,10 +716,11 @@ h3 {
 
 .dashboard-trust-strip {
   display: grid;
+  grid-template-columns: minmax(170px, 0.7fr) minmax(0, 1.6fr);
+  align-items: center;
   gap: var(--space-4);
   min-width: 0;
-  border-block: 1px solid var(--line);
-  padding: var(--space-5) 0;
+  padding: var(--space-3) 0;
 }
 
 .dashboard-trust-status {
@@ -3074,13 +3079,13 @@ button.stat {
 
 @media (max-width: 1050px) {
   .hero,
-  .dashboard-hero,
   .grid,
   .dashboard-workspace {
     grid-template-columns: 1fr;
   }
 
   .dashboard-hero {
+    grid-template-columns: minmax(250px, 0.74fr) minmax(0, 1.6fr);
     gap: var(--space-4);
   }
 
@@ -3177,6 +3182,22 @@ button.stat {
   }
 }
 
+@media (max-width: 760px) {
+  .dashboard-hero {
+    grid-template-columns: 1fr;
+    gap: 0;
+    margin-bottom: var(--space-4);
+  }
+
+  .dashboard-hero-copy {
+    padding-bottom: var(--space-3);
+  }
+
+  .dashboard-trust-strip {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 620px) {
   .biological-age-model .summary-category-toggle,
   .biological-age-evidence-facts,
@@ -3208,8 +3229,7 @@ button.stat {
   }
 
   .dashboard-hero {
-    gap: var(--space-3);
-    margin-bottom: var(--space-5);
+    margin-bottom: var(--space-4);
   }
 
   .dashboard-hero-copy {
@@ -3218,7 +3238,7 @@ button.stat {
   }
 
   .vitara-mark {
-    margin-top: var(--space-1);
+    transform: translateY(-50%) scale(0.42);
   }
 
   .dashboard-review .metric-list-scroll {
@@ -3248,14 +3268,23 @@ button.stat {
   }
 
   .dashboard-trust-facts {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-2);
+  }
+
+  .dashboard-trust-facts dt {
+    font-size: 0.7rem;
+  }
+
+  .dashboard-trust-facts dd {
+    font-size: 0.8rem;
   }
 
   .dashboard-trust-facts div + div {
-    border-top: 1px solid var(--line);
-    border-left: 0;
-    padding-top: var(--space-2);
-    padding-left: 0;
+    border-top: 0;
+    border-left: 1px solid var(--line);
+    padding-top: 0;
+    padding-left: var(--space-2);
   }
 
   .dashboard-deeper-section,
