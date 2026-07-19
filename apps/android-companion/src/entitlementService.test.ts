@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  InactiveEntitlementService,
+  PURCHASE_GATING_ENABLED,
   SCAN_SYNC_PRODUCT_ID,
   StoreEntitlementService,
   type BillingClient,
@@ -108,6 +110,22 @@ describe("store entitlement service", () => {
     const service = new StoreEntitlementService(billing, store);
 
     await service.initialize();
+
+    expect(service.getState()).toEqual({ status: "owned" });
+  });
+});
+
+describe("purchase gating", () => {
+  it("is disabled until the release flag is enabled", () => {
+    expect(PURCHASE_GATING_ENABLED).toBe(false);
+  });
+
+  it("leaves Scan and Sync available without connecting to the store", async () => {
+    const service = new InactiveEntitlementService();
+
+    await service.initialize();
+    await service.purchase();
+    await service.restore();
 
     expect(service.getState()).toEqual({ status: "owned" });
   });

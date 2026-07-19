@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export const SCAN_SYNC_PRODUCT_ID = "scan_sync_unlock";
+export const PURCHASE_GATING_ENABLED = false;
 
 const OWNED_KEY = "local-fitness-advisor.entitlement.scan-sync";
 
@@ -43,6 +44,27 @@ export interface EntitlementService {
   purchase(): Promise<void>;
   restore(): Promise<void>;
   close(): Promise<void>;
+}
+
+export class InactiveEntitlementService implements EntitlementService {
+  private readonly state: EntitlementState = { status: "owned" };
+
+  getState(): EntitlementState {
+    return this.state;
+  }
+
+  subscribe(listener: (state: EntitlementState) => void): () => void {
+    listener(this.state);
+    return () => {};
+  }
+
+  async initialize(): Promise<void> {}
+
+  async purchase(): Promise<void> {}
+
+  async restore(): Promise<void> {}
+
+  async close(): Promise<void> {}
 }
 
 export class StoreEntitlementService implements EntitlementService {

@@ -1,5 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import {
+  InactiveEntitlementService,
+  PURCHASE_GATING_ENABLED,
   StoreEntitlementService,
   createEntitlementStore,
   type EntitlementService,
@@ -17,7 +19,9 @@ const EntitlementContext = createContext<EntitlementContextValue | undefined>(un
 
 export function EntitlementProvider({ children }: { children: React.ReactNode }) {
   const service = useMemo<EntitlementService>(
-    () => new StoreEntitlementService(createStoreBillingClient(), createEntitlementStore()),
+    () => PURCHASE_GATING_ENABLED
+      ? new StoreEntitlementService(createStoreBillingClient(), createEntitlementStore())
+      : new InactiveEntitlementService(),
     []
   );
   const [state, setState] = useState(service.getState());
