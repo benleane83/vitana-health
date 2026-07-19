@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { AnalyticsSummary, AppBootstrap, Profile, ProfileListEntry } from "@local-fitness-advisor/shared";
 import { api } from "../../api.js";
 import { DashboardPage } from "../../pages/DashboardPage.js";
@@ -27,11 +27,6 @@ export function DashboardRoute({
   onNotice: (message: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
-  const density = useMemo(() => {
-    const counts = analytics?.counts;
-    if (!counts) return 0;
-    return Math.min(100, counts.observations + counts.samples / 10 + counts.activities * 4);
-  }, [analytics]);
 
   async function generateInsight() {
     setBusy(true);
@@ -50,7 +45,6 @@ export function DashboardRoute({
     <DashboardPage
       importCount={bootstrap?.counts.imports ?? 0}
       analytics={analytics}
-      density={density}
       busy={busy}
       latestInsight={bootstrap?.latestInsight}
       profile={profile}

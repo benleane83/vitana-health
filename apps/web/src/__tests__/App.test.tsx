@@ -43,7 +43,7 @@ beforeEach(() => {
         labAlerts: [{
           code: "ldl_cholesterol",
           marker: "LDL cholesterol",
-          value: 3.02,
+          value: 31.13248797551377,
           unit: "mmol/L",
           observedAt: "2026-01-01T00:00:00.000Z",
           reference: "--3",
@@ -104,6 +104,16 @@ afterEach(() => {
 });
 
 describe("App smoke", () => {
+  it("formats lab range review values to at most two decimal places", async () => {
+    render(<App />);
+
+    fireEvent.click(await screen.findByText("Explore trends, lab ranges, and AI review"));
+
+    expect(screen.getByText("31.13 mmol/L")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /ldl cholesterol, 31\.13 mmol\/l/i })).toBeInTheDocument();
+    expect(screen.queryByText(/31\.13248797551377/)).not.toBeInTheDocument();
+  });
+
   it("shows a measurement description directly below its name on the detail page", async () => {
     globalThis.history.replaceState({}, "", "/track/bmi");
     render(<App />);
