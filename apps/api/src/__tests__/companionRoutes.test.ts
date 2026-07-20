@@ -141,6 +141,8 @@ describe("companion route profile isolation", () => {
     expect((await request(app).patch("/api/observations/phone-observation").set(headers).send(observationInput)).status).toBe(200);
     expect((await request(app).delete("/api/observations/phone-observation").set(headers)).status).toBe(200);
     expect((await request(app).get("/api/settings/ai").set(headers)).status).toBe(403);
+    expect((await request(app).get("/api/settings/desktop").set(headers)).status).toBe(403);
+    expect((await request(app).put("/api/settings/desktop").set(headers).send({ backgroundServiceEnabled: true })).status).toBe(403);
     expect((await request(app).post("/api/query/ai").set(headers).send({ question: "test" })).status).toBe(403);
     expect(assigned.listHealthEvents).toHaveBeenCalledOnce();
     expect(assigned.listCareItems).toHaveBeenCalledOnce();

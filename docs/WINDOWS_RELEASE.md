@@ -36,6 +36,21 @@ certificate in the repository, build logs, issues, or artifacts.
    matching GitHub Release. Publish only those release assets; never distribute
    installers from unprotected workflow artifacts.
 
+## Background service release check
+
+The installed desktop exposes an opt-in setting at **Settings > App**. When enabled,
+closing the window must destroy the renderer while the tray-resident main process,
+encrypted DuckDB API, and companion sync endpoint remain available. It registers
+per-user login startup with `--background`; a login launch starts without a window.
+Start menu and tray launches reuse that singleton process, while tray **Quit** performs
+a full graceful shutdown.
+
+The full Windows smoke path enables the setting through the authenticated local API,
+checks health after window close, checks login registration and singleton reopen, then
+disables it and verifies normal close stops health. Manually confirm the same flow
+after sign-in or reboot, including the one-time notification and a paired Android sync.
+Disabling the setting must restore foreground-only behavior.
+
 ## Distribution and updates
 
 GitHub Releases are the supported update channel. Users must download an

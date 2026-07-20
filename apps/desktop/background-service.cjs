@@ -2,7 +2,7 @@ function loginItemOptions(enabled, executablePath) {
   return {
     openAtLogin: enabled,
     path: executablePath,
-    args: enabled ? ["--background"] : []
+    args: ["--background"]
   };
 }
 
@@ -25,7 +25,12 @@ function createBackgroundServiceController({
   }
 
   function setLoginRegistration(enabled) {
-    app.setLoginItemSettings(loginItemOptions(enabled, executablePath));
+    const options = loginItemOptions(enabled, executablePath);
+    app.setLoginItemSettings(options);
+    const actual = app.getLoginItemSettings?.({ path: options.path, args: options.args });
+    if (actual && actual.openAtLogin !== enabled) {
+      throw new Error("The operating system did not apply the login startup setting.");
+    }
   }
 
   function ensureTray() {

@@ -46,6 +46,37 @@ Returns `{ "ok": false }` with `503` if the server is shutting down.
 
 ---
 
+## Desktop runtime settings
+
+These authenticated, owner-only endpoints expose host behavior without exposing
+Electron or operating-system registration details. Companion credentials receive
+`403 CAPABILITY_REQUIRED`.
+
+```
+GET /api/settings/desktop
+```
+
+**Success `200`:**
+```json
+{ "supported": true, "backgroundServiceEnabled": false }
+```
+
+Standalone API and browser-development hosts return the same response with
+`supported: false`. Updates use:
+
+```
+PUT /api/settings/desktop
+```
+
+```json
+{ "backgroundServiceEnabled": true }
+```
+
+The request is strict and rejects additional properties. A host without a desktop
+runtime controller returns `501 DESKTOP_RUNTIME_UNSUPPORTED`.
+
+---
+
 ## Pairing (device management)
 
 ### Submit a pairing request *(pre-auth, rate-limited)*

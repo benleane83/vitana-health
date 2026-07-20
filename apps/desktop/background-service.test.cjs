@@ -29,7 +29,7 @@ function fixture(initial = { version: 1, backgroundServiceEnabled: false, closeN
 
 test("login registration uses the explicit background argument", () => {
   assert.deepEqual(loginItemOptions(true, "app.exe"), { openAtLogin: true, path: "app.exe", args: ["--background"] });
-  assert.deepEqual(loginItemOptions(false, "app.exe"), { openAtLogin: false, path: "app.exe", args: [] });
+  assert.deepEqual(loginItemOptions(false, "app.exe"), { openAtLogin: false, path: "app.exe", args: ["--background"] });
 });
 
 test("enable and disable transitions update registration and tray immediately", () => {

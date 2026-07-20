@@ -188,6 +188,7 @@ describe("App feature flows", () => {
     });
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: /settings/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /^ai$/i }));
     expect(await screen.findByRole("heading", { name: /ai setup/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/endpoint url/i)).toHaveValue("http://127.0.0.1:11434/api/generate");
     expect(screen.getByRole("button", { name: /connect openrouter/i })).toBeInTheDocument();
@@ -217,9 +218,54 @@ describe("App feature flows", () => {
 
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: /settings/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /^ai$/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Unable to load AI settings.");
     fireEvent.click(screen.getByRole("button", { name: /retry/i }));
     expect(await screen.findByRole("heading", { name: /ai setup/i })).toBeInTheDocument();
+  });
+
+  it("loads and saves the supported background service setting", async () => {
+    let enabled = false;
+    global.fetch = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes("/api/settings/desktop")) {
+        if (init?.method === "PUT") {
+          expect(JSON.parse(String(init.body))).toEqual({ backgroundServiceEnabled: true });
+          enabled = true;
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ supported: true, backgroundServiceEnabled: enabled }),
+          text: () => Promise.resolve(""),
+          headers: new Headers()
+        } as Response);
+      }
+      return mockFetch({
+        "/api/store": makeEmptyStore(),
+        "/api/analytics": makeEmptyAnalytics(),
+        "/api/profiles": { profiles: [], activeProfileId: "self" }
+      })(input);
+    });
+    globalThis.history.replaceState({}, "", "/settings/app");
+    render(<App />);
+    const toggle = await screen.findByRole("switch", { name: /keep the service running/i });
+    expect(toggle).not.toBeChecked();
+    fireEvent.click(toggle);
+    expect(await screen.findByRole("status")).toHaveTextContent("Background service enabled.");
+    expect(toggle).toBeChecked();
+  });
+
+  it("keeps the App page but hides unsupported desktop controls", async () => {
+    global.fetch = mockFetch({
+      "/api/store": makeEmptyStore(),
+      "/api/analytics": makeEmptyAnalytics(),
+      "/api/profiles": { profiles: [], activeProfileId: "self" },
+      "/api/settings/desktop": { supported: false, backgroundServiceEnabled: false }
+    });
+    globalThis.history.replaceState({}, "", "/settings");
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "App" })).toBeInTheDocument();
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
   });
 
   describe("App — PDF export", () => {

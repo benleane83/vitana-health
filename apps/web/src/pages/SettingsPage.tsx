@@ -1,8 +1,135 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { api } from "../api.js";
-import type { AiSettings } from "../api.js";
+import type { AiSettings, DesktopRuntimeSettings } from "../api.js";
+import type { SettingsView } from "../types.js";
 
-export function SettingsPage() {
+export function SettingsPage({ view, onViewChange }: {
+  view: SettingsView;
+  onViewChange: (view: SettingsView) => void;
+}) {
+  const tabs: Array<{ view: SettingsView; id: string; panelId: string; label: string }> = [
+    { view: "app", id: "settings-tab-app", panelId: "settings-panel-app", label: "App" },
+    { view: "ai", id: "settings-tab-ai", panelId: "settings-panel-ai", label: "AI" }
+  ];
+
+  function handleTabKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, currentView: SettingsView) {
+    if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const currentIndex = tabs.findIndex((tab) => tab.view === currentView);
+    const nextIndex = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? tabs.length - 1
+        : (currentIndex + (["ArrowDown", "ArrowRight"].includes(event.key) ? 1 : -1) + tabs.length) % tabs.length;
+    onViewChange(tabs[nextIndex].view);
+    document.getElementById(tabs[nextIndex].id)?.focus();
+  }
+
+  return (
+    <section className="settings-page">
+      <div className="settings-header">
+        <h1>Settings</h1>
+        <p>Manage application preferences and AI connections.</p>
+      </div>
+      <div className="settings-workspace">
+        <div className="settings-tabs" role="tablist" aria-label="Settings sections" aria-orientation="vertical">
+          {tabs.map((tab) => (
+            <button
+              key={tab.view}
+              id={tab.id}
+              role="tab"
+              aria-selected={view === tab.view}
+              aria-controls={tab.panelId}
+              className={view === tab.view ? "active" : ""}
+              tabIndex={view === tab.view ? 0 : -1}
+              onClick={() => onViewChange(tab.view)}
+              onKeyDown={(event) => handleTabKeyDown(event, tab.view)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        {view === "app" ? (
+          <div id="settings-panel-app" role="tabpanel" aria-labelledby="settings-tab-app">
+            <AppSettingsPanel />
+          </div>
+        ) : (
+          <div id="settings-panel-ai" role="tabpanel" aria-labelledby="settings-tab-ai">
+            <AiSettingsPanel />
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function AppSettingsPanel() {
+  const [settings, setSettings] = useState<DesktopRuntimeSettings>();
+  const [busy, setBusy] = useState(false);
+  const [loadError, setLoadError] = useState<string>();
+  const [message, setMessage] = useState<string>();
+
+  async function load() {
+    setLoadError(undefined);
+    try {
+      setSettings(await api.settings.desktop.get());
+    } catch {
+      setLoadError("Unable to load app settings.");
+    }
+  }
+
+  useEffect(() => { void load(); }, []);
+
+  async function toggle(enabled: boolean) {
+    if (!settings) return;
+    const previous = settings;
+    setSettings({ ...settings, backgroundServiceEnabled: enabled });
+    setBusy(true);
+    setMessage(undefined);
+    try {
+      setSettings(await api.settings.desktop.save({ backgroundServiceEnabled: enabled }));
+      setMessage(enabled ? "Background service enabled." : "Background service disabled.");
+    } catch (error) {
+      setSettings(previous);
+      setMessage(error instanceof Error ? error.message : "Unable to save app settings.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="panel settings-panel">
+      <h2>App</h2>
+      {loadError ? (
+        <div role="alert">
+          <p>{loadError}</p>
+          <button type="button" onClick={() => { void load(); }}>Retry</button>
+        </div>
+      ) : !settings ? (
+        <p className="empty">Loading app settings…</p>
+      ) : settings.supported ? (
+        <label className="settings-switch">
+          <span>
+            <strong>Keep the service running in the background</strong>
+            <small>Keep mobile sync available after closing the window and start the service at login.</small>
+          </span>
+          <input
+            type="checkbox"
+            role="switch"
+            checked={settings.backgroundServiceEnabled}
+            disabled={busy}
+            onChange={(event) => { void toggle(event.target.checked); }}
+          />
+        </label>
+      ) : (
+        <p className="empty">Desktop preferences will appear here when available.</p>
+      )}
+      {message ? <p role="status" aria-live="polite">{message}</p> : null}
+    </section>
+  );
+}
+
+function AiSettingsPanel() {
   const [settings, setSettings] = useState<AiSettings>();
   const [apiKey, setApiKey] = useState("");
   const [busy, setBusy] = useState(false);
@@ -84,8 +211,7 @@ export function SettingsPage() {
 
   return (
     <section className="panel settings-panel">
-      <p className="eyebrow">Settings</p>
-      <h1>AI setup</h1>
+      <h2>AI setup</h2>
       <p className="empty">Configure the model connection used for AI queries and insights. Your API key is stored by the local application server and is never displayed.</p>
       <form className="settings-form" onSubmit={save}>
         <label htmlFor="ai-provider">Provider</label>

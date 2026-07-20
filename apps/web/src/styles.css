@@ -445,8 +445,85 @@ textarea {
   border: 0;
 }
 
+.settings-page {
+  display: grid;
+  gap: var(--space-8);
+  max-width: 980px;
+}
+
+.settings-header {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: var(--space-6);
+}
+
+.settings-header h1,
+.settings-header p {
+  margin: 0;
+}
+
+.settings-header p {
+  color: var(--muted);
+  margin-top: var(--space-2);
+}
+
+.settings-workspace {
+  display: grid;
+  grid-template-columns: minmax(190px, 220px) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-8);
+}
+
+.settings-tabs {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+}
+
+.settings-tabs button {
+  justify-content: flex-start;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.settings-tabs button.active {
+  background: var(--primary);
+  color: var(--ink-on-accent);
+}
+
 .settings-panel {
   max-width: 720px;
+}
+
+.settings-panel h2 {
+  margin-top: 0;
+}
+
+.settings-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+}
+
+.settings-switch span {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.settings-switch small {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.settings-switch input {
+  width: 2.75rem;
+  min-width: 2.75rem;
+  height: 1.4rem;
+  accent-color: var(--primary);
 }
 
 .settings-form {
@@ -3143,6 +3220,11 @@ button.stat {
   }
 
   .insights-workspace {
+    grid-template-columns: 1fr;
+    gap: var(--space-5);
+  }
+
+  .settings-workspace {
     grid-template-columns: 1fr;
     gap: var(--space-5);
   }

@@ -22,6 +22,8 @@ import type {
   UploadImportPreviewPayload,
   AiQueryResponse as SharedAiQueryResponse,
   AiSettingsResponse as SharedAiSettingsResponse,
+  DesktopRuntimeSettingsResponse as SharedDesktopRuntimeSettingsResponse,
+  DesktopRuntimeSettingsUpdate,
   ImportMutationResponse as SharedImportMutationResponse,
   LlmConfigResponse as SharedLlmConfigResponse,
   ModelValidationResponse as SharedModelValidationResponse,
@@ -43,6 +45,7 @@ import {
   cloudAiConsentResponseSchema,
   deleteObservationResponseSchema,
   deleteObservationsByTypeResponseSchema,
+  desktopRuntimeSettingsResponseSchema,
   healthDataDetailResponseSchema,
   healthDataSummaryResponseSchema,
   healthResponseSchema,
@@ -154,6 +157,7 @@ export type PendingPairing = SharedPendingPairing;
 export type PairedDevice = SharedPairedDevice;
 export type LlmConfig = SharedLlmConfigResponse;
 export type AiSettings = SharedAiSettingsResponse;
+export type DesktopRuntimeSettings = SharedDesktopRuntimeSettingsResponse;
 export type ModelValidation = SharedModelValidationResponse;
 export type ProfilesResponse = SharedProfilesResponse;
 export type ImportMutationResponse = SharedImportMutationResponse;
@@ -289,6 +293,14 @@ export const api = {
     config: () => request(llmConfigResponseSchema, "/api/llm/config")
   },
   settings: {
+    desktop: {
+      get: () => request(desktopRuntimeSettingsResponseSchema, "/api/settings/desktop"),
+      save: (payload: DesktopRuntimeSettingsUpdate) =>
+        request(desktopRuntimeSettingsResponseSchema, "/api/settings/desktop", {
+          method: "PUT",
+          body: JSON.stringify(payload)
+        })
+    },
     ai: {
       get: () => request(aiSettingsResponseSchema, "/api/settings/ai"),
       save: (payload: { provider: "ollama" | "openai"; endpoint: string; apiKey?: string; model: string; timeoutMs: number }) =>
