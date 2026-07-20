@@ -182,23 +182,20 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
   }, [source]);
 
   const importManualObservations = useCallback(async (payload: ManualObservationPayload) => {
-    if (demoMode) throw new Error("Manual import is unavailable in Demo mode.");
     if (!source) throw new Error("Manual import is unavailable until a data source is ready.");
     const mutations = source as Partial<CompanionMutationService>;
     if (mutations.importManualObservations) return mutations.importManualObservations(payload);
     if (!connection?.token) throw new Error("Pair with a PC before importing readings.");
     return createCompanionApi(connection).importManualObservations(payload);
-  }, [connection, demoMode, source]);
+  }, [connection, source]);
 
   const updateObservation = useCallback(async (id: string, input: UpdateObservationInput) => {
-    if (demoMode) throw new Error("Editing observations is unavailable in Demo mode.");
     await requireObservationMutationService(source).updateObservation(id, input);
-  }, [demoMode, source]);
+  }, [source]);
 
   const deleteObservation = useCallback(async (id: string) => {
-    if (demoMode) throw new Error("Deleting observations is unavailable in Demo mode.");
     await requireObservationMutationService(source).deleteObservation(id);
-  }, [demoMode, source]);
+  }, [source]);
 
   const resetStandaloneData = useCallback(async () => {
     if (operatingMode !== "standalone" || !standaloneSource) throw new Error("Switch to Standalone mode before resetting local storage.");

@@ -48,6 +48,55 @@ describe("demo data source", () => {
     expect(steps.entries[0].referenceRange).toBeUndefined();
   });
 
+  it("updates and deletes observations in memory", async () => {
+    const source = createDemoDataSource(new Date("2026-07-17T12:00:00.000Z"));
+    const before = await source.healthDataDetail("weight");
+    const observation = before.entries[0]!;
+
+    await source.updateObservation(observation.id, {
+      measurementCode: "weight",
+      observedAt: "2026-07-18T09:00:00.000Z",
+      value: 72.5,
+      unit: "kg",
+      note: "Demo adjustment"
+    });
+
+    const updated = await source.healthDataDetail("weight");
+    expect(updated.entries[0]).toMatchObject({
+      id: observation.id,
+      value: 72.5,
+      note: "Demo adjustment",
+      canDelete: true
+    });
+
+    await source.deleteObservation(observation.id);
+    const deleted = await source.healthDataDetail("weight");
+    expect(deleted.entries.find((entry) => entry.id === observation.id)).toBeUndefined();
+    expect(deleted.counts.observations).toBe(before.counts.observations - 1);
+  });
+
+  it("adds manual observations in memory and refreshes derived totals", async () => {
+    const source = createDemoDataSource(new Date("2026-07-17T12:00:00.000Z"));
+    const before = await source.healthDataDetail("weight");
+
+    await source.importManualObservations({
+      observedAt: "2026-07-18T09:00:00.000Z",
+      label: "Manual Weight",
+      observations: [{ measurementCode: "weight", value: 72.5, unit: "kg", note: "Demo entry" }]
+    });
+
+    const [detail, summary] = await Promise.all([source.healthDataDetail("weight"), source.summary()]);
+    expect(detail.entries[0]).toMatchObject({
+      value: 72.5,
+      unit: "kg",
+      note: "Demo entry",
+      sourceKind: "manual-entry",
+      canDelete: true
+    });
+    expect(detail.counts.observations).toBe(before.counts.observations + 1);
+    expect(summary.totals.observations).toBeGreaterThan(0);
+  });
+
   it("supports paginated care reads and demo mutations", async () => {
     const source = createDemoDataSource(new Date("2026-07-17T12:00:00.000Z"));
     const events = await source.listHealthEvents({ limit: 1 });
