@@ -42,6 +42,7 @@ describe("PairingStore authorization grants", () => {
         "care:read",
         "care:write",
         "observations:import-manual",
+        "observations:write",
         "reports:preview",
         "reports:commit",
         "health-connect:import",

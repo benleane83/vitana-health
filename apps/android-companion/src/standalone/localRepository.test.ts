@@ -61,4 +61,35 @@ describe("local profile repository", () => {
     expect((await alex.bootstrap()).counts.observations).toBe(1);
     expect((await bailey.bootstrap()).counts.observations).toBe(1);
   });
+
+  it("updates and deletes an observation without affecting another profile", async () => {
+    const state = createMemoryLocalStoreState();
+    const alex = new LocalProfileRepository(new MemoryLocalStore(state), profile("profile-a"));
+    const bailey = new LocalProfileRepository(new MemoryLocalStore(state), profile("profile-b"));
+    await alex.importManualObservations(reading);
+    await bailey.importManualObservations(reading);
+    const entry = (await alex.healthDataDetail("weight")).entries[0];
+
+    const updated = await alex.updateObservation(entry.id, {
+      measurementCode: "weight",
+      observedAt: "2026-07-19T07:30:00.000Z",
+      value: 71.25,
+      unit: "kg",
+      note: "After breakfast"
+    });
+
+    expect(updated?.updatedObservation).toMatchObject({
+      value: 71.25,
+      note: "After breakfast"
+    });
+    expect((await alex.healthDataDetail("weight")).entries[0]).toMatchObject({
+      value: 71.25,
+      canDelete: true
+    });
+    expect((await bailey.healthDataDetail("weight")).entries[0].value).toBe(72.5);
+
+    expect((await alex.deleteObservation(entry.id))?.deletedCount).toBe(1);
+    expect((await alex.bootstrap()).counts.observations).toBe(0);
+    expect((await bailey.bootstrap()).counts.observations).toBe(1);
+  });
 });

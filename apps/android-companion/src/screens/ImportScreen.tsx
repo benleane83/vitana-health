@@ -135,7 +135,7 @@ function ImportSourceChooser({
         {demoMode ? (
           <Message
             title="Previewing with sample data"
-            detail="Imports change a paired profile, so these options are read only in Demo mode."
+            detail="These options are read only in Demo mode."
             tone="info"
           />
         ) : null}

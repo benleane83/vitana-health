@@ -57,7 +57,7 @@ export function DashboardScreen() {
   const counts = analytics.counts;
   const visibleMetrics = analytics.latestMetrics.slice(0, 4);
   const connectionLabel = demoMode
-    ? "Sample data · read only"
+    ? "Sample data · edits reset on restart"
     : standaloneMode
       ? "Standalone · encrypted on this phone"
       : connectionState === "online"

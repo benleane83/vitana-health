@@ -287,7 +287,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
     try {
       const id = recordIdParamSchema.parse(request.params.id);
       const input = updateObservationBodySchema.parse(request.body);
-      const store = activeStore();
+      const store = requestStore(response);
       const updated = await store.updateObservation(id, input);
       if (!updated) {
         response.status(404).json({ error: "Observation not found.", code: "OBSERVATION_NOT_FOUND" });
@@ -303,7 +303,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
   router.delete("/observations/:id", async (request, response, next) => {
     try {
       const id = recordIdParamSchema.parse(request.params.id);
-      const store = activeStore();
+      const store = requestStore(response);
       const deleted = await store.deleteObservation(id);
       if (!deleted) {
         response.status(404).json({ error: "Observation not found.", code: "OBSERVATION_NOT_FOUND" });

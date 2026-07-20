@@ -1,8 +1,11 @@
 import type {
   AnalyticsSummary,
   AppBootstrap,
+  DeleteObservationResponse,
   HealthDataDetail,
-  HealthDataSummary
+  HealthDataSummary,
+  UpdateObservationInput,
+  UpdateObservationResponse
 } from "./types.js";
 import type { ManualObservationPayload, ParsedImport } from "./parserTypes.js";
 
@@ -34,6 +37,8 @@ export interface MobileProfileRepository {
   analytics(): Promise<AnalyticsSummary>;
   summary(): Promise<HealthDataSummary>;
   healthDataDetail(measurementCode: string, page?: MobileDetailPage): Promise<HealthDataDetail>;
+  updateObservation(id: string, input: UpdateObservationInput): Promise<UpdateObservationResponse | undefined>;
+  deleteObservation(id: string): Promise<DeleteObservationResponse | undefined>;
   mergeImport(imported: ParsedImport): Promise<MobileImportResult>;
   importManualObservations(payload: ManualObservationPayload): Promise<MobileImportResult>;
   reset(): Promise<void>;

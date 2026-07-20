@@ -14,9 +14,17 @@ import {
   type HealthDataDetail,
   type HealthDataDetailEntry,
   type HealthDataSummary,
-  type HealthDataSummaryTypeRow
+  type HealthDataSummaryTypeRow,
+  type ManualObservationPayload,
+  type MobileImportResult
 } from "@local-fitness-advisor/shared";
-import type { CompanionCareService, CompanionDataSource, DetailPage } from "./companionDataSource";
+import type {
+  CompanionCareService,
+  CompanionDataSource,
+  CompanionMutationService,
+  CompanionObservationMutationService,
+  DetailPage
+} from "./companionDataSource";
 
 interface DemoMetric {
   code: string;
@@ -36,25 +44,99 @@ const metrics: DemoMetric[] = [
   { code: "glucose", values: [5.1, 5.0, 5.4, 5.2, 5.1, 4.9, 5.0], unit: "mmol/L", kind: "observation", sourceLabel: "Demo laboratory report" }
 ];
 
-export function createDemoDataSource(now = new Date()): CompanionDataSource & CompanionCareService {
+export function createDemoDataSource(
+  now = new Date()
+): CompanionDataSource & CompanionCareService & CompanionMutationService & CompanionObservationMutationService {
   const details = new Map(metrics.map((metric) => [metric.code, makeDetail(metric, now)]));
-  const rows = metrics.map((metric) => details.get(metric.code)!.measurement);
-  const summary = makeSummary(rows, now);
-  const bootstrap = makeBootstrap(now);
-  const analytics = makeAnalytics(details, now);
   let healthEvents = makeHealthEvents(now);
   let careItems = makeCareItems(now, healthEvents);
   let nextHealthEventId = healthEvents.length + 1;
   let nextCareItemId = careItems.length + 1;
+  let nextObservationId = 1;
 
   return {
-    async bootstrap() { return bootstrap; },
-    async analytics() { return analytics; },
-    async summary() { return summary; },
+    async bootstrap() { return makeBootstrap(details, now); },
+    async analytics() { return makeAnalytics(details, now); },
+    async summary() { return makeSummary([...details.values()].map((detail) => detail.measurement), now); },
     async healthDataDetail(measurementCode, page) {
       const detail = details.get(measurementCode);
       if (!detail) throw new Error("This metric is not available in demo mode.");
       return paginateDetail(detail, page);
+    },
+    async importManualObservations(payload) {
+      const additions = payload.observations.map((observation) => {
+        const measurementCode = observation.measurementCode;
+        const detail = measurementCode ? details.get(measurementCode) : undefined;
+        const measurement = measurementCode
+          ? defaultMeasurementTypes.find((entry) => entry.code === measurementCode)
+          : undefined;
+        if (!detail || !measurement || !measurementCode) {
+          throw new Error("This metric is not available in demo mode.");
+        }
+        return {
+          detail,
+          entry: createManualEntry({
+            id: `demo-manual-${nextObservationId++}`,
+            measurementCode,
+            displayName: measurement.display,
+            observedAt: payload.observedAt,
+            value: observation.value,
+            unit: observation.unit ?? detail.entries[0]?.unit ?? "",
+            note: observation.note,
+            sourceLabel: payload.label,
+            measurement
+          })
+        };
+      });
+      for (const { detail, entry } of additions) {
+        details.set(entry.measurementCode, withEntries(detail, [...detail.entries, entry]));
+      }
+      return demoImportResult(additions.length, nextObservationId);
+    },
+    async updateObservation(id, input) {
+      const match = findObservation(details, id);
+      if (!match) throw new Error("Observation not found.");
+      const targetDetail = details.get(input.measurementCode);
+      if (!targetDetail) throw new Error("This metric is not available in demo mode.");
+      const measurement = defaultMeasurementTypes.find((entry) => entry.code === input.measurementCode);
+      if (!measurement) throw new Error("This metric is not available in demo mode.");
+      const updatedEntry: HealthDataDetailEntry = {
+        ...match.entry,
+        measurementCode: input.measurementCode,
+        displayName: measurement.display,
+        timestamp: input.observedAt,
+        value: input.value,
+        unit: input.unit,
+        note: input.note,
+        referenceRange: getReferenceRange(measurement, input.unit),
+        status: classifyValue(input.value, measurement, input.unit),
+        canDelete: true
+      };
+      details.set(match.measurementCode, withEntries(
+        match.detail,
+        match.detail.entries.filter((entry) => entry.id !== id)
+      ));
+      details.set(input.measurementCode, withEntries(
+        targetDetail,
+        [...targetDetail.entries.filter((entry) => entry.id !== id), updatedEntry]
+      ));
+      return {
+        updatedObservation: toObservation(updatedEntry),
+        counts: makeBootstrap(details, now).counts
+      };
+    },
+    async deleteObservation(id) {
+      const match = findObservation(details, id);
+      if (!match) throw new Error("Observation not found.");
+      details.set(match.measurementCode, withEntries(
+        match.detail,
+        match.detail.entries.filter((entry) => entry.id !== id)
+      ));
+      return {
+        deletedCount: 1,
+        deletedObservation: toObservation(match.entry),
+        counts: makeBootstrap(details, now).counts
+      };
     },
     async listHealthEvents(query = {}) {
       return paginateCollection(filterHealthEvents(healthEvents, query), query);
@@ -62,19 +144,19 @@ export function createDemoDataSource(now = new Date()): CompanionDataSource & Co
     async createHealthEvent(payload: CreateHealthEventInput) {
       const healthEvent: HealthEvent = { id: `demo-event-${nextHealthEventId++}`, source: "manual-entry", ...payload };
       healthEvents = [healthEvent, ...healthEvents];
-      return { healthEvent, counts: bootstrap.counts };
+      return { healthEvent, counts: makeBootstrap(details, now).counts };
     },
     async updateHealthEvent(id: string, payload: CreateHealthEventInput) {
       const existing = healthEvents.find((entry) => entry.id === id);
       if (!existing) throw new Error("Health event not found.");
       const healthEvent: HealthEvent = { ...existing, ...payload };
       healthEvents = healthEvents.map((entry) => entry.id === id ? healthEvent : entry);
-      return { healthEvent, counts: bootstrap.counts };
+      return { healthEvent, counts: makeBootstrap(details, now).counts };
     },
     async deleteHealthEvent(id: string) {
       const deletedHealthEvent = healthEvents.find((entry) => entry.id === id);
       healthEvents = healthEvents.filter((entry) => entry.id !== id);
-      return { deletedCount: deletedHealthEvent ? 1 : 0, deletedHealthEvent, counts: bootstrap.counts };
+      return { deletedCount: deletedHealthEvent ? 1 : 0, deletedHealthEvent, counts: makeBootstrap(details, now).counts };
     },
     async listCareItems(query = {}) {
       return paginateCollection(filterCareItems(careItems, query), query);
@@ -82,7 +164,7 @@ export function createDemoDataSource(now = new Date()): CompanionDataSource & Co
     async createCareItem(payload: CreateCareItemInput) {
       const careItem: CareItem = { id: `demo-care-${nextCareItemId++}`, completedAt: payload.status === "completed" ? now.toISOString() : undefined, ...payload };
       careItems = [careItem, ...careItems];
-      return { careItem, counts: bootstrap.counts };
+      return { careItem, counts: makeBootstrap(details, now).counts };
     },
     async updateCareItem(id: string, payload: CreateCareItemInput) {
       const existing = careItems.find((entry) => entry.id === id);
@@ -95,17 +177,18 @@ export function createDemoDataSource(now = new Date()): CompanionDataSource & Co
         : undefined;
       const careItem: CareItem = { ...existing, ...payload, completedAt, completedHealthEventId };
       careItems = careItems.map((entry) => entry.id === id ? careItem : entry);
-      return { careItem, counts: bootstrap.counts };
+      return { careItem, counts: makeBootstrap(details, now).counts };
     },
     async deleteCareItem(id: string) {
       const deletedCareItem = careItems.find((entry) => entry.id === id);
       careItems = careItems.filter((entry) => entry.id !== id);
-      return { deletedCount: deletedCareItem ? 1 : 0, deletedCareItem, counts: bootstrap.counts };
+      return { deletedCount: deletedCareItem ? 1 : 0, deletedCareItem, counts: makeBootstrap(details, now).counts };
     }
   };
 }
 
-function makeBootstrap(now: Date): AppBootstrap {
+function makeBootstrap(details: Map<string, HealthDataDetail>, now: Date): AppBootstrap {
+  const counts = entryCounts(details);
   return {
     profile: {
       id: "demo-profile",
@@ -120,18 +203,19 @@ function makeBootstrap(now: Date): AppBootstrap {
     },
     measurementTypes: defaultMeasurementTypes,
     manualObservationGroupTemplates: [],
-    counts: { imports: 3, observations: 21, samples: 28, activities: 5, healthEvents: 0, careItems: 0 }
+    counts: { imports: 3, ...counts, healthEvents: 0, careItems: 0 }
   };
 }
 
 function makeAnalytics(details: Map<string, HealthDataDetail>, now: Date): AnalyticsSummary {
+  const counts = entryCounts(details);
   return {
-    counts: { imports: 3, observations: 21, samples: 28, activities: 5, insights: 0, healthEvents: 0, careItems: 0 },
-    latestMetrics: metrics.map((metric) => {
-      const detail = details.get(metric.code)!;
+    counts: { imports: 3, ...counts, insights: 0, healthEvents: 0, careItems: 0 },
+    latestMetrics: [...details.values()].flatMap((detail) => {
       const latest = detail.entries[0];
+      if (!latest) return [];
       return {
-        code: metric.code,
+        code: detail.measurement.code,
         label: detail.measurement.displayName,
         value: latest.value,
         unit: latest.unit,
@@ -192,7 +276,8 @@ function makeDetail(metric: DemoMetric, now: Date): HealthDataDetail {
       sourceLabel: metric.sourceLabel,
       sourceKind: metric.kind === "sample" ? "health-connect" : "manual-entry",
       referenceRange,
-      status: classifyValue(value, measurementType, metric.unit)
+      status: classifyValue(value, measurementType, metric.unit),
+      canDelete: metric.kind === "observation"
     };
   });
   const counts = {
@@ -221,7 +306,7 @@ function makeDetail(metric: DemoMetric, now: Date): HealthDataDetail {
     })),
     referenceRange: resolveReferenceRange(measurementType, metric.unit, undefined, "adult"),
     counts: { ...counts, total: entries.length },
-    deletion: { observationEntries: counts.observations, deletableEntries: 0 },
+    deletion: { observationEntries: counts.observations, deletableEntries: counts.observations },
     pagination: { limit: entries.length, loaded: entries.length, total: entries.length, hasMore: false }
   };
 }
@@ -339,5 +424,122 @@ function paginateCollection<T extends { id: string }>(
     offset,
     limit,
     hasMore: offset + Math.min(limit, page.length) < items.length
+  };
+}
+
+function findObservation(details: Map<string, HealthDataDetail>, id: string) {
+  for (const [measurementCode, detail] of details) {
+    const entry = detail.entries.find((candidate) => candidate.id === id && candidate.kind === "observation");
+    if (entry) return { measurementCode, detail, entry };
+  }
+  return undefined;
+}
+
+function withEntries(detail: HealthDataDetail, entries: HealthDataDetailEntry[]): HealthDataDetail {
+  const orderedEntries = [...entries].sort((left, right) => right.timestamp.localeCompare(left.timestamp));
+  const counts = countEntries(orderedEntries);
+  return {
+    ...detail,
+    measurement: {
+      ...detail.measurement,
+      counts: { ...counts, total: orderedEntries.length },
+      lastMeasuredAt: orderedEntries[0]?.timestamp
+    },
+    entries: orderedEntries,
+    chartPoints: [...orderedEntries].reverse().map((entry) => ({
+      kind: entry.kind,
+      timestamp: entry.timestamp,
+      value: entry.value,
+      unit: entry.unit,
+      referenceRange: entry.referenceRange
+    })),
+    counts: { ...counts, total: orderedEntries.length },
+    deletion: { observationEntries: counts.observations, deletableEntries: counts.observations },
+    pagination: { limit: orderedEntries.length, loaded: orderedEntries.length, total: orderedEntries.length, hasMore: false }
+  };
+}
+
+function entryCounts(details: Map<string, HealthDataDetail>) {
+  return [...details.values()].reduce((counts, detail) => {
+    const detailCounts = countEntries(detail.entries);
+    return {
+      observations: counts.observations + detailCounts.observations,
+      samples: counts.samples + detailCounts.samples,
+      activities: counts.activities + detailCounts.activities
+    };
+  }, { observations: 0, samples: 0, activities: 0 });
+}
+
+function countEntries(entries: HealthDataDetailEntry[]) {
+  return entries.reduce((counts, entry) => ({
+    observations: counts.observations + (entry.kind === "observation" ? 1 : 0),
+    samples: counts.samples + (entry.kind === "sample" ? 1 : 0),
+    activities: counts.activities + (entry.kind === "activity" ? 1 : 0)
+  }), { observations: 0, samples: 0, activities: 0 });
+}
+
+function toObservation(entry: HealthDataDetailEntry) {
+  return {
+    id: entry.id,
+    measurementCode: entry.measurementCode,
+    observedAt: entry.timestamp,
+    value: entry.value,
+    unit: entry.unit,
+    sourceId: "demo-source",
+    note: entry.note
+  };
+}
+
+function createManualEntry({
+  id,
+  measurementCode,
+  displayName,
+  observedAt,
+  value,
+  unit,
+  note,
+  sourceLabel,
+  measurement
+}: {
+  id: string;
+  measurementCode: string;
+  displayName: string;
+  observedAt: string;
+  value: number;
+  unit: string;
+  note?: string;
+  sourceLabel: string;
+  measurement: (typeof defaultMeasurementTypes)[number];
+}): HealthDataDetailEntry {
+  return {
+    kind: "observation",
+    id,
+    measurementCode,
+    displayName,
+    timestamp: observedAt,
+    value,
+    unit,
+    sourceLabel: sourceLabel || "Demo manual entry",
+    sourceKind: "manual-entry",
+    note,
+    referenceRange: getReferenceRange(measurement, unit),
+    status: classifyValue(value, measurement, unit),
+    canDelete: true
+  };
+}
+
+function demoImportResult(observationCount: number, importSequence: number): MobileImportResult {
+  const accepted = { attempted: observationCount, accepted: observationCount, duplicates: 0 };
+  const empty = { attempted: 0, accepted: 0, duplicates: 0 };
+  return {
+    importId: `demo-import-${importSequence}`,
+    outcome: {
+      sourceImports: { attempted: 1, accepted: 1, duplicates: 0 },
+      dataSources: { attempted: 1, accepted: 1, duplicates: 0 },
+      observationGroups: { attempted: 1, accepted: 1, duplicates: 0 },
+      observations: accepted,
+      timeSeriesSamples: empty,
+      activitySessions: empty
+    }
   };
 }

@@ -9,7 +9,8 @@ import type {
   HealthDataDetail,
   HealthDataSummary,
   HealthEventListQuery,
-  ManualObservationPayload
+  ManualObservationPayload,
+  UpdateObservationInput
 } from "@local-fitness-advisor/shared";
 import { clearConnection, clearSelectedProfileId, loadConnection } from "./endpointStore";
 import type { ConnectionDetails } from "./endpointStore";
@@ -32,6 +33,7 @@ import {
   type CompanionOperatingMode
 } from "./operatingModeStore";
 import type { CompanionMutationService } from "./companionDataSource";
+import type { CompanionObservationMutationService } from "./companionDataSource";
 import { createStandaloneDataSource } from "./standalone/standaloneDataSource";
 
 export type { ConnectionState } from "./connectionState";
@@ -56,6 +58,8 @@ interface MobileApiContextValue {
   refreshTrack(): Promise<void>;
   healthDataDetail(measurementCode: string, page?: DetailPage): Promise<HealthDataDetail>;
   importManualObservations(payload: ManualObservationPayload): Promise<unknown>;
+  updateObservation(id: string, input: UpdateObservationInput): Promise<void>;
+  deleteObservation(id: string): Promise<void>;
   resetStandaloneData(): Promise<void>;
   listHealthEvents(query?: HealthEventListQuery): Promise<Awaited<ReturnType<CompanionCareService["listHealthEvents"]>>>;
   createHealthEvent(payload: CreateHealthEventInput): Promise<void>;
@@ -178,13 +182,20 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
   }, [source]);
 
   const importManualObservations = useCallback(async (payload: ManualObservationPayload) => {
-    if (demoMode) throw new Error("Manual import is unavailable in Demo mode.");
     if (!source) throw new Error("Manual import is unavailable until a data source is ready.");
     const mutations = source as Partial<CompanionMutationService>;
     if (mutations.importManualObservations) return mutations.importManualObservations(payload);
     if (!connection?.token) throw new Error("Pair with a PC before importing readings.");
     return createCompanionApi(connection).importManualObservations(payload);
-  }, [connection, demoMode, source]);
+  }, [connection, source]);
+
+  const updateObservation = useCallback(async (id: string, input: UpdateObservationInput) => {
+    await requireObservationMutationService(source).updateObservation(id, input);
+  }, [source]);
+
+  const deleteObservation = useCallback(async (id: string) => {
+    await requireObservationMutationService(source).deleteObservation(id);
+  }, [source]);
 
   const resetStandaloneData = useCallback(async () => {
     if (operatingMode !== "standalone" || !standaloneSource) throw new Error("Switch to Standalone mode before resetting local storage.");
@@ -298,6 +309,8 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     refreshTrack,
     healthDataDetail,
     importManualObservations,
+    updateObservation,
+    deleteObservation,
     resetStandaloneData,
     listHealthEvents,
     createHealthEvent,
@@ -312,10 +325,10 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     disconnect
   }), [
     analytics, bootstrap, clearTransientData, connection, connectionState, createCareItem, createHealthEvent,
-    dashboardLoading, deleteCareItem, deleteHealthEvent, demoMode, disconnect, error, healthDataDetail,
+    dashboardLoading, deleteCareItem, deleteHealthEvent, deleteObservation, demoMode, disconnect, error, healthDataDetail,
   importManualObservations, listCareItems, listHealthEvents, operatingMode, refreshAfterImport, refreshDashboard,
   refreshTrack, reloadConnection, resetStandaloneData, setDemoMode, setOperatingMode, summary, trackLoading,
-  transientRevision, updateCareItem, updateHealthEvent
+  transientRevision, updateCareItem, updateHealthEvent, updateObservation
   ]);
   return <MobileApiContext.Provider value={value}>{children}</MobileApiContext.Provider>;
 }
@@ -336,4 +349,14 @@ function requireCareService(source: CompanionDataSource | undefined): CompanionC
     throw new Error("Switch to Connected mode to use Care.");
   }
   return candidate as CompanionCareService;
+}
+
+function requireObservationMutationService(
+  source: CompanionDataSource | undefined
+): CompanionObservationMutationService {
+  const candidate = source as Partial<CompanionObservationMutationService> | undefined;
+  if (!candidate?.updateObservation || !candidate.deleteObservation) {
+    throw new Error("Observation editing is unavailable until a writable data source is ready.");
+  }
+  return candidate as CompanionObservationMutationService;
 }

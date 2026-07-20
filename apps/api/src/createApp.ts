@@ -90,6 +90,8 @@ function companionCapabilityFor(request: express.Request): import("./pairing.js"
           ? "care:write"
           : /^\/care\/items\/[^/]+$/.test(request.path)
             ? "care:write"
+           : /^(PATCH|DELETE) \/observations\/[^/]+$/.test(route)
+             ? "observations:write"
         : null;
   }
 }

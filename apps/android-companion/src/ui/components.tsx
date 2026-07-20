@@ -14,12 +14,14 @@ export function Button({
   children,
   onPress,
   disabled = false,
-  secondary = false
+  secondary = false,
+  danger = false
 }: {
   children: ReactNode;
   onPress: () => void;
   disabled?: boolean;
   secondary?: boolean;
+  danger?: boolean;
 }) {
   return (
     <Pressable
@@ -30,6 +32,7 @@ export function Button({
       style={({ pressed }) => [
         styles.button,
         secondary && styles.secondary,
+        danger && styles.danger,
         pressed && styles.pressed,
         disabled && styles.disabled
       ]}
@@ -83,6 +86,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md
   },
   secondary: { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 },
+  danger: { backgroundColor: colors.danger },
   pressed: { opacity: 0.82 },
   disabled: { opacity: 0.5 },
   buttonText: { color: colors.onAccent, fontSize: 15, fontWeight: "700" },
