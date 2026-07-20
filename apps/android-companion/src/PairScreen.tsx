@@ -26,6 +26,7 @@ export function PairScreen({
   const [detectedUrl, setDetectedUrl] = useState("");
   const [pairingCode, setPairingCode] = useState("");
   const [publicKeyHash, setPublicKeyHash] = useState<string | null>(null);
+  const [pollAttempt, setPollAttempt] = useState(0);
   const [cameraPermission, requestCameraPermission, getCameraPermission] = useCameraPermissions();
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState("");
@@ -110,7 +111,8 @@ export function PairScreen({
 
       if (typeof body.pairingId === "string") {
         setStatus("waiting");
-        setMessage("Waiting for approval in the web app on your PC…");
+        setMessage("Waiting for approval in the web app on your PC. This phone will check again every 5 seconds for up to 5 minutes.");
+        setPollAttempt(0);
         if (typeof body.pollingSecret !== "string") throw new Error("Pairing response did not include a polling secret.");
         pollForApproval(detectedUrl, body.pairingId, body.pollingSecret, publicKeyHash);
       } else {
@@ -142,6 +144,7 @@ export function PairScreen({
         return;
       }
       attempts++;
+      setPollAttempt(attempts);
       try {
         const response = await pinnedFetch(`${url}/api/pairing/status/${pairingId}`, pinnedHash, {
           headers: { Accept: "application/json", "x-pairing-secret": pollingSecret }
@@ -177,6 +180,7 @@ export function PairScreen({
     setDetectedUrl("");
     setPairingCode("");
     setPublicKeyHash(null);
+    setPollAttempt(0);
     setCameraReady(false);
     setCameraError("");
     setCameraInstance((current) => current + 1);
@@ -258,9 +262,20 @@ export function PairScreen({
         {status === "waiting" ? (
           <View style={styles.waitingCard}>
             <ActivityIndicator color={colors.primary} />
-            <Text style={styles.waitingText}>
-              Approve the pairing request in the web app on your PC.
-            </Text>
+            <View style={styles.waitingText}>
+              <Text style={styles.waitingTitle}>Waiting for approval</Text>
+              <Text style={styles.waitingDetail}>Approve the request in the web app on your PC. Check {pollAttempt || 1} of 60.</Text>
+            </View>
+          </View>
+        ) : null}
+
+        {status === "requesting" ? (
+          <View accessibilityLiveRegion="polite" accessibilityRole="progressbar" style={styles.waitingCard}>
+            <ActivityIndicator color={colors.primary} />
+            <View style={styles.waitingText}>
+              <Text style={styles.waitingTitle}>Contacting your PC</Text>
+              <Text style={styles.waitingDetail}>Sending the secure pairing request.</Text>
+            </View>
           </View>
         ) : null}
 
@@ -305,5 +320,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     padding: spacing.md
   },
-  waitingText: { color: colors.info, fontSize: type.body, flex: 1, lineHeight: 21 }
+  waitingText: { flex: 1, gap: 2 },
+  waitingTitle: { color: colors.info, fontSize: type.body, fontWeight: "700" },
+  waitingDetail: { color: colors.info, fontSize: type.body, lineHeight: 21 }
 });

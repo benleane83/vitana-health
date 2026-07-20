@@ -6,7 +6,8 @@ declare class LfaPinnedHttpModule extends NativeModule<{}> {
     method: string,
     headers: Record<string, string>,
     body: string | null,
-    publicKeyHash: string
+    publicKeyHash: string,
+    timeoutMs?: number
   ): Promise<{ status: number; body: string; headers: Record<string, string> }>;
 }
 

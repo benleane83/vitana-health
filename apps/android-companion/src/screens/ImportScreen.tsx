@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
 import { useKeepAwake } from "expo-keep-awake";
-import { ArrowLeft, CalendarDays, ChevronRight, LockKeyhole, PencilLine, RefreshCw, ScanLine } from "lucide-react-native";
+import { ArrowLeft, CalendarDays, ChevronDown, ChevronRight, ChevronUp, LockKeyhole, PencilLine, RefreshCw, ScanLine } from "lucide-react-native";
 import { useNavigation } from "@react-navigation/native";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -32,6 +32,7 @@ import {
 import { useMobileApi } from "../MobileApiProvider";
 import type { RootStackParamList, TabParamList } from "../navigationTypes";
 import { syncHealthConnect } from "../syncHealthConnect";
+import { LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS } from "../pinnedFetch";
 import { Button, Card, Message, Screen } from "../ui/components";
 import { colors, radii, spacing, type } from "../ui/theme";
 
@@ -387,7 +388,10 @@ function ScanImport() {
   const [statusTone, setStatusTone] = useState<"info" | "success" | "warning" | "danger">("info");
   const [busy, setBusy] = useState(false);
   useKeepAwake(busy ? "report-scan" : undefined);
-  const client = useMemo(() => connection?.token ? createCompanionApi(connection) : undefined, [connection]);
+  const client = useMemo(
+    () => connection?.token ? createCompanionApi(connection, LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS) : undefined,
+    [connection]
+  );
   useEffect(() => {
     setDraft(undefined);
     setStatus("");
@@ -505,28 +509,51 @@ function HealthConnectImport() {
   const [status, setStatus] = useState("");
   const [statusTone, setStatusTone] = useState<"success" | "danger">("success");
   const [syncing, setSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState("");
   const [updating, setUpdating] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   useKeepAwake(syncing ? "health-connect-sync" : undefined);
   if (!connection) return <Message title="Pair with your PC before syncing." />;
   const currentConnection = connection;
 
-  async function update(patch: Partial<typeof currentConnection>) {
-    if (updating || syncing) return;
+  async function update(patch: Partial<typeof currentConnection>): Promise<boolean> {
+    if (updating || syncing) return false;
     setUpdating(true);
     try {
       await saveConnection({ ...currentConnection, ...patch });
       await reloadConnection();
+      return true;
     } catch (caught) {
       setStatusTone("danger");
       setStatus(caught instanceof Error ? caught.message : "Could not save Sync settings.");
+      return false;
     } finally {
       setUpdating(false);
+    }
+  }
+
+  function confirmResetSyncCursor() {
+    Alert.alert(
+      "Reset sync start date?",
+      `The next sync will read the full selected ${currentConnection.healthConnectSyncWindowDays}-day window. Existing imported readings stay in place and duplicates are ignored.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Reset", style: "destructive", onPress: () => { void resetSyncCursor(); } }
+      ]
+    );
+  }
+
+  async function resetSyncCursor() {
+    if (await update({ healthConnectSyncCursor: null })) {
+      setStatusTone("success");
+      setStatus(`Sync start date reset. Your next sync will include the full ${currentConnection.healthConnectSyncWindowDays}-day window.`);
     }
   }
 
   async function sync() {
     if (syncing || updating) return;
     setSyncing(true);
+    setSyncProgress("Checking Health Connect on this phone…");
     try {
       const result = await syncHealthConnect(
         currentConnection.url,
@@ -537,12 +564,14 @@ function HealthConnectImport() {
           deviceId: currentConnection.deviceId,
           syncCursor: currentConnection.healthConnectSyncCursor,
           syncWindowDays: currentConnection.healthConnectSyncWindowDays,
-          categories: currentConnection.healthConnectCategories
+          categories: currentConnection.healthConnectCategories,
+          onProgress: ({ detail }) => setSyncProgress(detail)
         }
       );
       if (result.canAdvanceCursor) await updateHealthConnectSyncCursor(currentConnection.url, result.syncCursor);
       setStatusTone("success");
       setStatus(`${result.status} ${result.details}`);
+      setSyncProgress("Refreshing your imported readings…");
       await reloadConnection();
       await refreshAfterImport();
     } catch (caught) {
@@ -550,6 +579,7 @@ function HealthConnectImport() {
       setStatus(caught instanceof Error ? caught.message : "Sync failed.");
     } finally {
       setSyncing(false);
+      setSyncProgress("");
     }
   }
 
@@ -595,8 +625,47 @@ function HealthConnectImport() {
         </Card>
       ) : <Button disabled={updating || syncing} secondary onPress={() => { void openPrivacyPolicy(); }}>Privacy policy</Button>}
       <Button disabled={syncing || updating || !currentConnection.healthConnectDisclosureAcknowledged} onPress={() => { void sync(); }}>{syncing ? "Syncing…" : updating ? "Saving settings…" : "Sync now"}</Button>
-      {status ? <Message title={statusTone === "success" ? "Sync complete" : "Could not sync"} detail={status} tone={statusTone} /> : null}
+      {syncing ? (
+        <View accessibilityLiveRegion="polite" accessibilityRole="progressbar" style={styles.syncProgress}>
+          <ActivityIndicator color={colors.primary} />
+          <View style={styles.flex}>
+            <Text style={styles.heading}>Sync in progress</Text>
+            <Text style={styles.meta}>{syncProgress}</Text>
+          </View>
+        </View>
+      ) : null}
+      {status ? <Message title={statusTone === "success" ? (status.startsWith("Sync start date reset.") ? "Sync start date reset" : "Sync complete") : "Could not sync"} detail={status} tone={statusTone} /> : null}
       {status && statusTone === "success" ? <ViewImportedDataButton /> : null}
+      <Card>
+        <Pressable
+          accessibilityHint="Shows sync start date and reset controls"
+          accessibilityRole="button"
+          accessibilityState={{ disabled: updating || syncing, expanded: advancedOpen }}
+          disabled={updating || syncing}
+          onPress={() => setAdvancedOpen((open) => !open)}
+          style={({ pressed }) => [styles.advancedToggle, pressed && styles.advancedTogglePressed]}
+        >
+          <View style={styles.flex}>
+            <Text style={styles.heading}>Advanced settings</Text>
+            <Text style={styles.meta}>Sync start date and reset</Text>
+          </View>
+          {advancedOpen ? <ChevronUp color={colors.muted} size={20} /> : <ChevronDown color={colors.muted} size={20} />}
+        </Pressable>
+        {advancedOpen ? (
+          <View style={styles.advancedContent}>
+            <View>
+              <Text style={styles.label}>Sync start date</Text>
+              <Text style={styles.body}>{formatSyncCursor(currentConnection.healthConnectSyncCursor)}</Text>
+              <Text style={styles.meta}>
+                {currentConnection.healthConnectSyncCursor
+                  ? "Future syncs include a short overlap before this date to avoid missing readings."
+                  : `The next sync will include the full selected ${currentConnection.healthConnectSyncWindowDays}-day window.`}
+              </Text>
+            </View>
+            <Button danger disabled={!currentConnection.healthConnectSyncCursor || updating || syncing} onPress={confirmResetSyncCursor}>Reset sync start date</Button>
+          </View>
+        ) : null}
+      </Card>
     </ScrollView>
   );
 }
@@ -612,6 +681,14 @@ function parseNumericInput(value: string): number {
 
 function formatObservedDate(date: Date): string {
   return date.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+}
+
+function formatSyncCursor(cursor: string | null): string {
+  if (!cursor) return "No previous Health Connect sync is stored.";
+  const date = new Date(cursor);
+  return Number.isNaN(date.getTime())
+    ? `Stored date: ${cursor}`
+    : date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
 function Chip({ label, selected, disabled = false, onPress }: { label: string; selected: boolean; disabled?: boolean; onPress: () => void }) {
@@ -662,5 +739,9 @@ const styles = StyleSheet.create({
   label: { color: colors.muted, fontSize: type.label, fontWeight: "700" },
   heading: { color: colors.text, fontSize: type.title, fontWeight: "700" },
   body: { color: colors.text, fontSize: type.body, lineHeight: 21 },
-  meta: { color: colors.muted, fontSize: type.label, lineHeight: 18 }
+  meta: { color: colors.muted, fontSize: type.label, lineHeight: 18 },
+  syncProgress: { alignItems: "center", backgroundColor: colors.infoMuted, borderRadius: radii.md, flexDirection: "row", gap: spacing.md, padding: spacing.md },
+  advancedToggle: { alignItems: "center", flexDirection: "row", minHeight: 44 },
+  advancedTogglePressed: { opacity: 0.72 },
+  advancedContent: { gap: spacing.md }
 });

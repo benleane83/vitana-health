@@ -232,7 +232,7 @@ export function TrackDetailScreen({ route }: Props) {
   if (!detail) return <Screen><Message title="Metric unavailable" detail={error} /></Screen>;
   const latest = detail.entries[0];
   const visibleEntries = detail.entries.filter((entry) => entry.id !== pendingDeletion?.id);
-  const hasReferenceRange = Boolean(detail.referenceRange.effective);
+  const hasEditableEntries = visibleEntries.some((entry) => entry.kind === "observation" && entry.canDelete);
 
   return (
     <Screen>
@@ -273,11 +273,6 @@ export function TrackDetailScreen({ route }: Props) {
           <Text style={styles.heading}>Reference range</Text>
           <Text style={styles.value}>{formatReferenceRange(detail.referenceRange.effective)}</Text>
           <Text style={styles.meta}>{referenceRangeSourceLabel(detail.referenceRange.source)}</Text>
-          <Text style={styles.referenceHelp}>
-            {hasReferenceRange
-              ? "Reading statuses use this range for context. They do not provide a diagnosis."
-              : "No range is available for this measurement, so reading statuses are not applied."}
-          </Text>
         </Card>
         <Card>
           <Text style={styles.heading}>Trend</Text>
@@ -285,7 +280,7 @@ export function TrackDetailScreen({ route }: Props) {
         </Card>
         <View style={styles.historyHeader}>
           <Text style={styles.heading}>History</Text>
-          <Text style={styles.meta}>Select a reading to manage it.</Text>
+          <Text style={styles.meta}>{hasEditableEntries ? "Select a reading to manage it." : "Synced readings are read-only."}</Text>
         </View>
         {pendingDeletion ? (
           <View accessibilityLiveRegion="polite" style={styles.undoBanner}>
@@ -300,31 +295,39 @@ export function TrackDetailScreen({ route }: Props) {
           {visibleEntries.map((entry) => {
             const selected = selectedEntryId === entry.id;
             const editingEntry = editing?.id === entry.id;
+            const canManage = entry.kind === "observation" && entry.canDelete;
+            const reading = (
+              <>
+                <View style={styles.flex}>
+                  <Text style={styles.value}>{entry.value} {entry.unit}</Text>
+                  <Text style={styles.meta}>{formatTimestamp(entry.timestamp)}</Text>
+                  <Text style={styles.meta}>{formatSource(entry)}</Text>
+                  {entry.note ? <Text style={styles.note}>{entry.note}</Text> : null}
+                </View>
+                <View style={styles.rowEnd}>
+                  <ReadingStatus entry={entry} />
+                  {canManage ? <ChevronRight color={colors.muted} size={20} /> : null}
+                </View>
+              </>
+            );
             return (
               <View key={`${entry.kind}-${entry.id}`} style={[styles.historyItem, selected && styles.historyItemSelected]}>
-                <Pressable
-                  accessibilityHint={entry.kind === "observation" && entry.canDelete ? "Selects this reading to edit or delete it." : "Selects this reading."}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  disabled={actionBusy || adding || Boolean(pendingDeletion)}
-                  onPress={() => {
-                    setSelectedEntryId(entry.id);
-                    if (!editingEntry) setActionFeedback(undefined);
-                  }}
-                  style={({ pressed }) => [styles.historyRow, pressed && styles.historyRowPressed]}
-                >
-                  <View style={styles.flex}>
-                    <Text style={styles.value}>{entry.value} {entry.unit}</Text>
-                    <Text style={styles.meta}>{formatTimestamp(entry.timestamp)}</Text>
-                    <Text style={styles.meta}>{formatSource(entry)}</Text>
-                    {entry.note ? <Text style={styles.note}>{entry.note}</Text> : null}
-                  </View>
-                  <View style={styles.rowEnd}>
-                    <ReadingStatus entry={entry} />
-                    {entry.kind === "observation" && entry.canDelete ? <ChevronRight color={colors.muted} size={20} /> : null}
-                  </View>
-                </Pressable>
-                {selected && entry.kind === "observation" && entry.canDelete && !editingEntry ? (
+                {canManage ? (
+                  <Pressable
+                    accessibilityHint="Selects this reading to edit or delete it."
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    disabled={actionBusy || adding || Boolean(pendingDeletion)}
+                    onPress={() => {
+                      setSelectedEntryId(entry.id);
+                      if (!editingEntry) setActionFeedback(undefined);
+                    }}
+                    style={({ pressed }) => [styles.historyRow, pressed && styles.historyRowPressed]}
+                  >
+                    {reading}
+                  </Pressable>
+                ) : <View style={styles.historyRow}>{reading}</View>}
+                {selected && canManage && !editingEntry ? (
                   <View style={styles.recordActions}>
                     <Button disabled={actionBusy || adding || Boolean(pendingDeletion)} secondary onPress={() => beginEdit(entry)}>Edit reading</Button>
                     <Button danger disabled={actionBusy || adding || Boolean(pendingDeletion)} onPress={() => stageDeletion(entry)}>Delete reading</Button>
@@ -693,7 +696,6 @@ const styles = StyleSheet.create({
   value: { color: colors.text, fontSize: 17, fontWeight: "700" },
   meta: { color: colors.muted, fontSize: 14, lineHeight: 19 },
   note: { color: colors.text, fontSize: 14, lineHeight: 19, marginTop: spacing.xs },
-  referenceHelp: { color: colors.muted, fontSize: 14, lineHeight: 19, marginTop: spacing.xs },
   historyHeader: { gap: spacing.xs, marginTop: spacing.sm },
   historyList: { borderColor: colors.border, borderRadius: 0, borderTopWidth: 1 },
   historyItem: { borderBottomColor: colors.border, borderBottomWidth: 1, gap: spacing.sm, paddingVertical: spacing.md },

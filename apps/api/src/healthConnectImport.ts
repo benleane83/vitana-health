@@ -55,29 +55,18 @@ export const healthConnectImportRequestSchema = z.object({
   steps: z.array(stepSchema.extend({ provenance: z.record(z.unknown()).optional() })).default([]),
   heartRate: z.array(pointSampleSchema).default([]),
   oxygenSaturation: z.array(pointSampleSchema).default([]),
-  respiratoryRate: z.array(pointSampleSchema).default([]),
   hrvRmssd: z.array(pointSampleSchema).default([]),
-  hrvSdnn: z.array(pointSampleSchema).default([]),
-  basalBodyTemperatureC: z.array(pointSampleSchema).default([]),
   basalMetabolicRateKcalDay: z.array(pointSampleSchema).default([]),
-  bloodGlucoseMgDl: z.array(pointSampleSchema).default([]),
-  bloodPressureSystolicMmHg: z.array(pointSampleSchema).default([]),
-  bloodPressureDiastolicMmHg: z.array(pointSampleSchema).default([]),
-  bodyTemperatureC: z.array(pointSampleSchema).default([]),
   heightCm: z.array(pointSampleSchema).default([]),
   skinTemperatureC: z.array(pointSampleSchema).default([]),
   vo2MaxMlKgMin: z.array(pointSampleSchema).default([]),
   weightKg: z.array(pointSampleSchema).default([]),
   exerciseSessions: z.array(exerciseSchema).default([]),
   distanceMeters: z.array(intervalSampleSchema).default([]),
-  floorsClimbed: z.array(intervalSampleSchema).default([]),
   activeCaloriesKcal: z.array(intervalSampleSchema).default([]),
   totalCaloriesKcal: z.array(intervalSampleSchema).default([]),
   sleepSessions: z.array(sleepSessionSchema).default([]),
-  bodyFatPct: z.array(pointSampleSchema).default([]),
-  leanBodyMassKg: z.array(pointSampleSchema).default([]),
-  bodyWaterMassKg: z.array(pointSampleSchema).default([]),
-  boneMassKg: z.array(pointSampleSchema).default([])
+  bodyFatPct: z.array(pointSampleSchema).default([])
 });
 
 export type HealthConnectImportRequest = z.infer<typeof healthConnectImportRequestSchema>;
@@ -112,26 +101,15 @@ export function parseHealthConnectImport(payload: HealthConnectImportRequest): P
 
   const heartRate = toObservationSamples(payload.heartRate, "heart_rate", "bpm", sourceId);
   const oxygenSaturation = toObservationSamples(payload.oxygenSaturation, "oxygen_saturation", "%", sourceId);
-  const respiratoryRate = toObservationSamples(payload.respiratoryRate, "respiratory_rate", "breaths/min", sourceId);
   const hrvRmssd = toObservationSamples(payload.hrvRmssd, "hrv_rmssd", "ms", sourceId);
-  const hrvSdnn = toObservationSamples(payload.hrvSdnn, "hrv_sdnn", "ms", sourceId);
-  const basalBodyTemperature = toObservationSamples(payload.basalBodyTemperatureC, "basal_body_temperature", "degC", sourceId);
   const basalMetabolicRate = toObservationSamples(payload.basalMetabolicRateKcalDay, "basal_metabolic_rate", "kcal/day", sourceId);
-  const bloodGlucose = toObservationSamples(payload.bloodGlucoseMgDl, "glucose", "mg/dL", sourceId);
-  const bloodPressureSystolic = toObservationSamples(payload.bloodPressureSystolicMmHg, "blood_pressure_systolic", "mmHg", sourceId);
-  const bloodPressureDiastolic = toObservationSamples(payload.bloodPressureDiastolicMmHg, "blood_pressure_diastolic", "mmHg", sourceId);
-  const bodyTemperature = toObservationSamples(payload.bodyTemperatureC, "body_temperature", "degC", sourceId);
   const height = toObservationSamples(payload.heightCm, "height", "cm", sourceId);
   const skinTemperature = toObservationSamples(payload.skinTemperatureC, "skin_temperature", "degC", sourceId);
   const vo2Max = toObservationSamples(payload.vo2MaxMlKgMin, "vo2_max", "mL/kg/min", sourceId);
   const weight = toObservationSamples(payload.weightKg, "weight", "kg", sourceId);
   const bodyFatPct = toObservationSamples(payload.bodyFatPct, "body_fat_pct", "%", sourceId);
-  const leanBodyMass = toObservationSamples(payload.leanBodyMassKg, "lean_body_mass", "kg", sourceId);
-  const bodyWaterMass = toObservationSamples(payload.bodyWaterMassKg, "total_body_water", "L", sourceId);
-  const boneMass = toObservationSamples(payload.boneMassKg, "bone_mineral_content", "kg", sourceId);
   const activitySessions = toActivitySessions(payload.exerciseSessions, sourceId);
   const distanceMeters = toTimeSeriesSamples(payload.distanceMeters, "distance", "m", sourceId);
-  const floorsClimbed = toTimeSeriesSamples(payload.floorsClimbed, "floors_climbed", "count", sourceId);
   const activeCalories = toTimeSeriesSamples(payload.activeCaloriesKcal, "active_energy_burned", "kcal", sourceId);
   const totalCalories = toTimeSeriesSamples(payload.totalCaloriesKcal, "total_calories_burned", "kcal", sourceId);
   const physicalActivityDuration = toPhysicalActivityDurationSamples(payload.exerciseSessions, sourceId);
@@ -152,28 +130,17 @@ export function parseHealthConnectImport(payload: HealthConnectImportRequest): P
   const observations: Observation[] = [
     ...heartRate,
     ...oxygenSaturation,
-    ...respiratoryRate,
     ...hrvRmssd,
-    ...hrvSdnn,
-    ...basalBodyTemperature,
     ...basalMetabolicRate,
-    ...bloodGlucose,
-    ...bloodPressureSystolic,
-    ...bloodPressureDiastolic,
-    ...bodyTemperature,
     ...height,
     ...skinTemperature,
     ...vo2Max,
     ...weight,
-    ...bodyFatPct,
-    ...leanBodyMass,
-    ...bodyWaterMass,
-    ...boneMass
+    ...bodyFatPct
   ];
   const timeSeriesSamples: TimeSeriesSample[] = [
     ...steps,
     ...distanceMeters,
-    ...floorsClimbed,
     ...activeCalories,
     ...totalCalories,
     ...physicalActivityDuration,
@@ -201,29 +168,18 @@ export function parseHealthConnectImport(payload: HealthConnectImportRequest): P
     payload.steps.length +
     payload.heartRate.length +
     payload.oxygenSaturation.length +
-    payload.respiratoryRate.length +
     payload.hrvRmssd.length +
-    payload.hrvSdnn.length +
-    payload.basalBodyTemperatureC.length +
     payload.basalMetabolicRateKcalDay.length +
-    payload.bloodGlucoseMgDl.length +
-    payload.bloodPressureSystolicMmHg.length +
-    payload.bloodPressureDiastolicMmHg.length +
-    payload.bodyTemperatureC.length +
     payload.heightCm.length +
     payload.skinTemperatureC.length +
     payload.vo2MaxMlKgMin.length +
     payload.weightKg.length +
     payload.exerciseSessions.length +
     payload.distanceMeters.length +
-    payload.floorsClimbed.length +
     payload.activeCaloriesKcal.length +
     payload.totalCaloriesKcal.length +
     payload.sleepSessions.length +
-    payload.bodyFatPct.length +
-    payload.leanBodyMassKg.length +
-    payload.bodyWaterMassKg.length +
-    payload.boneMassKg.length;
+    payload.bodyFatPct.length;
 
   return {
     sourceImport: {

@@ -6,7 +6,7 @@ Use this declaration for Google Play's Health apps / Health Connect form for `co
 
 The companion requests read-only Health Connect access. It requests no category until the user selects it and acknowledges an in-app disclosure explaining the local wellness-analytics purpose, local transfer, and privacy-policy link. The default selection is empty; the initial history window defaults to 30 days and is selectable up to 365 days.
 
-The requested record types are Steps, Heart Rate, Oxygen Saturation, Respiratory Rate, Heart Rate Variability, Basal Body Temperature, Basal Metabolic Rate, Blood Glucose, Blood Pressure, Body Temperature, Height, VO2 Max, Weight, Exercise Session, Distance, Floors Climbed, Active Calories Burned, Total Calories Burned, Sleep Session, Body Fat, Lean Body Mass, Body Water Mass, and Bone Mass.
+The requested record types are Steps, Heart Rate, Oxygen Saturation, Heart Rate Variability, Basal Metabolic Rate, Height, VO2 Max, Weight, Exercise Session, Distance, Active Calories Burned, Total Calories Burned, Sleep Session, and Body Fat.
 
 For each type, the sole purpose is the corresponding local wellness, activity, sleep, fitness, or body-composition trend described in the inventory. Exercise and sleep details supplied by Health Connect are used only to present those local trends. The app does not write Health Connect records and does not use this data for advertising, sale, eligibility decisions, or any purpose other than the disclosed local app functionality.
 

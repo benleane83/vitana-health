@@ -23,7 +23,7 @@ vi.mock("./endpointStore", () => ({
   DEFAULT_HEALTH_CONNECT_SYNC_WINDOW_DAYS: 365,
   HEALTH_CONNECT_CATEGORIES: ["Steps", "Weight"]
 }));
-vi.mock("./pinnedFetch", () => ({ pinnedFetch: mocks.pinnedFetch }));
+vi.mock("./pinnedFetch", () => ({ LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS: 60_000, pinnedFetch: mocks.pinnedFetch }));
 
 import { chunkPayload, syncHealthConnect, type HealthConnectImportPayload } from "./syncHealthConnect";
 
@@ -106,6 +106,25 @@ describe("Health Connect sync", () => {
     expect(mocks.pinnedFetch.mock.calls[0][2].headers["x-companion-token"]).toBe("companion-token");
     expect(mocks.pinnedFetch.mock.calls[1][2].body).toBe(mocks.pinnedFetch.mock.calls[0][2].body);
   });
+
+  it("reports the permission, read, upload, and finalization stages", async () => {
+    const onProgress = vi.fn();
+
+    await syncHealthConnect("https://desktop.test", "companion-token", null, "pin", {
+      deviceId: "device-1",
+      categories: ["Steps"],
+      onProgress
+    });
+
+    expect(onProgress.mock.calls.map(([progress]) => progress.stage)).toEqual([
+      "preparing",
+      "permissions",
+      "reading",
+      "uploading",
+      "finalizing"
+    ]);
+    expect(mocks.pinnedFetch.mock.calls[0][2].timeoutMs).toBe(60_000);
+  });
 });
 
 describe("payload chunking", () => {
@@ -149,10 +168,8 @@ function emptyPayload(): HealthConnectImportPayload {
     rangeStart: "2026-01-01T12:00:00.000Z",
     rangeEnd: "2026-01-11T12:00:00.000Z",
     deviceLabel: "android-companion:device-1",
-    steps: [], heartRate: [], oxygenSaturation: [], respiratoryRate: [], hrvRmssd: [], hrvSdnn: [], basalBodyTemperatureC: [],
-    basalMetabolicRateKcalDay: [], bloodGlucoseMgDl: [], bloodPressureSystolicMmHg: [], bloodPressureDiastolicMmHg: [],
-    bodyTemperatureC: [], heightCm: [], vo2MaxMlKgMin: [], weightKg: [], exerciseSessions: [], distanceMeters: [],
-    floorsClimbed: [], activeCaloriesKcal: [], totalCaloriesKcal: [], sleepSessions: [], bodyFatPct: [], leanBodyMassKg: [],
-    bodyWaterMassKg: [], boneMassKg: []
+    steps: [], heartRate: [], oxygenSaturation: [], hrvRmssd: [], basalMetabolicRateKcalDay: [],
+    heightCm: [], vo2MaxMlKgMin: [], weightKg: [], exerciseSessions: [], distanceMeters: [],
+    activeCaloriesKcal: [], totalCaloriesKcal: [], sleepSessions: [], bodyFatPct: []
   };
 }

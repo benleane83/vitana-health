@@ -181,7 +181,7 @@ function ConnectionScreen({ navigation }: NativeStackScreenProps<RootStackParamL
       {connection && !demoMode ? (
         <Button secondary onPress={() => {
           void disconnect().then(() => navigation.goBack()).catch(() => undefined);
-        }}>Revoke and unpair</Button>
+        }}>Unpair</Button>
       ) : null}
       {standaloneMode && !demoMode ? (
         <Button secondary onPress={() => Alert.alert(

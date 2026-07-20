@@ -4,7 +4,7 @@ const nativeModule = vi.hoisted(() => ({ request: vi.fn() }));
 
 vi.mock("../modules/lfa-pinned-http/src/LfaPinnedHttpModule", () => ({ default: nativeModule }));
 
-import { pinnedFetch } from "./pinnedFetch";
+import { LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS, pinnedFetch } from "./pinnedFetch";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -26,7 +26,8 @@ describe("pinnedFetch", () => {
       "POST",
       { authorization: "Bearer companion-token" },
       "{}",
-      "server-pin"
+      "server-pin",
+      15_000
     );
     await expect(response.json()).resolves.toEqual({ ok: true });
   });
@@ -44,5 +45,28 @@ describe("pinnedFetch", () => {
 
     expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:4317/api/health", {});
     expect(nativeModule.request).not.toHaveBeenCalled();
+  });
+
+  it("stops waiting for a stalled request at the configured timeout", async () => {
+    vi.useFakeTimers();
+    nativeModule.request.mockImplementation(() => new Promise(() => undefined));
+
+    try {
+      const pending = pinnedFetch("https://desktop.test/api/health", "server-pin", { timeoutMs: 1_000 });
+      const rejection = expect(pending).rejects.toThrow("Connection timed out after 1 second");
+      await vi.advanceTimersByTimeAsync(1_000);
+      await rejection;
+      expect(nativeModule.request).toHaveBeenCalledWith(
+        "https://desktop.test/api/health",
+        "GET",
+        {},
+        null,
+        "server-pin",
+        1_000
+      );
+      expect(LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS).toBe(60_000);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

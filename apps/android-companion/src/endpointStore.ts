@@ -10,26 +10,17 @@ export const HEALTH_CONNECT_CATEGORIES = [
   "Steps",
   "HeartRate",
   "OxygenSaturation",
-  "RespiratoryRate",
   "HeartRateVariabilityRmssd",
-  "BasalBodyTemperature",
   "BasalMetabolicRate",
-  "BloodGlucose",
-  "BloodPressure",
-  "BodyTemperature",
   "Height",
   "Vo2Max",
   "Weight",
   "ExerciseSession",
   "Distance",
-  "FloorsClimbed",
   "ActiveCaloriesBurned",
   "TotalCaloriesBurned",
   "SleepSession",
-  "BodyFat",
-  "LeanBodyMass",
-  "BodyWaterMass",
-  "BoneMass"
+  "BodyFat"
 ] as const;
 
 export type HealthConnectCategory = (typeof HEALTH_CONNECT_CATEGORIES)[number];

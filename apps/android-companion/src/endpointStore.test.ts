@@ -84,10 +84,10 @@ describe("connection storage", () => {
       .resolves.toMatchObject({ healthConnectSyncWindowDays: 30 });
   });
 
-  it("drops unsupported categories from stored Health Connect selections", async () => {
+  it("drops removed and unsupported categories from stored Health Connect selections", async () => {
     storage.async.set(connectionKey, JSON.stringify({
       url: "https://desktop.test",
-      healthConnectCategories: ["Steps", "SkinTemperature"]
+      healthConnectCategories: ["Steps", "BloodGlucose", "LeanBodyMass", "FloorsClimbed", "SkinTemperature"]
     }));
     storage.secure.set(deviceIdKey, "device-1");
 
@@ -116,6 +116,29 @@ describe("connection storage", () => {
 
     await updateHealthConnectSyncCursor("https://desktop.test", "2026-01-10T12:00:00.000Z");
     expect(JSON.parse(storage.async.get(connectionKey)!).healthConnectSyncCursor).toBe("2026-01-10T12:00:00.000Z");
+  });
+
+  it("allows the local Health Connect cursor to be cleared without changing sync preferences", async () => {
+    storage.secure.set(deviceIdKey, "device-1");
+    await saveConnection({
+      url: "https://desktop.test",
+      token: "companion-token",
+      publicKeyHash: "pin",
+      healthConnectSyncCursor: "2026-01-10T12:00:00.000Z",
+      healthConnectSyncWindowDays: 90,
+      healthConnectCategories: ["Steps", "HeartRate"],
+      healthConnectDisclosureAcknowledged: true
+    });
+
+    await saveConnection({ url: "https://desktop.test", healthConnectSyncCursor: null });
+
+    await expect(loadConnection()).resolves.toMatchObject({
+      token: "companion-token",
+      healthConnectSyncCursor: null,
+      healthConnectSyncWindowDays: 90,
+      healthConnectCategories: ["Steps", "HeartRate"],
+      healthConnectDisclosureAcknowledged: true
+    });
   });
 
   it("clears both the ordinary connection record and its secure companion token", async () => {

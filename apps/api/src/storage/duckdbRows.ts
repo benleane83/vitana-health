@@ -85,7 +85,7 @@ export async function insertObservationRows(
   observations: Observation[],
   firstOrdinal: number
 ): Promise<void> {
-  const chunkSize = 50;
+  const chunkSize = 500;
   for (let index = 0; index < observations.length; index += chunkSize) {
     const chunk = observations.slice(index, index + chunkSize).map((entry, chunkIndex) => ({
       ordinal: firstOrdinal + index + chunkIndex,

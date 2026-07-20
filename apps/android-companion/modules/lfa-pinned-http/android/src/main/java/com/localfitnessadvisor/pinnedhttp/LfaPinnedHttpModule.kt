@@ -25,7 +25,9 @@ class LfaPinnedHttpModule : Module() {
       method: String,
       headers: Map<String, String>,
       body: String?,
-      publicKeyHash: String ->
+      publicKeyHash: String,
+      timeoutMs: Int? ->
+      val requestTimeoutMs = (timeoutMs ?: 15_000).coerceIn(1_000, 120_000)
       val trustManager = object : X509TrustManager {
         override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
         override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) = Unit
@@ -40,10 +42,10 @@ class LfaPinnedHttpModule : Module() {
       sslContext.init(null, arrayOf(trustManager), SecureRandom())
       val client = OkHttpClient.Builder()
         .sslSocketFactory(sslContext.socketFactory, trustManager)
-        .connectTimeout(20, TimeUnit.SECONDS)
-        .writeTimeout(90, TimeUnit.SECONDS)
-        .readTimeout(180, TimeUnit.SECONDS)
-        .callTimeout(210, TimeUnit.SECONDS)
+        .connectTimeout(minOf(requestTimeoutMs, 8_000).toLong(), TimeUnit.MILLISECONDS)
+        .writeTimeout(requestTimeoutMs.toLong(), TimeUnit.MILLISECONDS)
+        .readTimeout(requestTimeoutMs.toLong(), TimeUnit.MILLISECONDS)
+        .callTimeout(requestTimeoutMs.toLong(), TimeUnit.MILLISECONDS)
         // The QR-pinned key is the server identity and remains valid when its private LAN address changes.
         .hostnameVerifier { _, _ -> true }
         .build()
