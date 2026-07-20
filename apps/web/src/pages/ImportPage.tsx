@@ -197,6 +197,10 @@ export function ManualEntryForm({
 
   return (
     <form className="labs-manual-form" onSubmit={onSubmit}>
+      <div className="manual-entry-intro">
+        <h2>Log a reading</h2>
+        <p>Start with one reading. Add rows for measurements recorded together.</p>
+      </div>
       <div className="labs-manual-meta">
         <div className="labs-manual-field">
           <label htmlFor="manual-collected-at">Observation date</label>

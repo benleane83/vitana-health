@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { getPreferredUnit, type MeasurementType, type UnitSystem } from "@local-fitness-advisor/shared";
 import type { UploadEditableRow } from "../types.js";
 import { groupMeasurementTypes, measurementCategoryLabels } from "../utils.js";
@@ -17,6 +17,7 @@ export function ImportDraftReview({
   truncated,
   busy,
   staleMappingWarning,
+  headerAction,
   rows,
   measurementTypes,
   units,
@@ -31,6 +32,7 @@ export function ImportDraftReview({
   busy: boolean;
   /** Shown instead of allowing save when the mapping has changed since this draft was generated. */
   staleMappingWarning?: string;
+  headerAction?: ReactNode;
   rows: UploadEditableRow[];
   measurementTypes: MeasurementType[];
   units: UnitSystem;
@@ -65,7 +67,11 @@ export function ImportDraftReview({
             {rows.length} parsed row(s) of {rowCount} detected, {includedCount} selected for save.
             {truncated ? " Only the first 200 rows are shown." : ""}
           </p>
+          <p className="bodycomp-review-hint">
+            Edit or unselect readings that do not match your report.
+          </p>
         </div>
+        {headerAction}
       </div>
 
       {staleMappingWarning ? (

@@ -1661,6 +1661,24 @@ h3 {
   gap: var(--space-3);
 }
 
+.manual-entry-intro,
+.upload-entry-intro {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.manual-entry-intro h2,
+.manual-entry-intro p,
+.upload-entry-intro h2,
+.upload-entry-intro p {
+  margin: 0;
+}
+
+.manual-entry-intro p,
+.upload-entry-intro p {
+  color: var(--muted);
+}
+
 .labs-upload-actions {
   display: grid;
   gap: var(--space-2);
@@ -1720,7 +1738,7 @@ h3 {
 .bodycomp-review-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: var(--space-3);
 }
 
@@ -1740,7 +1758,16 @@ h3 {
   margin-bottom: var(--space-2);
 }
 
-.bodycomp-review-header label {
+.bodycomp-review-hint {
+  color: var(--muted);
+  margin: var(--space-2) 0 0;
+  max-width: 65ch;
+}
+
+.bodycomp-review-date {
+  display: grid;
+  flex: 0 0 min(220px, 100%);
+  gap: var(--space-1);
   min-width: min(220px, 100%);
 }
 
@@ -3554,6 +3581,12 @@ button.stat {
   .query-form {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .bodycomp-review-date {
+    flex-basis: auto;
+    min-width: 0;
+    width: min(220px, 100%);
   }
 
   .bodycomp-row {

@@ -28,7 +28,7 @@ export function UploadImportFeature(props: {
   onImported: () => Promise<void>;
   onNotice: (message: string) => void;
 }) {
-  const [uploadKind, setUploadKind] = useState<UploadKind>("structured");
+  const [uploadKind, setUploadKind] = useState<UploadKind>("body-composition");
 
   return (
     <>
@@ -176,6 +176,7 @@ function StructuredUploadFeature({
   return (
     <section className="panel labs-panel bodycomp-import">
       <form className="labs-upload-form" onSubmit={preview}>
+        <UploadEntryIntro fileDescription="a CSV or TSV file" />
         <label htmlFor="upload-file">Select observation file</label>
         <input
           id="upload-file"
@@ -345,6 +346,7 @@ function ReportUploadFeature({
   return (
     <section className="panel labs-panel bodycomp-import">
       <form className="labs-upload-form" onSubmit={preview}>
+        <UploadEntryIntro fileDescription="a report" />
         <label htmlFor="report-upload-file">Select {reportLabel} report</label>
         <input
           id="report-upload-file"
@@ -360,33 +362,42 @@ function ReportUploadFeature({
       </form>
 
       {draft ? (
-        <>
-          <div className="bodycomp-review-header">
-            <label htmlFor="report-upload-date">Report date</label>
-            <input
-              id="report-upload-date"
-              type="date"
-              value={reportDate}
-              onChange={(event) => setReportDate(event.target.value)}
-            />
-          </div>
-          <ImportDraftReview
-            fileName={draft.fileName}
-            diagnostics={draft.diagnostics}
-            rowCount={draft.rows.length}
-            truncated={false}
-            busy={busy}
-            rows={rows}
-            measurementTypes={measurementTypes}
-            units={units}
-            onRowChange={(id, patch) => setRows((current) =>
-              current.map((row) => row.id === id ? { ...row, ...patch } : row))}
-            onAddRow={() => setRows((current) => [...current, createEditableRow()])}
-            onCommit={commit}
-          />
-        </>
+        <ImportDraftReview
+          fileName={draft.fileName}
+          diagnostics={draft.diagnostics}
+          rowCount={draft.rows.length}
+          truncated={false}
+          busy={busy}
+          headerAction={(
+            <label className="bodycomp-review-date" htmlFor="report-upload-date">
+              Report date
+              <input
+                id="report-upload-date"
+                type="date"
+                value={reportDate}
+                onChange={(event) => setReportDate(event.target.value)}
+              />
+            </label>
+          )}
+          rows={rows}
+          measurementTypes={measurementTypes}
+          units={units}
+          onRowChange={(id, patch) => setRows((current) =>
+            current.map((row) => row.id === id ? { ...row, ...patch } : row))}
+          onAddRow={() => setRows((current) => [...current, createEditableRow()])}
+          onCommit={commit}
+        />
       ) : null}
     </section>
+  );
+}
+
+function UploadEntryIntro({ fileDescription }: { fileDescription: string }) {
+  return (
+    <div className="upload-entry-intro">
+      <h2>Check before you save</h2>
+      <p>Choose {fileDescription}, review the readings we find, then save only what you want to keep. Your file is parsed locally.</p>
+    </div>
   );
 }
 

@@ -1,6 +1,6 @@
 ---
 name: "Local Fitness Advisor"
-description: "A calm, private health evidence workspace with one identity across desktop and mobile."
+description: "A calm, private health workspace with one identity across desktop and mobile."
 colors:
   canvas: "oklch(97% 0.008 255)"
   canvas-alt: "oklch(95% 0.012 262)"
@@ -136,9 +136,11 @@ components:
 
 **Creative North Star: "The Private Health Workspace"**
 
-Local Fitness Advisor is a calm place to inspect personal health data, understand what changed, and prepare better questions. The visual system makes privacy, provenance, freshness, units, and safety boundaries easy to see without adopting hospital-portal severity or wellness-game optimism.
+Local Fitness Advisor is a calm place to inspect personal health data, understand patterns, and support informed everyday wellness choices. The visual system makes privacy, provenance, freshness, units, and safety boundaries easy to see without adopting hospital-portal severity or wellness-game optimism.
 
 Design serves repeated review. Stable structure and familiar controls matter more than novelty; restrained indigo carries action and selection, while lavender, seafoam, blush, and semantic tones clarify state. The interface is composed and confident, with enough warmth to feel personal but no decoration that competes with health data.
+
+**Current Product Direction: Wellness First.** The current experience prioritizes personal reflection, habit awareness, and understandable health-data exploration. The existing dashboard hero, wellness warmth, and brand identity remain intentional and should not be reworked toward a clinician-preparation or clinical-evidence aesthetic. Clinician briefs, appointment-prep flows, print/export handoffs, and added clinical language are deferred until an explicit product decision revisits them. Privacy, provenance, and careful non-diagnostic language remain core trust requirements.
 
 One identity spans the desktop web app and mobile companion, but composition remains platform-native. Shared tokens, type roles, state names, icon meanings, and trust language are generated from one platform-neutral source. Web consumes CSS custom properties; React Native consumes typed sRGB values and numeric dimensions. DOM components, CSS layout, React Navigation, camera controls, safe areas, TalkBack behavior, and other platform affordances are never shared as visual components.
 
@@ -290,6 +292,8 @@ Components share semantic roles, spacing rhythm, content contracts, and state be
 - **Don't** share React DOM or React Native visual components across platforms; share tokens, content contracts, domain presentation models, and deterministic behavior.
 - **Don't** use medical-diagnosis vibes, hospital portal aesthetics, generic SaaS dashboard polish, alarmist health scoring, or playful gamified wellness patterns.
 - **Don't** imply diagnosis, treatment, medication changes, clinical certainty, or urgency handling.
+- **Don't** introduce clinician-preparation flows, clinician briefs, appointment-oriented exports, or additional clinical framing without an explicit product-direction change.
+- **Don't** replace the current dashboard hero or wellness-forward brand identity solely to make the product resemble a clinical evidence workspace.
 - **Don't** use gradient text, side-stripe card accents, decorative grid overlays, glassmorphism, or wide card shadows.
 - **Don't** use pastel accents for body text or color alone to communicate status.
 - **Don't** over-round cards beyond 16px or nest cards inside cards.
