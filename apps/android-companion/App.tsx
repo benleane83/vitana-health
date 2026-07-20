@@ -131,7 +131,7 @@ function ConnectionScreen({ navigation }: NativeStackScreenProps<RootStackParamL
         <Text style={styles.label}>Status</Text>
         <Text style={styles.heading}>{demoMode ? "Sample data" : standaloneMode ? "Standalone" : connectionState.replaceAll("-", " ")}</Text>
         <Text style={styles.meta}>{demoMode ? "Read-only demo" : standaloneMode ? "Encrypted storage on this phone" : connection?.url ?? "No paired PC"}</Text>
-        {bootstrap ? <Text style={styles.meta}>Assigned to {bootstrap.profile.displayName}</Text> : null}
+        {bootstrap ? <Text style={styles.meta}>Saving to {bootstrap.profile.displayName}</Text> : null}
         {error ? <Message title="Connection issue" detail={error} tone="danger" /> : null}
       </Card>
       <View style={styles.modeSetting}>
