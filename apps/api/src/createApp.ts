@@ -29,6 +29,7 @@ import { makeSettingsRoutes } from "./routes/settingsRoutes.js";
 import { makeBackupRoutes, isInMaintenanceMode } from "./routes/backupRoutes.js";
 import { z } from "zod";
 import type { AuthorizationPrincipal, OwnerPrincipal } from "./requestPrincipal.js";
+import type { DesktopRuntimeSettingsResponse, DesktopRuntimeSettingsUpdate } from "@local-fitness-advisor/shared";
 
 export type { AuthorizationPrincipal, OwnerPrincipal } from "./requestPrincipal.js";
 
@@ -37,6 +38,10 @@ export interface AppOptions {
   webRoot?: string;
   assertSafeCloudModelEndpoint?: (endpoint: string) => Promise<unknown>;
   openRouterCallbackOrigin?: string;
+  desktopRuntimeController?: {
+    getSettings: () => Promise<DesktopRuntimeSettingsResponse> | DesktopRuntimeSettingsResponse;
+    updateSettings: (settings: DesktopRuntimeSettingsUpdate) => Promise<DesktopRuntimeSettingsResponse> | DesktopRuntimeSettingsResponse;
+  };
 }
 
 function decodeCookieToken(value: string | undefined): string {
@@ -331,7 +336,8 @@ export function createApp(
   app.use("/api/llm", makeLlmRoutes());
   app.use("/api/settings", makeSettingsRoutes({
     assertSafeCloudEndpoint: options.assertSafeCloudModelEndpoint,
-    openRouterCallbackOrigin: options.openRouterCallbackOrigin
+    openRouterCallbackOrigin: options.openRouterCallbackOrigin,
+    desktopRuntimeController: options.desktopRuntimeController
   }));
   app.use("/api/backups", makeBackupRoutes(storeManager, pairingStore));
   app.use("/api", makeDataRoutes(storeManager));

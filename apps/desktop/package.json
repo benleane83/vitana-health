@@ -14,7 +14,7 @@
   "scripts": {
     "prepackage": "node ../../scripts/prepare-duckdb-httpfs.mjs --output build/duckdb-extensions --skip-runtime-verification",
     "start": "electron .",
-    "test": "node --test secure-store-key.test.cjs startup-diagnostics.test.cjs package-config.test.cjs",
+    "test": "node --test *.test.cjs",
     "package": "electron-builder",
     "package:signed": "electron-builder --config.forceCodeSigning=true"
   },
@@ -30,8 +30,11 @@
     ],
     "files": [
       "main.cjs",
+      "background-service.cjs",
+      "background-service-settings.cjs",
       "secure-store-key.cjs",
       "startup-diagnostics.cjs",
+      "build/*.ico",
       "package.json",
       "!**/node_modules/duckdb/src{,/**}",
       "!**/node_modules/duckdb/test{,/**}",
@@ -51,6 +54,7 @@
       }
     ],
     "win": {
+      "icon": "build/icon.ico",
       "signtoolOptions": {
         "publisherName": "Local Fitness Advisor"
       },

@@ -1,6 +1,11 @@
 import { randomBytes } from "node:crypto";
 import express from "express";
-import { aiSettingsRequestSchema } from "@local-fitness-advisor/shared";
+import {
+  aiSettingsRequestSchema,
+  desktopRuntimeSettingsUpdateSchema,
+  type DesktopRuntimeSettingsResponse,
+  type DesktopRuntimeSettingsUpdate
+} from "@local-fitness-advisor/shared";
 import { getAiSettings, saveAiSettings, toPublicAiSettings, type AiSettings } from "../aiSettings.js";
 import { callConfiguredModel } from "../modelClient.js";
 import { assertSafeCloudModelEndpoint, ModelEndpointPolicyError, validateModelEndpoint } from "../modelEndpointPolicy.js";
@@ -12,10 +17,40 @@ const openRouterStateExpiryMs = 10 * 60_000;
 export function makeSettingsRoutes(options: {
   assertSafeCloudEndpoint?: (endpoint: string) => Promise<unknown>;
   openRouterCallbackOrigin?: string;
+  desktopRuntimeController?: {
+    getSettings: () => Promise<DesktopRuntimeSettingsResponse> | DesktopRuntimeSettingsResponse;
+    updateSettings: (settings: DesktopRuntimeSettingsUpdate) => Promise<DesktopRuntimeSettingsResponse> | DesktopRuntimeSettingsResponse;
+  };
 } = {}): express.Router {
   const router = express.Router();
   const assertSafeCloudEndpoint = options.assertSafeCloudEndpoint ?? assertSafeCloudModelEndpoint;
   const openRouterCallbackOrigin = options.openRouterCallbackOrigin ?? `http://127.0.0.1:${process.env.PORT ?? "4317"}`;
+
+  router.get("/desktop", async (_request, response, next) => {
+    try {
+      response.json(options.desktopRuntimeController
+        ? await options.desktopRuntimeController.getSettings()
+        : { supported: false, backgroundServiceEnabled: false });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.put("/desktop", async (request, response, next) => {
+    try {
+      const settings = desktopRuntimeSettingsUpdateSchema.parse(request.body ?? {});
+      if (!options.desktopRuntimeController) {
+        response.status(501).json({
+          error: "Desktop runtime settings are not supported by this host.",
+          code: "DESKTOP_RUNTIME_UNSUPPORTED"
+        });
+        return;
+      }
+      response.json(await options.desktopRuntimeController.updateSettings(settings));
+    } catch (error) {
+      next(error);
+    }
+  });
 
   router.get("/ai", (_request, response) => {
     response.json(toPublicAiSettings(getAiSettings()));
