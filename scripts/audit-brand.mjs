@@ -23,6 +23,7 @@ const compatibilityAllowlist = new Map([
   ["apps/desktop/user-data-migration.cjs", new Set([retiredProductName])],
   ["apps/desktop/user-data-migration.test.cjs", new Set([retiredProductName])],
   ["apps/desktop/background-service.cjs", new Set([retiredProductName])],
+  ["apps/desktop/background-service.test.cjs", new Set([retiredProductName])],
   ["apps/desktop/build/installer.nsh", new Set([retiredProductName])],
   ["scripts/windows-desktop-smoke.ps1", new Set([retiredProductName])]
 ]);
