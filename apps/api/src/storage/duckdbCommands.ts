@@ -282,6 +282,35 @@ export async function deleteObservationsByMeasurementCode(
   };
 }
 
+export async function deleteDailyAggregateStepSamples(
+  connection: duckdb.Connection
+): Promise<DeleteObservationsByTypeResponse> {
+  const countRows = await all(connection, `
+    SELECT COUNT(*) AS count
+    FROM time_series_samples
+    WHERE measurement_code = 'steps'
+      AND DATE_DIFF('second', start_at, end_at) >= 23 * 60 * 60;
+  `);
+  const deletedCount = Number(countRows[0]?.count ?? 0);
+  if (deletedCount > 0) {
+    await run(connection, `
+      DELETE FROM time_series_samples
+      WHERE measurement_code = 'steps'
+        AND DATE_DIFF('second', start_at, end_at) >= 23 * 60 * 60;
+    `);
+    await insertAudit(
+      connection,
+      "daily-step-aggregates-deleted",
+      `${deletedCount} daily aggregate Steps sample(s) deleted.`
+    );
+  }
+  return {
+    deletedCount,
+    measurementCode: "steps",
+    counts: await storageCounts(connection)
+  };
+}
+
 export async function createHealthEvent(
   connection: duckdb.Connection,
   input: CreateHealthEventInput

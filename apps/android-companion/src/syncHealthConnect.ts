@@ -5,6 +5,7 @@ import {
   readRecords,
   requestPermission,
   type Permission,
+  type ReadHealthDataHistoryPermission,
   type ReadRecordsOptions,
   type RecordType
 } from "react-native-health-connect";
@@ -19,6 +20,7 @@ import { LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS, pinnedFetch } from "./pinnedFet
 const OVERLAP_MS = 5 * 60 * 1000;
 const MAX_UPLOAD_BYTES = 2_000_000;
 const MAX_UPLOAD_ATTEMPTS = 3;
+const DAILY_AGGREGATE_MIN_DURATION_MS = 23 * 60 * 60 * 1000;
 
 interface HealthConnectProvenance {
   recordId?: string;
@@ -110,7 +112,7 @@ export const HEALTH_CONNECT_DESCRIPTORS = [
       endTime: record.endTime,
       count: record.count,
       provenance: extractProvenance(record)
-    })).filter((record) => Number.isFinite(record.count))
+    })).filter((record) => Number.isFinite(record.count) && !isDailyAggregateInterval(record.startTime, record.endTime))
   })),
   defineHealthConnectDescriptor("HeartRate", "HeartRate", ["heartRate"], (records) => ({
     heartRate: records.flatMap((record) =>
@@ -249,7 +251,12 @@ export async function syncHealthConnect(
   if (selectedCategories.length === 0) throw new Error("Select at least one data category to sync.");
   const selectedDescriptors = HEALTH_CONNECT_DESCRIPTORS.filter((descriptor) => selectedCategories.includes(descriptor.category));
   const availableDescriptors = selectedDescriptors.filter((descriptor) => descriptor.available);
-  const requestedPermissions = availableDescriptors.map((descriptor) => descriptor.permission);
+  const windowDays = normalizeSyncWindowDays(options.syncWindowDays);
+  const historyPermission: ReadHealthDataHistoryPermission = { accessType: "read", recordType: "ReadHealthDataHistory" };
+  const requestedPermissions: Array<Permission | ReadHealthDataHistoryPermission> = [
+    ...availableDescriptors.map((descriptor) => descriptor.permission),
+    ...(windowDays > 30 ? [historyPermission] : [])
+  ];
   if (requestedPermissions.length === 0) {
     throw new Error("Selected categories are not supported by the installed health data service.");
   }
@@ -265,7 +272,6 @@ export async function syncHealthConnect(
   const omittedCategories = selectedCategories.filter((category) => !grantedCategories.includes(category));
 
   const rangeEnd = new Date();
-  const windowDays = normalizeSyncWindowDays(options.syncWindowDays);
   const initialStart = new Date(rangeEnd.getTime() - windowDays * 24 * 60 * 60 * 1000);
   const cursor = parseCursor(options.syncCursor);
   const rangeStart = cursor && cursor > initialStart ? new Date(cursor.getTime() - OVERLAP_MS) : initialStart;
@@ -294,15 +300,16 @@ export async function syncHealthConnect(
 
   options.onProgress?.({ stage: "finalizing", detail: "Finalizing sync…" });
   const importedRows = countRows(payload);
-  const lastResponse = uploadResults.at(-1);
+  const oldestReturnedAt = oldestPayloadTimestamp(payload);
   return {
     status: "Sync complete.",
     syncCursor: rangeEnd.toISOString(),
     canAdvanceCursor: omittedCategories.length === 0,
     details: [
       `Synced ${importedRows} records from ${rangeStart.toLocaleDateString()} to ${rangeEnd.toLocaleDateString()} in ${uploadResults.length} upload${uploadResults.length === 1 ? "" : "s"}.`,
-      omittedCategories.length ? `Not synced (permission not granted): ${omittedCategories.join(", ")}.` : "",
-      `Store counts: observations ${lastResponse?.counts?.observations ?? "n/a"}, samples ${lastResponse?.counts?.timeSeriesSamples ?? "n/a"}, activities ${lastResponse?.counts?.activitySessions ?? "n/a"}.`
+      oldestReturnedAt ? `Oldest record returned by Health Connect: ${oldestReturnedAt.slice(0, 10)}.` : "Health Connect returned no records in this window.",
+      windowDays > 30 ? "Extended Health Connect history access was requested for this sync." : "",
+      omittedCategories.length ? `Not synced (permission not granted): ${omittedCategories.join(", ")}.` : ""
     ].filter(Boolean).join("\n")
   };
 }
@@ -514,6 +521,23 @@ function objectValue(value: unknown): Record<string, unknown> | undefined {
 
 function countRows(payload: HealthConnectImportPayload): number {
   return PAYLOAD_COLLECTION_KEYS.reduce((total, key) => total + payload[key].length, 0);
+}
+
+function isDailyAggregateInterval(startAt: string, endAt: string): boolean {
+  return new Date(endAt).getTime() - new Date(startAt).getTime() >= DAILY_AGGREGATE_MIN_DURATION_MS;
+}
+
+function oldestPayloadTimestamp(payload: HealthConnectImportPayload): string | undefined {
+  let oldest: string | undefined;
+  for (const key of PAYLOAD_COLLECTION_KEYS) {
+    for (const row of payload[key] as Array<Record<string, unknown>>) {
+      for (const field of ["time", "startTime", "endTime"] as const) {
+        const value = row[field];
+        if (typeof value === "string" && (!oldest || value < oldest)) oldest = value;
+      }
+    }
+  }
+  return oldest;
 }
 
 function parseCursor(value: string | null | undefined): Date | undefined {

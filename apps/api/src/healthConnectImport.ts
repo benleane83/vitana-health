@@ -3,6 +3,7 @@ import { checksum, type ActivitySession, type Observation, type ParsedImport, ty
 import { z } from "zod";
 
 const isoDateString = z.string().datetime({ offset: true });
+const DAILY_AGGREGATE_MIN_DURATION_MS = 23 * 60 * 60 * 1000;
 
 const stepSchema = z.object({
   startTime: isoDateString,
@@ -80,14 +81,22 @@ export function parseHealthConnectImport(payload: HealthConnectImportRequest): P
   const sourceId = stableId("source", ["health-connect", normalizedDeviceLabel]);
   const diagnostics: string[] = [];
 
-  const steps = payload.steps
+  const normalizedSteps = payload.steps
     .map((item) => ({
       startAt: normalizeIso(item.startTime),
       endAt: normalizeIso(item.endTime),
       value: item.count,
       provenance: item.provenance
     }))
-    .filter((item) => item.startAt && item.endAt && item.value >= 0)
+    .filter((item) => item.startAt && item.endAt && item.value >= 0);
+  const dailyAggregateStepCount = normalizedSteps.filter((item) =>
+    isDailyAggregateInterval(item.startAt!, item.endAt!)
+  ).length;
+  if (dailyAggregateStepCount > 0) {
+    diagnostics.push(`Skipped ${dailyAggregateStepCount} daily aggregate Steps record(s).`);
+  }
+  const steps = normalizedSteps
+    .filter((item) => !isDailyAggregateInterval(item.startAt!, item.endAt!))
     .map((item) => ({
       id: stableId("sample", ["steps", item.startAt ?? "", item.endAt ?? "", String(item.value), sourceId, JSON.stringify(item.provenance ?? {})]),
       measurementCode: "steps",
@@ -214,6 +223,10 @@ function normalizeIso(value: string): string | undefined {
     return undefined;
   }
   return date.toISOString();
+}
+
+function isDailyAggregateInterval(startAt: string, endAt: string): boolean {
+  return new Date(endAt).getTime() - new Date(startAt).getTime() >= DAILY_AGGREGATE_MIN_DURATION_MS;
 }
 
 function toObservationSamples(

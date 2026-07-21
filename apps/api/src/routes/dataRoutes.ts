@@ -328,6 +328,17 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
     }
   });
 
+  router.delete("/samples/steps/daily-aggregates", async (_request, response, next) => {
+    try {
+      const store = activeStore();
+      const deleted = await store.deleteDailyAggregateStepSamples();
+      const analyticsStorage = describeAnalyticsStorage(storeManager, deleted.counts);
+      response.json(buildDeleteObservationsByTypeResponse(deleted, analyticsStorage));
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.get("/analytics/storage", async (_request, response, next) => {
     try {
       const result = describeAnalyticsStorage(storeManager, await activeStore().storageCounts());

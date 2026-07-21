@@ -103,6 +103,7 @@ export interface ProfileRepository {
   updateObservation(id: string, input: UpdateObservationInput): Promise<UpdateObservationResponse | undefined>;
   deleteObservation(id: string): Promise<DeleteObservationResponse | undefined>;
   deleteObservationsByMeasurementCode(measurementCode: string): Promise<DeleteObservationsByTypeResponse>;
+  deleteDailyAggregateStepSamples(): Promise<DeleteObservationsByTypeResponse>;
   summary(): Promise<HealthDataSummary>;
   measurementDetail(measurementCode: string, page: MeasurementDetailPage): Promise<HealthDataDetail>;
   measurementChartSeries(measurementCode: string, options: HealthDataChartSeriesOptions): Promise<HealthDataChartSeries>;
