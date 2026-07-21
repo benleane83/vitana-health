@@ -59,6 +59,7 @@ import {
   deleteObservationRecord as deleteDuckDbObservationRecord,
   deleteObservationRecordsByMeasurementCode as deleteDuckDbObservationRecordsByMeasurementCode,
   deleteObservationsByMeasurementCode as deleteDuckDbObservationsByMeasurementCode,
+  deleteDailyAggregateStepSamples as deleteDuckDbDailyAggregateStepSamples,
   getProfile as readProfile,
   insertObservationRecord as insertDuckDbObservationRecord,
   replaceProfile as replaceDuckDbProfile,
@@ -317,6 +318,11 @@ export class DuckDbRepository implements ProfileRepository {
   async deleteObservationsByMeasurementCode(measurementCode: string): Promise<DeleteObservationsByTypeResponse> {
     this.assertOpen();
     return this.transaction(() => deleteDuckDbObservationsByMeasurementCode(this.connection, measurementCode));
+  }
+
+  async deleteDailyAggregateStepSamples(): Promise<DeleteObservationsByTypeResponse> {
+    this.assertOpen();
+    return this.transaction(() => deleteDuckDbDailyAggregateStepSamples(this.connection));
   }
 
   async summary() {

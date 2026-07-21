@@ -5,6 +5,7 @@ import {
   readRecords,
   requestPermission,
   type Permission,
+  type ReadHealthDataHistoryPermission,
   type ReadRecordsOptions,
   type RecordType
 } from "react-native-health-connect";
@@ -14,11 +15,12 @@ import {
   HEALTH_CONNECT_CATEGORIES,
   type HealthConnectCategory
 } from "./endpointStore";
-import { pinnedFetch } from "./pinnedFetch";
+import { LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS, pinnedFetch } from "./pinnedFetch";
 
 const OVERLAP_MS = 5 * 60 * 1000;
 const MAX_UPLOAD_BYTES = 2_000_000;
 const MAX_UPLOAD_ATTEMPTS = 3;
+const DAILY_AGGREGATE_MIN_DURATION_MS = 23 * 60 * 60 * 1000;
 
 interface HealthConnectProvenance {
   recordId?: string;
@@ -45,15 +47,8 @@ export interface HealthConnectImportPayload {
   steps: Array<{ startTime: string; endTime: string; count: number; provenance?: HealthConnectProvenance }>;
   heartRate: HealthConnectPointValue[];
   oxygenSaturation: HealthConnectPointValue[];
-  respiratoryRate: HealthConnectPointValue[];
   hrvRmssd: HealthConnectPointValue[];
-  hrvSdnn: HealthConnectPointValue[];
-  basalBodyTemperatureC: HealthConnectPointValue[];
   basalMetabolicRateKcalDay: HealthConnectPointValue[];
-  bloodGlucoseMgDl: HealthConnectPointValue[];
-  bloodPressureSystolicMmHg: HealthConnectPointValue[];
-  bloodPressureDiastolicMmHg: HealthConnectPointValue[];
-  bodyTemperatureC: HealthConnectPointValue[];
   heightCm: HealthConnectPointValue[];
   vo2MaxMlKgMin: HealthConnectPointValue[];
   weightKg: HealthConnectPointValue[];
@@ -69,7 +64,6 @@ export interface HealthConnectImportPayload {
     provenance?: HealthConnectProvenance;
   }>;
   distanceMeters: Array<{ startTime: string; endTime: string; value: number; provenance?: HealthConnectProvenance }>;
-  floorsClimbed: Array<{ startTime: string; endTime: string; value: number; provenance?: HealthConnectProvenance }>;
   activeCaloriesKcal: Array<{ startTime: string; endTime: string; value: number; provenance?: HealthConnectProvenance }>;
   totalCaloriesKcal: Array<{ startTime: string; endTime: string; value: number; provenance?: HealthConnectProvenance }>;
   sleepSessions: Array<{
@@ -82,9 +76,6 @@ export interface HealthConnectImportPayload {
     provenance?: HealthConnectProvenance;
   }>;
   bodyFatPct: HealthConnectPointValue[];
-  leanBodyMassKg: HealthConnectPointValue[];
-  bodyWaterMassKg: HealthConnectPointValue[];
-  boneMassKg: HealthConnectPointValue[];
 }
 
 type PayloadMetadataKey = "profileId" | "syncedAt" | "rangeStart" | "rangeEnd" | "deviceLabel" | "batchId";
@@ -121,7 +112,7 @@ export const HEALTH_CONNECT_DESCRIPTORS = [
       endTime: record.endTime,
       count: record.count,
       provenance: extractProvenance(record)
-    })).filter((record) => Number.isFinite(record.count))
+    })).filter((record) => Number.isFinite(record.count) && !isDailyAggregateInterval(record.startTime, record.endTime))
   })),
   defineHealthConnectDescriptor("HeartRate", "HeartRate", ["heartRate"], (records) => ({
     heartRate: records.flatMap((record) =>
@@ -134,51 +125,14 @@ export const HEALTH_CONNECT_DESCRIPTORS = [
       time: record.time, value: record.percentage, provenance: extractProvenance(record)
     })).filter((record) => Number.isFinite(record.value))
   })),
-  defineHealthConnectDescriptor("RespiratoryRate", "RespiratoryRate" as RecordType, ["respiratoryRate"], (records) => ({
-    respiratoryRate: records.flatMap((record) => {
-      const time = stringValue((record as Record<string, unknown>).time);
-      const value = extractRespiratoryRateBreathsPerMinute(record);
-      return time && value !== undefined && Number.isFinite(value)
-        ? [{ time, value, provenance: extractProvenance(record) }]
-        : [];
-    })
-  })),
-  defineHealthConnectDescriptor("HeartRateVariabilityRmssd", "HeartRateVariabilityRmssd", ["hrvRmssd", "hrvSdnn"], (records) => ({
+  defineHealthConnectDescriptor("HeartRateVariabilityRmssd", "HeartRateVariabilityRmssd", ["hrvRmssd"], (records) => ({
     hrvRmssd: records.map((record) => ({
       time: record.time, value: record.heartRateVariabilityMillis, provenance: extractProvenance(record)
-    })).filter((record) => Number.isFinite(record.value)),
-    hrvSdnn: toPointSamples(records, (record) => ({
-      time: record.time,
-      value: extractHrvSdnnMillis(record),
-      provenance: extractProvenance(record)
-    }))
-  })),
-  defineHealthConnectDescriptor("BasalBodyTemperature", "BasalBodyTemperature", ["basalBodyTemperatureC"], (records) => ({
-    basalBodyTemperatureC: toPointSamples(records, (record) => ({
-      time: record.time, value: extractTemperatureInCelsius(record), provenance: extractProvenance(record)
-    }))
+    })).filter((record) => Number.isFinite(record.value))
   })),
   defineHealthConnectDescriptor("BasalMetabolicRate", "BasalMetabolicRate", ["basalMetabolicRateKcalDay"], (records) => ({
     basalMetabolicRateKcalDay: toPointSamples(records, (record) => ({
       time: record.time, value: extractBasalMetabolicRateKcalDay(record), provenance: extractProvenance(record)
-    }))
-  })),
-  defineHealthConnectDescriptor("BloodGlucose", "BloodGlucose", ["bloodGlucoseMgDl"], (records) => ({
-    bloodGlucoseMgDl: toPointSamples(records, (record) => ({
-      time: record.time, value: extractBloodGlucoseMgDl(record), provenance: extractProvenance(record)
-    }))
-  })),
-  defineHealthConnectDescriptor("BloodPressure", "BloodPressure", ["bloodPressureSystolicMmHg", "bloodPressureDiastolicMmHg"], (records) => ({
-    bloodPressureSystolicMmHg: toPointSamples(records, (record) => ({
-      time: record.time, value: extractBloodPressureSystolicMmHg(record), provenance: extractProvenance(record)
-    })),
-    bloodPressureDiastolicMmHg: toPointSamples(records, (record) => ({
-      time: record.time, value: extractBloodPressureDiastolicMmHg(record), provenance: extractProvenance(record)
-    }))
-  })),
-  defineHealthConnectDescriptor("BodyTemperature", "BodyTemperature", ["bodyTemperatureC"], (records) => ({
-    bodyTemperatureC: toPointSamples(records, (record) => ({
-      time: record.time, value: extractTemperatureInCelsius(record), provenance: extractProvenance(record)
     }))
   })),
   defineHealthConnectDescriptor("Height", "Height", ["heightCm"], (records) => ({
@@ -217,11 +171,6 @@ export const HEALTH_CONNECT_DESCRIPTORS = [
       startTime: record.startTime, endTime: record.endTime, value: record.distance.inMeters, provenance: extractProvenance(record)
     })).filter((record) => Number.isFinite(record.value))
   })),
-  defineHealthConnectDescriptor("FloorsClimbed", "FloorsClimbed", ["floorsClimbed"], (records) => ({
-    floorsClimbed: records.map((record) => ({
-      startTime: record.startTime, endTime: record.endTime, value: record.floors, provenance: extractProvenance(record)
-    })).filter((record) => Number.isFinite(record.value))
-  })),
   defineHealthConnectDescriptor("ActiveCaloriesBurned", "ActiveCaloriesBurned", ["activeCaloriesKcal"], (records) => ({
     activeCaloriesKcal: records.map((record) => ({
       startTime: record.startTime, endTime: record.endTime, value: record.energy.inKilocalories, provenance: extractProvenance(record)
@@ -247,21 +196,6 @@ export const HEALTH_CONNECT_DESCRIPTORS = [
     bodyFatPct: records.map((record) => ({
       time: record.time, value: record.percentage * 100, provenance: extractProvenance(record)
     })).filter((record) => Number.isFinite(record.value))
-  })),
-  defineHealthConnectDescriptor("LeanBodyMass", "LeanBodyMass", ["leanBodyMassKg"], (records) => ({
-    leanBodyMassKg: records.map((record) => ({
-      time: record.time, value: record.mass.inKilograms, provenance: extractProvenance(record)
-    })).filter((record) => Number.isFinite(record.value))
-  })),
-  defineHealthConnectDescriptor("BodyWaterMass", "BodyWaterMass", ["bodyWaterMassKg"], (records) => ({
-    bodyWaterMassKg: records.map((record) => ({
-      time: record.time, value: record.mass.inKilograms, provenance: extractProvenance(record)
-    })).filter((record) => Number.isFinite(record.value))
-  })),
-  defineHealthConnectDescriptor("BoneMass", "BoneMass", ["boneMassKg"], (records) => ({
-    boneMassKg: records.map((record) => ({
-      time: record.time, value: record.mass.inKilograms, provenance: extractProvenance(record)
-    })).filter((record) => Number.isFinite(record.value))
   }))
 ] as const;
 
@@ -272,6 +206,12 @@ export interface SyncOptions {
   syncCursor?: string | null;
   syncWindowDays?: number;
   categories?: HealthConnectCategory[];
+  onProgress?: (progress: HealthConnectSyncProgress) => void;
+}
+
+export interface HealthConnectSyncProgress {
+  stage: "preparing" | "permissions" | "reading" | "uploading" | "finalizing";
+  detail: string;
 }
 
 export interface SyncResult {
@@ -292,6 +232,7 @@ export async function syncHealthConnect(
   if (!__DEV__ && !endpointUrl.startsWith("https://")) throw new Error("Production sync requires an HTTPS endpoint.");
   if (!companionToken) throw new Error("A paired device token is required. Pair this device before syncing.");
 
+  options.onProgress?.({ stage: "preparing", detail: "Checking Health Connect on this phone…" });
   const sdkStatus = await getSdkStatus();
   if (sdkStatus !== SdkAvailabilityStatus.SDK_AVAILABLE) {
     throw new Error(
@@ -310,10 +251,16 @@ export async function syncHealthConnect(
   if (selectedCategories.length === 0) throw new Error("Select at least one data category to sync.");
   const selectedDescriptors = HEALTH_CONNECT_DESCRIPTORS.filter((descriptor) => selectedCategories.includes(descriptor.category));
   const availableDescriptors = selectedDescriptors.filter((descriptor) => descriptor.available);
-  const requestedPermissions = availableDescriptors.map((descriptor) => descriptor.permission);
+  const windowDays = normalizeSyncWindowDays(options.syncWindowDays);
+  const historyPermission: ReadHealthDataHistoryPermission = { accessType: "read", recordType: "ReadHealthDataHistory" };
+  const requestedPermissions: Array<Permission | ReadHealthDataHistoryPermission> = [
+    ...availableDescriptors.map((descriptor) => descriptor.permission),
+    ...(windowDays > 30 ? [historyPermission] : [])
+  ];
   if (requestedPermissions.length === 0) {
     throw new Error("Selected categories are not supported by the installed health data service.");
   }
+  options.onProgress?.({ stage: "permissions", detail: "Confirming access to selected health data…" });
   const grantedPermissions = await requestPermission(requestedPermissions);
   const grantedDescriptors = availableDescriptors.filter((descriptor) =>
     grantedPermissions.some((granted) => granted.accessType === "read" && granted.recordType === descriptor.permission.recordType)
@@ -325,7 +272,6 @@ export async function syncHealthConnect(
   const omittedCategories = selectedCategories.filter((category) => !grantedCategories.includes(category));
 
   const rangeEnd = new Date();
-  const windowDays = normalizeSyncWindowDays(options.syncWindowDays);
   const initialStart = new Date(rangeEnd.getTime() - windowDays * 24 * 60 * 60 * 1000);
   const cursor = parseCursor(options.syncCursor);
   const rangeStart = cursor && cursor > initialStart ? new Date(cursor.getTime() - OVERLAP_MS) : initialStart;
@@ -335,7 +281,7 @@ export async function syncHealthConnect(
     ascendingOrder: true
   };
 
-  const collections = await readGrantedCollections(grantedDescriptors, readOptions);
+  const collections = await readGrantedCollections(grantedDescriptors, readOptions, options.onProgress);
   const payload: HealthConnectImportPayload = {
     ...(profileId ? { profileId } : {}),
     syncedAt: new Date().toISOString(),
@@ -345,31 +291,37 @@ export async function syncHealthConnect(
     ...collections
   };
 
+  const chunks = chunkPayload(payload);
   const uploadResults = [];
-  for (const chunk of chunkPayload(payload)) {
+  for (const [index, chunk] of chunks.entries()) {
+    options.onProgress?.({ stage: "uploading", detail: `Uploading ${index + 1} of ${chunks.length} to your paired PC…` });
     uploadResults.push(await uploadChunk(endpointUrl, publicKeyHash, companionToken, chunk));
   }
 
+  options.onProgress?.({ stage: "finalizing", detail: "Finalizing sync…" });
   const importedRows = countRows(payload);
-  const lastResponse = uploadResults.at(-1);
+  const oldestReturnedAt = oldestPayloadTimestamp(payload);
   return {
     status: "Sync complete.",
     syncCursor: rangeEnd.toISOString(),
     canAdvanceCursor: omittedCategories.length === 0,
     details: [
       `Synced ${importedRows} records from ${rangeStart.toLocaleDateString()} to ${rangeEnd.toLocaleDateString()} in ${uploadResults.length} upload${uploadResults.length === 1 ? "" : "s"}.`,
-      omittedCategories.length ? `Not synced (permission not granted): ${omittedCategories.join(", ")}.` : "",
-      `Store counts: observations ${lastResponse?.counts?.observations ?? "n/a"}, samples ${lastResponse?.counts?.timeSeriesSamples ?? "n/a"}, activities ${lastResponse?.counts?.activitySessions ?? "n/a"}.`
+      oldestReturnedAt ? `Oldest record returned by Health Connect: ${oldestReturnedAt.slice(0, 10)}.` : "Health Connect returned no records in this window.",
+      windowDays > 30 ? "Extended Health Connect history access was requested for this sync." : "",
+      omittedCategories.length ? `Not synced (permission not granted): ${omittedCategories.join(", ")}.` : ""
     ].filter(Boolean).join("\n")
   };
 }
 
 async function readGrantedCollections(
   descriptors: Array<(typeof HEALTH_CONNECT_DESCRIPTORS)[number]>,
-  options: ReadRecordsOptions
+  options: ReadRecordsOptions,
+  onProgress?: SyncOptions["onProgress"]
 ): Promise<HealthConnectPayloadCollections> {
   const collections = makeEmptyPayloadCollections();
-  for (const descriptor of descriptors) {
+  for (const [index, descriptor] of descriptors.entries()) {
+    onProgress?.({ stage: "reading", detail: `Reading ${descriptor.category} (${index + 1} of ${descriptors.length})…` });
     Object.assign(collections, await descriptor.read(options));
   }
   return collections;
@@ -426,7 +378,8 @@ async function uploadChunk(endpointUrl: string, publicKeyHash: string | null | u
       response = await pinnedFetch(importUrl, publicKeyHash ?? null, {
         method: "POST",
         headers: { Accept: "application/json", "Content-Type": "application/json", "x-companion-token": token },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        timeoutMs: LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS
       });
       break;
     } catch (error) {
@@ -547,24 +500,8 @@ function nestedNumber(source: unknown, ...paths: string[]): number | undefined {
   return undefined;
 }
 
-function extractTemperatureInCelsius(record: unknown): number | undefined {
-  return nestedNumber(record, "temperature.inCelsius", "temperature.inDegreesCelsius", "value.inCelsius");
-}
-
 function extractBasalMetabolicRateKcalDay(record: unknown): number | undefined {
   return nestedNumber(record, "basalMetabolicRate.inKilocaloriesPerDay", "power.inKilocaloriesPerDay", "value.inKilocaloriesPerDay");
-}
-
-function extractBloodGlucoseMgDl(record: unknown): number | undefined {
-  return nestedNumber(record, "level.inMilligramsPerDeciliter", "bloodGlucose.inMilligramsPerDeciliter", "value.inMilligramsPerDeciliter");
-}
-
-function extractBloodPressureSystolicMmHg(record: unknown): number | undefined {
-  return nestedNumber(record, "systolic.inMillimetersOfMercury", "systolic.inMmHg");
-}
-
-function extractBloodPressureDiastolicMmHg(record: unknown): number | undefined {
-  return nestedNumber(record, "diastolic.inMillimetersOfMercury", "diastolic.inMmHg");
 }
 
 function extractHeightInCm(record: unknown): number | undefined {
@@ -578,20 +515,29 @@ function extractVo2MaxMlKgMin(record: unknown): number | undefined {
   return nestedNumber(record, "vo2MillilitersPerMinuteKilogram", "vo2.inMillilitersPerMinuteKilogram", "value.inMillilitersPerMinuteKilogram");
 }
 
-function extractHrvSdnnMillis(record: unknown): number | undefined {
-  return nestedNumber(record, "heartRateVariabilitySdnnMillis", "sdnn.inMilliseconds", "sdnnMillis");
-}
-
-function extractRespiratoryRateBreathsPerMinute(record: unknown): number | undefined {
-  return nestedNumber(record, "rate", "respiratoryRate", "value.inBreathsPerMinute", "respiratoryRate.inBreathsPerMinute");
-}
-
 function objectValue(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
 
 function countRows(payload: HealthConnectImportPayload): number {
   return PAYLOAD_COLLECTION_KEYS.reduce((total, key) => total + payload[key].length, 0);
+}
+
+function isDailyAggregateInterval(startAt: string, endAt: string): boolean {
+  return new Date(endAt).getTime() - new Date(startAt).getTime() >= DAILY_AGGREGATE_MIN_DURATION_MS;
+}
+
+function oldestPayloadTimestamp(payload: HealthConnectImportPayload): string | undefined {
+  let oldest: string | undefined;
+  for (const key of PAYLOAD_COLLECTION_KEYS) {
+    for (const row of payload[key] as Array<Record<string, unknown>>) {
+      for (const field of ["time", "startTime", "endTime"] as const) {
+        const value = row[field];
+        if (typeof value === "string" && (!oldest || value < oldest)) oldest = value;
+      }
+    }
+  }
+  return oldest;
 }
 
 function parseCursor(value: string | null | undefined): Date | undefined {

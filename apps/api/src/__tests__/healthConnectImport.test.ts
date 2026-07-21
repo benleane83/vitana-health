@@ -11,29 +11,18 @@ const baseRequest: HealthConnectImportRequest = {
   steps: [],
   heartRate: [],
   oxygenSaturation: [],
-  respiratoryRate: [],
   hrvRmssd: [],
-  hrvSdnn: [],
-  basalBodyTemperatureC: [],
   basalMetabolicRateKcalDay: [],
-  bloodGlucoseMgDl: [],
-  bloodPressureSystolicMmHg: [],
-  bloodPressureDiastolicMmHg: [],
-  bodyTemperatureC: [],
   heightCm: [],
   skinTemperatureC: [],
   vo2MaxMlKgMin: [],
   weightKg: [],
   exerciseSessions: [],
   distanceMeters: [],
-  floorsClimbed: [],
   activeCaloriesKcal: [],
   totalCaloriesKcal: [],
   sleepSessions: [],
-  bodyFatPct: [],
-  leanBodyMassKg: [],
-  bodyWaterMassKg: [],
-  boneMassKg: []
+  bodyFatPct: []
 };
 
 describe("parseHealthConnectImport — minimal valid payload", () => {
@@ -78,6 +67,21 @@ describe("parseHealthConnectImport — steps → timeSeriesSamples", () => {
     expect(result.timeSeriesSamples[0].measurementCode).toBe("steps");
     expect(result.timeSeriesSamples[0].value).toBe(1200);
     expect(result.timeSeriesSamples[0].unit).toBe("count");
+  });
+
+  it("skips near-24-hour daily aggregate step records", () => {
+    const result = parseHealthConnectImport({
+      ...baseRequest,
+      steps: [
+        { startTime: "2026-05-01T00:00:00.000Z", endTime: "2026-05-01T23:59:59.999Z", count: 8450 },
+        { startTime: "2026-05-01T08:00:00.000Z", endTime: "2026-05-01T08:05:00.000Z", count: 120 }
+      ]
+    });
+
+    expect(result.timeSeriesSamples).toHaveLength(1);
+    expect(result.timeSeriesSamples[0].value).toBe(120);
+    expect(result.sourceImport.status).toBe("needs-review");
+    expect(result.sourceImport.diagnostics).toContain("Skipped 1 daily aggregate Steps record(s).");
   });
 });
 

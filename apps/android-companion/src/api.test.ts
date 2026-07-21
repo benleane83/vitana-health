@@ -3,7 +3,7 @@ import { ApiError } from "@local-fitness-advisor/api-client";
 import type { ConnectionDetails } from "./endpointStore";
 
 const pinnedFetch = vi.fn();
-vi.mock("./pinnedFetch", () => ({ pinnedFetch }));
+vi.mock("./pinnedFetch", () => ({ DEFAULT_PINNED_REQUEST_TIMEOUT_MS: 15_000, pinnedFetch }));
 
 const connection: ConnectionDetails = {
   url: "https://pc.local:4317/",

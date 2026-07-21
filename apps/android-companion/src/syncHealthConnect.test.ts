@@ -23,7 +23,7 @@ vi.mock("./endpointStore", () => ({
   DEFAULT_HEALTH_CONNECT_SYNC_WINDOW_DAYS: 365,
   HEALTH_CONNECT_CATEGORIES: ["Steps", "Weight"]
 }));
-vi.mock("./pinnedFetch", () => ({ pinnedFetch: mocks.pinnedFetch }));
+vi.mock("./pinnedFetch", () => ({ LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS: 60_000, pinnedFetch: mocks.pinnedFetch }));
 
 import { chunkPayload, syncHealthConnect, type HealthConnectImportPayload } from "./syncHealthConnect";
 
@@ -88,6 +88,51 @@ describe("Health Connect sync", () => {
     );
     expect(JSON.parse(mocks.pinnedFetch.mock.calls[0][2].body).steps).toHaveLength(2);
     expect(result.canAdvanceCursor).toBe(false);
+    expect(result.details).toContain("Synced 2 records");
+    expect(result.details).toContain("Oldest record returned by Health Connect: 2026-01-10");
+    expect(result.details).not.toContain("Store counts:");
+  });
+
+  it("requests historical access for sync windows over 30 days without relying on its omitted return mapping", async () => {
+    mocks.requestPermission.mockResolvedValue([
+      { accessType: "read", recordType: "Steps" }
+    ]);
+
+    const result = await syncHealthConnect("https://desktop.test", "companion-token", null, "pin", {
+      deviceId: "device-1",
+      syncWindowDays: 90,
+      categories: ["Steps"]
+    });
+
+    expect(mocks.requestPermission).toHaveBeenCalledWith([
+      { accessType: "read", recordType: "Steps" },
+      { accessType: "read", recordType: "ReadHealthDataHistory" }
+    ]);
+    expect(result.canAdvanceCursor).toBe(true);
+    expect(result.details).toContain("Extended Health Connect history access was requested");
+    expect(result.details).toContain("Health Connect returned no records in this window");
+  });
+
+  it("does not upload near-24-hour daily aggregate step records", async () => {
+    mocks.readRecords.mockResolvedValue({
+      records: [
+        { startTime: "2026-01-09T00:00:00.000Z", endTime: "2026-01-09T23:59:59.999Z", count: 8450 },
+        { startTime: "2026-01-10T10:00:00.000Z", endTime: "2026-01-10T10:05:00.000Z", count: 120 }
+      ],
+      pageToken: undefined
+    });
+
+    const result = await syncHealthConnect("https://desktop.test", "companion-token", null, "pin", {
+      deviceId: "device-1",
+      syncWindowDays: 30,
+      categories: ["Steps"]
+    });
+
+    const uploaded = JSON.parse(mocks.pinnedFetch.mock.calls[0][2].body);
+    expect(uploaded.steps).toEqual([
+      expect.objectContaining({ startTime: "2026-01-10T10:00:00.000Z", count: 120 })
+    ]);
+    expect(result.details).toContain("Synced 1 records");
   });
 
   it("retries a timeout once without changing the upload payload or authentication", async () => {
@@ -105,6 +150,25 @@ describe("Health Connect sync", () => {
     expect(mocks.pinnedFetch).toHaveBeenCalledTimes(2);
     expect(mocks.pinnedFetch.mock.calls[0][2].headers["x-companion-token"]).toBe("companion-token");
     expect(mocks.pinnedFetch.mock.calls[1][2].body).toBe(mocks.pinnedFetch.mock.calls[0][2].body);
+  });
+
+  it("reports the permission, read, upload, and finalization stages", async () => {
+    const onProgress = vi.fn();
+
+    await syncHealthConnect("https://desktop.test", "companion-token", null, "pin", {
+      deviceId: "device-1",
+      categories: ["Steps"],
+      onProgress
+    });
+
+    expect(onProgress.mock.calls.map(([progress]) => progress.stage)).toEqual([
+      "preparing",
+      "permissions",
+      "reading",
+      "uploading",
+      "finalizing"
+    ]);
+    expect(mocks.pinnedFetch.mock.calls[0][2].timeoutMs).toBe(60_000);
   });
 });
 
@@ -149,10 +213,8 @@ function emptyPayload(): HealthConnectImportPayload {
     rangeStart: "2026-01-01T12:00:00.000Z",
     rangeEnd: "2026-01-11T12:00:00.000Z",
     deviceLabel: "android-companion:device-1",
-    steps: [], heartRate: [], oxygenSaturation: [], respiratoryRate: [], hrvRmssd: [], hrvSdnn: [], basalBodyTemperatureC: [],
-    basalMetabolicRateKcalDay: [], bloodGlucoseMgDl: [], bloodPressureSystolicMmHg: [], bloodPressureDiastolicMmHg: [],
-    bodyTemperatureC: [], heightCm: [], vo2MaxMlKgMin: [], weightKg: [], exerciseSessions: [], distanceMeters: [],
-    floorsClimbed: [], activeCaloriesKcal: [], totalCaloriesKcal: [], sleepSessions: [], bodyFatPct: [], leanBodyMassKg: [],
-    bodyWaterMassKg: [], boneMassKg: []
+    steps: [], heartRate: [], oxygenSaturation: [], hrvRmssd: [], basalMetabolicRateKcalDay: [],
+    heightCm: [], vo2MaxMlKgMin: [], weightKg: [], exerciseSessions: [], distanceMeters: [],
+    activeCaloriesKcal: [], totalCaloriesKcal: [], sleepSessions: [], bodyFatPct: []
   };
 }

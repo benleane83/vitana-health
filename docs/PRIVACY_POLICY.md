@@ -1,12 +1,12 @@
 # Local Fitness Advisor Privacy Policy
 
-**Effective date: July 14, 2026**
+**Effective date: July 20, 2026**
 
 Local Fitness Advisor is a local-first wellness application. This policy applies to the Local Fitness Companion Android app and its paired Local Fitness Advisor desktop API.
 
 ## Information we collect
 
-The companion reads only the Health Connect categories that you choose. No Health Connect category is selected by default, and the first import defaults to 30 days (you may choose 30, 60, 90, 180, or 365 days). The complete category, field, and purpose inventory is in the [Health Connect Data Inventory](HEALTH_CONNECT_DATA_INVENTORY.md).
+The companion reads only the Health Connect categories that you choose: steps, heart rate, oxygen saturation, heart-rate variability, basal metabolic rate, height, VO2 max, weight, exercise sessions, distance, active calories, total calories, sleep sessions, and body fat. No Health Connect category is selected by default, and the first import defaults to 30 days (you may choose 30, 60, 90, 180, or 365 days). The complete category, field, and purpose inventory is in the [Health Connect Data Inventory](HEALTH_CONNECT_DATA_INVENTORY.md).
 
 The companion also processes a random device identifier, pairing and connection metadata (the local server URL, public-key hash, pairing token, assigned profile ID, selections, sync cursor, and last-sync time), and camera/gallery access for QR pairing and health-report capture. It does not retain report images, OCR text, review drafts, Dashboard data, or Track data.
 

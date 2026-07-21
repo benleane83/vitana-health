@@ -501,6 +501,7 @@ export interface AuditEvent {
     | "observation-updated"
     | "observation-deleted"
     | "observation-type-deleted"
+    | "daily-step-aggregates-deleted"
     | "health-event-created"
     | "health-event-updated"
     | "health-event-deleted"

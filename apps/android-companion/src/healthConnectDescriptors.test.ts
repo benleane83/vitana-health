@@ -40,7 +40,7 @@ describe("Health Connect collection descriptors", () => {
     ["ActiveCaloriesBurned", "activeCaloriesKcal"],
     ["TotalCaloriesBurned", "totalCaloriesKcal"]
   ] as const)("converts %s records to kilocalories", (category, payloadKey) => {
-    const descriptor = HEALTH_CONNECT_DESCRIPTORS.find((entry) => entry.category === category) as {
+    const descriptor = HEALTH_CONNECT_DESCRIPTORS.find((entry) => entry.category === category) as unknown as {
       toPayload: (records: Array<{
         startTime: string;
         endTime: string;
