@@ -7,6 +7,7 @@ export type InsightsTab = "biological-age" | "ai-query";
 export type CareView = "items" | "health-events";
 export type SummarySort = "name" | "count" | "recency";
 export type ImportMode = "manual" | "upload" | "sync";
+export type SettingsView = "app" | "ai";
 
 export interface ManualMarkerRow {
   id: string;

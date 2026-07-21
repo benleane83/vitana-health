@@ -13,6 +13,7 @@ import { configureRuntimeSecurity } from "./security.js";
 import { validateEnv } from "./env.js";
 import { getLanIp } from "./netutil.js";
 import { log } from "./logger.js";
+import type { DesktopRuntimeSettingsResponse, DesktopRuntimeSettingsUpdate } from "@local-fitness-advisor/shared";
 
 export { configureAiCredentialProtector } from "./aiSettings.js";
 
@@ -20,6 +21,10 @@ loadEnvironmentFiles();
 
 export interface StartServerOptions {
   storeSecurity?: StoreSecurityConfig;
+  desktopRuntimeController?: {
+    getSettings: () => Promise<DesktopRuntimeSettingsResponse> | DesktopRuntimeSettingsResponse;
+    updateSettings: (settings: DesktopRuntimeSettingsUpdate) => Promise<DesktopRuntimeSettingsResponse> | DesktopRuntimeSettingsResponse;
+  };
 }
 
 export type RunningServer = Server & { shutdown: () => Promise<void> };
@@ -68,7 +73,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
   const app = createApp(storeManager, pairingStore, {
     publicKeyHash: security.publicKeyHash,
     webRoot: env.LFA_WEB_ROOT,
-    openRouterCallbackOrigin: `${tlsEnabled ? "https" : "http"}://127.0.0.1:${port}`
+    openRouterCallbackOrigin: `${tlsEnabled ? "https" : "http"}://127.0.0.1:${port}`,
+    desktopRuntimeController: options.desktopRuntimeController
   });
 
   const scheme = tlsEnabled ? "https" : "http";

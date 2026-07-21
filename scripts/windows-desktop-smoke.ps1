@@ -28,6 +28,7 @@ $healthUris = @(
   "https://127.0.0.1:4317/api/health",
   "http://127.0.0.1:4317/api/health"
 )
+$activeHealthUri = $null
 
 function Stop-DesktopProcess([System.Diagnostics.Process]$Process) {
   if (-not $Process.HasExited) {
@@ -65,7 +66,42 @@ function Wait-ForHealth {
   for ($elapsedSeconds = 0; $elapsedSeconds -lt $effectiveHealthTimeoutSeconds; $elapsedSeconds++) {
     foreach ($healthUri in $healthUris) {
       if (Test-HealthEndpoint $healthUri) {
+        $script:activeHealthUri = $healthUri
         return
+      }
+
+      function Invoke-DesktopApi([string]$Method, [string]$Path, $Body, [Microsoft.PowerShell.Commands.WebRequestSession]$Session) {
+        $root = $activeHealthUri.Substring(0, $activeHealthUri.Length - "/api/health".Length)
+        $parameters = @{
+          Uri = "$root$Path"
+          Method = $Method
+          WebSession = $Session
+          ContentType = "application/json"
+        }
+        if ($activeHealthUri.StartsWith("https://")) {
+          $parameters.SkipCertificateCheck = $true
+        }
+        if ($null -ne $Body) {
+          $parameters.Body = ($Body | ConvertTo-Json -Compress)
+        }
+        Invoke-RestMethod @parameters
+      }
+
+      function Wait-ForHealthStop {
+        for ($elapsedSeconds = 0; $elapsedSeconds -lt 30; $elapsedSeconds++) {
+          if (-not (Test-HealthEndpoint $activeHealthUri)) {
+            return
+          }
+          Start-Sleep -Seconds 1
+        }
+        throw "The desktop health endpoint remained available after background mode was disabled and the window closed."
+      }
+
+      function Get-LoginStartupCommand {
+        $runKey = Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -ErrorAction SilentlyContinue
+        return @($runKey.PSObject.Properties.Value | Where-Object {
+          $_ -is [string] -and $_ -like "*$applicationName*"
+        }) | Select-Object -First 1
       }
     }
     Start-Sleep -Seconds 1
@@ -150,7 +186,34 @@ try {
     throw "The packaged runtime did not create an encrypted DuckDB database."
   }
   $manifestHash = (Get-FileHash $manifest.FullName -Algorithm SHA256).Hash
-  Stop-DesktopProcess $firstLaunch
+  $ownerSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+  $null = Invoke-DesktopApi "POST" "/api/auth/local" $null $ownerSession
+  $enabledSettings = Invoke-DesktopApi "PUT" "/api/settings/desktop" @{ backgroundServiceEnabled = $true } $ownerSession
+  if (-not $enabledSettings.backgroundServiceEnabled) {
+    throw "The desktop API did not enable background service mode."
+  }
+  $null = $firstLaunch.CloseMainWindow()
+  Start-Sleep -Seconds 2
+  if (-not (Test-HealthEndpoint $activeHealthUri)) {
+    throw "Desktop health stopped after closing the window with background service mode enabled."
+  }
+  $loginCommand = Get-LoginStartupCommand
+  if (-not $loginCommand -or $loginCommand -notlike "*--background*") {
+    throw "Per-user login registration does not include --background."
+  }
+  $relaunch = Start-Process -FilePath $application -PassThru
+  if (-not $relaunch.WaitForExit(30000)) {
+    throw "A second desktop launch did not hand off to the existing singleton process."
+  }
+  if ($firstLaunch.HasExited -or -not (Test-HealthEndpoint $activeHealthUri)) {
+    throw "A second desktop launch replaced or stopped the existing service process."
+  }
+  $disabledSettings = Invoke-DesktopApi "PUT" "/api/settings/desktop" @{ backgroundServiceEnabled = $false } $ownerSession
+  if ($disabledSettings.backgroundServiceEnabled -or (Get-LoginStartupCommand)) {
+    throw "Disabling background service mode did not remove login registration."
+  }
+  $null = $firstLaunch.CloseMainWindow()
+  Wait-ForHealthStop
 
   if ($BaselineInstaller) {
     $upgradeProcess = Start-Process -FilePath $Installer -ArgumentList "/S", "/D=$installRoot" -Wait -PassThru

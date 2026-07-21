@@ -94,6 +94,18 @@ beforeEach(() => {
     if (url.includes("/api/care/items")) {
       return Promise.resolve(mockResponse({ items: [], total: 0, offset: 0, limit: 20, hasMore: false }));
     }
+    if (url.includes("/api/settings/desktop")) {
+      return Promise.resolve(mockResponse({ supported: false, backgroundServiceEnabled: false }));
+    }
+    if (url.includes("/api/settings/ai")) {
+      return Promise.resolve(mockResponse({
+        provider: "ollama",
+        endpoint: "http://127.0.0.1:11434/api/generate",
+        model: "llama3.2",
+        timeoutMs: 30000,
+        hasApiKey: false
+      }));
+    }
     return Promise.resolve(mockResponse({}));
   });
 });
@@ -134,6 +146,26 @@ describe("App smoke", () => {
       "Dashboard", "Import", "Track", "Care", "Insights", "Export"
     ]);
     expect(screen.getByRole("button", { name: /settings/i })).toBeInTheDocument();
+  });
+
+  it("routes Settings App and AI views with accessible roving tabs", async () => {
+    globalThis.history.replaceState({}, "", "/settings");
+    render(<App />);
+    const appTab = screen.getByRole("tab", { name: "App" });
+    const aiTab = screen.getByRole("tab", { name: "AI" });
+    expect(appTab).toHaveAttribute("aria-selected", "true");
+    expect(appTab).toHaveAttribute("aria-controls", "settings-panel-app");
+    expect(aiTab).toHaveAttribute("tabindex", "-1");
+
+    fireEvent.keyDown(appTab, { key: "ArrowRight" });
+    expect(aiTab).toHaveFocus();
+    expect(aiTab).toHaveAttribute("aria-selected", "true");
+    expect(globalThis.location.pathname).toBe("/settings/ai");
+    expect(await screen.findByRole("heading", { name: /ai setup/i })).toBeInTheDocument();
+
+    globalThis.history.pushState({}, "", "/settings/app");
+    fireEvent.popState(window);
+    expect(screen.getByRole("tab", { name: "App" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("supports arrow, Home, and End navigation across the route tablist", () => {

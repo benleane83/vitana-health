@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { defaultMeasurementTypes, safetyNotice } from "@local-fitness-advisor/shared";
-import type { AppRoute, ImportMode, InsightsTab } from "./types.js";
+import type { AppRoute, ImportMode, InsightsTab, SettingsView } from "./types.js";
 import { ProfileLifecycleDialogs, useProfileLifecycle } from "./features/profiles/useProfileLifecycle.js";
 import { ConfirmDialog } from "./components/ConfirmDialog.js";
 import { ImportPage } from "./pages/ImportPage.js";
@@ -19,6 +19,7 @@ export function App() {
   const [insightsTab, setInsightsTab] = useState<InsightsTab>(() => insightsTabFromPathname(window.location.pathname));
   const [careView, setCareView] = useState(() => careViewFromPathname(window.location.pathname));
   const [importMode, setImportMode] = useState<ImportMode>(() => importModeFromPathname(window.location.pathname));
+  const [settingsView, setSettingsView] = useState<SettingsView>(() => settingsViewFromPathname(window.location.pathname));
   const [summaryDetailCode, setSummaryDetailCode] = useState<string | undefined>(
     () => summaryDetailCodeFromPathname(window.location.pathname)
   );
@@ -53,6 +54,7 @@ export function App() {
       setInsightsTab(insightsTabFromPathname(window.location.pathname));
       setCareView(careViewFromPathname(window.location.pathname));
       setImportMode(importModeFromPathname(window.location.pathname));
+      setSettingsView(settingsViewFromPathname(window.location.pathname));
       setSummaryDetailCode(summaryDetailCodeFromPathname(window.location.pathname));
     };
     window.addEventListener("popstate", onPopState);
@@ -91,7 +93,7 @@ export function App() {
       care: carePath(careView),
       insights: insightsPath(insightsTab),
       export: "/export",
-      settings: "/settings"
+      settings: settingsPath(settingsView)
     };
     const nextPath = routePaths[nextRoute] ?? "/";
     if (window.location.pathname !== nextPath) window.history.pushState({}, "", nextPath);
@@ -112,6 +114,13 @@ export function App() {
     if (window.location.pathname !== nextPath) window.history.pushState({}, "", nextPath);
     setInsightsTab(nextTab);
     setRoute("insights");
+  }
+
+  function navigateSettings(nextView: SettingsView) {
+    const nextPath = settingsPath(nextView);
+    if (window.location.pathname !== nextPath) window.history.pushState({}, "", nextPath);
+    setSettingsView(nextView);
+    setRoute("settings");
   }
 
   function navigateSummaryDetail(measurementCode: string) {
@@ -313,7 +322,7 @@ export function App() {
       </div>
 
       <div id="route-panel-settings" role="tabpanel" aria-labelledby={navTabIds.settings} hidden={route !== "settings"}>
-        {route === "settings" ? <SettingsPage /> : null}
+        {route === "settings" ? <SettingsPage view={settingsView} onViewChange={navigateSettings} /> : null}
       </div>
 
       <div
@@ -420,8 +429,16 @@ function routeFromPathname(pathname: string): AppRoute {
   if (pathname === "/care" || pathname.startsWith("/care/")) return "care";
   if (pathname === "/import" || pathname.startsWith("/import/") || pathname === "/labs") return "import";
   if (pathname === "/export") return "export";
-  if (pathname === "/settings") return "settings";
+  if (pathname === "/settings" || pathname.startsWith("/settings/")) return "settings";
   return "dashboard";
+}
+
+function settingsViewFromPathname(pathname: string): SettingsView {
+  return pathname === "/settings/ai" ? "ai" : "app";
+}
+
+function settingsPath(view: SettingsView): string {
+  return `/settings/${view}`;
 }
 
 function insightsTabFromPathname(pathname: string): InsightsTab {

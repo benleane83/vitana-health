@@ -95,6 +95,17 @@ export const aiSettingsResponseSchema = llmConfigResponseSchema.extend({
 }).passthrough();
 export type AiSettingsResponse = z.infer<typeof aiSettingsResponseSchema>;
 
+export const desktopRuntimeSettingsResponseSchema = z.object({
+  supported: z.boolean(),
+  backgroundServiceEnabled: z.boolean()
+}).strict();
+export type DesktopRuntimeSettingsResponse = z.infer<typeof desktopRuntimeSettingsResponseSchema>;
+
+export const desktopRuntimeSettingsUpdateSchema = z.object({
+  backgroundServiceEnabled: z.boolean()
+}).strict();
+export type DesktopRuntimeSettingsUpdate = z.infer<typeof desktopRuntimeSettingsUpdateSchema>;
+
 export const modelValidationResponseSchema = z.object({
   ok: z.boolean(),
   provider: z.enum(["ollama", "openai"]),

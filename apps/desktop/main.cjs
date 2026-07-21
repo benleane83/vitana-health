@@ -1,20 +1,86 @@
-const { app, BrowserWindow, dialog, safeStorage, session } = require("electron");
+const { app, BrowserWindow, dialog, Menu, Notification, safeStorage, session, Tray } = require("electron");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
+const { createBackgroundServiceController } = require("./background-service.cjs");
+const { createBackgroundServiceSettingsStore } = require("./background-service-settings.cjs");
 const { loadOrCreateSecureStoreKey } = require("./secure-store-key.cjs");
 const { createStartupDiagnostics } = require("./startup-diagnostics.cjs");
 
 let apiServer;
+let mainWindow;
+let quitting = false;
 let shutdownStarted = false;
+let launchPromise;
+const backgroundLaunch = process.argv.includes("--background");
 const diagnostics = createStartupDiagnostics({ userDataPath: app.getPath("userData") });
+const settingsStore = createBackgroundServiceSettingsStore({ userDataPath: app.getPath("userData") });
+
+function trayIconPath() {
+  return path.join(__dirname, "build", "tray-icon.ico");
+}
+
+function requestQuit() {
+  quitting = true;
+  app.quit();
+}
+
+async function createOrFocusWindow() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+    return mainWindow;
+  }
+  if (!apiServer) return undefined;
+  mainWindow = new BrowserWindow({
+    width: 1280,
+    height: 840,
+    minWidth: 900,
+    minHeight: 640,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
+    }
+  });
+  mainWindow.once("closed", () => {
+    mainWindow = undefined;
+  });
+  await mainWindow.loadURL(`https://127.0.0.1:${process.env.PORT}`);
+  diagnostics.info("Main window loaded");
+  return mainWindow;
+}
+
+const backgroundService = createBackgroundServiceController({
+  app,
+  settingsStore,
+  executablePath: process.execPath,
+  onOpen: () => void createOrFocusWindow(),
+  onQuit: requestQuit,
+  createTray: ({ onOpen, onQuit }) => {
+    const tray = new Tray(trayIconPath());
+    tray.setToolTip("Local Fitness Advisor");
+    tray.setContextMenu(Menu.buildFromTemplate([
+      { label: "Open Local Fitness Advisor", click: onOpen },
+      { type: "separator" },
+      { label: "Quit", click: onQuit }
+    ]));
+    tray.on("double-click", onOpen);
+    return tray;
+  },
+  showNotification: () => {
+    if (!Notification.isSupported()) return;
+    new Notification({
+      title: "Local Fitness Advisor is still running",
+      body: "Mobile sync remains available. Use Quit in the tray menu to stop the service.",
+      icon: trayIconPath()
+    }).show();
+  }
+});
 
 diagnostics.info(`Process started (Electron ${process.versions.electron}, Node ${process.versions.node})`);
-process.on("uncaughtException", (error) => {
-  diagnostics.error("Uncaught exception", error);
-});
-process.on("unhandledRejection", (error) => {
-  diagnostics.error("Unhandled rejection", error);
-});
+process.on("uncaughtException", (error) => diagnostics.error("Uncaught exception", error));
+process.on("unhandledRejection", (error) => diagnostics.error("Unhandled rejection", error));
 app.on("child-process-gone", (_event, details) => {
   diagnostics.error(`Child process exited (${details.type}, reason ${details.reason}, exit code ${details.exitCode})`);
 });
@@ -22,7 +88,28 @@ app.on("render-process-gone", (_event, _webContents, details) => {
   diagnostics.error(`Renderer process exited (reason ${details.reason}, exit code ${details.exitCode})`);
 });
 
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    void launchPromise?.then(() => createOrFocusWindow());
+  });
+  app.on("activate", () => {
+    void launchPromise?.then(() => createOrFocusWindow());
+  });
+  launchPromise = app.whenReady().then(launch).catch(handleStartupFailure);
+}
+
 async function launch() {
+  const persisted = backgroundService.getSettings();
+  if (backgroundLaunch && !persisted.backgroundServiceEnabled) {
+    diagnostics.info("Ignoring stale disabled background launch");
+    backgroundService.repairDisabledStartup();
+    requestQuit();
+    return;
+  }
+
+  backgroundService.reconcileStartup();
   diagnostics.info("Electron ready; starting embedded API");
   const packaged = app.isPackaged;
   process.env.NODE_ENV = "production";
@@ -56,7 +143,8 @@ async function launch() {
   apiServer = await startServer({
     storeSecurity: configuredSecret
       ? { passphrase: configuredSecret, securityMode: "env-secret" }
-      : { passphrase: secureKey.passphrase, securityMode: "os-secure-storage" }
+      : { passphrase: secureKey.passphrase, securityMode: "os-secure-storage" },
+    desktopRuntimeController: backgroundService
   });
   secureKey?.finalize();
   diagnostics.info(`Embedded API listening on port ${process.env.PORT}`);
@@ -64,38 +152,28 @@ async function launch() {
   session.defaultSession.setCertificateVerifyProc((request, callback) => {
     callback(request.hostname === "127.0.0.1" || request.hostname === "localhost" ? 0 : -3);
   });
-
-  const window = new BrowserWindow({
-    width: 1280,
-    height: 840,
-    minWidth: 900,
-    minHeight: 640,
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true
-    }
-  });
-  await window.loadURL(`https://127.0.0.1:${process.env.PORT}`);
-  diagnostics.info("Main window loaded");
+  if (!backgroundLaunch) await createOrFocusWindow();
 }
 
-app.whenReady().then(launch).catch((error) => {
+function handleStartupFailure(error) {
   diagnostics.error("Startup failed", error);
   console.error(error);
   dialog.showErrorBox(
     "Local Fitness Advisor could not start",
     error instanceof Error ? error.message : String(error)
   );
-  app.quit();
+  requestQuit();
+}
+
+app.on("window-all-closed", () => {
+  if (quitting) return;
+  if (!backgroundService.handleLastWindowClosed()) requestQuit();
 });
 
-app.on("window-all-closed", () => app.quit());
 app.on("before-quit", (event) => {
+  quitting = true;
   diagnostics.info("Application shutdown requested");
-  if (shutdownStarted || !apiServer) {
-    return;
-  }
+  if (shutdownStarted || !apiServer) return;
   event.preventDefault();
   shutdownStarted = true;
   void apiServer.shutdown()
