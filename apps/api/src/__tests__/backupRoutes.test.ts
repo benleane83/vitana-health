@@ -4,6 +4,7 @@ import { makeBackupRoutes, isInMaintenanceMode } from "../routes/backupRoutes.js
 import {
   BACKUP_DECRYPTION_ERROR,
   CURRENT_SCHEMA_VERSION,
+  VITANA_BACKUP_MAGIC,
   defaultMeasurementTypes,
   type HealthStoreData,
   type BackupPayload
@@ -136,10 +137,7 @@ describe("backupRoutes", () => {
         expect(res.headers["content-type"]).toBe("application/octet-stream");
         expect(res.headers["content-disposition"]).toContain(".vitana-backup");
         // Verify magic bytes
-        expect(res.body[0]).toBe(0x4c);
-        expect(res.body[1]).toBe(0x46);
-        expect(res.body[2]).toBe(0x41);
-        expect(res.body[3]).toBe(0x00);
+        expect([...res.body.subarray(0, 4)]).toEqual([...VITANA_BACKUP_MAGIC]);
         expect(res.body[4]).toBe(1);
       } finally {
         server.close();

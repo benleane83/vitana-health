@@ -8,6 +8,7 @@ import {
 } from "../backupCrypto.js";
 import {
   BACKUP_DECRYPTION_ERROR,
+  VITANA_BACKUP_MAGIC,
   VITANA_BACKUP_HEADER_LENGTH,
   type BackupPayload,
   type HealthStoreData,
@@ -82,10 +83,7 @@ describe("backupCrypto", () => {
 
       expect(encrypted.length).toBeGreaterThan(VITANA_BACKUP_HEADER_LENGTH + 16);
       // Magic bytes
-      expect(encrypted[0]).toBe(0x4c); // L
-      expect(encrypted[1]).toBe(0x46); // F
-      expect(encrypted[2]).toBe(0x41); // A
-      expect(encrypted[3]).toBe(0x00);
+      expect([...encrypted.subarray(0, 4)]).toEqual([...VITANA_BACKUP_MAGIC]);
       expect(encrypted[4]).toBe(1);    // version
 
       const decrypted = await decryptBackup(encrypted, passphrase);
