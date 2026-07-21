@@ -48,7 +48,7 @@ export interface LocalStore {
   getProfile(): Promise<Profile>;
   counts(): Promise<LocalStoreCounts>;
   mergeImport(imported: ParsedImport): Promise<MobileImportResult>;
-  recentObservations(limit: number): Promise<Observation[]>;
+  latestObservationsByCode(): Promise<Observation[]>;
   observationAggregates(): Promise<LocalObservationAggregate[]>;
   observationsByCode(measurementCode: string, limit: number, offset: number): Promise<LocalObservationPage>;
   updateObservation(id: string, input: UpdateObservationInput): Promise<Observation | undefined>;

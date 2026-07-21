@@ -217,7 +217,7 @@ export class SqliteLocalStore implements LocalStore {
     };
   }
 
-  async recentObservations(limit: number) {
+  async latestObservationsByCode() {
     return this.database.getAllAsync<{
       id: string;
       measurementCode: string;
@@ -230,14 +230,22 @@ export class SqliteLocalStore implements LocalStore {
       note: string | null;
       sourceJson: string | null;
     }>(`
-      SELECT id, measurement_code AS measurementCode, observed_at AS observedAt, value, unit,
-        source_id AS sourceId, observation_group_id AS observationGroupId, device_id AS deviceId,
-        note, source_json AS sourceJson
-      FROM observations
-      WHERE profile_id = ?
-      ORDER BY observed_at DESC, id DESC
-      LIMIT ?
-    `, this.requireProfileId(), limit).then((rows) => rows.map((row) => ({
+      SELECT id, measurementCode, observedAt, value, unit, sourceId, observationGroupId, deviceId,
+        note, sourceJson
+      FROM (
+        SELECT id, measurement_code AS measurementCode, observed_at AS observedAt, value, unit,
+          source_id AS sourceId, observation_group_id AS observationGroupId, device_id AS deviceId,
+          note, source_json AS sourceJson,
+          ROW_NUMBER() OVER (
+            PARTITION BY measurement_code
+            ORDER BY observed_at DESC, id DESC
+          ) AS measurementRank
+        FROM observations
+        WHERE profile_id = ?
+      )
+      WHERE measurementRank = 1
+      ORDER BY observedAt DESC, id DESC
+    `, this.requireProfileId()).then((rows) => rows.map((row) => ({
       id: row.id,
       measurementCode: row.measurementCode,
       observedAt: row.observedAt,

@@ -102,10 +102,16 @@ export class MemoryLocalStore implements LocalStore {
     };
   }
 
-  async recentObservations(limit: number): Promise<Observation[]> {
-    return this.profileValues(this.state.observations)
-      .sort((left, right) => right.observedAt.localeCompare(left.observedAt))
-      .slice(0, limit)
+  async latestObservationsByCode(): Promise<Observation[]> {
+    const latest = new Map<string, Observation>();
+    for (const observation of this.profileValues(this.state.observations)) {
+      const current = latest.get(observation.measurementCode);
+      if (!current || compareObservationsNewestFirst(observation, current) < 0) {
+        latest.set(observation.measurementCode, observation);
+      }
+    }
+    return [...latest.values()]
+      .sort(compareObservationsNewestFirst)
       .map((value) => structuredClone(value));
   }
 
@@ -209,4 +215,8 @@ export class MemoryLocalStore implements LocalStore {
 
 function key(profileId: string, id: string): string {
   return `${profileId}\u0000${id}`;
+}
+
+function compareObservationsNewestFirst(left: Observation, right: Observation): number {
+  return right.observedAt.localeCompare(left.observedAt) || right.id.localeCompare(left.id);
 }

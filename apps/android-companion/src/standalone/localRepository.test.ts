@@ -51,6 +51,34 @@ describe("local profile repository", () => {
     expect((await afterReset.bootstrap()).counts.observations).toBe(0);
   });
 
+  it("keeps the latest reading for every measurement code in analytics", async () => {
+    const state = createMemoryLocalStoreState();
+    state.observations.set("profile-a\u0000weight-old", {
+      id: "weight-old",
+      measurementCode: "weight",
+      observedAt: "2025-01-01T00:00:00.000Z",
+      value: 72.5,
+      unit: "kg",
+      sourceId: "source-a"
+    });
+    for (let index = 0; index < 501; index += 1) {
+      state.observations.set(`profile-a\u0000heart-rate-${index}`, {
+        id: `heart-rate-${index}`,
+        measurementCode: "heart_rate",
+        observedAt: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString(),
+        value: 60 + (index % 20),
+        unit: "bpm",
+        sourceId: "source-a"
+      });
+    }
+    const repository = new LocalProfileRepository(new MemoryLocalStore(state), profile("profile-a"));
+
+    expect((await repository.analytics()).latestMetrics.map((metric) => metric.code)).toEqual([
+      "heart_rate",
+      "weight"
+    ]);
+  });
+
   it("isolates stable import IDs between family profiles", async () => {
     const state = createMemoryLocalStoreState();
     const alex = new LocalProfileRepository(new MemoryLocalStore(state), profile("profile-a"));

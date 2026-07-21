@@ -211,18 +211,20 @@ function makeAnalytics(details: Map<string, HealthDataDetail>, now: Date): Analy
   const counts = entryCounts(details);
   return {
     counts: { imports: 3, ...counts, insights: 0, healthEvents: 0, careItems: 0 },
-    latestMetrics: [...details.values()].flatMap((detail) => {
-      const latest = detail.entries[0];
-      if (!latest) return [];
-      return {
-        code: detail.measurement.code,
-        label: detail.measurement.displayName,
-        value: latest.value,
-        unit: latest.unit,
-        observedAt: latest.timestamp,
-        status: "normal" as const
-      };
-    }),
+    latestMetrics: [...details.values()]
+      .flatMap((detail) => {
+        const latest = detail.entries[0];
+        if (!latest) return [];
+        return {
+          code: detail.measurement.code,
+          label: detail.measurement.displayName,
+          value: latest.value,
+          unit: latest.unit,
+          observedAt: latest.timestamp,
+          status: "normal" as const
+        };
+      })
+      .sort((left, right) => right.observedAt.localeCompare(left.observedAt)),
     trendCards: [],
     labAlerts: [],
     evidenceDigest: [

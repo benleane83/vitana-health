@@ -97,6 +97,22 @@ describe("demo data source", () => {
     expect(summary.totals.observations).toBeGreaterThan(0);
   });
 
+  it("orders dashboard metrics by their latest reading", async () => {
+    const source = createDemoDataSource(new Date("2026-07-17T12:00:00.000Z"));
+
+    await source.importManualObservations({
+      observedAt: "2026-07-18T09:00:00.000Z",
+      label: "Manual Weight",
+      observations: [{ measurementCode: "weight", value: 72.5, unit: "kg" }]
+    });
+
+    expect((await source.analytics()).latestMetrics[0]).toMatchObject({
+      code: "weight",
+      value: 72.5,
+      observedAt: "2026-07-18T09:00:00.000Z"
+    });
+  });
+
   it("supports paginated care reads and demo mutations", async () => {
     const source = createDemoDataSource(new Date("2026-07-17T12:00:00.000Z"));
     const events = await source.listHealthEvents({ limit: 1 });

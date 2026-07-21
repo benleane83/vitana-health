@@ -18,7 +18,6 @@ import {
 } from "@vitana/shared";
 import type { LocalStore } from "./localStore";
 
-const RECENT_ANALYTICS_LIMIT = 500;
 const DEFAULT_DETAIL_LIMIT = 50;
 const MAX_DETAIL_LIMIT = 100;
 
@@ -53,7 +52,7 @@ export class LocalProfileRepository implements MobileProfileRepository {
     const [profile, counts, observations] = await Promise.all([
       this.store.getProfile(),
       this.store.counts(),
-      this.store.recentObservations(RECENT_ANALYTICS_LIMIT)
+      this.store.latestObservationsByCode()
     ]);
     return computeAnalyticsFromInput({
       counts,
