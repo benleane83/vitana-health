@@ -9,6 +9,16 @@
     "node": ">=22 <23",
     "npm": ">=10 <11"
   },
+  "overrides": {
+    "body-parser": "1.20.6",
+    "minimatch@3.1.5": {
+      "brace-expansion": "1.1.16"
+    },
+    "minimatch@5.1.9": {
+      "brace-expansion": "2.1.2"
+    },
+    "shell-quote": "1.9.0"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"

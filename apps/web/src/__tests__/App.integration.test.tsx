@@ -763,6 +763,7 @@ describe("App — measurement detail", () => {
       generatedAt: "2026-07-14T00:00:00.000Z",
       measurement: {
         code: "glucose", displayName: "Glucose", category: "lab",
+        canonicalUnit: "mmol/L",
         counts: { observations: 0, samples: 0, activities: 0, total: 0 }
       },
       entries: [],

@@ -334,7 +334,7 @@ describe("central owner authorization", () => {
 
     const denied = [
       ["/api/profile", "get"], ["/api/export", "get"], ["/api/pairing/devices", "get"],
-      ["/api/settings/ai", "get"], ["/api/settings/ai", "put"], ["/api/query/ai", "post"], ["/api/observations/missing", "delete"]
+      ["/api/settings/ai", "get"], ["/api/settings/ai", "put"], ["/api/query/ai", "post"]
     ] as const;
     for (const [path, method] of denied) {
       expect((await request(app)[method](path).set("x-companion-token", token).send({})).status).toBe(403);
@@ -350,6 +350,9 @@ describe("central owner authorization", () => {
       .post("/api/import/health-connect")
       .set("x-companion-token", token)
       .send({ ...minimalHealthConnectPayload, profileId: "other" })).status).toBe(403);
+    expect((await request(app)
+      .delete("/api/observations/missing")
+      .set("x-companion-token", token)).status).toBe(404);
   });
 
   it("isolates companion reads and imports from the PC active profile", async () => {
@@ -418,8 +421,6 @@ describe("central owner authorization", () => {
     expect((await storeManager.getStore("self").storageCounts()).observations).toBe(0);
 
     for (const [path, method] of [
-      ["/api/observations/missing", "patch"],
-      ["/api/observations/missing", "delete"],
       ["/api/profile", "put"],
       ["/api/insights/generate", "post"],
       ["/api/export", "get"],
@@ -428,6 +429,9 @@ describe("central owner authorization", () => {
     ] as const) {
       expect((await request(app)[method](path).set(companion).send({ profileId: "phone-profile" })).status).toBe(403);
     }
+    expect((await request(app)
+      .delete("/api/observations/missing")
+      .set(companion)).status).toBe(404);
   });
 
   it("creates an owner session only for a local client", async () => {

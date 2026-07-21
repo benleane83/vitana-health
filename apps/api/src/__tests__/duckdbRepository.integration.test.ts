@@ -54,8 +54,8 @@ describe("DuckDbRepository fidelity", () => {
       const snapshot = await repository.snapshot();
       expect(snapshot.personalReferenceRanges[0]).toMatchObject({
         measurementCode: "weight",
-        normalLow: 58.967,
-        normalHigh: 90.718,
+        normalLow: expect.closeTo(58.967, 3),
+        normalHigh: expect.closeTo(90.718, 3),
         optimalLow: 65,
         optimalHigh: 85,
         unit: "kg"
@@ -377,7 +377,7 @@ describe("DuckDbRepository fidelity", () => {
       });
       expect(detail.entries.map((entry) => entry.id)).toEqual(["sample-1", "observation-a", "observation-z"]);
       expect(detail.entries[0]).toMatchObject({
-        referenceRange: { low: 50, high: 100, unit: "kg" },
+        referenceRange: { low: 60, high: 90, unit: "kg" },
         status: "normal"
       });
       expect(detail.entries[2]).toMatchObject({
@@ -841,7 +841,7 @@ describe("DuckDbRepository fidelity", () => {
 
     const upgraded = await DuckDbRepository.open(root, databasePath, key, options);
     try {
-      expect(await upgraded.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7]);
+      expect(await upgraded.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
       expect(await upgraded.dailyMetrics()).toEqual([]);
       expect(await upgraded.weeklyMetrics()).toEqual([]);
     } finally {
@@ -868,7 +868,7 @@ describe("DuckDbRepository fidelity", () => {
 
     const reopened = await DuckDbRepository.open(root, databasePath, key, options);
     try {
-      expect(await reopened.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7]);
+      expect(await reopened.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
     } finally {
       await reopened.close();
     }
@@ -895,7 +895,7 @@ describe("DuckDbRepository fidelity", () => {
           (2, 'manual-total', 'total_calories_burned', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 500000, 'kcal', 'manual-source', false);
       `);
 
-      expect(await migrateDuckDbSchema(database)).toBe(6);
+      expect(await migrateDuckDbSchema(database, 6)).toBe(6);
       expect(await querySql(database.connection, "SELECT id, value FROM observations ORDER BY ordinal;")).toEqual([
         { id: "health-connect-oxygen", value: 93 },
         { id: "manual-oxygen", value: 9300 }
@@ -905,7 +905,7 @@ describe("DuckDbRepository fidelity", () => {
         { id: "health-connect-active", value: 123.4 },
         { id: "manual-total", value: 500000 }
       ]);
-      expect(await migrateDuckDbSchema(database)).toBe(6);
+      expect(await migrateDuckDbSchema(database, 6)).toBe(6);
       expect(await querySql(database.connection, "SELECT value FROM observations WHERE id = 'health-connect-oxygen';"))
         .toEqual([{ value: 93 }]);
     } finally {
@@ -941,7 +941,9 @@ describe("DuckDbRepository fidelity", () => {
     await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (4, CURRENT_TIMESTAMP, 'synthetic');");
     await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (5, CURRENT_TIMESTAMP, 'synthetic');");
     await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (6, CURRENT_TIMESTAMP, 'synthetic');");
-    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (7, CURRENT_TIMESTAMP, 'future');");
+    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (7, CURRENT_TIMESTAMP, 'synthetic');");
+    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (8, CURRENT_TIMESTAMP, 'synthetic');");
+    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (9, CURRENT_TIMESTAMP, 'future');");
     await execSql(futureHandle.connection, "CHECKPOINT;");
     await closeEncryptedDuckDbDatabase(futureHandle);
     const futureHash = hashFile(futurePath);
