@@ -1,5 +1,5 @@
 {
-  "name": "@local-fitness-advisor/api",
+  "name": "@vitana/api",
   "version": "0.1.0",
   "license": "AGPL-3.0-only",
   "type": "module",
@@ -8,17 +8,17 @@
     "dist"
   ],
   "scripts": {
-    "predev": "npm run build -w @local-fitness-advisor/shared",
+    "predev": "npm run build -w @vitana/shared",
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "pretest": "npm run build -w @local-fitness-advisor/shared",
+    "pretest": "npm run build -w @vitana/shared",
     "test": "vitest run",
     "start": "node dist/server.js",
     "prepare:duckdb": "node ../../scripts/prepare-duckdb-httpfs.mjs --output ../desktop/build/duckdb-extensions"
   },
   "dependencies": {
-    "@local-fitness-advisor/shared": "file:../../packages/shared",
+    "@vitana/shared": "file:../../packages/shared",
     "@tesseract.js-data/eng": "^1.0.0",
     "cors": "^2.8.5",
     "duckdb": "^1.4.4",

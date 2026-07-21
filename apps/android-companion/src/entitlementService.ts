@@ -3,7 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 export const SCAN_SYNC_PRODUCT_ID = "scan_sync_unlock";
 export const PURCHASE_GATING_ENABLED = false;
 
-const OWNED_KEY = "local-fitness-advisor.entitlement.scan-sync";
+const OWNED_KEY = "vitana.entitlement.scan-sync";
 
 export type EntitlementStatus = "checking" | "locked" | "purchasing" | "pending" | "cancelled" | "error" | "owned";
 

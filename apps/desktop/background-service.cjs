@@ -1,9 +1,16 @@
+const path = require("node:path");
+
 function loginItemOptions(enabled, executablePath) {
   return {
     openAtLogin: enabled,
     path: executablePath,
     args: ["--background"]
   };
+}
+
+function legacyExecutablePath(executablePath) {
+  const pathApi = executablePath.includes("\\") ? path.win32 : path;
+  return pathApi.join(pathApi.dirname(executablePath), "Local Fitness Advisor.exe");
 }
 
 function createBackgroundServiceController({
@@ -50,6 +57,8 @@ function createBackgroundServiceController({
 
   function reconcileStartup() {
     const state = settingsStore.read();
+    const legacyPath = legacyExecutablePath(executablePath);
+    if (legacyPath !== executablePath) app.setLoginItemSettings(loginItemOptions(false, legacyPath));
     setLoginRegistration(state.backgroundServiceEnabled);
     applyRuntimeState(state.backgroundServiceEnabled);
     return settingsResponse();
@@ -113,4 +122,4 @@ function createBackgroundServiceController({
   };
 }
 
-module.exports = { createBackgroundServiceController, loginItemOptions };
+module.exports = { createBackgroundServiceController, legacyExecutablePath, loginItemOptions };

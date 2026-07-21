@@ -11,7 +11,7 @@ import type {
   HealthEventListQuery,
   ManualObservationPayload,
   UpdateObservationInput
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import { clearConnection, clearSelectedProfileId, loadConnection } from "./endpointStore";
 import type { ConnectionDetails } from "./endpointStore";
 import { createCompanionApi } from "./api";

@@ -1,4 +1,4 @@
-import { createApiClient, type ApiTransportResponse } from "@local-fitness-advisor/api-client";
+import { createApiClient, type ApiTransportResponse } from "@vitana/api-client";
 import type { ConnectionDetails } from "./endpointStore";
 import { DEFAULT_PINNED_REQUEST_TIMEOUT_MS, pinnedFetch } from "./pinnedFetch";
 

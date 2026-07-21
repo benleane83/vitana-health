@@ -9,7 +9,7 @@ test("electron-builder publisherName stays within the Windows config", () => {
   assert.equal(packageJson.build.npmRebuild, false);
   assert.equal(Object.hasOwn(packageJson.build, "publisherName"), false);
   assert.equal(Object.hasOwn(packageJson.build.win, "publisherName"), false);
-  assert.equal(packageJson.build.win.signtoolOptions.publisherName, "Local Fitness Advisor");
+  assert.equal(packageJson.build.win.signtoolOptions.publisherName, "Vitana Health");
 });
 
 test("electron-builder excludes DuckDB development files but keeps runtime files", () => {
@@ -19,6 +19,7 @@ test("electron-builder excludes DuckDB development files but keeps runtime files
   assert.ok(files.includes("startup-diagnostics.cjs"));
   assert.ok(files.includes("background-service.cjs"));
   assert.ok(files.includes("background-service-settings.cjs"));
+  assert.ok(files.includes("user-data-migration.cjs"));
   assert.ok(files.includes("build/*.ico"));
   assert.equal(packageJson.build.win.icon, "build/icon.ico");
   assert.ok(files.includes("!**/node_modules/duckdb/src{,/**}"));

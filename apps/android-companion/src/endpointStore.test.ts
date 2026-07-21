@@ -31,9 +31,9 @@ import {
   updateHealthConnectSyncCursor
 } from "./endpointStore";
 
-const connectionKey = "local-fitness-advisor.connection";
-const deviceIdKey = "local-fitness-advisor.deviceId";
-const tokenKey = "local-fitness-advisor.companionToken";
+const connectionKey = "vitana.connection";
+const deviceIdKey = "vitana.deviceId";
+const tokenKey = "vitana.companionToken";
 
 beforeEach(() => {
   storage.getItem.mockImplementation(async (key: string) => storage.async.get(key) ?? null);

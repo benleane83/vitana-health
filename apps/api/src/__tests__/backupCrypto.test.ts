@@ -8,12 +8,13 @@ import {
 } from "../backupCrypto.js";
 import {
   BACKUP_DECRYPTION_ERROR,
-  LFA_BACKUP_HEADER_LENGTH,
+  VITANA_BACKUP_MAGIC,
+  VITANA_BACKUP_HEADER_LENGTH,
   type BackupPayload,
   type HealthStoreData,
   CURRENT_SCHEMA_VERSION,
   defaultMeasurementTypes
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 
 function createTestStoreData(profileId = "test-user", displayName = "Test User"): HealthStoreData {
   return {
@@ -80,12 +81,9 @@ describe("backupCrypto", () => {
       const passphrase = "test-passphrase-strong";
       const encrypted = await encryptBackup(payload, passphrase);
 
-      expect(encrypted.length).toBeGreaterThan(LFA_BACKUP_HEADER_LENGTH + 16);
+      expect(encrypted.length).toBeGreaterThan(VITANA_BACKUP_HEADER_LENGTH + 16);
       // Magic bytes
-      expect(encrypted[0]).toBe(0x4c); // L
-      expect(encrypted[1]).toBe(0x46); // F
-      expect(encrypted[2]).toBe(0x41); // A
-      expect(encrypted[3]).toBe(0x00);
+      expect([...encrypted.subarray(0, 4)]).toEqual([...VITANA_BACKUP_MAGIC]);
       expect(encrypted[4]).toBe(1);    // version
 
       const decrypted = await decryptBackup(encrypted, passphrase);
@@ -119,7 +117,7 @@ describe("backupCrypto", () => {
       };
 
       const encrypted = await encryptBackup(payload, "test-passphrase-1234");
-      const truncated = encrypted.subarray(0, LFA_BACKUP_HEADER_LENGTH + 10);
+      const truncated = encrypted.subarray(0, VITANA_BACKUP_HEADER_LENGTH + 10);
       await expect(decryptBackup(Buffer.from(truncated), "test-passphrase-1234")).rejects.toThrow(BACKUP_DECRYPTION_ERROR);
     }, 30_000);
 
@@ -136,6 +134,14 @@ describe("backupCrypto", () => {
       encrypted[0] = 0xff; // corrupt magic
       await expect(decryptBackup(encrypted, "test-passphrase-1234")).rejects.toThrow(BACKUP_DECRYPTION_ERROR);
     }, 30_000);
+
+    it("rejects the retired backup format with the generic error", async () => {
+      const retiredBackup = Buffer.alloc(VITANA_BACKUP_HEADER_LENGTH + 16);
+      retiredBackup.set([0x4c, 0x46, 0x41, 0x00]);
+      retiredBackup[4] = 1;
+
+      await expect(decryptBackup(retiredBackup, "test-passphrase-1234")).rejects.toThrow(BACKUP_DECRYPTION_ERROR);
+    });
 
     it("produces different ciphertext each encryption (random salt/IV)", async () => {
       const data = createTestStoreData();

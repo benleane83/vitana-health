@@ -5,6 +5,7 @@ const { createBackgroundServiceController } = require("./background-service.cjs"
 const { createBackgroundServiceSettingsStore } = require("./background-service-settings.cjs");
 const { loadOrCreateSecureStoreKey } = require("./secure-store-key.cjs");
 const { createStartupDiagnostics } = require("./startup-diagnostics.cjs");
+const { migrateUserDataDirectory } = require("./user-data-migration.cjs");
 
 let apiServer;
 let mainWindow;
@@ -12,6 +13,14 @@ let quitting = false;
 let shutdownStarted = false;
 let launchPromise;
 const backgroundLaunch = process.argv.includes("--background");
+let startupPathError;
+const brandedUserDataPath = path.join(app.getPath("appData"), "Vitana Health");
+try {
+  migrateUserDataDirectory(app.getPath("appData"));
+} catch (error) {
+  startupPathError = error;
+}
+app.setPath("userData", brandedUserDataPath);
 const diagnostics = createStartupDiagnostics({ userDataPath: app.getPath("userData") });
 const settingsStore = createBackgroundServiceSettingsStore({ userDataPath: app.getPath("userData") });
 
@@ -59,9 +68,9 @@ const backgroundService = createBackgroundServiceController({
   onQuit: requestQuit,
   createTray: ({ onOpen, onQuit }) => {
     const tray = new Tray(trayIconPath());
-    tray.setToolTip("Local Fitness Advisor");
+    tray.setToolTip("Vitana Health");
     tray.setContextMenu(Menu.buildFromTemplate([
-      { label: "Open Local Fitness Advisor", click: onOpen },
+      { label: "Open Vitana Health", click: onOpen },
       { type: "separator" },
       { label: "Quit", click: onQuit }
     ]));
@@ -71,7 +80,7 @@ const backgroundService = createBackgroundServiceController({
   showNotification: () => {
     if (!Notification.isSupported()) return;
     new Notification({
-      title: "Local Fitness Advisor is still running",
+      title: "Vitana Health is still running",
       body: "Mobile sync remains available. Use Quit in the tray menu to stop the service.",
       icon: trayIconPath()
     }).show();
@@ -101,6 +110,7 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 async function launch() {
+  if (startupPathError) throw startupPathError;
   const persisted = backgroundService.getSettings();
   if (backgroundLaunch && !persisted.backgroundServiceEnabled) {
     diagnostics.info("Ignoring stale disabled background launch");
@@ -115,24 +125,24 @@ async function launch() {
   process.env.NODE_ENV = "production";
   process.env.HOST = "0.0.0.0";
   process.env.PORT = process.env.PORT || "4317";
-  process.env.LFA_DATA_DIR = app.getPath("userData");
-  process.env.LFA_STORAGE_BACKEND = process.env.LFA_STORAGE_BACKEND ||
-    (process.env.LFA_DUCKDB_ROLLBACK ? "json" : "duckdb");
-  process.env.LFA_WEB_ROOT = packaged
+  process.env.VITANA_DATA_DIR = app.getPath("userData");
+  process.env.VITANA_STORAGE_BACKEND = process.env.VITANA_STORAGE_BACKEND ||
+    (process.env.VITANA_DUCKDB_ROLLBACK ? "json" : "duckdb");
+  process.env.VITANA_WEB_ROOT = packaged
     ? path.join(process.resourcesPath, "web")
     : path.resolve(__dirname, "../web/dist");
-  process.env.LFA_DUCKDB_HTTPFS_EXTENSION = packaged
+  process.env.VITANA_DUCKDB_HTTPFS_EXTENSION = packaged
     ? path.join(process.resourcesPath, "duckdb-extensions", "httpfs.duckdb_extension")
     : path.resolve(__dirname, "build", "duckdb-extensions", "httpfs.duckdb_extension");
 
-  const serverPath = require.resolve("@local-fitness-advisor/api");
+  const serverPath = require.resolve("@vitana/api");
   const { configureAiCredentialProtector, startServer } = await import(pathToFileURL(serverPath).href);
   diagnostics.info("Embedded API module loaded");
   configureAiCredentialProtector({
     encryptString: (value) => safeStorage.encryptString(value),
     decryptString: (value) => safeStorage.decryptString(value)
   });
-  const configuredSecret = process.env.LFA_SECRET;
+  const configuredSecret = process.env.VITANA_SECRET;
   const secureKey = configuredSecret
     ? undefined
     : loadOrCreateSecureStoreKey({
@@ -159,7 +169,7 @@ function handleStartupFailure(error) {
   diagnostics.error("Startup failed", error);
   console.error(error);
   dialog.showErrorBox(
-    "Local Fitness Advisor could not start",
+    "Vitana Health could not start",
     error instanceof Error ? error.message : String(error)
   );
   requestQuit();

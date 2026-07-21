@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { checksum, type ActivitySession, type Observation, type ParsedImport, type TimeSeriesSample } from "@local-fitness-advisor/shared";
+import { checksum, type ActivitySession, type Observation, type ParsedImport, type TimeSeriesSample } from "@vitana/shared";
 import { z } from "zod";
 
 const isoDateString = z.string().datetime({ offset: true });

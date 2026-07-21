@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { buildManualLabEntryImport } from "@local-fitness-advisor/shared";
+import { buildManualLabEntryImport } from "@vitana/shared";
 import { describeAnalyticsStorage, runAnalyticsQuery } from "../storage/analyticsBackend.js";
 import { ProfileStoreManager } from "../storage/profileStoreManager.js";
 
@@ -11,15 +11,15 @@ let tempDir: string;
 let duckdbRoot: string;
 
 beforeEach(() => {
-  tempDir = mkdtempSync(join(tmpdir(), "lfa-duckdb-runtime-test-"));
+  tempDir = mkdtempSync(join(tmpdir(), "vitana-duckdb-runtime-test-"));
   duckdbRoot = join(tempDir, "duckdb-storage");
-  process.env.LFA_DATA_DIR = tempDir;
-  process.env.LFA_SECRET = "activation-test-secret-123456789";
+  process.env.VITANA_DATA_DIR = tempDir;
+  process.env.VITANA_SECRET = "activation-test-secret-123456789";
 });
 
 afterEach(() => {
-  delete process.env.LFA_DATA_DIR;
-  delete process.env.LFA_SECRET;
+  delete process.env.VITANA_DATA_DIR;
+  delete process.env.VITANA_SECRET;
   rmSync(tempDir, { recursive: true, force: true });
 });
 
@@ -120,7 +120,7 @@ function openManager(): Promise<ProfileStoreManager> {
 
 function findPreparedExtension(): string | undefined {
   return [
-    process.env.LFA_DUCKDB_HTTPFS_EXTENSION,
+    process.env.VITANA_DUCKDB_HTTPFS_EXTENSION,
     resolve(process.cwd(), "apps", "desktop", "build", "duckdb-extensions", "httpfs.duckdb_extension"),
     resolve(process.cwd(), "..", "desktop", "build", "duckdb-extensions", "httpfs.duckdb_extension")
   ].find((candidate): candidate is string => Boolean(candidate && existsSync(candidate)));

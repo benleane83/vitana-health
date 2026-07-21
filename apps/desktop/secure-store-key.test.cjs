@@ -14,7 +14,7 @@ afterEach(() => {
 });
 
 function makeRoot() {
-  const root = mkdtempSync(path.join(tmpdir(), "lfa-secure-key-test-"));
+  const root = mkdtempSync(path.join(tmpdir(), "vitana-secure-key-test-"));
   roots.push(root);
   return root;
 }

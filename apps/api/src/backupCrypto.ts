@@ -8,11 +8,11 @@
 import { createHash, randomBytes, scrypt, createCipheriv, createDecipheriv } from "node:crypto";
 import { gzipSync, gunzipSync } from "node:zlib";
 import {
-  LFA_BACKUP_MAGIC,
-  LFA_BACKUP_VERSION,
-  LFA_BACKUP_SALT_LENGTH,
-  LFA_BACKUP_IV_LENGTH,
-  LFA_BACKUP_HEADER_LENGTH,
+  VITANA_BACKUP_MAGIC,
+  VITANA_BACKUP_VERSION,
+  VITANA_BACKUP_SALT_LENGTH,
+  VITANA_BACKUP_IV_LENGTH,
+  VITANA_BACKUP_HEADER_LENGTH,
   SCRYPT_N,
   SCRYPT_R,
   SCRYPT_P,
@@ -23,7 +23,7 @@ import {
   type BackupPayload,
   type BackupProfileEntry,
   type HealthStoreData
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 
 /**
  * Compute canonical SHA-256 digest of a HealthStoreData object.
@@ -66,21 +66,21 @@ function deriveKey(passphrase: string, salt: Buffer): Promise<Buffer> {
 }
 
 /**
- * Encrypt a BackupPayload into the .lfa-backup binary format.
+ * Encrypt a BackupPayload into the .vitana-backup binary format.
  */
 export async function encryptBackup(payload: BackupPayload, passphrase: string): Promise<Buffer> {
   const json = JSON.stringify(payload);
   const compressed = gzipSync(Buffer.from(json, "utf8"), { level: 6 });
 
-  const salt = randomBytes(LFA_BACKUP_SALT_LENGTH);
-  const iv = randomBytes(LFA_BACKUP_IV_LENGTH);
+  const salt = randomBytes(VITANA_BACKUP_SALT_LENGTH);
+  const iv = randomBytes(VITANA_BACKUP_IV_LENGTH);
   const key = await deriveKey(passphrase, salt);
 
   const cipher = createCipheriv("aes-256-gcm", key, iv);
   // Authenticate the header (magic + version) as additional data
   const header = Buffer.alloc(5);
-  header.set(LFA_BACKUP_MAGIC, 0);
-  header[4] = LFA_BACKUP_VERSION;
+  header.set(VITANA_BACKUP_MAGIC, 0);
+  header[4] = VITANA_BACKUP_VERSION;
   cipher.setAAD(header);
 
   const encrypted = Buffer.concat([cipher.update(compressed), cipher.final()]);
@@ -91,29 +91,29 @@ export async function encryptBackup(payload: BackupPayload, passphrase: string):
 }
 
 /**
- * Decrypt a .lfa-backup binary buffer into a BackupPayload.
+ * Decrypt a .vitana-backup binary buffer into a BackupPayload.
  * Throws a generic error for any decryption/format failure (no oracle).
  */
 export async function decryptBackup(buffer: Buffer, passphrase: string): Promise<BackupPayload> {
-  if (buffer.length < LFA_BACKUP_HEADER_LENGTH + 16) {
+  if (buffer.length < VITANA_BACKUP_HEADER_LENGTH + 16) {
     throw new Error(BACKUP_DECRYPTION_ERROR);
   }
 
   // Validate magic
   for (let i = 0; i < 4; i++) {
-    if (buffer[i] !== LFA_BACKUP_MAGIC[i]) {
+    if (buffer[i] !== VITANA_BACKUP_MAGIC[i]) {
       throw new Error(BACKUP_DECRYPTION_ERROR);
     }
   }
 
   // Validate version
-  if (buffer[4] !== LFA_BACKUP_VERSION) {
+  if (buffer[4] !== VITANA_BACKUP_VERSION) {
     throw new Error(BACKUP_DECRYPTION_ERROR);
   }
 
-  const salt = buffer.subarray(5, 5 + LFA_BACKUP_SALT_LENGTH);
-  const iv = buffer.subarray(5 + LFA_BACKUP_SALT_LENGTH, LFA_BACKUP_HEADER_LENGTH);
-  const ciphertextWithTag = buffer.subarray(LFA_BACKUP_HEADER_LENGTH);
+  const salt = buffer.subarray(5, 5 + VITANA_BACKUP_SALT_LENGTH);
+  const iv = buffer.subarray(5 + VITANA_BACKUP_SALT_LENGTH, VITANA_BACKUP_HEADER_LENGTH);
+  const ciphertextWithTag = buffer.subarray(VITANA_BACKUP_HEADER_LENGTH);
 
   if (ciphertextWithTag.length < 16) {
     throw new Error(BACKUP_DECRYPTION_ERROR);

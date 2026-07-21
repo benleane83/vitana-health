@@ -1,5 +1,5 @@
 import { createHash, randomBytes, X509Certificate } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import selfsigned from "selfsigned";
@@ -26,17 +26,17 @@ export function getLanAddresses(): string[] {
 }
 
 export async function configureRuntimeSecurity(host: string): Promise<RuntimeSecurity> {
-  const dataDir = path.resolve(process.env.LFA_DATA_DIR ?? "data");
+  const dataDir = path.resolve(process.env.VITANA_DATA_DIR ?? "data");
   mkdirSync(dataDir, { recursive: true });
 
-  const ownerToken = process.env.LFA_OWNER_TOKEN ?? loadOrCreateOwnerToken(dataDir);
-  if (ownerToken.length < 24) throw new Error("LFA_OWNER_TOKEN must be at least 24 characters.");
-  process.env.LFA_OWNER_TOKEN = ownerToken;
+  const ownerToken = process.env.VITANA_OWNER_TOKEN ?? loadOrCreateOwnerToken(dataDir);
+  if (ownerToken.length < 24) throw new Error("VITANA_OWNER_TOKEN must be at least 24 characters.");
+  process.env.VITANA_OWNER_TOKEN = ownerToken;
 
-  const configuredCert = process.env.LFA_TLS_CERT;
-  const configuredKey = process.env.LFA_TLS_KEY;
+  const configuredCert = process.env.VITANA_TLS_CERT;
+  const configuredKey = process.env.VITANA_TLS_KEY;
   if (Boolean(configuredCert) !== Boolean(configuredKey)) {
-    throw new Error("LFA_TLS_CERT and LFA_TLS_KEY must be configured together.");
+    throw new Error("VITANA_TLS_CERT and VITANA_TLS_KEY must be configured together.");
   }
 
   const isLoopback = host === "127.0.0.1" || host === "::1" || host === "localhost";
@@ -46,8 +46,8 @@ export async function configureRuntimeSecurity(host: string): Promise<RuntimeSec
     const generated = await loadOrCreateCertificate(dataDir);
     tlsCertPath = generated.certPath;
     tlsKeyPath = generated.keyPath;
-    process.env.LFA_TLS_CERT = tlsCertPath;
-    process.env.LFA_TLS_KEY = tlsKeyPath;
+    process.env.VITANA_TLS_CERT = tlsCertPath;
+    process.env.VITANA_TLS_KEY = tlsKeyPath;
   }
 
   const publicKeyHash = tlsCertPath ? certificatePublicKeyHash(readFileSync(tlsCertPath, "utf8")) : null;
@@ -77,8 +77,11 @@ function loadOrCreateOwnerToken(dataDir: string): string {
 
 async function loadOrCreateCertificate(dataDir: string): Promise<{ certPath: string; keyPath: string }> {
   const tlsDir = path.join(dataDir, "tls");
-  const certPath = path.join(tlsDir, "local-fitness-advisor.crt");
-  const keyPath = path.join(tlsDir, "local-fitness-advisor.key");
+  const certPath = path.join(tlsDir, "vitana.crt");
+  const keyPath = path.join(tlsDir, "vitana.key");
+  const legacyCertPath = path.join(tlsDir, "local-fitness-advisor.crt");
+  const legacyKeyPath = path.join(tlsDir, "local-fitness-advisor.key");
+  migrateLegacyTlsFiles({ certPath, keyPath, legacyCertPath, legacyKeyPath });
   if (existsSync(certPath) && existsSync(keyPath)) return { certPath, keyPath };
 
   mkdirSync(tlsDir, { recursive: true });
@@ -91,7 +94,7 @@ async function loadOrCreateCertificate(dataDir: string): Promise<{ certPath: str
     { type: 7, ip: "127.0.0.1" },
     ...getLanAddresses().map((ip): { type: 7; ip: string } => ({ type: 7, ip }))
   ];
-  const certificate = await selfsigned.generate([{ name: "commonName", value: "Local Fitness Advisor" }], {
+  const certificate = await selfsigned.generate([{ name: "commonName", value: "Vitana" }], {
     keyType: "ec",
     curve: "P-256",
     algorithm: "sha256",
@@ -107,4 +110,24 @@ async function loadOrCreateCertificate(dataDir: string): Promise<{ certPath: str
   writeFileSync(keyPath, certificate.private, { encoding: "utf8", mode: 0o600 });
   writeFileSync(certPath, certificate.cert, { encoding: "utf8", mode: 0o600 });
   return { certPath, keyPath };
+}
+
+function migrateLegacyTlsFiles(paths: {
+  certPath: string;
+  keyPath: string;
+  legacyCertPath: string;
+  legacyKeyPath: string;
+}): void {
+  for (const [legacyPath, currentPath] of [
+    [paths.legacyCertPath, paths.certPath],
+    [paths.legacyKeyPath, paths.keyPath]
+  ] as const) {
+    if (existsSync(legacyPath) && existsSync(currentPath)) {
+      throw new Error("Both legacy and Vitana TLS files exist. Remove one complete pair after safeguarding the files.");
+    }
+    if (existsSync(legacyPath)) renameSync(legacyPath, currentPath);
+  }
+  if (existsSync(paths.certPath) !== existsSync(paths.keyPath)) {
+    throw new Error("The Vitana TLS certificate and key are incomplete. Restore the matching file from backup.");
+  }
 }

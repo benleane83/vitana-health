@@ -1,4 +1,4 @@
-import type { BiologicalAgeReport } from "@local-fitness-advisor/shared";
+import type { BiologicalAgeReport } from "@vitana/shared";
 import { formatTimestamp } from "../utils.js";
 
 function formatAge(value: number | undefined): string {

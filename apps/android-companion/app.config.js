@@ -1,18 +1,18 @@
-const allowCleartext = process.env.LFA_ALLOW_CLEARTEXT === "1";
-const standalonePoc = process.env.LFA_STANDALONE_POC === "1";
+const allowCleartext = process.env.VITANA_ALLOW_CLEARTEXT === "1";
+const standalonePoc = process.env.VITANA_STANDALONE_POC === "1";
 
 module.exports = {
   expo: {
-    name: standalonePoc ? "Local Fitness Standalone Test" : "Local Fitness Companion",
-    slug: "local-fitness-companion",
+    name: standalonePoc ? "Vitana Standalone Test" : "Vitana",
+    slug: "vitana",
     version: "1.0.0",
     orientation: "portrait",
     icon: "./assets/icon.png",
     userInterfaceStyle: "light",
     android: {
       package: standalonePoc
-        ? "com.localfitnessadvisor.companion.standalone"
-        : "com.localfitnessadvisor.companion",
+        ? "app.vitanahealth.companion.standalone"
+        : "app.vitanahealth.companion",
       allowBackup: false,
       usesCleartextTraffic: allowCleartext,
       permissions: [
@@ -49,11 +49,11 @@ module.exports = {
       ["expo-sqlite", { useSQLCipher: true }],
       "@react-native-community/datetimepicker",
       ["expo-image-picker", {
-        photosPermission: "Allow Local Fitness Companion to select a health report for private processing on your paired PC.",
-        cameraPermission: "Allow Local Fitness Companion to photograph a health report for private processing on your paired PC."
+        photosPermission: "Allow Vitana to select a health report for private processing on your paired PC.",
+        cameraPermission: "Allow Vitana to photograph a health report for private processing on your paired PC."
       }],
       ["expo-camera", {
-        cameraPermission: "Allow Local Fitness Companion to access your camera for QR pairing and health-report capture."
+        cameraPermission: "Allow Vitana to access your camera for QR pairing and health-report capture."
       }],
       ["expo-build-properties", {
         android: {

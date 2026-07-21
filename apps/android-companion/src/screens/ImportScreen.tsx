@@ -19,7 +19,7 @@ import {
   type BodyCompositionDraft,
   type BodyCompositionDraftRow,
   type ManualObservationPayload
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import { createCompanionApi } from "../api";
 import { useEntitlement } from "../EntitlementProvider";
 import {
@@ -36,7 +36,7 @@ import { LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS } from "../pinnedFetch";
 import { Button, Card, Message, Screen } from "../ui/components";
 import { colors, radii, spacing, type } from "../ui/theme";
 
-const privacyUrl = "https://github.com/benleane83/local-fitness-advisor/blob/main/docs/PRIVACY_POLICY.md";
+const privacyUrl = "https://vitanahealth.app/privacy";
 type ImportSource = "sync" | "scan" | "manual";
 type ScanKind = "body-composition" | "blood-test";
 

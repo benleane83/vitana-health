@@ -8,7 +8,7 @@ import {
   weeklyMetricsViewSql
 } from "../analyticalViews.js";
 
-const markerName = ".lfa-duckdb-poc";
+const markerName = ".vitana-duckdb-poc";
 const schemaVersion = 8;
 
 export interface DuckDbOptions {
@@ -31,7 +31,7 @@ export function initializeDuckDbRoot(root: string): string {
   for (const directory of ["databases", "extensions", "temp"]) {
     mkdirSync(resolve(resolvedRoot, directory), { recursive: true, mode: 0o700 });
   }
-  writeFileSync(resolve(resolvedRoot, markerName), "Local Fitness Advisor encrypted DuckDB PoC\n", {
+  writeFileSync(resolve(resolvedRoot, markerName), "Vitana encrypted DuckDB PoC\n", {
     mode: 0o600
   });
   return resolvedRoot;
@@ -40,7 +40,7 @@ export function initializeDuckDbRoot(root: string): string {
 export function assertDuckDbRoot(root: string): string {
   const resolvedRoot = resolve(root);
   const markerPath = resolve(resolvedRoot, markerName);
-  if (!existsSync(markerPath) || readFileSync(markerPath, "utf8") !== "Local Fitness Advisor encrypted DuckDB PoC\n") {
+  if (!existsSync(markerPath) || readFileSync(markerPath, "utf8") !== "Vitana encrypted DuckDB PoC\n") {
     throw new Error(`Refusing to use an unmarked encrypted DuckDB root: ${resolvedRoot}`);
   }
   return resolvedRoot;

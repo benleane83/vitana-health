@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildClinicianReport } from "../clinicianReport.js";
-import { computeAnalytics, type HealthStoreData } from "@local-fitness-advisor/shared";
+import { computeAnalytics, type HealthStoreData } from "@vitana/shared";
 
 function store(): HealthStoreData {
   return {

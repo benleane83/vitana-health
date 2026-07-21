@@ -10,7 +10,7 @@ import {
   type ManualObservationPayload,
   type MeasurementType,
   type UnitSystem
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import { api } from "../../api.js";
 import { ManualGroupSaveDialog } from "../../components/ManualGroupSaveDialog.js";
 import { ManualEntryForm } from "../../pages/ImportPage.js";

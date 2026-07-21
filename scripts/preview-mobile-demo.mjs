@@ -5,7 +5,7 @@ const appDirectory = fileURLToPath(new URL("../apps/android-companion/", import.
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const child = spawn(npmCommand, ["run", "preview:web"], {
   cwd: appDirectory,
-  env: { ...process.env, EXPO_PUBLIC_LFA_DEMO_MODE: "1" },
+  env: { ...process.env, EXPO_PUBLIC_VITANA_DEMO_MODE: "1" },
   shell: process.platform === "win32",
   stdio: "inherit"
 });

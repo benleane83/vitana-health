@@ -18,7 +18,7 @@ import {
   type DeleteObservationResponse,
   type DeleteObservationsByTypeResponse,
   type UpdateObservationResponse
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import type { ProfileStoreManager } from "../storage/profileStoreManager.js";
 import { describeAnalyticsStorage } from "../storage/analyticsBackend.js";
 import { generateInsight } from "../insights.js";
@@ -361,7 +361,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.get("/export", async (_request, response, next) => {
     try {
-      response.setHeader("content-disposition", "attachment; filename=local-fitness-advisor-export.json");
+      response.setHeader("content-disposition", "attachment; filename=vitana-export.json");
       response.json(await activeStore().exportData());
     } catch (error) {
       next(error);

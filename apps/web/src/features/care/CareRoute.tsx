@@ -10,7 +10,7 @@ import {
   healthEventKindLabels,
   isCareItemKind,
   normalizedCareItemKind
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import type {
   CareItem,
   CareItemListQuery,
@@ -19,7 +19,7 @@ import type {
   CreateHealthEventInput,
   HealthEvent,
   HealthEventListQuery
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import { api, ApiError } from "../../api.js";
 import type { CareView } from "../../types.js";
 

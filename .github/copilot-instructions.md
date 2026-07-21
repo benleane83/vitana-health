@@ -1,4 +1,4 @@
-This app (working title Local Fitness Advisor) is a local-first application that stores personal health data in an encrypted database. It started as a single-user application, but has been expanded to support multiple family member profiles including pets and children.
+This app (working title Vitana Health) is a local-first application that stores personal health data in an encrypted database. It started as a single-user application, but has been expanded to support multiple family member profiles including pets and children.
 
 ## Application status
 

@@ -5,7 +5,7 @@ import type {
   Profile,
   SourceKind,
   UpdateObservationInput
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 
 export const LOCAL_SCHEMA_VERSION = 1;
 

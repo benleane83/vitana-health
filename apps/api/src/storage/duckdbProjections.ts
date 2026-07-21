@@ -25,7 +25,7 @@ import {
   type ReferenceRangeState,
   getPreferredUnit,
   resolveReferenceRange
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import type { ClinicianReportSourceImport } from "../clinicianReport.js";
 import {
   type MeasurementDetailPage,

@@ -1,8 +1,8 @@
 /**
- * Shared contracts for the portable passphrase-protected profile backup format (.lfa-backup).
+ * Shared contracts for the portable passphrase-protected profile backup format (.vitana-backup).
  *
  * Binary format layout:
- *   [4 bytes magic "LFA\x00"] [1 byte version] [32 bytes salt] [12 bytes IV] [N bytes AES-256-GCM ciphertext+tag]
+ *   [4 bytes magic "VITA"] [1 byte version] [32 bytes salt] [12 bytes IV] [N bytes AES-256-GCM ciphertext+tag]
  *
  * The ciphertext is gzip-compressed JSON of BackupPayload, encrypted with a key derived via scrypt.
  * The header is authenticated but contains NO profile metadata.
@@ -11,12 +11,12 @@ import { z } from "zod";
 
 // --- Binary format constants ---
 
-export const LFA_BACKUP_MAGIC = new Uint8Array([0x4c, 0x46, 0x41, 0x00]); // "LFA\x00"
-export const LFA_BACKUP_VERSION = 1;
-export const LFA_BACKUP_SALT_LENGTH = 32;
-export const LFA_BACKUP_IV_LENGTH = 12;
-export const LFA_BACKUP_HEADER_LENGTH = 4 + 1 + LFA_BACKUP_SALT_LENGTH + LFA_BACKUP_IV_LENGTH; // 49 bytes
-export const LFA_BACKUP_FILE_EXTENSION = ".lfa-backup";
+export const VITANA_BACKUP_MAGIC = new Uint8Array([0x56, 0x49, 0x54, 0x41]); // "VITA"
+export const VITANA_BACKUP_VERSION = 1;
+export const VITANA_BACKUP_SALT_LENGTH = 32;
+export const VITANA_BACKUP_IV_LENGTH = 12;
+export const VITANA_BACKUP_HEADER_LENGTH = 4 + 1 + VITANA_BACKUP_SALT_LENGTH + VITANA_BACKUP_IV_LENGTH; // 49 bytes
+export const VITANA_BACKUP_FILE_EXTENSION = ".vitana-backup";
 
 // scrypt parameters: N=2^17, r=8, p=1 (strong for offline attacks, ~130ms on modern hardware)
 export const SCRYPT_N = 2 ** 17;

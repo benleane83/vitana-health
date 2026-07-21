@@ -1,6 +1,6 @@
 # Play Data Safety Declaration
 
-Use this declaration when completing Play Console Data Safety for `com.localfitnessadvisor.companion`. It derives from the [Health Connect Data Inventory](HEALTH_CONNECT_DATA_INVENTORY.md) and must be updated with it before release.
+Use this declaration when completing Play Console Data Safety for `app.vitanahealth.companion`. It derives from the [Health Connect Data Inventory](HEALTH_CONNECT_DATA_INVENTORY.md) and must be updated with it before release.
 
 ## Collected data
 

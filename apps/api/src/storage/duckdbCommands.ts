@@ -30,7 +30,7 @@ import {
   type UpdateHealthEventInput,
   type UpdateObservationInput,
   type UpdateObservationResponse
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import { storageCounts } from "./duckdbProjections.js";
 import {
   all,

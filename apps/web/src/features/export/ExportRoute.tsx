@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { AppBootstrap, BackupInspectResponse, RestoreDecision } from "@local-fitness-advisor/shared";
+import type { AppBootstrap, BackupInspectResponse, RestoreDecision } from "@vitana/shared";
 import { api } from "../../api.js";
 import { ExportPage } from "../../pages/ExportPage.js";
 

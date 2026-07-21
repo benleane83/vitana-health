@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ManualObservationPayload, Profile } from "@local-fitness-advisor/shared";
+import type { ManualObservationPayload, Profile } from "@vitana/shared";
 import { LocalProfileRepository } from "./localRepository";
 import {
   MemoryLocalStore,

@@ -1,4 +1,4 @@
-import type { Profile } from "@local-fitness-advisor/shared";
+import type { Profile } from "@vitana/shared";
 
 const blockedPromptKeys = /(name|display|note|source|file|import|profile|device|id|birth|sex|goal|json|raw|token|auth|email|phone|address)/i;
 const allowedPromptKeys = /(value|unit|count|avg|min|max|sum|metric|code|status|flag|recorded|observed|start|end|date|day|week|month|activity|duration|distance|energy|heart|oxygen|glucose|cholesterol|steps|row)/i;

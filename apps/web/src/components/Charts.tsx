@@ -16,7 +16,7 @@ import type {
   HealthDataDetail,
   HealthDataDetailEntry,
   ReferenceRange
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import { formatChartTimestamp, formatDetailValue, formatTimestamp } from "../utils.js";
 
 const flatChartPaddingRatio = 0.05;

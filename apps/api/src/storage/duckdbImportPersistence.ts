@@ -1,5 +1,5 @@
 import type duckdb from "duckdb";
-import type { SourceImport } from "@local-fitness-advisor/shared";
+import type { SourceImport } from "@vitana/shared";
 import { insertAudit, nextOrdinal } from "./duckdbCommands.js";
 import { storageCounts } from "./duckdbProjections.js";
 import type {

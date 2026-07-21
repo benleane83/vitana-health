@@ -4,7 +4,7 @@ import { CompositeNavigationProp, useFocusEffect, useNavigation } from "@react-n
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { ChevronRight, Database, MonitorSmartphone, UserRound } from "lucide-react-native";
-import { isUtcMidnightTimestamp } from "@local-fitness-advisor/shared";
+import { isUtcMidnightTimestamp } from "@vitana/shared";
 import { useMobileApi } from "../MobileApiProvider";
 import type { RootStackParamList, TabParamList } from "../navigationTypes";
 import { Button, Card, Loading, Message, Screen } from "../ui/components";

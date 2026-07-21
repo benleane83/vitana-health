@@ -1,4 +1,4 @@
-# Local Fitness Advisor — API Contract
+# Vitana Health — API Contract
 
 **Version:** 1 (stable)  
 **Base URL:** `http(s)://<host>:<port>`  
@@ -25,7 +25,7 @@ POST /api/auth/local
 ```
 **Request body:**
 ```json
-{ "token": "<LFA_OWNER_TOKEN>" }
+{ "token": "<VITANA_OWNER_TOKEN>" }
 ```
 **Success `204`:** no response body. The loopback-only endpoint sets an `HttpOnly`, `SameSite=Strict` owner cookie. Standalone API clients may instead send the configured owner token as `Authorization: Bearer <token>`.
 
@@ -377,7 +377,7 @@ without the required capability returns `403`.
 
 ## Query / AI
 
-Endpoints in this section return `x-lfa-lifecycle` to identify their compatibility commitment. Supported endpoints are part of the product API; experimental endpoints are diagnostic or fallback paths and can change without a compatibility guarantee.
+Endpoints in this section return `x-vitana-lifecycle` to identify their compatibility commitment. Supported endpoints are part of the product API; experimental endpoints are diagnostic or fallback paths and can change without a compatibility guarantee.
 
 ### AI query *(supported)*
 ```
@@ -413,7 +413,7 @@ All error responses follow this shape:
 | `PROFILE_ACCESS_DENIED` | 403 | Companion profile grant does not match request |
 | `AUTH_LOOPBACK_ONLY` | 403 | Endpoint only accessible from loopback (127.x) |
 | `PAIRING_CODE_INVALID` | 400 | Pairing code missing or expired |
-| `PAIRING_SECRET_REQUIRED` | 400 | LFA_SECRET not configured |
+| `PAIRING_SECRET_REQUIRED` | 400 | VITANA_SECRET not configured |
 | `PAIRING_NOT_FOUND` | 404 | Pairing request ID not found |
 | `DEVICE_NOT_FOUND` | 404 | Device pairing not found |
 | `OBSERVATION_NOT_FOUND` | 404 | Observation ID not found |
@@ -431,7 +431,7 @@ The server is configured entirely via environment variables. See `.env.example` 
 
 ```sh
 cp .env.example .env
-# Edit .env, set LFA_OWNER_TOKEN and LFA_SECRET
+# Edit .env, set VITANA_OWNER_TOKEN and VITANA_SECRET
 npm run build
 npm start --workspace=apps/api
 ```
@@ -440,7 +440,7 @@ npm start --workspace=apps/api
 
 ```bat
 copy .env.example .env
-:: Edit .env, set LFA_OWNER_TOKEN and LFA_SECRET
+:: Edit .env, set VITANA_OWNER_TOKEN and VITANA_SECRET
 npm run build
 npm start --workspace=apps/api
 ```
@@ -449,7 +449,7 @@ npm start --workspace=apps/api
 
 ```powershell
 Copy-Item .env.example .env
-# Edit .env, set LFA_OWNER_TOKEN and LFA_SECRET
+# Edit .env, set VITANA_OWNER_TOKEN and VITANA_SECRET
 npm run build
 npm start --workspace=apps/api
 ```

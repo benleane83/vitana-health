@@ -1,6 +1,6 @@
 import type duckdb from "duckdb";
 import { describe, expect, it, vi } from "vitest";
-import type { Observation } from "@local-fitness-advisor/shared";
+import type { Observation } from "@vitana/shared";
 import { insertObservationRows } from "../storage/duckdbRows.js";
 
 describe("insertObservationRows", () => {

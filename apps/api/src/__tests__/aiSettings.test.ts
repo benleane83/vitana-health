@@ -24,9 +24,9 @@ let originalDataDirectory: string | undefined;
 afterEach(() => {
   configureAiCredentialProtector(undefined);
   if (originalDataDirectory === undefined) {
-    delete process.env.LFA_DATA_DIR;
+    delete process.env.VITANA_DATA_DIR;
   } else {
-    process.env.LFA_DATA_DIR = originalDataDirectory;
+    process.env.VITANA_DATA_DIR = originalDataDirectory;
   }
   if (dataDirectory) rmSync(dataDirectory, { recursive: true, force: true });
   dataDirectory = undefined;
@@ -82,9 +82,9 @@ describe("AI settings credential persistence", () => {
 });
 
 function useTemporaryDataDirectory(): void {
-  originalDataDirectory = process.env.LFA_DATA_DIR;
-  dataDirectory = mkdtempSync(join(tmpdir(), "lfa-ai-settings-"));
-  process.env.LFA_DATA_DIR = dataDirectory;
+  originalDataDirectory = process.env.VITANA_DATA_DIR;
+  dataDirectory = mkdtempSync(join(tmpdir(), "vitana-ai-settings-"));
+  process.env.VITANA_DATA_DIR = dataDirectory;
 }
 
 function testProtector(): AiCredentialProtector {

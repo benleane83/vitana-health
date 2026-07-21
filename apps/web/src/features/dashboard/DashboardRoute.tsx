@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { AnalyticsSummary, AppBootstrap, Profile, ProfileListEntry } from "@local-fitness-advisor/shared";
+import type { AnalyticsSummary, AppBootstrap, Profile, ProfileListEntry } from "@vitana/shared";
 import { api } from "../../api.js";
 import { DashboardPage } from "../../pages/DashboardPage.js";
 

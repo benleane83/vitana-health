@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
 import { App } from "../App.js";
-import { defaultMeasurementTypes, type HealthStoreData } from "@local-fitness-advisor/shared";
+import { defaultMeasurementTypes, type HealthStoreData } from "@vitana/shared";
 
 // ─── Minimal fetch mock ────────────────────────────────────────────────────────
 
@@ -318,6 +318,7 @@ describe("App — import tab", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("tab", { name: /^import$/i }));
     fireEvent.click(screen.getByRole("tab", { name: /^upload$/i }));
+    fireEvent.change(screen.getByLabelText("Upload type"), { target: { value: "structured" } });
     fireEvent.change(screen.getByLabelText(/select observation file/i), {
       target: { files: [new File([], "empty.csv", { type: "text/csv" })] }
     });
@@ -360,6 +361,7 @@ describe("App — import tab", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("tab", { name: /^import$/i }));
     fireEvent.click(screen.getByRole("tab", { name: /^upload$/i }));
+    fireEvent.change(screen.getByLabelText("Upload type"), { target: { value: "structured" } });
     const upload = new File(
       ["observedAt,measurement,value,unit\n2026-07-08,weight,80,kg"],
       "labs.csv",
@@ -389,6 +391,7 @@ describe("App — import tab", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("tab", { name: /^import$/i }));
     fireEvent.click(screen.getByRole("tab", { name: /^upload$/i }));
+    fireEvent.change(screen.getByLabelText("Upload type"), { target: { value: "structured" } });
     const oversized = new File(["observedAt,measurement,value,unit"], "large.csv", { type: "text/csv" });
     Object.defineProperty(oversized, "size", { value: 2_000_001 });
     fireEvent.change(screen.getByLabelText(/select observation file/i), { target: { files: [oversized] } });
@@ -760,6 +763,7 @@ describe("App — measurement detail", () => {
       generatedAt: "2026-07-14T00:00:00.000Z",
       measurement: {
         code: "glucose", displayName: "Glucose", category: "lab",
+        canonicalUnit: "mmol/L",
         counts: { observations: 0, samples: 0, activities: 0, total: 0 }
       },
       entries: [],

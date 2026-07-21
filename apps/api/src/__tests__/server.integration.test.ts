@@ -6,7 +6,7 @@ import { join, resolve } from "node:path";
 import { ProfileStoreManager } from "../storage/profileStoreManager.js";
 import { PairingStore } from "../pairing.js";
 import { createApp } from "../createApp.js";
-import { buildManualLabEntryImport } from "@local-fitness-advisor/shared";
+import { buildManualLabEntryImport } from "@vitana/shared";
 
 let tempDir: string;
 let storeManager: ProfileStoreManager;
@@ -17,16 +17,16 @@ const ownerToken = "test-owner-token-for-server-tests";
 const ownerAuthorization = "Bearer " + ownerToken;
 
 const httpfsExtensionPath = [
-  process.env.LFA_DUCKDB_HTTPFS_EXTENSION,
+  process.env.VITANA_DUCKDB_HTTPFS_EXTENSION,
   resolve(process.cwd(), "apps", "desktop", "build", "duckdb-extensions", "httpfs.duckdb_extension"),
   resolve(process.cwd(), "..", "desktop", "build", "duckdb-extensions", "httpfs.duckdb_extension")
 ].find((candidate): candidate is string => Boolean(candidate && existsSync(candidate)));
 
 beforeEach(async () => {
-  tempDir = mkdtempSync(join(tmpdir(), "lfa-server-test-"));
-  process.env.LFA_DATA_DIR = tempDir;
-  process.env.LFA_SECRET = "test-secret-for-server-tests-1234";
-  process.env.LFA_OWNER_TOKEN = ownerToken;
+  tempDir = mkdtempSync(join(tmpdir(), "vitana-server-test-"));
+  process.env.VITANA_DATA_DIR = tempDir;
+  process.env.VITANA_SECRET = "test-secret-for-server-tests-1234";
+  process.env.VITANA_OWNER_TOKEN = ownerToken;
 
   if (!httpfsExtensionPath) {
     throw new Error("Prepared DuckDB httpfs extension is required for API tests.");
@@ -43,9 +43,9 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await storeManager?.closeAll();
-  delete process.env.LFA_DATA_DIR;
-  delete process.env.LFA_SECRET;
-  delete process.env.LFA_OWNER_TOKEN;
+  delete process.env.VITANA_DATA_DIR;
+  delete process.env.VITANA_SECRET;
+  delete process.env.VITANA_OWNER_TOKEN;
   rmSync(tempDir, { recursive: true, force: true });
   vi.clearAllMocks();
 });
@@ -89,7 +89,7 @@ describe("query endpoint lifecycle", () => {
       .set("authorization", ownerAuthorization)
       .send({ question: "x" });
 
-    expect(aiResponse.headers["x-lfa-lifecycle"]).toBe("supported");
+    expect(aiResponse.headers["x-vitana-lifecycle"]).toBe("supported");
   });
 
   it("reports active DuckDB analytics storage without rebuilding data", async () => {
@@ -334,7 +334,7 @@ describe("central owner authorization", () => {
 
     const denied = [
       ["/api/profile", "get"], ["/api/export", "get"], ["/api/pairing/devices", "get"],
-      ["/api/settings/ai", "get"], ["/api/settings/ai", "put"], ["/api/query/ai", "post"], ["/api/observations/missing", "delete"]
+      ["/api/settings/ai", "get"], ["/api/settings/ai", "put"], ["/api/query/ai", "post"]
     ] as const;
     for (const [path, method] of denied) {
       expect((await request(app)[method](path).set("x-companion-token", token).send({})).status).toBe(403);
@@ -350,6 +350,9 @@ describe("central owner authorization", () => {
       .post("/api/import/health-connect")
       .set("x-companion-token", token)
       .send({ ...minimalHealthConnectPayload, profileId: "other" })).status).toBe(403);
+    expect((await request(app)
+      .delete("/api/observations/missing")
+      .set("x-companion-token", token)).status).toBe(404);
   });
 
   it("isolates companion reads and imports from the PC active profile", async () => {
@@ -418,8 +421,6 @@ describe("central owner authorization", () => {
     expect((await storeManager.getStore("self").storageCounts()).observations).toBe(0);
 
     for (const [path, method] of [
-      ["/api/observations/missing", "patch"],
-      ["/api/observations/missing", "delete"],
       ["/api/profile", "put"],
       ["/api/insights/generate", "post"],
       ["/api/export", "get"],
@@ -428,6 +429,9 @@ describe("central owner authorization", () => {
     ] as const) {
       expect((await request(app)[method](path).set(companion).send({ profileId: "phone-profile" })).status).toBe(403);
     }
+    expect((await request(app)
+      .delete("/api/observations/missing")
+      .set(companion)).status).toBe(404);
   });
 
   it("creates an owner session only for a local client", async () => {

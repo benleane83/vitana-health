@@ -10,9 +10,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$productName = "Local Fitness Advisor"
+$productName = "Vitana Health"
 $applicationName = "$productName.exe"
-$installRoot = Join-Path $env:RUNNER_TEMP "lfa-smoke"
+$installRoot = Join-Path $env:RUNNER_TEMP "vitana-smoke"
 $evidenceRoot = New-Item -ItemType Directory -Force -Path $EvidenceDirectory
 $gracefulShutdownTimeoutMs = 30000
 $forcedShutdownTimeoutMs = 10000
@@ -236,7 +236,7 @@ try {
   }
   Stop-DesktopProcess $secondLaunch
 
-  $uninstaller = Join-Path $installRoot "Uninstall Local Fitness Advisor.exe"
+  $uninstaller = Join-Path $installRoot "Uninstall Vitana Health.exe"
   $uninstallProcess = Start-Process -FilePath $uninstaller -ArgumentList "/S" -Wait -PassThru
   if ($uninstallProcess.ExitCode -ne 0) {
     throw "Uninstaller exited with code $($uninstallProcess.ExitCode)."

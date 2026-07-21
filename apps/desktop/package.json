@@ -1,11 +1,11 @@
 {
-  "name": "@local-fitness-advisor/desktop",
+  "name": "@vitana/desktop",
   "version": "0.1.0",
-  "description": "Packaged Local Fitness Advisor desktop application",
+  "description": "Packaged Vitana Health desktop application",
   "main": "main.cjs",
   "private": true,
   "dependencies": {
-    "@local-fitness-advisor/api": "file:../api"
+    "@vitana/api": "file:../api"
   },
   "devDependencies": {
     "electron": "43.1.0",
@@ -21,8 +21,8 @@
   "license": "AGPL-3.0-only",
   "type": "commonjs",
   "build": {
-    "appId": "com.localfitnessadvisor.desktop",
-    "productName": "Local Fitness Advisor",
+    "appId": "app.vitanahealth.desktop",
+    "productName": "Vitana Health",
     "asar": true,
     "npmRebuild": false,
     "asarUnpack": [
@@ -34,6 +34,7 @@
       "background-service-settings.cjs",
       "secure-store-key.cjs",
       "startup-diagnostics.cjs",
+      "user-data-migration.cjs",
       "build/*.ico",
       "package.json",
       "!**/node_modules/duckdb/src{,/**}",
@@ -56,7 +57,7 @@
     "win": {
       "icon": "build/icon.ico",
       "signtoolOptions": {
-        "publisherName": "Local Fitness Advisor"
+        "publisherName": "Vitana Health"
       },
       "target": "nsis",
       "verifyUpdateCodeSignature": true

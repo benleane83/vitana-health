@@ -7,7 +7,7 @@ import { assertDuckDbRoot, createDuckDbSchema, initializeDuckDbRoot } from "../s
 let root: string;
 
 beforeEach(() => {
-  root = initializeDuckDbRoot(mkdtempSync(join(tmpdir(), "lfa-duckdb-runtime-test-")));
+  root = initializeDuckDbRoot(mkdtempSync(join(tmpdir(), "vitana-duckdb-runtime-test-")));
 });
 
 afterEach(() => {

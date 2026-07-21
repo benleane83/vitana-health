@@ -1,6 +1,6 @@
 import { NativeModule, requireNativeModule } from "expo";
 
-declare class LfaPinnedHttpModule extends NativeModule<{}> {
+declare class VitanaPinnedHttpModule extends NativeModule<{}> {
   request(
     url: string,
     method: string,
@@ -11,4 +11,4 @@ declare class LfaPinnedHttpModule extends NativeModule<{}> {
   ): Promise<{ status: number; body: string; headers: Record<string, string> }>;
 }
 
-export default requireNativeModule<LfaPinnedHttpModule>("LfaPinnedHttp");
+export default requireNativeModule<VitanaPinnedHttpModule>("VitanaPinnedHttp");

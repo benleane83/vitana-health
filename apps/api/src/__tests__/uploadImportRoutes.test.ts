@@ -46,14 +46,14 @@ const longFormatCsv = "observedAt,measurement,value,unit\n2026-07-01T08:00:00Z,g
 
 describe("POST /api/import/upload/preview", () => {
   beforeEach(() => {
-    dataDir = mkdtempSync(join(tmpdir(), "lfa-upload-import-routes-"));
-    process.env.LFA_DATA_DIR = dataDir;
-    process.env.LFA_OWNER_TOKEN = ownerToken;
+    dataDir = mkdtempSync(join(tmpdir(), "vitana-upload-import-routes-"));
+    process.env.VITANA_DATA_DIR = dataDir;
+    process.env.VITANA_OWNER_TOKEN = ownerToken;
   });
 
   afterEach(() => {
-    delete process.env.LFA_DATA_DIR;
-    delete process.env.LFA_OWNER_TOKEN;
+    delete process.env.VITANA_DATA_DIR;
+    delete process.env.VITANA_OWNER_TOKEN;
     rmSync(dataDir, { recursive: true, force: true });
   });
 
@@ -91,14 +91,14 @@ describe("POST /api/import/upload/preview", () => {
 
 describe("POST /api/import/upload/commit", () => {
   beforeEach(() => {
-    dataDir = mkdtempSync(join(tmpdir(), "lfa-upload-import-routes-"));
-    process.env.LFA_DATA_DIR = dataDir;
-    process.env.LFA_OWNER_TOKEN = ownerToken;
+    dataDir = mkdtempSync(join(tmpdir(), "vitana-upload-import-routes-"));
+    process.env.VITANA_DATA_DIR = dataDir;
+    process.env.VITANA_OWNER_TOKEN = ownerToken;
   });
 
   afterEach(() => {
-    delete process.env.LFA_DATA_DIR;
-    delete process.env.LFA_OWNER_TOKEN;
+    delete process.env.VITANA_DATA_DIR;
+    delete process.env.VITANA_OWNER_TOKEN;
     rmSync(dataDir, { recursive: true, force: true });
   });
 

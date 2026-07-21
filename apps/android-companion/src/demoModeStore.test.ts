@@ -33,7 +33,7 @@ describe("demo mode storage", () => {
   });
 
   it("enables demo mode when the preview environment requests it", async () => {
-    vi.stubEnv("EXPO_PUBLIC_LFA_DEMO_MODE", "1");
+    vi.stubEnv("EXPO_PUBLIC_VITANA_DEMO_MODE", "1");
 
     await expect(loadDemoMode()).resolves.toBe(true);
     expect(storage.getItem).not.toHaveBeenCalled();

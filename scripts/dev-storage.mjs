@@ -47,7 +47,7 @@ const child = spawn(process.execPath, [npmCliPath, "run", "dev:services"], {
   cwd: repositoryRoot,
   env: {
     ...process.env,
-    LFA_DUCKDB_HTTPFS_EXTENSION: extensionPath
+    VITANA_DUCKDB_HTTPFS_EXTENSION: extensionPath
   },
   stdio: "inherit"
 });

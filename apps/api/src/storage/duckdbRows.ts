@@ -4,7 +4,7 @@ import type {
   MeasurementType,
   Observation,
   Profile
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 
 export type DuckDbRow = Record<string, unknown>;
 
@@ -45,7 +45,7 @@ export async function insertRows(connection: duckdb.Connection, sql: string, row
   if (rows.length === 0) {
     return;
   }
-  const match = /^(INSERT(?: OR IGNORE)? INTO .+ VALUES )\(([^;]+)\);$/s.exec(sql);
+  const match = /^\s*(INSERT(?: OR IGNORE)? INTO .+ VALUES\s*)\(([^;]+)\);\s*$/s.exec(sql);
   if (!match) {
     throw new Error("DuckDB bulk insert received an unsupported SQL shape.");
   }

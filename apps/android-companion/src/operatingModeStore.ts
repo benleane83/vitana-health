@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const OPERATING_MODE_KEY = "local-fitness-advisor.operatingMode";
+const OPERATING_MODE_KEY = "vitana.operatingMode";
 
 export type CompanionOperatingMode = "standalone" | "connected";
 

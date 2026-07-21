@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { defaultMeasurementTypes } from "@local-fitness-advisor/shared";
+import { defaultMeasurementTypes } from "@vitana/shared";
 import { callConfiguredModel } from "./modelClient.js";
 import { sanitizeQuestionForModel } from "./privacy.js";
 

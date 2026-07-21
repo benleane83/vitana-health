@@ -7,7 +7,7 @@ import type {
   ParsedImport,
   Profile,
   UpdateObservationInput
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import { openWithDatabaseKey, type SecureKeyStore } from "./databaseKey";
 import { deleteEmptyPlaintextDatabase, isFileNotDatabaseError } from "./databaseRecovery";
 import {
@@ -22,7 +22,7 @@ import {
 import { migrate } from "./migrations";
 
 const DATABASE_NAME = "standalone-health.db";
-const DATABASE_KEY_NAME = "local-fitness-advisor.standaloneDatabaseKey.v1";
+const DATABASE_KEY_NAME = "vitana.standaloneDatabaseKey.v1";
 
 const secureKeyStore: SecureKeyStore = {
   get: () => SecureStore.getItemAsync(DATABASE_KEY_NAME),

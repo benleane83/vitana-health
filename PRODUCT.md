@@ -10,7 +10,7 @@ People using their own Health Connect, profile, and lab data locally to understa
 
 ## Product Purpose
 
-Local Fitness Advisor turns locally stored personal health data into understandable summaries, deterministic analytics, and guarded AI-assisted explanations without sending sensitive data to telemetry, cloud sync, or vendor data pipelines. Success means the user can trust what data exists, see what changed, ask useful questions, and stay inside wellness-oriented safety boundaries.
+Vitana Health turns locally stored personal health data into understandable summaries, deterministic analytics, and guarded AI-assisted explanations without sending sensitive data to telemetry, cloud sync, or vendor data pipelines. Success means the user can trust what data exists, see what changed, ask useful questions, and stay inside wellness-oriented safety boundaries.
 
 ## Brand Personality
 

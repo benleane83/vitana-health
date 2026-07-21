@@ -7,7 +7,7 @@ import type {
   UploadColumnMappingOverride,
   UploadDraftRow,
   UploadImportDraft
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import { api } from "../../api.js";
 import { ImportDraftReview } from "../../components/ImportDraftReview.js";
 import type { UploadEditableRow } from "../../types.js";

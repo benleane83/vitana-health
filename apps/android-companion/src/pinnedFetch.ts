@@ -1,4 +1,4 @@
-import LfaPinnedHttp from "../modules/lfa-pinned-http/src/LfaPinnedHttpModule";
+import VitanaPinnedHttp from "../modules/vitana-pinned-http/src/VitanaPinnedHttpModule";
 
 export const DEFAULT_PINNED_REQUEST_TIMEOUT_MS = 15_000;
 export const LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS = 60_000;
@@ -26,7 +26,7 @@ export async function pinnedFetch(
   if (!publicKeyHash) throw new Error("The connection QR code did not include a server identity.");
 
   const headers = Object.fromEntries(new Headers(requestOptions.headers).entries());
-  const result = await waitForResponse(LfaPinnedHttp.request(
+  const result = await waitForResponse(VitanaPinnedHttp.request(
     url,
     requestOptions.method ?? "GET",
     headers,

@@ -37,7 +37,7 @@ jobs:
         run: npm rebuild duckdb
 
       - name: Prepare DuckDB encryption extension
-        run: npm run prepare:duckdb -w @local-fitness-advisor/api
+        run: npm run prepare:duckdb -w @vitana/api
 
       - name: Build shared package
         run: npm run build -w packages/shared

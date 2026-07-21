@@ -81,7 +81,7 @@ export class PairingStore {
   private usagePersistTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor() {
-    const dataDir = resolve(process.env.LFA_DATA_DIR ?? "data");
+    const dataDir = resolve(process.env.VITANA_DATA_DIR ?? "data");
     this.dataPath = resolve(dataDir, "paired-devices.json");
     mkdirSync(dataDir, { recursive: true });
     if (!existsSync(this.dataPath)) return;

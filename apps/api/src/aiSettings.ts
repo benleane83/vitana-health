@@ -113,7 +113,7 @@ function readApiKey(settings: Partial<PersistedAiSettings>): string | undefined 
 
 function defaultAiSettings(): AiSettings {
   const provider =
-    (process.env.LLM_PROVIDER ?? process.env.LFA_MODEL_PROVIDER ?? "").toLowerCase() === "openai" ||
+    (process.env.LLM_PROVIDER ?? process.env.VITANA_MODEL_PROVIDER ?? "").toLowerCase() === "openai" ||
     Boolean(process.env.OPENAI_RESPONSES_ENDPOINT && process.env.OPENAI_API_KEY)
       ? "openai"
       : "ollama";
@@ -121,23 +121,23 @@ function defaultAiSettings(): AiSettings {
     ? {
         provider,
         endpoint: process.env.OPENAI_RESPONSES_ENDPOINT ?? "",
-        apiKey: process.env.OPENAI_API_KEY ?? process.env.LFA_OPENAI_API_KEY,
-        model: process.env.OPENAI_MODEL ?? process.env.LFA_MODEL_NAME ?? "gpt-5.4-mini",
+        apiKey: process.env.OPENAI_API_KEY ?? process.env.VITANA_OPENAI_API_KEY,
+        model: process.env.OPENAI_MODEL ?? process.env.VITANA_MODEL_NAME ?? "gpt-5.4-mini",
         timeoutMs: timeoutMs()
       }
     : {
         provider,
-        endpoint: process.env.OLLAMA_ENDPOINT ?? process.env.LFA_OLLAMA_URL ?? "http://127.0.0.1:11434/api/generate",
-        model: process.env.OLLAMA_MODEL ?? process.env.LFA_MODEL_NAME ?? "llama3.2",
+        endpoint: process.env.OLLAMA_ENDPOINT ?? process.env.VITANA_OLLAMA_URL ?? "http://127.0.0.1:11434/api/generate",
+        model: process.env.OLLAMA_MODEL ?? process.env.VITANA_MODEL_NAME ?? "llama3.2",
         timeoutMs: timeoutMs()
       };
 }
 
 function timeoutMs(): number {
-  const value = Number.parseInt(process.env.MODEL_TIMEOUT_MS ?? process.env.LFA_MODEL_TIMEOUT_MS ?? "30000", 10);
+  const value = Number.parseInt(process.env.MODEL_TIMEOUT_MS ?? process.env.VITANA_MODEL_TIMEOUT_MS ?? "30000", 10);
   return Number.isFinite(value) && value >= 1000 ? value : 30000;
 }
 
 function settingsPath(): string {
-  return resolve(process.env.LFA_DATA_DIR ?? "data", "ai-settings.json");
+  return resolve(process.env.VITANA_DATA_DIR ?? "data", "ai-settings.json");
 }

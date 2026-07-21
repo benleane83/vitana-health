@@ -1,8 +1,8 @@
-# Local Fitness Advisor Privacy Policy
+# Vitana Health Privacy Policy
 
 **Effective date: July 20, 2026**
 
-Local Fitness Advisor is a local-first wellness application. This policy applies to the Local Fitness Companion Android app and its paired Local Fitness Advisor desktop API.
+Vitana Health is a local-first wellness application. This policy applies to the Vitana Android app and its paired Vitana Health desktop API.
 
 ## Information we collect
 
@@ -36,4 +36,4 @@ For privacy questions or requests, contact the maintainer through [https://githu
 
 ## Changes
 
-We will update this policy before materially changing the categories collected, purposes, transfer destinations, or retention practices. The current version is published at this stable URL: `https://github.com/benleane83/local-fitness-advisor/blob/main/docs/PRIVACY_POLICY.md`.
+We will update this policy before materially changing the categories collected, purposes, transfer destinations, or retention practices. The current version is published at this stable URL: `https://vitanahealth.app/privacy`.

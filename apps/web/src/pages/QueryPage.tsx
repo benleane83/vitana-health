@@ -1,5 +1,5 @@
-import type { CloudAiConsent } from "@local-fitness-advisor/shared";
-import { safetyNotice } from "@local-fitness-advisor/shared";
+import type { CloudAiConsent } from "@vitana/shared";
+import { safetyNotice } from "@vitana/shared";
 import type { AiQueryResult } from "../api.js";
 import { QueryChart } from "../components/Charts.js";
 

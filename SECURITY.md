@@ -30,7 +30,7 @@ We will not take legal action against researchers who act in good faith under th
 
 ## Threat model
 
-Local Fitness Advisor is a **local-first, single-user application**. Understanding its threat model helps frame which issues are in scope.
+Vitana Health is a **local-first, single-user application**. Understanding its threat model helps frame which issues are in scope.
 
 ### In-scope threats
 

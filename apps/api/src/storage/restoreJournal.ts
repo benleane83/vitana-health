@@ -14,7 +14,7 @@ import {
   writeFileSync
 } from "node:fs";
 import { dirname, resolve } from "node:path";
-import type { RestoreDecision } from "@local-fitness-advisor/shared";
+import type { RestoreDecision } from "@vitana/shared";
 
 export type JournalPhase =
   | "staged"       // Backup decrypted and validated, decisions recorded

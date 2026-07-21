@@ -2,7 +2,7 @@ import type {
   ManualObservationPayload,
   MobileDetailPage,
   MobileProfileRepository
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import type {
   CompanionDataSource,
   CompanionLifecycleService,

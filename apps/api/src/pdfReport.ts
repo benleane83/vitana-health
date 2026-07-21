@@ -1,5 +1,5 @@
 import PDFDocument from "pdfkit";
-import type { ClinicianReport } from "@local-fitness-advisor/shared";
+import type { ClinicianReport } from "@vitana/shared";
 
 function date(value: string): string {
   return value ? new Date(value).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : "Not recorded";
@@ -18,7 +18,7 @@ function bulletList(document: PDFKit.PDFDocument, items: string[], empty: string
 }
 
 export async function createClinicianReportPdf(report: ClinicianReport): Promise<Buffer> {
-  const document = new PDFDocument({ margin: 48, size: "A4", info: { Title: "Local Fitness Advisor clinician report" } });
+  const document = new PDFDocument({ margin: 48, size: "A4", info: { Title: "Vitana Health clinician report" } });
   const chunks: Buffer[] = [];
   document.on("data", (chunk: Buffer) => chunks.push(chunk));
   const completed = new Promise<Buffer>((resolve, reject) => {

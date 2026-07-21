@@ -5,7 +5,7 @@ export type ProfileStorageKeyPurpose = "duckdb-v1" | "sqlcipher-v1";
 const keyNamespaces: Record<ProfileStorageKeyPurpose, string> = {
   // Preserve this namespace exactly: existing encrypted DuckDB profiles depend on it.
   "duckdb-v1": "local-fitness-advisor:duckdb-profile-key:v1\0",
-  "sqlcipher-v1": "local-fitness-advisor:sqlcipher-profile-key:v1\0"
+  "sqlcipher-v1": "vitana:sqlcipher-profile-key:v1\0"
 };
 
 export function deriveProfileStorageKey(

@@ -1,16 +1,16 @@
 import { describe, it, expect } from "vitest";
 import {
-  LFA_BACKUP_MAGIC,
-  LFA_BACKUP_VERSION,
-  LFA_BACKUP_SALT_LENGTH,
-  LFA_BACKUP_IV_LENGTH,
-  LFA_BACKUP_HEADER_LENGTH,
+  VITANA_BACKUP_MAGIC,
+  VITANA_BACKUP_VERSION,
+  VITANA_BACKUP_SALT_LENGTH,
+  VITANA_BACKUP_IV_LENGTH,
+  VITANA_BACKUP_HEADER_LENGTH,
   SCRYPT_N,
   SCRYPT_R,
   SCRYPT_P,
   SCRYPT_KEY_LENGTH,
   BACKUP_MAX_SIZE_BYTES,
-  LFA_BACKUP_FILE_EXTENSION,
+  VITANA_BACKUP_FILE_EXTENSION,
   BACKUP_DECRYPTION_ERROR,
   backupCreateRequestSchema,
   backupRestoreRequestSchema,
@@ -19,25 +19,25 @@ import {
 
 describe("backup contracts", () => {
   describe("constants", () => {
-    it("has correct magic bytes for LFA", () => {
-      expect(LFA_BACKUP_MAGIC).toEqual(new Uint8Array([0x4c, 0x46, 0x41, 0x00]));
+    it("has correct Vitana magic bytes", () => {
+      expect(VITANA_BACKUP_MAGIC).toEqual(new Uint8Array([0x56, 0x49, 0x54, 0x41]));
     });
 
     it("has version 1", () => {
-      expect(LFA_BACKUP_VERSION).toBe(1);
+      expect(VITANA_BACKUP_VERSION).toBe(1);
     });
 
     it("has correct header length", () => {
-      expect(LFA_BACKUP_HEADER_LENGTH).toBe(4 + 1 + LFA_BACKUP_SALT_LENGTH + LFA_BACKUP_IV_LENGTH);
-      expect(LFA_BACKUP_HEADER_LENGTH).toBe(49);
+      expect(VITANA_BACKUP_HEADER_LENGTH).toBe(4 + 1 + VITANA_BACKUP_SALT_LENGTH + VITANA_BACKUP_IV_LENGTH);
+      expect(VITANA_BACKUP_HEADER_LENGTH).toBe(49);
     });
 
     it("uses 32-byte salt", () => {
-      expect(LFA_BACKUP_SALT_LENGTH).toBe(32);
+      expect(VITANA_BACKUP_SALT_LENGTH).toBe(32);
     });
 
     it("uses 12-byte IV for GCM", () => {
-      expect(LFA_BACKUP_IV_LENGTH).toBe(12);
+      expect(VITANA_BACKUP_IV_LENGTH).toBe(12);
     });
 
     it("uses scrypt with N=2^17", () => {
@@ -52,7 +52,7 @@ describe("backup contracts", () => {
     });
 
     it("has correct file extension", () => {
-      expect(LFA_BACKUP_FILE_EXTENSION).toBe(".lfa-backup");
+      expect(VITANA_BACKUP_FILE_EXTENSION).toBe(".vitana-backup");
     });
 
     it("has generic error message", () => {

@@ -6,7 +6,7 @@ import {
   isHealthEventKind,
   type HealthEvent,
   type HealthStoreData
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import {
   all,
   compact,

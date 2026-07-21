@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { AnalyticsSummary, AppBootstrap, Profile, ProfileListEntry } from "@local-fitness-advisor/shared";
+import type { AnalyticsSummary, AppBootstrap, Profile, ProfileListEntry } from "@vitana/shared";
 import { api } from "../../api.js";
 import { ProfileEditDialog, ProfileManagerDialog } from "../../components/ProfileDialogs.js";
 import { numberOrUndefined } from "../../utils.js";
