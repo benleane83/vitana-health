@@ -28,7 +28,7 @@ describe("companion operating mode storage", () => {
     await saveOperatingMode("connected");
     await expect(loadOperatingMode()).resolves.toBe("connected");
 
-    storage.values.set("local-fitness-advisor.operatingMode", "unexpected");
+    storage.values.set("vitana.operatingMode", "unexpected");
     await expect(loadOperatingMode()).resolves.toBeNull();
   });
 

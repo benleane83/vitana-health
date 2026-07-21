@@ -1,4 +1,4 @@
-# Contributing to Local Fitness Advisor
+# Contributing to Vitana Health
 
 Thank you for your interest in contributing. This document covers everything you need to know before opening a pull request.
 

@@ -2,7 +2,7 @@
  * Formatting utilities extracted from App.tsx.
  */
 
-import { isUtcMidnightTimestamp, type MeasurementType } from "@local-fitness-advisor/shared";
+import { isUtcMidnightTimestamp, type MeasurementType } from "@vitana/shared";
 
 const timestampFormatter = new Intl.DateTimeFormat(undefined, {
   year: "numeric",

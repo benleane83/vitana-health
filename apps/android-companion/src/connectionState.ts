@@ -1,4 +1,4 @@
-import { ApiError } from "@local-fitness-advisor/api-client";
+import { ApiError } from "@vitana/api-client";
 
 export type ConnectionState =
   | "unpaired"

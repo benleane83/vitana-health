@@ -2,7 +2,7 @@
  * Backup & Restore API routes.
  *
  * Owner-only POST endpoints for portable passphrase-protected profile backups.
- * - POST /api/backups/create        — Create encrypted .lfa-backup binary
+ * - POST /api/backups/create        — Create encrypted .vitana-backup binary
  * - POST /api/backups/inspect       — Inspect backup contents (multipart upload)
  * - POST /api/backups/restore       — Restore profiles from backup (multipart upload)
  */
@@ -12,13 +12,13 @@ import { z } from "zod";
 import {
   BACKUP_DECRYPTION_ERROR,
   BACKUP_MAX_SIZE_BYTES,
-  LFA_BACKUP_FILE_EXTENSION,
+  VITANA_BACKUP_FILE_EXTENSION,
   backupCreateRequestSchema,
   backupRestoreRequestSchema,
   type BackupInspectResponse,
   type BackupPayload,
   type BackupRestoreResponse
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import type { ProfileStoreManager } from "../storage/profileStoreManager.js";
 import type { PairingStore } from "../pairing.js";
 import type { AuthorizationPrincipal } from "../createApp.js";
@@ -101,7 +101,7 @@ export function makeBackupRoutes(
       const profileName = scope === "active" && activeProfile
         ? `-${sanitizeFilenameSegment(activeProfile.displayName)}`
         : "";
-      const filename = `lfa-backup${profileName}-${timestamp}${LFA_BACKUP_FILE_EXTENSION}`;
+      const filename = `vitana-backup${profileName}-${timestamp}${VITANA_BACKUP_FILE_EXTENSION}`;
 
       res.setHeader("content-type", "application/octet-stream");
       res.setHeader("content-disposition", `attachment; filename="${filename}"`);
@@ -222,7 +222,7 @@ export function makeBackupRoutes(
     }
 
     const { decisions } = parsedDecisions.data;
-    const dataDir = process.env.LFA_DATA_DIR ?? "data";
+    const dataDir = process.env.VITANA_DATA_DIR ?? "data";
 
     // Enter maintenance mode
     maintenanceMode = true;
@@ -335,7 +335,7 @@ export function makeBackupRoutes(
  */
 async function hydrateStoreFromBackup(
   store: import("../storage/profileRepository.js").ManagedProfileRepository,
-  data: import("@local-fitness-advisor/shared").HealthStoreData
+  data: import("@vitana/shared").HealthStoreData
 ): Promise<void> {
   // Use mergeImport for observation data
   if (data.sourceImports.length > 0 || data.observations.length > 0 ||
@@ -397,7 +397,7 @@ async function hydrateStoreFromBackup(
 
 /**
  * Middleware to collect raw binary body with size limit.
- * Used for multipart-like binary upload of .lfa-backup files.
+ * Used for multipart-like binary upload of .vitana-backup files.
  */
 function collectBinaryBody(maxSize: number) {
   return (req: express.Request, res: express.Response, next: express.NextFunction): void => {

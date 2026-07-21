@@ -7,7 +7,7 @@ import {
   defaultMeasurementTypes,
   type HealthStoreData,
   type BackupPayload
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import { encryptBackup, buildBackupProfileEntry } from "../backupCrypto.js";
 import type { ProfileStoreManager } from "../storage/profileStoreManager.js";
 import type { PairingStore } from "../pairing.js";
@@ -134,7 +134,7 @@ describe("backupRoutes", () => {
 
         expect(res.status).toBe(200);
         expect(res.headers["content-type"]).toBe("application/octet-stream");
-        expect(res.headers["content-disposition"]).toContain(".lfa-backup");
+        expect(res.headers["content-disposition"]).toContain(".vitana-backup");
         // Verify magic bytes
         expect(res.body[0]).toBe(0x4c);
         expect(res.body[1]).toBe(0x46);
@@ -162,7 +162,7 @@ describe("backupRoutes", () => {
         });
 
         expect(res.status).toBe(200);
-        expect(res.headers["content-disposition"]).toMatch(/filename="lfa-backup-test-user-health-2026-.*\.lfa-backup"/);
+        expect(res.headers["content-disposition"]).toMatch(/filename="vitana-backup-test-user-health-2026-.*\.vitana-backup"/);
       } finally {
         server.close();
       }

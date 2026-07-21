@@ -17,7 +17,7 @@ import {
   type HealthDataSummaryTypeRow,
   type ManualObservationPayload,
   type MobileImportResult
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import type {
   CompanionCareService,
   CompanionDataSource,

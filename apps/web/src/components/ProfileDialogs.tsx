@@ -8,7 +8,7 @@
  * - Are labelled and described for screen readers
  */
 import { useEffect, useRef, useState } from "react";
-import type { Profile, ProfileListEntry } from "@local-fitness-advisor/shared";
+import type { Profile, ProfileListEntry } from "@vitana/shared";
 
 const FOCUSABLE =
   'button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';

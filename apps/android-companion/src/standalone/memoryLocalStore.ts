@@ -7,7 +7,7 @@ import type {
   Profile,
   SourceImport,
   UpdateObservationInput
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import {
   emptyCounts,
   entityOutcome,

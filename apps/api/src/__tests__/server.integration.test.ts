@@ -6,7 +6,7 @@ import { join, resolve } from "node:path";
 import { ProfileStoreManager } from "../storage/profileStoreManager.js";
 import { PairingStore } from "../pairing.js";
 import { createApp } from "../createApp.js";
-import { buildManualLabEntryImport } from "@local-fitness-advisor/shared";
+import { buildManualLabEntryImport } from "@vitana/shared";
 
 let tempDir: string;
 let storeManager: ProfileStoreManager;
@@ -17,16 +17,16 @@ const ownerToken = "test-owner-token-for-server-tests";
 const ownerAuthorization = "Bearer " + ownerToken;
 
 const httpfsExtensionPath = [
-  process.env.LFA_DUCKDB_HTTPFS_EXTENSION,
+  process.env.VITANA_DUCKDB_HTTPFS_EXTENSION,
   resolve(process.cwd(), "apps", "desktop", "build", "duckdb-extensions", "httpfs.duckdb_extension"),
   resolve(process.cwd(), "..", "desktop", "build", "duckdb-extensions", "httpfs.duckdb_extension")
 ].find((candidate): candidate is string => Boolean(candidate && existsSync(candidate)));
 
 beforeEach(async () => {
-  tempDir = mkdtempSync(join(tmpdir(), "lfa-server-test-"));
-  process.env.LFA_DATA_DIR = tempDir;
-  process.env.LFA_SECRET = "test-secret-for-server-tests-1234";
-  process.env.LFA_OWNER_TOKEN = ownerToken;
+  tempDir = mkdtempSync(join(tmpdir(), "vitana-server-test-"));
+  process.env.VITANA_DATA_DIR = tempDir;
+  process.env.VITANA_SECRET = "test-secret-for-server-tests-1234";
+  process.env.VITANA_OWNER_TOKEN = ownerToken;
 
   if (!httpfsExtensionPath) {
     throw new Error("Prepared DuckDB httpfs extension is required for API tests.");
@@ -43,9 +43,9 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await storeManager?.closeAll();
-  delete process.env.LFA_DATA_DIR;
-  delete process.env.LFA_SECRET;
-  delete process.env.LFA_OWNER_TOKEN;
+  delete process.env.VITANA_DATA_DIR;
+  delete process.env.VITANA_SECRET;
+  delete process.env.VITANA_OWNER_TOKEN;
   rmSync(tempDir, { recursive: true, force: true });
   vi.clearAllMocks();
 });
@@ -89,7 +89,7 @@ describe("query endpoint lifecycle", () => {
       .set("authorization", ownerAuthorization)
       .send({ question: "x" });
 
-    expect(aiResponse.headers["x-lfa-lifecycle"]).toBe("supported");
+    expect(aiResponse.headers["x-vitana-lifecycle"]).toBe("supported");
   });
 
   it("reports active DuckDB analytics storage without rebuilding data", async () => {

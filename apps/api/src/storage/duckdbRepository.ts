@@ -25,7 +25,7 @@ import {
   type UpdateHealthEventInput,
   type UpdateObservationInput,
   type UpdateObservationResponse
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import type { MeasurementDetailPage } from "../summary.js";
 import type { ClinicianReportSourceImport } from "../clinicianReport.js";
 import {

@@ -1,5 +1,5 @@
-import type { AnalyticsSummary, Insight, Profile } from "@local-fitness-advisor/shared";
-import { safetyNotice } from "@local-fitness-advisor/shared";
+import type { AnalyticsSummary, Insight, Profile } from "@vitana/shared";
+import { safetyNotice } from "@vitana/shared";
 import { MiniChart } from "../components/Charts.js";
 import { MarkdownText } from "../components/MarkdownText.js";
 import { formatBloodType, formatDetailValue, formatProfileSex, formatProfileType, formatShortTimestamp } from "../utils.js";
@@ -59,18 +59,18 @@ export function DashboardPage({
     <>
       <section className="dashboard-hero">
         <div className="dashboard-hero-copy">
-          <div className="vitara-lockup">
-            <div className="vitara-mark" aria-hidden="true">
-              <span className="vitara-petal vitara-petal-top" />
-              <span className="vitara-petal vitara-petal-left" />
-              <span className="vitara-petal vitara-petal-right" />
-              <span className="vitara-stem" />
-              <span className="vitara-core" />
+          <div className="vitana-lockup">
+            <div className="vitana-mark" aria-hidden="true">
+              <span className="vitana-petal vitana-petal-top" />
+              <span className="vitana-petal vitana-petal-left" />
+              <span className="vitana-petal vitana-petal-right" />
+              <span className="vitana-stem" />
+              <span className="vitana-core" />
             </div>
-            <p className="vitara-wordmark">Vitara</p>
-            <p className="vitara-tagline">All Your Health. In One Place.</p>
-            <div className="vitara-rule" aria-hidden="true"><span>♥</span></div>
-            <h1 className="vitara-promise"><span>Track.</span> <span>Understand.</span> <span>Thrive.</span></h1>
+            <p className="vitana-wordmark">Vitana</p>
+            <p className="vitana-tagline">All Your Health. In One Place.</p>
+            <div className="vitana-rule" aria-hidden="true"><span>♥</span></div>
+            <h1 className="vitana-promise"><span>Track.</span> <span>Understand.</span> <span>Thrive.</span></h1>
           </div>
         </div>
         <aside className="dashboard-trust-strip" aria-label="Data privacy and freshness">

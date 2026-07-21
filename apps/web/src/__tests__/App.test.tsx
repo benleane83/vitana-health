@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { defaultMeasurementTypes, safetyNotice } from "@local-fitness-advisor/shared";
+import { defaultMeasurementTypes, safetyNotice } from "@vitana/shared";
 import { App } from "../App.js";
 
 function mockResponse(body: unknown): Response {

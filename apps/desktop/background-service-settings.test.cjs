@@ -6,7 +6,7 @@ const { test } = require("node:test");
 const { createBackgroundServiceSettingsStore } = require("./background-service-settings.cjs");
 
 test("desktop settings default and malformed or unknown versions fail closed", () => {
-  const directory = mkdtempSync(path.join(tmpdir(), "lfa-background-settings-"));
+  const directory = mkdtempSync(path.join(tmpdir(), "vitana-background-settings-"));
   const store = createBackgroundServiceSettingsStore({ userDataPath: directory });
   assert.deepEqual(store.read(), { version: 1, backgroundServiceEnabled: false, closeNotificationShown: false });
   writeFileSync(store.filePath, '{"version":2,"backgroundServiceEnabled":true,"closeNotificationShown":true}');
@@ -17,7 +17,7 @@ test("desktop settings default and malformed or unknown versions fail closed", (
 });
 
 test("desktop settings are persisted through an atomic rename", () => {
-  const directory = mkdtempSync(path.join(tmpdir(), "lfa-background-settings-"));
+  const directory = mkdtempSync(path.join(tmpdir(), "vitana-background-settings-"));
   const operations = [];
   const realFs = require("node:fs");
   const store = createBackgroundServiceSettingsStore({

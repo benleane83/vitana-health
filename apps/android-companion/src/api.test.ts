@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError } from "@local-fitness-advisor/api-client";
+import { ApiError } from "@vitana/api-client";
 import type { ConnectionDetails } from "./endpointStore";
 
 const pinnedFetch = vi.fn();

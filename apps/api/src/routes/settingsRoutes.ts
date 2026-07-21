@@ -5,7 +5,7 @@ import {
   desktopRuntimeSettingsUpdateSchema,
   type DesktopRuntimeSettingsResponse,
   type DesktopRuntimeSettingsUpdate
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import { getAiSettings, saveAiSettings, toPublicAiSettings, type AiSettings } from "../aiSettings.js";
 import { callConfiguredModel } from "../modelClient.js";
 import { assertSafeCloudModelEndpoint, ModelEndpointPolicyError, validateModelEndpoint } from "../modelEndpointPolicy.js";

@@ -12,12 +12,12 @@ import {
   parseStructuredUpload,
   type BodyCompositionDraftRow,
   type UploadDraftRow
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import type { ProfileStoreManager } from "../storage/profileStoreManager.js";
 import { healthConnectImportRequestSchema, parseHealthConnectImport } from "../healthConnectImport.js";
 import { describeAnalyticsStorage } from "../storage/analyticsBackend.js";
 import { extractBodyCompositionText } from "../bodyCompositionExtract.js";
-import { parseBodyCompositionText } from "@local-fitness-advisor/shared";
+import { parseBodyCompositionText } from "@vitana/shared";
 import type { AuthorizationPrincipal } from "../requestPrincipal.js";
 import { resolvePrincipalStore } from "../requestPrincipal.js";
 import type { ImportMutationResult, ProfileImport } from "../storage/profileRepository.js";

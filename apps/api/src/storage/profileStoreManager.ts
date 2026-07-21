@@ -17,7 +17,7 @@ import {
   type HealthStoreData,
   type Profile,
   type ProfileListEntry
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import { initializeDuckDbRoot, type DuckDbOptions } from "./duckdbRuntime.js";
 import { DuckDbHealthStore } from "./duckdbHealthStore.js";
 import type { ManagedProfileRepository } from "./profileRepository.js";
@@ -400,12 +400,12 @@ function removeDuckDbProfileFiles(databasePath: string): void {
 }
 
 export function resolveStoreSecurityConfig(): StoreSecurityConfig {
-  const configuredSecret = process.env.LFA_SECRET;
+  const configuredSecret = process.env.VITANA_SECRET;
   if (configuredSecret && configuredSecret.length >= 16) {
     return { passphrase: configuredSecret, securityMode: "env-secret" };
   }
   if (process.env.NODE_ENV === "production") {
-    throw new Error("Production health storage requires LFA_SECRET or an OS-secure key injected by the desktop host.");
+    throw new Error("Production health storage requires VITANA_SECRET or an OS-secure key injected by the desktop host.");
   }
   return { passphrase: getOrCreateLocalKey(), securityMode: "generated-local-key" };
 }
@@ -426,8 +426,8 @@ export function hasDuckDbActivationManifest(): boolean {
 }
 
 function resolveDataDir(): string {
-  if (process.env.LFA_DATA_DIR) {
-    return resolve(process.env.LFA_DATA_DIR);
+  if (process.env.VITANA_DATA_DIR) {
+    return resolve(process.env.VITANA_DATA_DIR);
   }
   const candidates = [resolve(process.cwd(), "..", "..", "data"), resolve(process.cwd(), "data")];
   return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];

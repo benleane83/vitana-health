@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { mergeHealthDataDetail } from "@local-fitness-advisor/shared";
+import { mergeHealthDataDetail } from "@vitana/shared";
 import type {
   HealthDataChartMode,
   HealthDataChartRange,
@@ -10,7 +10,7 @@ import type {
   MeasurementType,
   PersonalReferenceRangeInput,
   UpdateObservationInput
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import { api } from "../../api.js";
 import { ObservationEditDialog } from "../../components/ObservationEditDialog.js";
 import { ObservationTypeDetailPage, SummaryPage } from "../../pages/SummaryPage.js";

@@ -13,7 +13,7 @@ import { configureRuntimeSecurity } from "./security.js";
 import { validateEnv } from "./env.js";
 import { getLanIp } from "./netutil.js";
 import { log } from "./logger.js";
-import type { DesktopRuntimeSettingsResponse, DesktopRuntimeSettingsUpdate } from "@local-fitness-advisor/shared";
+import type { DesktopRuntimeSettingsResponse, DesktopRuntimeSettingsUpdate } from "@vitana/shared";
 
 export { configureAiCredentialProtector } from "./aiSettings.js";
 
@@ -39,7 +39,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
   const tlsEnabled = Boolean(security.tlsCertPath && security.tlsKeyPath);
   const isLoopback = host === "127.0.0.1" || host === "::1" || host === "localhost";
   const insecureLanDevelopment =
-    env.LFA_ALLOW_INSECURE_HTTP === "1" && env.NODE_ENV !== "production";
+    env.VITANA_ALLOW_INSECURE_HTTP === "1" && env.NODE_ENV !== "production";
 
   if (!isLoopback && !tlsEnabled && !insecureLanDevelopment) {
     throw new Error("Could not configure HTTPS for non-loopback API access.");
@@ -48,8 +48,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
   if (process.platform !== "win32" || process.arch !== "x64") {
     throw new Error("DuckDB storage productionization is currently approved only for Windows x64.");
   }
-  if (!env.LFA_DUCKDB_HTTPFS_EXTENSION) {
-    throw new Error("LFA_DUCKDB_HTTPFS_EXTENSION is required for DuckDB storage.");
+  if (!env.VITANA_DUCKDB_HTTPFS_EXTENSION) {
+    throw new Error("VITANA_DUCKDB_HTTPFS_EXTENSION is required for DuckDB storage.");
   }
   const activationState: "initialization" | "reopen" = hasDuckDbActivationManifest()
     ? "reopen"
@@ -57,7 +57,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
   const storeManager = await ProfileStoreManager.open({
     security: options.storeSecurity,
     storageBackend: "duckdb",
-    duckdb: { httpfsExtensionPath: env.LFA_DUCKDB_HTTPFS_EXTENSION }
+    duckdb: { httpfsExtensionPath: env.VITANA_DUCKDB_HTTPFS_EXTENSION }
   });
   const profiles = storeManager.listProfiles();
   const activeProfileId = storeManager.getActiveProfileId();
@@ -72,7 +72,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
   const pairingStore = new PairingStore();
   const app = createApp(storeManager, pairingStore, {
     publicKeyHash: security.publicKeyHash,
-    webRoot: env.LFA_WEB_ROOT,
+    webRoot: env.VITANA_WEB_ROOT,
     openRouterCallbackOrigin: `${tlsEnabled ? "https" : "http"}://127.0.0.1:${port}`,
     desktopRuntimeController: options.desktopRuntimeController
   });
@@ -102,7 +102,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
     server.once("error", reject);
     server.listen(port, host, () => {
       server.off("error", reject);
-      log.info(`Local Fitness Advisor API listening at ${scheme}://${host}:${port}`);
+      log.info(`Vitana API listening at ${scheme}://${host}:${port}`);
       const lanIp = getLanIp();
       if (lanIp) {
         log.info(`LAN address for companion pairing: ${scheme}://${lanIp}:${port}`);

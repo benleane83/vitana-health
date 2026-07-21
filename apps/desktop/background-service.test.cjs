@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
-const { createBackgroundServiceController, loginItemOptions } = require("./background-service.cjs");
+const { createBackgroundServiceController, legacyExecutablePath, loginItemOptions } = require("./background-service.cjs");
 
 function fixture(initial = { version: 1, backgroundServiceEnabled: false, closeNotificationShown: false }) {
   let state = { ...initial };
@@ -14,7 +14,7 @@ function fixture(initial = { version: 1, backgroundServiceEnabled: false, closeN
   const controller = createBackgroundServiceController({
     app: { setLoginItemSettings: (options) => loginCalls.push(options) },
     settingsStore,
-    executablePath: "C:\\Local Fitness Advisor.exe",
+    executablePath: "C:\\Vitana Health.exe",
     createTray: (handlers) => {
       const tray = { handlers, destroyed: false, destroy() { this.destroyed = true; } };
       trays.push(tray);
@@ -30,6 +30,13 @@ function fixture(initial = { version: 1, backgroundServiceEnabled: false, closeN
 test("login registration uses the explicit background argument", () => {
   assert.deepEqual(loginItemOptions(true, "app.exe"), { openAtLogin: true, path: "app.exe", args: ["--background"] });
   assert.deepEqual(loginItemOptions(false, "app.exe"), { openAtLogin: false, path: "app.exe", args: ["--background"] });
+});
+
+test("legacy login registration resolves beside the current executable", () => {
+  assert.equal(
+    legacyExecutablePath("C:\\Program Files\\Vitana Health\\Vitana Health.exe"),
+    "C:\\Program Files\\Vitana Health\\Local Fitness Advisor.exe"
+  );
 });
 
 test("enable and disable transitions update registration and tray immediately", () => {

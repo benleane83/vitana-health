@@ -8,14 +8,14 @@ let dataDir: string;
 let stores: PairingStore[];
 
 beforeEach(() => {
-  dataDir = mkdtempSync(join(tmpdir(), "lfa-pairing-test-"));
-  process.env.LFA_DATA_DIR = dataDir;
+  dataDir = mkdtempSync(join(tmpdir(), "vitana-pairing-test-"));
+  process.env.VITANA_DATA_DIR = dataDir;
   stores = [];
 });
 
 afterEach(() => {
   for (const store of stores) store.flushPendingWrites();
-  delete process.env.LFA_DATA_DIR;
+  delete process.env.VITANA_DATA_DIR;
   rmSync(dataDir, { recursive: true, force: true });
 });
 

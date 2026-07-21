@@ -16,7 +16,7 @@ import {
   computeAnalytics,
   defaultMeasurementTypes,
   type HealthStoreData
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import {
   closeEncryptedDuckDbDatabase,
   createDuckDbSchema,
@@ -33,7 +33,7 @@ const key = Buffer.alloc(32, 7).toString("base64");
 let root: string;
 
 beforeEach(() => {
-  root = initializeDuckDbRoot(mkdtempSync(join(tmpdir(), "lfa-duckdb-repository-test-")));
+  root = initializeDuckDbRoot(mkdtempSync(join(tmpdir(), "vitana-duckdb-repository-test-")));
 });
 
 afterEach(() => {
@@ -967,7 +967,7 @@ function querySql(
 
 function findPreparedExtension(): string | undefined {
   return [
-    process.env.LFA_DUCKDB_HTTPFS_EXTENSION,
+    process.env.VITANA_DUCKDB_HTTPFS_EXTENSION,
     resolve(process.cwd(), "apps", "desktop", "build", "duckdb-extensions", "httpfs.duckdb_extension"),
     resolve(process.cwd(), "..", "desktop", "build", "duckdb-extensions", "httpfs.duckdb_extension")
   ].find((candidate): candidate is string => Boolean(candidate && existsSync(candidate)));

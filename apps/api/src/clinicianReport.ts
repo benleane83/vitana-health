@@ -7,7 +7,7 @@ import {
   type ClinicianReport,
   type Profile,
   type SourceImport
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 
 export type ClinicianReportSourceImport = Pick<SourceImport, "fileName" | "sourceKind" | "importedAt" | "status" | "rowCount">;
 

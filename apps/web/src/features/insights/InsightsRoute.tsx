@@ -1,5 +1,5 @@
 import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import type { AppBootstrap, BiologicalAgeReport, CloudAiConsent } from "@local-fitness-advisor/shared";
+import type { AppBootstrap, BiologicalAgeReport, CloudAiConsent } from "@vitana/shared";
 import { api, type AiQueryResult, type LlmConfig } from "../../api.js";
 import { BiologicalAgePage } from "../../pages/BiologicalAgePage.js";
 import { QueryPage } from "../../pages/QueryPage.js";

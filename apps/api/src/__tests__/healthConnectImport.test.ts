@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { checksum } from "@local-fitness-advisor/shared";
+import { checksum } from "@vitana/shared";
 import { parseHealthConnectImport } from "../healthConnectImport.js";
 import type { HealthConnectImportRequest } from "../healthConnectImport.js";
 

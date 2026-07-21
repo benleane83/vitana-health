@@ -1,5 +1,5 @@
 ---
-name: "Local Fitness Advisor"
+name: "Vitana Health"
 description: "A calm, private health workspace with one identity across desktop and mobile."
 colors:
   canvas: "oklch(97% 0.008 255)"
@@ -130,13 +130,13 @@ components:
     padding: "14px"
 ---
 
-# Design System: Local Fitness Advisor
+# Design System: Vitana Health
 
 ## Overview
 
 **Creative North Star: "The Private Health Workspace"**
 
-Local Fitness Advisor is a calm place to inspect personal health data, understand patterns, and support informed everyday wellness choices. The visual system makes privacy, provenance, freshness, units, and safety boundaries easy to see without adopting hospital-portal severity or wellness-game optimism.
+Vitana Health is a calm place to inspect personal health data, understand patterns, and support informed everyday wellness choices. The visual system makes privacy, provenance, freshness, units, and safety boundaries easy to see without adopting hospital-portal severity or wellness-game optimism.
 
 Design serves repeated review. Stable structure and familiar controls matter more than novelty; restrained indigo carries action and selection, while lavender, seafoam, blush, and semantic tones clarify state. The interface is composed and confident, with enough warmth to feel personal but no decoration that competes with health data.
 

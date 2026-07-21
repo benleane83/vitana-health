@@ -25,7 +25,9 @@ import {
   referenceRangeStateResponseSchema,
   updateObservationResponseSchema,
   uploadImportDraftResponseSchema
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
+
+export { BRAND_NAME, FORMAL_BRAND_NAME, PAIRING_APP, PUBLIC_DOMAIN } from "@vitana/shared";
 import type {
   BodyCompositionDraftCommitPayload,
   CareItemListQuery,
@@ -37,7 +39,7 @@ import type {
   UpdateObservationInput,
   UploadImportCommitPayload,
   UploadImportPreviewPayload
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 
 export interface ApiTransportRequest {
   path: string;

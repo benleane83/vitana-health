@@ -4,7 +4,7 @@ import type {
   MeasurementType,
   Observation,
   Profile
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 
 export type DuckDbRow = Record<string, unknown>;
 

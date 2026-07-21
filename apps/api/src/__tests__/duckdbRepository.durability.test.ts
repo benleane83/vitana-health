@@ -14,7 +14,7 @@ const key = Buffer.alloc(32, 7).toString("base64");
 let root: string;
 
 beforeEach(() => {
-  root = initializeDuckDbRoot(mkdtempSync(join(tmpdir(), "lfa-duckdb-durability-test-")));
+  root = initializeDuckDbRoot(mkdtempSync(join(tmpdir(), "vitana-duckdb-durability-test-")));
 });
 
 afterEach(() => {
@@ -84,7 +84,7 @@ function terminate(child: ChildProcess): Promise<void> {
 
 function findPreparedExtension(): string | undefined {
   return [
-    process.env.LFA_DUCKDB_HTTPFS_EXTENSION,
+    process.env.VITANA_DUCKDB_HTTPFS_EXTENSION,
     resolve(process.cwd(), "apps", "desktop", "build", "duckdb-extensions", "httpfs.duckdb_extension")
   ].find((candidate): candidate is string => Boolean(candidate && existsSync(candidate)));
 }

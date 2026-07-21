@@ -1,4 +1,4 @@
-package com.localfitnessadvisor.pinnedhttp
+package app.vitanahealth.pinnedhttp
 
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

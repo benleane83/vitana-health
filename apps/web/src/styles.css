@@ -565,7 +565,7 @@ textarea {
   padding: var(--space-3) 0;
 }
 
-.vitara-lockup {
+.vitana-lockup {
   position: relative;
   display: grid;
   gap: 2px;
@@ -575,7 +575,7 @@ textarea {
   text-align: left;
 }
 
-.vitara-mark {
+.vitana-mark {
   width: 96px;
   height: 104px;
   position: absolute;
@@ -586,18 +586,18 @@ textarea {
   transform-origin: left center;
 }
 
-.vitara-petal,
-.vitara-stem,
-.vitara-core {
+.vitana-petal,
+.vitana-stem,
+.vitana-core {
   position: absolute;
   display: block;
 }
 
-.vitara-petal {
+.vitana-petal {
   transform-origin: 50% 88%;
 }
 
-.vitara-petal-top {
+.vitana-petal-top {
   z-index: 1;
   left: 24px;
   top: 0;
@@ -607,7 +607,7 @@ textarea {
   background: linear-gradient(150deg, oklch(96% 0.06 334), oklch(67% 0.15 304) 58%, oklch(55% 0.14 285));
 }
 
-.vitara-petal-left {
+.vitana-petal-left {
   left: 3px;
   top: 38px;
   width: 54px;
@@ -616,7 +616,7 @@ textarea {
   background: linear-gradient(130deg, oklch(80% 0.1 248), oklch(54% 0.15 265) 74%);
 }
 
-.vitara-petal-right {
+.vitana-petal-right {
   right: 3px;
   top: 38px;
   width: 54px;
@@ -626,7 +626,7 @@ textarea {
   transform: scaleX(-1);
 }
 
-.vitara-stem {
+.vitana-stem {
   z-index: 2;
   left: 45px;
   bottom: 10px;
@@ -636,7 +636,7 @@ textarea {
   background: oklch(99% 0.004 260);
 }
 
-.vitara-core {
+.vitana-core {
   z-index: 3;
   left: 37px;
   top: 41px;
@@ -647,13 +647,13 @@ textarea {
   background: oklch(94% 0.02 285);
 }
 
-.vitara-wordmark,
-.vitara-tagline,
-.vitara-promise {
+.vitana-wordmark,
+.vitana-tagline,
+.vitana-promise {
   margin: 0;
 }
 
-.vitara-wordmark {
+.vitana-wordmark {
   color: var(--text-strong);
   font-size: 1.18rem;
   font-weight: 500;
@@ -663,14 +663,14 @@ textarea {
   text-transform: uppercase;
 }
 
-.vitara-tagline {
+.vitana-tagline {
   margin-top: 0;
   color: var(--text);
   font-size: 0.78rem;
   font-weight: 600;
 }
 
-.vitara-rule {
+.vitana-rule {
   display: none;
   align-items: center;
   gap: var(--space-3);
@@ -679,20 +679,20 @@ textarea {
   color: var(--primary);
 }
 
-.vitara-rule::before,
-.vitara-rule::after {
+.vitana-rule::before,
+.vitana-rule::after {
   content: "";
   flex: 1;
   height: 1px;
   background: linear-gradient(90deg, oklch(70% 0.08 255 / 0.4), oklch(77% 0.09 330 / 0.5));
 }
 
-.vitara-rule span {
+.vitana-rule span {
   font-size: 0.92rem;
   line-height: 1;
 }
 
-.vitara-promise {
+.vitana-promise {
   max-width: none;
   color: var(--primary);
   font-size: 0.8rem;
@@ -700,11 +700,11 @@ textarea {
   line-height: 1.2;
 }
 
-.vitara-promise span:nth-child(2) {
+.vitana-promise span:nth-child(2) {
   color: oklch(61% 0.11 300);
 }
 
-.vitara-promise span:nth-child(3) {
+.vitana-promise span:nth-child(3) {
   color: oklch(69% 0.12 344);
 }
 
@@ -3346,7 +3346,7 @@ button.stat {
     padding-block: var(--space-3);
   }
 
-  .vitara-mark {
+  .vitana-mark {
     transform: translateY(-50%) scale(0.42);
   }
 

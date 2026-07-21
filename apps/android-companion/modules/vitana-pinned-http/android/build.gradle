@@ -3,7 +3,7 @@ plugins {
   id 'expo-module-gradle-plugin'
 }
 
-group = 'com.localfitnessadvisor.pinnedhttp'
+group = 'app.vitanahealth.pinnedhttp'
 version = '0.1.0'
 
 dependencies {
@@ -12,7 +12,7 @@ dependencies {
 }
 
 android {
-  namespace "com.localfitnessadvisor.pinnedhttp"
+  namespace "app.vitanahealth.pinnedhttp"
   defaultConfig {
     versionCode 1
     versionName "0.1.0"

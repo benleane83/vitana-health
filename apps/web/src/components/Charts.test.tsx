@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { HealthDataChartSeries, HealthDataDetail } from "@local-fitness-advisor/shared";
+import type { HealthDataChartSeries, HealthDataDetail } from "@vitana/shared";
 import { DetailTrendChart } from "./Charts.js";
 
 const detail: HealthDataDetail = {

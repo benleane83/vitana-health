@@ -6,13 +6,13 @@ import type {
   HealthDataSummaryTypeRow,
   HealthStoreData,
   MeasurementType
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import {
   classifyValueWithRange,
   getPreferredUnit,
   resolveReferenceRange,
   toPreferredMeasurementValue
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 
 const categoryLabels: Record<HealthDataSummaryTypeRow["category"], string> = {
   activity: "Activity",

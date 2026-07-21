@@ -1,4 +1,4 @@
-import type { MeasurementType } from "@local-fitness-advisor/shared";
+import type { MeasurementType } from "@vitana/shared";
 
 export function mergeDefaultMeasurementType(
   existing: MeasurementType,

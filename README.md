@@ -1,4 +1,4 @@
-# Local Fitness Advisor
+# Vitana Health
 
 A local-first health analytics app for Android Health Connect sync, manual blood-test results, profile metrics, deterministic analytics, and guarded AI recommendations from a configurable model runtime.
 
@@ -26,7 +26,7 @@ The API generates and persists its owner credential automatically. A browser run
 
 When the API is exposed to the LAN, it also creates and reuses a private TLS certificate under the application data directory. The pairing QR code carries the certificate's public-key fingerprint. The Android app uses that fingerprint for every request, so no certificate generation, trust-store installation, configuration-file editing, or command-line setup is required.
 
-Environment overrides (`LFA_OWNER_TOKEN`, `LFA_TLS_KEY`, and `LFA_TLS_CERT`) remain available for development and managed deployments.
+Environment overrides (`VITANA_OWNER_TOKEN`, `VITANA_TLS_KEY`, and `VITANA_TLS_CERT`) remain available for development and managed deployments.
 
 ### Packaged desktop installer
 
@@ -36,7 +36,7 @@ Build the Windows installer with:
 npm run package:desktop
 ```
 
-The installer packages the API and web UI, configures private-network firewall access, and stores generated credentials, certificates, and health data in the user's application-data directory. Opening Local Fitness Advisor starts the local service and web UI together.
+The installer packages the API and web UI, configures private-network firewall access, and stores generated credentials, certificates, and health data in the user's application-data directory. Opening Vitana Health starts the local service and web UI together.
 
 For signing, verification, checksums, and the protected Windows release process, see the [Windows release runbook](docs/WINDOWS_RELEASE.md).
 
@@ -57,7 +57,7 @@ stops companion access.
 - Prompt payloads are minimized to de-identified query evidence. Direct identifiers (for example profile identity, source labels, file names, import metadata, free-form notes, and raw import payloads) are excluded from cloud prompt serialization.
 - If you use a cloud provider, you are responsible for that provider's data retention, logging, and compliance settings.
 - Local model mode (for example Ollama) keeps all processing on-device.
-- Set `LFA_SECRET` to control the encryption passphrase for standalone use. The packaged desktop wraps its generated key with the operating system through Electron `safeStorage`.
+- Set `VITANA_SECRET` to control the encryption passphrase for standalone use. The packaged desktop wraps its generated key with the operating system through Electron `safeStorage`.
 - The packaged desktop also wraps saved cloud-model API keys with Electron `safeStorage`; existing plaintext keys migrate when the desktop next opens them. A standalone API has no OS credential wrapper, so manually saved model keys remain in its mode-`0600` settings file; use environment variables where that persistence model is unsuitable.
 - Owner authentication protects all API data and administration routes. Companion tokens can be revoked from the paired-device list.
 - Pairing codes and polling secrets expire and are delivered through the owner-authenticated QR flow.
@@ -180,8 +180,8 @@ To build the standalone proof-of-concept APK:
 npm run build:android:standalone-poc -w apps/android-companion
 ```
 
-This internal-distribution APK installs as **Local Fitness Standalone Test** with package ID
-`com.localfitnessadvisor.companion.standalone`, so it can coexist with the companion app. It
+This internal-distribution APK installs as **Vitana Standalone Test** with package ID
+`app.vitanahealth.companion.standalone`, so it can coexist with the companion app. It
 stores its local profile and manual observations in a SQLCipher database protected by a
 device-backed SecureStore key. Dashboard and Track read from that database. The test build has
 OTA updates disabled; rebuild it for each test version. Use **Connection → Reset local data** if
@@ -208,7 +208,7 @@ Preview and production builds require HTTPS. For a development client that inten
 npx eas build --platform android --profile development
 ```
 
-The development profile sets `LFA_ALLOW_CLEARTEXT=1`; other profiles explicitly disable cleartext. Device tokens are stored with Android secure storage, and production HTTPS requests verify the server identity scanned from the pairing QR code.
+The development profile sets `VITANA_ALLOW_CLEARTEXT=1`; other profiles explicitly disable cleartext. Device tokens are stored with Android secure storage, and production HTTPS requests verify the server identity scanned from the pairing QR code.
 
 For Play Store AAB signing, versioning, EAS environment separation, testing, staged rollout, and rollback, follow [the Android production release runbook](docs/ANDROID_RELEASE.md).
 

@@ -3,7 +3,7 @@ import type {
   HealthDataDetailEntry,
   MeasurementType,
   UpdateObservationInput
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 
 function toLocalDateTime(isoTimestamp: string): string {
   const date = new Date(isoTimestamp);

@@ -17,7 +17,7 @@ import type {
   UpdateHealthEventInput,
   UpdateObservationInput,
   UpdateObservationResponse
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import type { StoreSecurityMode } from "./profileStoreManager.js";
 import {
   DuckDbRepository

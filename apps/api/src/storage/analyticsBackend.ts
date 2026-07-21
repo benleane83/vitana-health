@@ -3,7 +3,7 @@ import type {
   DeleteObservationResponse,
   DeleteObservationsByTypeResponse,
   UpdateObservationResponse
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import type { ProfileStoreManager } from "./profileStoreManager.js";
 import type { QueryDSL } from "../aiQueryPlanner.js";
 import {

@@ -2,7 +2,7 @@
 
 ## Decision
 
-Local Fitness Advisor uses one encrypted DuckDB database per profile as the Windows x64 data architecture. The same database is the canonical health store and analytics engine.
+Vitana Health uses one encrypted DuckDB database per profile as the Windows x64 data architecture. The same database is the canonical health store and analytics engine.
 
 DuckDB is the only runtime backend. Existing encrypted JSON profiles are not loaded or migrated by the application. JSON is available only as an explicit export format for future backup and restore work.
 
@@ -35,7 +35,7 @@ DuckDB uses AES-256-GCM with encrypted temporary spill files. Writable encryptio
 
 The desktop generates a random 256-bit data key, wraps it with Electron `safeStorage`, and persists only the wrapped blob. The unwrapped passphrase is injected into the in-process API. A profile-specific database key is derived with a versioned SHA-256 domain separator and the profile ID. Packaged desktop model API keys use the same OS-backed storage: `ai-settings.json` contains a wrapped key blob rather than the plaintext key. Opening a legacy desktop settings file with a plaintext key migrates it atomically on first read.
 
-Standalone production API use requires `LFA_SECRET`. It does not have Electron's OS credential wrapper, so manually saved model API keys remain in the mode-`0600` `ai-settings.json` file; environment-provided keys are not written there. A standalone server cannot open a desktop-wrapped model credential and fails closed rather than falling back to a default model configuration. Generated plaintext `local.key` material remains a development/test fallback only.
+Standalone production API use requires `VITANA_SECRET`. It does not have Electron's OS credential wrapper, so manually saved model API keys remain in the mode-`0600` `ai-settings.json` file; environment-provided keys are not written there. A standalone server cannot open a desktop-wrapped model credential and fails closed rather than falling back to a default model configuration. Generated plaintext `local.key` material remains a development/test fallback only.
 
 ## Analytics
 
@@ -60,6 +60,6 @@ The production branch retains behavior-protecting runtime, repository, activatio
 
 ## Compatibility and limits
 
-The on-disk root marker `.lfa-duckdb-poc`, metadata table `poc_metadata`, and attached catalog alias `poc` are intentionally preserved so databases created during the validated activation can reopen without migration risk. They are compatibility identifiers, not current product status.
+The on-disk root marker `.vitana-duckdb-poc`, metadata table `poc_metadata`, and attached catalog alias `poc` are intentionally preserved so databases created during the validated activation can reopen without migration risk. They are compatibility identifiers, not current product status.
 
 Current approval is Windows x64 only. macOS and Linux require platform-specific extension pins, packaged runtime validation, and secure-keyring policy before enablement. A longer soak and bulk-ingestion redesign remain deferred; the current implementation uses a bounded 256 MiB DuckDB memory limit and bounded insert payloads.

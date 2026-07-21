@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { defaultMeasurementTypes, safetyNotice } from "@local-fitness-advisor/shared";
+import { defaultMeasurementTypes, safetyNotice } from "@vitana/shared";
 import type { AppRoute, ImportMode, InsightsTab, SettingsView } from "./types.js";
 import { ProfileLifecycleDialogs, useProfileLifecycle } from "./features/profiles/useProfileLifecycle.js";
 import { ConfirmDialog } from "./components/ConfirmDialog.js";

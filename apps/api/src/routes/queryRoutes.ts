@@ -1,5 +1,5 @@
 import express from "express";
-import { aiQueryRequestSchema, safetyNotice } from "@local-fitness-advisor/shared";
+import { aiQueryRequestSchema, safetyNotice } from "@vitana/shared";
 import type { ProfileStoreManager } from "../storage/profileStoreManager.js";
 import {
   compileAnalyticsQuery,
@@ -37,7 +37,7 @@ export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Rout
   // AI-planned query pipeline (primary query path for the web UI)
   router.post("/ai", async (request, response, next) => {
     try {
-      response.setHeader("x-lfa-lifecycle", "supported");
+      response.setHeader("x-vitana-lifecycle", "supported");
       if (!await ensureCloudConsent(response)) {
         return;
       }

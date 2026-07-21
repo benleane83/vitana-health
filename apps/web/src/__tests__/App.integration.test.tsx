@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
 import { App } from "../App.js";
-import { defaultMeasurementTypes, type HealthStoreData } from "@local-fitness-advisor/shared";
+import { defaultMeasurementTypes, type HealthStoreData } from "@vitana/shared";
 
 // ─── Minimal fetch mock ────────────────────────────────────────────────────────
 

@@ -1,4 +1,4 @@
-import { CURRENT_SCHEMA_VERSION, defaultMeasurementTypes, type HealthStoreData } from "@local-fitness-advisor/shared";
+import { CURRENT_SCHEMA_VERSION, defaultMeasurementTypes, type HealthStoreData } from "@vitana/shared";
 
 export function createDuckDbHealthStoreFixture(): HealthStoreData {
   return {

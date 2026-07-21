@@ -14,7 +14,7 @@ afterEach(() => {
 });
 
 test("writes startup checkpoints and errors to the user-data log", () => {
-  const root = mkdtempSync(path.join(tmpdir(), "lfa-startup-diagnostics-test-"));
+  const root = mkdtempSync(path.join(tmpdir(), "vitana-startup-diagnostics-test-"));
   roots.push(root);
   const diagnostics = createStartupDiagnostics({
     userDataPath: root,

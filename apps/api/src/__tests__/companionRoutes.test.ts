@@ -52,14 +52,14 @@ function store(profileId: string) {
 
 describe("companion route profile isolation", () => {
   beforeEach(() => {
-    dataDir = mkdtempSync(join(tmpdir(), "lfa-companion-routes-"));
-    process.env.LFA_DATA_DIR = dataDir;
-    process.env.LFA_OWNER_TOKEN = ownerToken;
+    dataDir = mkdtempSync(join(tmpdir(), "vitana-companion-routes-"));
+    process.env.VITANA_DATA_DIR = dataDir;
+    process.env.VITANA_OWNER_TOKEN = ownerToken;
   });
 
   afterEach(() => {
-    delete process.env.LFA_DATA_DIR;
-    delete process.env.LFA_OWNER_TOKEN;
+    delete process.env.VITANA_DATA_DIR;
+    delete process.env.VITANA_OWNER_TOKEN;
     rmSync(dataDir, { recursive: true, force: true });
   });
 

@@ -2,6 +2,7 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { getDeviceId, saveConnection } from "./endpointStore";
+import { parsePairingPayload } from "./pairingPayload";
 import { pinnedFetch } from "./pinnedFetch";
 import { Button, Card, Message } from "./ui/components";
 import { colors, radii, spacing, type } from "./ui/theme";
@@ -61,21 +62,11 @@ export function PairScreen({
     if (scannedRef.current || status !== "idle") return;
     scannedRef.current = true;
     try {
-      const payload = JSON.parse(data) as Record<string, unknown>;
-      if (payload.app !== "local-fitness-advisor") throw new Error("This QR code is not a Local Fitness Advisor pairing code.");
-      if (typeof payload.url !== "string" || typeof payload.pairingCode !== "string") {
-        throw new Error("This pairing QR code is incomplete. Refresh it in the web app and try again.");
-      }
-      const url = payload.url.replace(/\/+$/, "");
-      if (!__DEV__ && !url.startsWith("https://")) {
-        throw new Error("Production pairing requires HTTPS.");
-      }
-      if (url.startsWith("https://") && typeof payload.publicKeyHash !== "string") {
-        throw new Error("This pairing code does not include a server identity.");
-      }
+      const payload = parsePairingPayload(data, !__DEV__);
+      const { url } = payload;
       setDetectedUrl(url);
       setPairingCode(payload.pairingCode);
-      setPublicKeyHash(typeof payload.publicKeyHash === "string" ? payload.publicKeyHash : null);
+      setPublicKeyHash(payload.publicKeyHash);
       setStatus("detected");
       setMessage(`Found server: ${url}`);
     } catch (error) {
@@ -198,7 +189,7 @@ export function PairScreen({
           </Pressable>
         </View>
 
-        <Text style={styles.subtitle}>Connect to a Local Fitness Advisor instance running on your network.</Text>
+        <Text style={styles.subtitle}>Connect to a Vitana instance running on your network.</Text>
 
         <View style={styles.section}>
             <Text style={styles.instructions}>

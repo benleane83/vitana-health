@@ -14,17 +14,17 @@ afterEach(() => {
 
 describe("LAN runtime security", () => {
   it("persists generated credentials and a pinned TLS identity", async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), "lfa-security-test-"));
+    const dataDir = mkdtempSync(join(tmpdir(), "vitana-security-test-"));
     temporaryDirectories.push(dataDir);
-    process.env.LFA_DATA_DIR = dataDir;
-    delete process.env.LFA_OWNER_TOKEN;
-    delete process.env.LFA_TLS_CERT;
-    delete process.env.LFA_TLS_KEY;
+    process.env.VITANA_DATA_DIR = dataDir;
+    delete process.env.VITANA_OWNER_TOKEN;
+    delete process.env.VITANA_TLS_CERT;
+    delete process.env.VITANA_TLS_KEY;
 
     const first = await configureRuntimeSecurity("0.0.0.0");
-    delete process.env.LFA_OWNER_TOKEN;
-    delete process.env.LFA_TLS_CERT;
-    delete process.env.LFA_TLS_KEY;
+    delete process.env.VITANA_OWNER_TOKEN;
+    delete process.env.VITANA_TLS_CERT;
+    delete process.env.VITANA_TLS_KEY;
     const second = await configureRuntimeSecurity("0.0.0.0");
 
     expect(first.ownerToken).toHaveLength(43);

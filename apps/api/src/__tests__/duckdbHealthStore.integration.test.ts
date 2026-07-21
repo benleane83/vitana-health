@@ -10,7 +10,7 @@ const httpfsExtensionPath = findPreparedExtension();
 let root: string;
 
 beforeEach(() => {
-  root = initializeDuckDbRoot(mkdtempSync(join(tmpdir(), "lfa-duckdb-health-store-test-")));
+  root = initializeDuckDbRoot(mkdtempSync(join(tmpdir(), "vitana-duckdb-health-store-test-")));
 });
 
 afterEach(() => {
@@ -73,7 +73,7 @@ describe("DuckDbHealthStore lifecycle", () => {
 
 function findPreparedExtension(): string | undefined {
   return [
-    process.env.LFA_DUCKDB_HTTPFS_EXTENSION,
+    process.env.VITANA_DUCKDB_HTTPFS_EXTENSION,
     resolve(process.cwd(), "apps", "desktop", "build", "duckdb-extensions", "httpfs.duckdb_extension")
   ].find((candidate): candidate is string => Boolean(candidate && existsSync(candidate)));
 }

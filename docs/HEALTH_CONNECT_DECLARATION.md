@@ -1,6 +1,6 @@
 # Health Connect Declaration
 
-Use this declaration for Google Play's Health apps / Health Connect form for `com.localfitnessadvisor.companion`. It derives from the [Health Connect Data Inventory](HEALTH_CONNECT_DATA_INVENTORY.md).
+Use this declaration for Google Play's Health apps / Health Connect form for `app.vitanahealth.companion`. It derives from the [Health Connect Data Inventory](HEALTH_CONNECT_DATA_INVENTORY.md).
 
 ## Health Connect access
 

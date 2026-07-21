@@ -4,7 +4,7 @@ import {
   type AnalyticsSummary,
   type Insight,
   type Profile
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import { callConfiguredModel } from "./modelClient.js";
 import { hasCloudAiConsent, redactFreeText } from "./privacy.js";
 

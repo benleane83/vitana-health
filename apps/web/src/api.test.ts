@@ -72,7 +72,7 @@ describe("API client response handling", () => {
   });
 
   it("sends encrypted backup data as an owner-authenticated binary request", async () => {
-    const backup = new File(["encrypted"], "profile.lfa-backup", { type: "application/octet-stream" });
+    const backup = new File(["encrypted"], "profile.vitana-backup", { type: "application/octet-stream" });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
       formatVersion: 1,
       createdAt: "2026-07-16T00:00:00.000Z",

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { compareSummaryRows, convertMeasurementValue } from "@local-fitness-advisor/shared";
+import { compareSummaryRows, convertMeasurementValue } from "@vitana/shared";
 import type {
   HealthDataChartMode,
   HealthDataChartRange,
@@ -9,7 +9,7 @@ import type {
   HealthDataSummary,
   MeasurementType,
   PersonalReferenceRangeInput
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import { DetailTrendChart } from "../components/Charts.js";
 import { formatTimestamp, formatShortTimestamp, formatDetailValue } from "../utils.js";
 import type { SummarySort } from "../types.js";

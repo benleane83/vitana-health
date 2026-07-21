@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { getPreferredUnit, type MeasurementType, type UnitSystem } from "@local-fitness-advisor/shared";
+import { getPreferredUnit, type MeasurementType, type UnitSystem } from "@vitana/shared";
 import type { UploadEditableRow } from "../types.js";
 import { groupMeasurementTypes, measurementCategoryLabels } from "../utils.js";
 

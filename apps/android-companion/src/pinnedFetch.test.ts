@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const nativeModule = vi.hoisted(() => ({ request: vi.fn() }));
 
-vi.mock("../modules/lfa-pinned-http/src/LfaPinnedHttpModule", () => ({ default: nativeModule }));
+vi.mock("../modules/vitana-pinned-http/src/VitanaPinnedHttpModule", () => ({ default: nativeModule }));
 
 import { LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS, pinnedFetch } from "./pinnedFetch";
 

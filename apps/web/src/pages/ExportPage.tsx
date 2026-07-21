@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { KeyboardEvent } from "react";
-import { safetyNotice } from "@local-fitness-advisor/shared";
-import type { BackupInspectResponse, RestoreDecision } from "@local-fitness-advisor/shared";
+import { safetyNotice } from "@vitana/shared";
+import type { BackupInspectResponse, RestoreDecision } from "@vitana/shared";
 
 const minBackupPassphraseLength = 12;
 type ExportView = "report" | "backup";
@@ -178,7 +178,7 @@ export function ExportPage({
               <p>Inspect a backup before restoring it. Creating a copy is the default action.</p>
               <label>
                 Backup file
-                <input type="file" accept=".lfa-backup,application/octet-stream" onChange={(event) => onRestoreFileChange(event.target.files?.[0])} />
+                <input type="file" accept=".vitana-backup,application/octet-stream" onChange={(event) => onRestoreFileChange(event.target.files?.[0])} />
               </label>
               {restoreFile ? <p className="summary-detail-hint">Selected: {restoreFile.name}</p> : null}
               <label>

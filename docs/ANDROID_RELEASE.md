@@ -6,7 +6,7 @@ This runbook applies to the Play Store Android companion. It defines the release
 
 The release owner is responsible for executing this runbook and recording the release in the repository's release notes.
 
-- Google Play App Signing must be enabled for `com.localfitnessadvisor.companion` before the first production submission.
+- Google Play App Signing must be enabled for `app.vitanahealth.companion` before the first production submission.
 - The Play upload credential is managed by Google Play and the authorized EAS/Expo account or CI secret store. Do not commit a keystore, upload key, service-account JSON, or access token.
 - Access to the EAS project and the Play Console production track is limited to release owners.
 - Production submissions require the public privacy-policy URL and completed Play Console declarations described in the privacy release work.
@@ -54,7 +54,7 @@ npm run build:android:production -w apps/android-companion
 
 The production EAS profile intentionally omits `android.buildType: "apk"`; EAS produces an Android App Bundle (AAB) for Play submission. Download the signed AAB only from the recorded EAS build.
 
-Before uploading, confirm the EAS build details show the expected commit, production channel, `LFA_ALLOW_CLEARTEXT=0`, user-visible version, and auto-incremented Android version code.
+Before uploading, confirm the EAS build details show the expected commit, production channel, `VITANA_ALLOW_CLEARTEXT=0`, user-visible version, and auto-incremented Android version code.
 
 Upload the AAB to the Play Console internal testing track first. Promote the exact tested artifact through closed testing and then production; do not rebuild between successful test-track validation and promotion.
 
@@ -83,7 +83,7 @@ Demo mode does not contact a local PC, alter pairing credentials, or write sampl
 - [ ] Reviewer Demo mode works without network access, exposes Dashboard and Track sample data, blocks all import actions, and preserves any existing paired connection when turned off.
 - [ ] A production-compatible OTA update is tested on the production channel only, or the release notes state that no OTA update is included.
 - [ ] Play Console metadata, content rating, Data Safety, and Health apps/Health Connect declarations are completed from `docs/PLAY_DATA_SAFETY.md` and `docs/HEALTH_CONNECT_DECLARATION.md`; they match `docs/HEALTH_CONNECT_DATA_INVENTORY.md` and the released binary.
-- [ ] The public privacy policy at `https://github.com/benleane83/local-fitness-advisor/blob/main/docs/PRIVACY_POLICY.md` is linked from the companion and matches `docs/HEALTH_CONNECT_DATA_INVENTORY.md`.
+- [ ] The public privacy policy at `https://vitanahealth.app/privacy` is linked from the companion and matches `docs/HEALTH_CONNECT_DATA_INVENTORY.md`.
 - [ ] The release starts on the internal testing track; crash/ANR, policy, and tester feedback are reviewed before staged production rollout.
 - [ ] Release notes include the commit SHA, EAS build URL, Expo version, Android version code, Play release name, rollout percentage, and approver.
 

@@ -17,7 +17,7 @@ export interface ManualMarkerRow {
   unit: string;
 }
 
-/** Editable form of an `UploadDraftRow` (see `@local-fitness-advisor/shared`) for the review table. */
+/** Editable form of an `UploadDraftRow` (see `@vitana/shared`) for the review table. */
 export interface UploadEditableRow {
   id: string;
   label: string;

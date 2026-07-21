@@ -1,5 +1,5 @@
 import type duckdb from "duckdb";
-import { defaultMeasurementTypes } from "@local-fitness-advisor/shared";
+import { defaultMeasurementTypes } from "@vitana/shared";
 import { mergeDefaultMeasurementType } from "../measurementRegistry.js";
 import {
   all,

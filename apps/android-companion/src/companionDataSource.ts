@@ -19,7 +19,7 @@ import type {
   PaginatedResult,
   UpdateObservationInput,
   UpdateObservationResponse
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 
 export interface DetailPage {
   limit?: number;

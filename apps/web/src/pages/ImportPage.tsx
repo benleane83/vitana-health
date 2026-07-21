@@ -1,5 +1,5 @@
 import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { defaultMeasurementTypes, getPreferredUnit, type AppBootstrap, type MeasurementType, type ProfileListEntry, type UnitSystem } from "@local-fitness-advisor/shared";
+import { defaultMeasurementTypes, getPreferredUnit, type AppBootstrap, type MeasurementType, type ProfileListEntry, type UnitSystem } from "@vitana/shared";
 import { api } from "../api.js";
 import type { PairedDevice, PendingPairing } from "../api.js";
 import type { ImportMode, ManualMarkerRow } from "../types.js";

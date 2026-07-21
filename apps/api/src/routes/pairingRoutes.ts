@@ -3,6 +3,7 @@ import { z } from "zod";
 import QRCode from "qrcode";
 import type { PairingStore } from "../pairing.js";
 import type { AuthorizationPrincipal } from "../createApp.js";
+import { PAIRING_APP } from "@vitana/shared";
 
 export function makePairingRoutes(
   pairingStore: PairingStore,
@@ -25,7 +26,7 @@ export function makePairingRoutes(
       const challenge = pairingStore.createChallenge();
       const payload = JSON.stringify({
         url,
-        app: "local-fitness-advisor",
+        app: PAIRING_APP,
         pairingCode: challenge.code,
         expiresAt: challenge.expiresAt,
         publicKeyHash: options.publicKeyHash

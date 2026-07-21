@@ -31,7 +31,7 @@ import type {
   PendingPairing as SharedPendingPairing,
   PaginatedResult,
   ProfilesResponse as SharedProfilesResponse
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import {
   aiQueryResponseSchema,
   aiSettingsResponseSchema,
@@ -63,11 +63,11 @@ import {
   profileResponseSchema,
   profilesResponseSchema,
   updateObservationResponseSchema
-} from "@local-fitness-advisor/shared";
-import { ApiError, createApiClient } from "@local-fitness-advisor/api-client";
-export { ApiError } from "@local-fitness-advisor/api-client";
+} from "@vitana/shared";
+import { ApiError, createApiClient } from "@vitana/api-client";
+export { ApiError } from "@vitana/api-client";
 
-const ownerTokenKey = "local-fitness-advisor.ownerToken";
+const ownerTokenKey = "vitana.ownerToken";
 let ownerTokenPromptInFlight: Promise<string | null> | undefined;
 
 function ownerHeaders(options?: RequestInit): HeadersInit {
@@ -106,7 +106,7 @@ async function fetchAsOwner(path: string, options?: RequestInit, retry = true): 
 async function promptForOwnerToken(): Promise<string | null> {
   if (!ownerTokenPromptInFlight) {
     ownerTokenPromptInFlight = Promise.resolve(
-      window.prompt("Enter the Local Fitness Advisor owner token shown by the API at startup:")
+      window.prompt("Enter the Vitana owner token shown by the API at startup:")
     ).finally(() => {
       ownerTokenPromptInFlight = undefined;
     });
@@ -192,7 +192,7 @@ export const api = {
       await assertResponseOk(response);
       return {
         blob: await response.blob(),
-        filename: response.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "backup.lfa-backup"
+        filename: response.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "backup.vitana-backup"
       };
     },
     inspect: (file: Blob, passphrase: string): Promise<BackupInspectResponse> =>

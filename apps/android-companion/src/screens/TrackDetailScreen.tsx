@@ -10,7 +10,7 @@ import {
   mergeHealthDataDetail,
   type HealthDataDetail,
   type HealthDataDetailEntry
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import { useMobileApi } from "../MobileApiProvider";
 import type { RootStackParamList } from "../navigationTypes";
 import { Button, Card, Loading, Message, Screen } from "../ui/components";

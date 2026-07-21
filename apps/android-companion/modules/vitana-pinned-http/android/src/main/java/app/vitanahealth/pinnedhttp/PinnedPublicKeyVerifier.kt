@@ -1,4 +1,4 @@
-package com.localfitnessadvisor.pinnedhttp
+package app.vitanahealth.pinnedhttp
 
 import java.security.MessageDigest
 import java.util.Base64

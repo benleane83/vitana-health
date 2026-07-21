@@ -1,4 +1,4 @@
-package com.localfitnessadvisor.pinnedhttp
+package app.vitanahealth.pinnedhttp
 
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -16,9 +16,9 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
-class LfaPinnedHttpModule : Module() {
+class VitanaPinnedHttpModule : Module() {
   override fun definition() = ModuleDefinition {
-    Name("LfaPinnedHttp")
+    Name("VitanaPinnedHttp")
 
     AsyncFunction("request") {
       url: String,

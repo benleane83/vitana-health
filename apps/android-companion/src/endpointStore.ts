@@ -1,10 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 
-const CONNECTION_KEY = "local-fitness-advisor.connection";
-const DEVICE_ID_KEY = "local-fitness-advisor.deviceId";
-const TOKEN_KEY = "local-fitness-advisor.companionToken";
-const SELECTED_PROFILE_ID_KEY = "local-fitness-advisor.selectedProfileId";
+const CONNECTION_KEY = "vitana.connection";
+const DEVICE_ID_KEY = "vitana.deviceId";
+const TOKEN_KEY = "vitana.companionToken";
+const SELECTED_PROFILE_ID_KEY = "vitana.selectedProfileId";
 
 export const HEALTH_CONNECT_CATEGORIES = [
   "Steps",

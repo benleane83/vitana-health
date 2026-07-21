@@ -29,7 +29,7 @@ import { makeSettingsRoutes } from "./routes/settingsRoutes.js";
 import { makeBackupRoutes, isInMaintenanceMode } from "./routes/backupRoutes.js";
 import { z } from "zod";
 import type { AuthorizationPrincipal, OwnerPrincipal } from "./requestPrincipal.js";
-import type { DesktopRuntimeSettingsResponse, DesktopRuntimeSettingsUpdate } from "@local-fitness-advisor/shared";
+import type { DesktopRuntimeSettingsResponse, DesktopRuntimeSettingsUpdate } from "@vitana/shared";
 
 export type { AuthorizationPrincipal, OwnerPrincipal } from "./requestPrincipal.js";
 
@@ -203,12 +203,12 @@ export function createApp(
   });
 
   function ownerTokenIsValid(request: express.Request): boolean {
-    const configured = process.env.LFA_OWNER_TOKEN ?? "";
+    const configured = process.env.VITANA_OWNER_TOKEN ?? "";
     const encodedCookieToken = request.headers.cookie
       ?.split(";")
       .map((part) => part.trim())
-      .find((part) => part.startsWith("lfa_owner="))
-      ?.slice("lfa_owner=".length);
+      .find((part) => part.startsWith("vitana_owner="))
+      ?.slice("vitana_owner=".length);
     const supplied =
       request.headers.authorization?.replace(/^Bearer\s+/i, "") ??
       decodeCookieToken(encodedCookieToken);
@@ -236,7 +236,7 @@ export function createApp(
     const secure = request.protocol === "https";
     response.setHeader(
       "set-cookie",
-      `lfa_owner=${encodeURIComponent(process.env.LFA_OWNER_TOKEN ?? "")}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400${secure ? "; Secure" : ""}`
+      `vitana_owner=${encodeURIComponent(process.env.VITANA_OWNER_TOKEN ?? "")}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400${secure ? "; Secure" : ""}`
     );
     response.status(204).end();
   });
@@ -303,7 +303,7 @@ export function createApp(
     }
     const principal = typeof companionToken === "string" ? pairingStore.validateToken(companionToken) : null;
     if (!principal) {
-      response.setHeader("www-authenticate", ['Bearer', 'realm="Local Fitness Advisor"'].join(" "));
+      response.setHeader("www-authenticate", ['Bearer', 'realm="Vitana Health"'].join(" "));
       response.status(401).json({ error: "Valid owner or companion credential required.", code: "AUTH_REQUIRED" });
       return;
     }
@@ -318,7 +318,7 @@ export function createApp(
 
   // Authenticated pairing management (owner only)
   const pairingPort = Number.parseInt(process.env.PORT ?? "4317", 10);
-  const pairingScheme = process.env.LFA_TLS_CERT && process.env.LFA_TLS_KEY ? "https" : "http";
+  const pairingScheme = process.env.VITANA_TLS_CERT && process.env.VITANA_TLS_KEY ? "https" : "http";
   const pairingRouter = makePairingRoutes(pairingStore, {
     publicKeyHash: options.publicKeyHash,
     port: pairingPort,

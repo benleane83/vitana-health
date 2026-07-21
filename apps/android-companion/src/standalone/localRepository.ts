@@ -15,7 +15,7 @@ import {
   type ParsedImport,
   type Profile,
   type UpdateObservationInput
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import type { LocalStore } from "./localStore";
 
 const RECENT_ANALYTICS_LIMIT = 500;

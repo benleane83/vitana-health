@@ -45,8 +45,8 @@ describe("callConfiguredModel", () => {
     delete process.env.LLM_PROVIDER;
     delete process.env.OPENAI_RESPONSES_ENDPOINT;
     delete process.env.OPENAI_API_KEY;
-    dataDirectory = mkdtempSync(join(tmpdir(), "lfa-model-client-test-"));
-    process.env.LFA_DATA_DIR = dataDirectory;
+    dataDirectory = mkdtempSync(join(tmpdir(), "vitana-model-client-test-"));
+    process.env.VITANA_DATA_DIR = dataDirectory;
     saveAiSettings({
       provider: "openai",
       endpoint: "https://openrouter.ai/api/v1/chat/completions",
@@ -80,8 +80,8 @@ describe("callConfiguredModel", () => {
   });
 
   it("uses the native Anthropic Messages API contract", async () => {
-    dataDirectory = mkdtempSync(join(tmpdir(), "lfa-model-client-test-"));
-    process.env.LFA_DATA_DIR = dataDirectory;
+    dataDirectory = mkdtempSync(join(tmpdir(), "vitana-model-client-test-"));
+    process.env.VITANA_DATA_DIR = dataDirectory;
     saveAiSettings({
       provider: "openai",
       endpoint: "https://api.anthropic.com/v1/messages",
@@ -115,8 +115,8 @@ describe("callConfiguredModel", () => {
     ["Azure AI Foundry", "https://fitness.services.ai.azure.com/openai/v1/chat/completions", "api-key"],
     ["AWS Bedrock", "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1/chat/completions", "authorization"]
   ])("uses the supported %s OpenAI-compatible endpoint", async (_name, endpoint, credentialHeader) => {
-    dataDirectory = mkdtempSync(join(tmpdir(), "lfa-model-client-test-"));
-    process.env.LFA_DATA_DIR = dataDirectory;
+    dataDirectory = mkdtempSync(join(tmpdir(), "vitana-model-client-test-"));
+    process.env.VITANA_DATA_DIR = dataDirectory;
     saveAiSettings({ provider: "openai", endpoint, apiKey: "provider-key", model: "test-model", timeoutMs: 30000 });
     const fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ choices: [{ message: { content: "local model ok" } }] }), { status: 200 })
@@ -129,8 +129,8 @@ describe("callConfiguredModel", () => {
   });
 
   it("does not follow model endpoint redirects with credentials", async () => {
-    dataDirectory = mkdtempSync(join(tmpdir(), "lfa-model-client-test-"));
-    process.env.LFA_DATA_DIR = dataDirectory;
+    dataDirectory = mkdtempSync(join(tmpdir(), "vitana-model-client-test-"));
+    process.env.VITANA_DATA_DIR = dataDirectory;
     saveAiSettings({
       provider: "openai",
       endpoint: "https://api.openai.com/v1/responses",

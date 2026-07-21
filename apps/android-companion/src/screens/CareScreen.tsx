@@ -17,7 +17,7 @@ import {
   type CreateCareItemInput,
   type CreateHealthEventInput,
   type HealthEvent
-} from "@local-fitness-advisor/shared";
+} from "@vitana/shared";
 import { useFocusEffect } from "@react-navigation/native";
 import { useMobileApi } from "../MobileApiProvider";
 import { Button, Card, Message, Screen } from "../ui/components";

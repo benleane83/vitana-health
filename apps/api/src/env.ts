@@ -12,35 +12,35 @@ const envSchema = z.object({
 
   // Auth — both are required for LAN operation but tested individually so tests
   // can omit them when they supply explicit values.
-  LFA_OWNER_TOKEN: z
+  VITANA_OWNER_TOKEN: z
     .string()
-    .min(24, "LFA_OWNER_TOKEN must be at least 24 characters for security")
+    .min(24, "VITANA_OWNER_TOKEN must be at least 24 characters for security")
     .optional(),
-  LFA_SECRET: z
+  VITANA_SECRET: z
     .string()
-    .min(16, "LFA_SECRET must be at least 16 characters for security")
+    .min(16, "VITANA_SECRET must be at least 16 characters for security")
     .optional(),
 
   // Data storage
-  LFA_DATA_DIR: z.string().optional(),
-  LFA_DUCKDB_HTTPFS_EXTENSION: z.string().optional(),
+  VITANA_DATA_DIR: z.string().optional(),
+  VITANA_DUCKDB_HTTPFS_EXTENSION: z.string().optional(),
 
   // TLS
-  LFA_TLS_CERT: z.string().optional(),
-  LFA_TLS_KEY: z.string().optional(),
+  VITANA_TLS_CERT: z.string().optional(),
+  VITANA_TLS_KEY: z.string().optional(),
 
   // Web serving
-  LFA_WEB_ROOT: z.string().optional(),
+  VITANA_WEB_ROOT: z.string().optional(),
 
   // Development overrides
-  LFA_ALLOW_INSECURE_HTTP: z.enum(["0", "1"]).default("0"),
+  VITANA_ALLOW_INSECURE_HTTP: z.enum(["0", "1"]).default("0"),
 
   // Model runtime
-  LFA_OLLAMA_URL: z.string().url("LFA_OLLAMA_URL must be a valid URL").optional(),
-  LFA_OPENAI_API_KEY: z.string().optional(),
-  LFA_MODEL_PROVIDER: z.enum(["ollama", "openai"]).optional(),
-  LFA_MODEL_NAME: z.string().optional(),
-  LFA_MODEL_TIMEOUT_MS: z.coerce
+  VITANA_OLLAMA_URL: z.string().url("VITANA_OLLAMA_URL must be a valid URL").optional(),
+  VITANA_OPENAI_API_KEY: z.string().optional(),
+  VITANA_MODEL_PROVIDER: z.enum(["ollama", "openai"]).optional(),
+  VITANA_MODEL_NAME: z.string().optional(),
+  VITANA_MODEL_TIMEOUT_MS: z.coerce
     .number()
     .int()
     .min(1000)
