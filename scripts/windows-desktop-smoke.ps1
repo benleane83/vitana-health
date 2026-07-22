@@ -6,7 +6,9 @@ param(
   [string]$EvidenceDirectory,
   [ValidateSet("Fast", "Full")]
   [string]$Scope = "Full",
-  [int]$HealthTimeoutSeconds = 0
+  [int]$HealthTimeoutSeconds = 0,
+  [string]$UpdateFeedDirectory,
+  [int]$UpdateFeedPort = 8082
 )
 
 $ErrorActionPreference = "Stop"
@@ -131,7 +133,39 @@ function Save-HealthDiagnostics {
   } catch {}
 }
 
+function Wait-ForUpdateStatus([string[]]$Expected, [Microsoft.PowerShell.Commands.WebRequestSession]$Session) {
+  for ($attempt = 0; $attempt -lt 120; $attempt++) {
+    $state = Invoke-DesktopApi "GET" "/api/settings/updates" $null $Session
+    if ($Expected -contains $state.status) {
+      return $state
+    }
+    if ($state.status -eq "error") {
+      throw "Desktop updater failed: $($state.error)"
+    }
+    Start-Sleep -Milliseconds 500
+  }
+  throw "Desktop updater did not reach $($Expected -join ' or ')."
+}
+
 try {
+  if ($UpdateFeedDirectory) {
+    if (-not $BaselineInstaller) {
+      throw "The updater smoke scenario requires a baseline installer."
+    }
+    $feedServer = Start-Process -FilePath "node" -ArgumentList @(
+      "scripts/serve-desktop-updates.mjs", "--lan", "--root", $UpdateFeedDirectory, "--port", $UpdateFeedPort
+    ) -PassThru -WindowStyle Hidden
+    for ($attempt = 0; $attempt -lt 30; $attempt++) {
+      try {
+        $response = Invoke-WebRequest "http://127.0.0.1:$UpdateFeedPort/latest.yml"
+        if ($response.StatusCode -eq 200) { break }
+      } catch {}
+      Start-Sleep -Seconds 1
+    }
+    if (-not $response -or $response.StatusCode -ne 200) {
+      throw "The temporary desktop update feed did not start."
+    }
+  }
   Remove-Item -Recurse -Force $installRoot -ErrorAction SilentlyContinue
   $installStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
   $initialInstaller = if ($BaselineInstaller) { $BaselineInstaller } else { $Installer }
@@ -208,24 +242,63 @@ try {
   if ($firstLaunch.HasExited -or -not (Test-HealthEndpoint $activeHealthUri)) {
     throw "A second desktop launch replaced or stopped the existing service process."
   }
-  $disabledSettings = Invoke-DesktopApi "PUT" "/api/settings/desktop" @{ backgroundServiceEnabled = $false } $ownerSession
-  if ($disabledSettings.backgroundServiceEnabled -or (Get-LoginStartupCommand)) {
-    throw "Disabling background service mode did not remove login registration."
-  }
-  $null = $firstLaunch.CloseMainWindow()
-  Wait-ForHealthStop
-
-  if ($BaselineInstaller) {
+  if ($UpdateFeedDirectory) {
+    $null = Invoke-DesktopApi "POST" "/api/settings/updates/check" $null $ownerSession
+    $available = Wait-ForUpdateStatus @("available") $ownerSession
+    $null = Invoke-DesktopApi "POST" "/api/settings/updates/download" $null $ownerSession
+    $downloaded = Wait-ForUpdateStatus @("downloaded") $ownerSession
+    $null = Invoke-DesktopApi "POST" "/api/settings/updates/restart" $null $ownerSession
+    Wait-ForHealthStop
+    Wait-ForHealth
+    $ownerSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+    $null = Invoke-DesktopApi "POST" "/api/auth/local" $null $ownerSession
+    $updatedState = Invoke-DesktopApi "GET" "/api/settings/updates" $null $ownerSession
+    if ($updatedState.currentVersion -ne $available.availableVersion) {
+      throw "Updater installed '$($updatedState.currentVersion)' instead of '$($available.availableVersion)'."
+    }
+    $persistedSettings = Invoke-DesktopApi "GET" "/api/settings/desktop" $null $ownerSession
+    if (-not $persistedSettings.backgroundServiceEnabled -or -not (Get-LoginStartupCommand)) {
+      throw "Background service state did not survive updater installation."
+    }
+  } elseif ($BaselineInstaller) {
+    $disabledSettings = Invoke-DesktopApi "PUT" "/api/settings/desktop" @{ backgroundServiceEnabled = $false } $ownerSession
+    if ($disabledSettings.backgroundServiceEnabled -or (Get-LoginStartupCommand)) {
+      throw "Disabling background service mode did not remove login registration."
+    }
+    $null = $firstLaunch.CloseMainWindow()
+    Wait-ForHealthStop
     $upgradeProcess = Start-Process -FilePath $Installer -ArgumentList "/S", "/D=$installRoot" -Wait -PassThru
     if ($upgradeProcess.ExitCode -ne 0) {
       throw "Upgrade installer exited with code $($upgradeProcess.ExitCode)."
     }
+  } else {
+    $disabledSettings = Invoke-DesktopApi "PUT" "/api/settings/desktop" @{ backgroundServiceEnabled = $false } $ownerSession
+    if ($disabledSettings.backgroundServiceEnabled -or (Get-LoginStartupCommand)) {
+      throw "Disabling background service mode did not remove login registration."
+    }
+    $null = $firstLaunch.CloseMainWindow()
+    Wait-ForHealthStop
   }
 
-  $secondLaunch = Start-Process -FilePath $application -PassThru
+  $secondLaunch = if ($UpdateFeedDirectory) {
+    Get-Process | Where-Object { $_.Path -eq $application } | Select-Object -First 1
+  } else {
+    Start-Process -FilePath $application -PassThru
+  }
+  if (-not $secondLaunch) {
+    throw "Updated desktop process was not running after restart."
+  }
   $secondLaunchStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
   Wait-ForHealth
   $secondLaunchStopwatch.Stop()
+  if ($UpdateFeedDirectory) {
+    $disabledSettings = Invoke-DesktopApi "PUT" "/api/settings/desktop" @{ backgroundServiceEnabled = $false } $ownerSession
+    if ($disabledSettings.backgroundServiceEnabled -or (Get-LoginStartupCommand)) {
+      throw "Disabling background service mode after update did not remove login registration."
+    }
+    $null = $secondLaunch.CloseMainWindow()
+    Wait-ForHealthStop
+  }
   if ((Get-FileHash $manifest.FullName -Algorithm SHA256).Hash -ne $manifestHash) {
     throw "Encrypted DuckDB storage metadata did not persist across restart."
   }
@@ -254,6 +327,7 @@ try {
     storageManifest = $manifest.FullName
     storageManifestSha256 = $manifestHash
     upgraded = [bool]$BaselineInstaller
+    updatedThroughApp = [bool]$UpdateFeedDirectory
     firewallRuleRemoved = $true
     install_ms = $installStopwatch.ElapsedMilliseconds
     launch_to_health_ms = $firstLaunchStopwatch.ElapsedMilliseconds
@@ -265,5 +339,8 @@ try {
   }
   if ($secondLaunch) {
     Stop-DesktopProcess $secondLaunch
+  }
+  if ($feedServer) {
+    Stop-Process -Id $feedServer.Id -Force -ErrorAction SilentlyContinue
   }
 }

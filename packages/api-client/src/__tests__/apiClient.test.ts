@@ -12,6 +12,26 @@ function response(body: unknown, status = 200) {
 }
 
 describe("createApiClient", () => {
+  it("uses dedicated desktop update operations", async () => {
+    const seen: ApiTransportRequest[] = [];
+    const client = createApiClient(async (request) => {
+      seen.push(request);
+      return response({ status: "idle", currentVersion: "1.0.0", channel: "production" });
+    });
+
+    await client.desktopUpdates.get();
+    await client.desktopUpdates.check();
+    await client.desktopUpdates.download();
+    await client.desktopUpdates.restart();
+
+    expect(seen.map(({ path, method }) => ({ path, method }))).toEqual([
+      { path: "/api/settings/updates", method: "GET" },
+      { path: "/api/settings/updates/check", method: "POST" },
+      { path: "/api/settings/updates/download", method: "POST" },
+      { path: "/api/settings/updates/restart", method: "POST" }
+    ]);
+  });
+
   it("constructs pagination queries and encodes measurement codes", async () => {
     const transport = vi.fn(async (_request: ApiTransportRequest) => response({
       measurement: {},

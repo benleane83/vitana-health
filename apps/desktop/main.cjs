@@ -5,12 +5,14 @@ const { createBackgroundServiceController } = require("./background-service.cjs"
 const { createBackgroundServiceSettingsStore } = require("./background-service-settings.cjs");
 const { loadOrCreateSecureStoreKey } = require("./secure-store-key.cjs");
 const { createStartupDiagnostics } = require("./startup-diagnostics.cjs");
+const { createDesktopUpdaterController } = require("./desktop-updater.cjs");
 const { migrateUserDataDirectory } = require("./user-data-migration.cjs");
 
 let apiServer;
 let mainWindow;
 let quitting = false;
 let shutdownStarted = false;
+let updateInstallPending = false;
 let launchPromise;
 const backgroundLaunch = process.argv.includes("--background");
 let startupPathError;
@@ -23,6 +25,14 @@ try {
 app.setPath("userData", brandedUserDataPath);
 const diagnostics = createStartupDiagnostics({ userDataPath: app.getPath("userData") });
 const settingsStore = createBackgroundServiceSettingsStore({ userDataPath: app.getPath("userData") });
+const updateChannel = require("./package.json").vitanaUpdateChannel;
+const desktopUpdater = createDesktopUpdaterController({
+  app,
+  updater: require("electron-updater").autoUpdater,
+  diagnostics,
+  channel: updateChannel,
+  prepareToInstall: shutdownApiForUpdate
+});
 
 function trayIconPath() {
   return path.join(__dirname, "build", "tray-icon.ico");
@@ -154,10 +164,12 @@ async function launch() {
     storeSecurity: configuredSecret
       ? { passphrase: configuredSecret, securityMode: "env-secret" }
       : { passphrase: secureKey.passphrase, securityMode: "os-secure-storage" },
-    desktopRuntimeController: backgroundService
+    desktopRuntimeController: backgroundService,
+    desktopUpdaterController: desktopUpdater
   });
   secureKey?.finalize();
   diagnostics.info(`Embedded API listening on port ${process.env.PORT}`);
+  desktopUpdater.start();
 
   session.defaultSession.setCertificateVerifyProc((request, callback) => {
     callback(request.hostname === "127.0.0.1" || request.hostname === "localhost" ? 0 : -3);
@@ -183,6 +195,7 @@ app.on("window-all-closed", () => {
 app.on("before-quit", (event) => {
   quitting = true;
   diagnostics.info("Application shutdown requested");
+  if (updateInstallPending) return;
   if (shutdownStarted || !apiServer) return;
   event.preventDefault();
   shutdownStarted = true;
@@ -193,4 +206,23 @@ app.on("before-quit", (event) => {
       console.error(error);
       app.exit(1);
     });
+
+    async function shutdownApiForUpdate() {
+      if (updateInstallPending) return;
+      updateInstallPending = true;
+      quitting = true;
+      backgroundService.destroyTray();
+      if (!apiServer) return;
+      try {
+        await Promise.race([
+          apiServer.shutdown(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Embedded API shutdown timed out.")), 10_000))
+        ]);
+        apiServer = undefined;
+      } catch (error) {
+        updateInstallPending = false;
+        quitting = false;
+        throw error;
+      }
+    }
 });

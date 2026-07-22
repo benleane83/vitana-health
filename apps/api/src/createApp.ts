@@ -29,7 +29,7 @@ import { makeSettingsRoutes } from "./routes/settingsRoutes.js";
 import { makeBackupRoutes, isInMaintenanceMode } from "./routes/backupRoutes.js";
 import { z } from "zod";
 import type { AuthorizationPrincipal, OwnerPrincipal } from "./requestPrincipal.js";
-import type { DesktopRuntimeSettingsResponse, DesktopRuntimeSettingsUpdate } from "@vitana/shared";
+import type { DesktopRuntimeSettingsResponse, DesktopRuntimeSettingsUpdate, DesktopUpdateState } from "@vitana/shared";
 
 export type { AuthorizationPrincipal, OwnerPrincipal } from "./requestPrincipal.js";
 
@@ -41,6 +41,12 @@ export interface AppOptions {
   desktopRuntimeController?: {
     getSettings: () => Promise<DesktopRuntimeSettingsResponse> | DesktopRuntimeSettingsResponse;
     updateSettings: (settings: DesktopRuntimeSettingsUpdate) => Promise<DesktopRuntimeSettingsResponse> | DesktopRuntimeSettingsResponse;
+  };
+  desktopUpdaterController?: {
+    getState: () => DesktopUpdateState;
+    check: () => Promise<DesktopUpdateState>;
+    download: () => Promise<DesktopUpdateState>;
+    restartToInstall: () => Promise<DesktopUpdateState>;
   };
 }
 
@@ -337,7 +343,8 @@ export function createApp(
   app.use("/api/settings", makeSettingsRoutes({
     assertSafeCloudEndpoint: options.assertSafeCloudModelEndpoint,
     openRouterCallbackOrigin: options.openRouterCallbackOrigin,
-    desktopRuntimeController: options.desktopRuntimeController
+    desktopRuntimeController: options.desktopRuntimeController,
+    desktopUpdaterController: options.desktopUpdaterController
   }));
   app.use("/api/backups", makeBackupRoutes(storeManager, pairingStore));
   app.use("/api", makeDataRoutes(storeManager));

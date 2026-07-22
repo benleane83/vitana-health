@@ -111,6 +111,11 @@ npm run test:durability
 npm run test:desktop
 ```
 
+Signed LAN desktop packages use immutable build-time inputs and a strict feed
+server. See [`docs/WINDOWS_RELEASE.md`](docs/WINDOWS_RELEASE.md) before running
+`npm run package:desktop:lan` or
+`npm run serve:desktop:updates -- --lan --root apps/desktop/dist --port 8082`.
+
 Core and desktop tests run in the regular CI workflow. Integration tests run on `main` and on pull requests that change API, web, shared, or test-runner files. Durability tests run nightly, for prerelease tags, and on demand.
 
 See [`.env.example`](.env.example) for environment variable documentation, and [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md) for the API reference.

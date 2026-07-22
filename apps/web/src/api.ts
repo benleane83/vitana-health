@@ -24,6 +24,7 @@ import type {
   AiSettingsResponse as SharedAiSettingsResponse,
   DesktopRuntimeSettingsResponse as SharedDesktopRuntimeSettingsResponse,
   DesktopRuntimeSettingsUpdate,
+  DesktopUpdateState as SharedDesktopUpdateState,
   ImportMutationResponse as SharedImportMutationResponse,
   LlmConfigResponse as SharedLlmConfigResponse,
   ModelValidationResponse as SharedModelValidationResponse,
@@ -46,6 +47,7 @@ import {
   deleteObservationResponseSchema,
   deleteObservationsByTypeResponseSchema,
   desktopRuntimeSettingsResponseSchema,
+  desktopUpdateStateSchema,
   healthDataDetailResponseSchema,
   healthDataSummaryResponseSchema,
   healthResponseSchema,
@@ -159,6 +161,7 @@ export type PairedDevice = SharedPairedDevice;
 export type LlmConfig = SharedLlmConfigResponse;
 export type AiSettings = SharedAiSettingsResponse;
 export type DesktopRuntimeSettings = SharedDesktopRuntimeSettingsResponse;
+export type DesktopUpdateState = SharedDesktopUpdateState;
 export type ModelValidation = SharedModelValidationResponse;
 export type ProfilesResponse = SharedProfilesResponse;
 export type ImportMutationResponse = SharedImportMutationResponse;
@@ -301,6 +304,12 @@ export const api = {
           method: "PUT",
           body: JSON.stringify(payload)
         })
+    },
+    updates: {
+      get: () => request(desktopUpdateStateSchema, "/api/settings/updates"),
+      check: () => request(desktopUpdateStateSchema, "/api/settings/updates/check", { method: "POST" }),
+      download: () => request(desktopUpdateStateSchema, "/api/settings/updates/download", { method: "POST" }),
+      restart: () => request(desktopUpdateStateSchema, "/api/settings/updates/restart", { method: "POST" })
     },
     ai: {
       get: () => request(aiSettingsResponseSchema, "/api/settings/ai"),

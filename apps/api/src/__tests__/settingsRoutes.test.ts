@@ -13,10 +13,13 @@ beforeEach(() => {
   planAiQuery.mockReset();
 });
 
-function settingsApp(desktopRuntimeController?: NonNullable<Parameters<typeof makeSettingsRoutes>[0]>["desktopRuntimeController"]) {
+function settingsApp(
+  desktopRuntimeController?: NonNullable<Parameters<typeof makeSettingsRoutes>[0]>["desktopRuntimeController"],
+  desktopUpdaterController?: NonNullable<Parameters<typeof makeSettingsRoutes>[0]>["desktopUpdaterController"]
+) {
   const app = express();
   app.use(express.json());
-  app.use("/api/settings", makeSettingsRoutes({ desktopRuntimeController }));
+  app.use("/api/settings", makeSettingsRoutes({ desktopRuntimeController, desktopUpdaterController }));
   app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
     if (error && typeof error === "object" && "issues" in error) {
       response.status(400).json({ code: "VALIDATION_ERROR" });
@@ -24,8 +27,36 @@ function settingsApp(desktopRuntimeController?: NonNullable<Parameters<typeof ma
     }
     response.status(500).json({ code: "INTERNAL_ERROR" });
   });
+
   return app;
 }
+
+describe("desktop update routes", () => {
+  const state = { status: "idle" as const, currentVersion: "1.0.0", channel: "production" as const };
+
+  it("reports unsupported development hosts and rejects commands", async () => {
+    expect((await request(settingsApp()).get("/api/settings/updates")).body.status).toBe("unsupported");
+    const result = await request(settingsApp()).post("/api/settings/updates/check");
+    expect(result.status).toBe(501);
+    expect(result.body.code).toBe("DESKTOP_UPDATES_UNSUPPORTED");
+  });
+
+  it("delegates each explicit update command", async () => {
+    const controller = {
+      getState: vi.fn(() => state),
+      check: vi.fn(async () => ({ ...state, status: "checking" as const })),
+      download: vi.fn(async () => ({ ...state, status: "downloading" as const })),
+      restartToInstall: vi.fn(async () => ({ ...state, status: "downloaded" as const }))
+    };
+    expect((await request(settingsApp(undefined, controller)).get("/api/settings/updates")).body).toEqual(state);
+    await request(settingsApp(undefined, controller)).post("/api/settings/updates/check");
+    await request(settingsApp(undefined, controller)).post("/api/settings/updates/download");
+    await request(settingsApp(undefined, controller)).post("/api/settings/updates/restart");
+    expect(controller.check).toHaveBeenCalledOnce();
+    expect(controller.download).toHaveBeenCalledOnce();
+    expect(controller.restartToInstall).toHaveBeenCalledOnce();
+  });
+});
 
 describe("desktop runtime settings routes", () => {
   it("reports unsupported hosts and rejects updates with a stable error", async () => {

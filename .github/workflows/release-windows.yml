@@ -27,6 +27,14 @@ jobs:
           node-version: "22"
           cache: "npm"
 
+      - name: Verify tag matches desktop version
+        shell: pwsh
+        run: |
+          $version = (Get-Content apps/desktop/package.json | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_TYPE -ne "tag" -or $env:GITHUB_REF_NAME -ne "v$version") {
+            throw "Release tag '$env:GITHUB_REF_NAME' must exactly match desktop version 'v$version'."
+          }
+
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
@@ -55,6 +63,31 @@ jobs:
             }
           }
 
+      - name: Validate desktop update assets
+        shell: pwsh
+        run: |
+          $dist = "apps/desktop/dist"
+          $metadataPath = Join-Path $dist "latest.yml"
+          $installer = Get-ChildItem "$dist/*.exe" | Select-Object -First 1
+          $blockmap = Get-ChildItem "$dist/*.exe.blockmap" | Select-Object -First 1
+          if (!(Test-Path $metadataPath) -or !$installer -or !$blockmap) {
+            throw "Expected latest.yml, installer, and installer blockmap from this package job."
+          }
+          $metadata = Get-Content $metadataPath -Raw
+          $version = (Get-Content apps/desktop/package.json | ConvertFrom-Json).version
+          if ($metadata -notmatch "(?m)^version:\s+$([regex]::Escape($version))\s*$") {
+            throw "latest.yml version does not match packaged desktop version $version."
+          }
+          if ($metadata -notmatch [regex]::Escape($installer.Name)) {
+            throw "latest.yml does not reference $($installer.Name)."
+          }
+          $sha512 = [Convert]::ToBase64String(
+            [Security.Cryptography.SHA512]::HashData([IO.File]::ReadAllBytes($installer.FullName))
+          )
+          if ($metadata -notmatch [regex]::Escape($sha512)) {
+            throw "latest.yml SHA-512 does not match $($installer.Name)."
+          }
+
       - name: Smoke test installer and packaged runtime
         shell: pwsh
         run: >
@@ -65,30 +98,34 @@ jobs:
       - name: Write release checksums
         shell: pwsh
         run: |
-          Get-ChildItem apps/desktop/dist/*.exe | Get-FileHash -Algorithm SHA256 |
+          Get-ChildItem apps/desktop/dist/* -Include *.exe,*.yml,*.blockmap | Get-FileHash -Algorithm SHA256 |
             ForEach-Object { "$($_.Hash.ToLower()) *$($_.Path | Split-Path -Leaf)" } |
             Set-Content apps/desktop/dist/SHA256SUMS.txt
 
-      - name: Upload signed installer and evidence
+      - name: Upload signed update assets and evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: signed-windows-release
           path: |
             apps/desktop/dist/*.exe
+            apps/desktop/dist/*.yml
+            apps/desktop/dist/*.blockmap
             apps/desktop/dist/SHA256SUMS.txt
             desktop-release-evidence
           if-no-files-found: error
           retention-days: 90
 
-      - name: Publish signed installer and checksums
+      - name: Publish signed desktop update
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $files = @(
-            Get-ChildItem apps/desktop/dist/*.exe | ForEach-Object FullName
+            Get-ChildItem apps/desktop/dist/* -Include *.exe,*.yml,*.blockmap | ForEach-Object FullName
           ) + "apps/desktop/dist/SHA256SUMS.txt"
           if (gh release view $env:GITHUB_REF_NAME) {
+            $release = gh release view $env:GITHUB_REF_NAME --json isDraft | ConvertFrom-Json
+            if ($release.isDraft) { throw "The matching GitHub Release must not be a draft." }
             gh release upload $env:GITHUB_REF_NAME $files --clobber
           } else {
             gh release create $env:GITHUB_REF_NAME $files --verify-tag --generate-notes

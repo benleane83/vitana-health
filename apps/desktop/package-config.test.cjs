@@ -17,6 +17,7 @@ test("electron-builder excludes DuckDB development files but keeps runtime files
   const files = packageJson.build.files;
 
   assert.ok(files.includes("startup-diagnostics.cjs"));
+  assert.ok(files.includes("desktop-updater.cjs"));
   assert.ok(files.includes("background-service.cjs"));
   assert.ok(files.includes("background-service-settings.cjs"));
   assert.ok(files.includes("user-data-migration.cjs"));
@@ -27,4 +28,20 @@ test("electron-builder excludes DuckDB development files but keeps runtime files
   assert.ok(files.includes("!**/node_modules/duckdb/examples{,/**}"));
   assert.ok(files.includes("!**/node_modules/duckdb/scripts{,/**}"));
   assert.ok(files.every((filter) => !filter.includes("node_modules/duckdb/lib")));
+});
+
+test("Windows packages retain signed GitHub update metadata", () => {
+  const packageJson = JSON.parse(readFileSync(path.join(__dirname, "package.json"), "utf8"));
+
+  assert.equal(packageJson.vitanaUpdateChannel, "production");
+  assert.equal(packageJson.build.win.target, "nsis");
+  assert.equal(packageJson.build.win.verifyUpdateCodeSignature, true);
+  assert.deepEqual(packageJson.build.publish, [{
+    provider: "github",
+    owner: "benleane83",
+    repo: "local-fitness-advisor",
+    channel: "latest",
+    releaseType: "release"
+  }]);
+  assert.equal(packageJson.dependencies["electron-updater"], "6.6.2");
 });

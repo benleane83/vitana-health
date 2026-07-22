@@ -13,7 +13,7 @@ import { configureRuntimeSecurity } from "./security.js";
 import { validateEnv } from "./env.js";
 import { getLanIp } from "./netutil.js";
 import { log } from "./logger.js";
-import type { DesktopRuntimeSettingsResponse, DesktopRuntimeSettingsUpdate } from "@vitana/shared";
+import type { DesktopRuntimeSettingsResponse, DesktopRuntimeSettingsUpdate, DesktopUpdateState } from "@vitana/shared";
 
 export { configureAiCredentialProtector } from "./aiSettings.js";
 
@@ -24,6 +24,12 @@ export interface StartServerOptions {
   desktopRuntimeController?: {
     getSettings: () => Promise<DesktopRuntimeSettingsResponse> | DesktopRuntimeSettingsResponse;
     updateSettings: (settings: DesktopRuntimeSettingsUpdate) => Promise<DesktopRuntimeSettingsResponse> | DesktopRuntimeSettingsResponse;
+  };
+  desktopUpdaterController?: {
+    getState: () => DesktopUpdateState;
+    check: () => Promise<DesktopUpdateState>;
+    download: () => Promise<DesktopUpdateState>;
+    restartToInstall: () => Promise<DesktopUpdateState>;
   };
 }
 
@@ -74,7 +80,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
     publicKeyHash: security.publicKeyHash,
     webRoot: env.VITANA_WEB_ROOT,
     openRouterCallbackOrigin: `${tlsEnabled ? "https" : "http"}://127.0.0.1:${port}`,
-    desktopRuntimeController: options.desktopRuntimeController
+    desktopRuntimeController: options.desktopRuntimeController,
+    desktopUpdaterController: options.desktopUpdaterController
   });
 
   const scheme = tlsEnabled ? "https" : "http";

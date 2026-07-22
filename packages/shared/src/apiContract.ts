@@ -135,6 +135,21 @@ export const desktopRuntimeSettingsUpdateSchema = z.object({
 }).strict();
 export type DesktopRuntimeSettingsUpdate = z.infer<typeof desktopRuntimeSettingsUpdateSchema>;
 
+export const desktopUpdateStateSchema = z.object({
+  status: z.enum(["unsupported", "idle", "checking", "available", "downloading", "downloaded", "up-to-date", "error"]),
+  currentVersion: z.string(),
+  channel: z.enum(["lan", "production"]).nullable(),
+  availableVersion: z.string().optional(),
+  lastCheckedAt: z.string().datetime({ offset: true }).optional(),
+  progress: z.object({
+    percent: z.number().min(0).max(100),
+    transferred: z.number().nonnegative(),
+    total: z.number().nonnegative()
+  }).strict().optional(),
+  error: z.string().optional()
+}).strict();
+export type DesktopUpdateState = z.infer<typeof desktopUpdateStateSchema>;
+
 export const modelValidationResponseSchema = z.object({
   ok: z.boolean(),
   provider: z.enum(["ollama", "openai"]),

@@ -3,6 +3,7 @@ import express from "express";
 import {
   aiSettingsRequestSchema,
   desktopRuntimeSettingsUpdateSchema,
+  type DesktopUpdateState,
   type DesktopRuntimeSettingsResponse,
   type DesktopRuntimeSettingsUpdate
 } from "@vitana/shared";
@@ -30,6 +31,12 @@ export function makeSettingsRoutes(options: {
   desktopRuntimeController?: {
     getSettings: () => Promise<DesktopRuntimeSettingsResponse> | DesktopRuntimeSettingsResponse;
     updateSettings: (settings: DesktopRuntimeSettingsUpdate) => Promise<DesktopRuntimeSettingsResponse> | DesktopRuntimeSettingsResponse;
+  };
+  desktopUpdaterController?: {
+    getState: () => DesktopUpdateState;
+    check: () => Promise<DesktopUpdateState>;
+    download: () => Promise<DesktopUpdateState>;
+    restartToInstall: () => Promise<DesktopUpdateState>;
   };
 } = {}): express.Router {
   const router = express.Router();
@@ -62,6 +69,35 @@ export function makeSettingsRoutes(options: {
       next(error);
     }
   });
+
+  const unsupportedUpdateState: DesktopUpdateState = {
+    status: "unsupported",
+    currentVersion: "development",
+    channel: null
+  };
+  router.get("/updates", (_request, response) => {
+    response.json(options.desktopUpdaterController?.getState() ?? unsupportedUpdateState);
+  });
+  for (const [path, command] of [
+    ["/updates/check", "check"],
+    ["/updates/download", "download"],
+    ["/updates/restart", "restartToInstall"]
+  ] as const) {
+    router.post(path, async (_request, response, next) => {
+      try {
+        if (!options.desktopUpdaterController) {
+          response.status(501).json({
+            error: "Desktop updates are not supported by this host.",
+            code: "DESKTOP_UPDATES_UNSUPPORTED"
+          });
+          return;
+        }
+        response.json(await options.desktopUpdaterController[command]());
+      } catch (error) {
+        next(error);
+      }
+    });
+  }
 
   router.get("/ai", (_request, response) => {
     response.json(toPublicAiSettings(getAiSettings()));
