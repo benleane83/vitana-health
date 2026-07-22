@@ -28,11 +28,22 @@ export function ManualImportFeature({
   onImported: () => Promise<void>;
   onNotice: (message: string) => void;
 }) {
+  const requestedMarker = new URLSearchParams(window.location.search).get("marker");
+  const requestedMeasurement = requestedMarker
+    ? findKnownMeasurement(requestedMarker, defaultMeasurementTypes)
+    : undefined;
   const [busy, setBusy] = useState(false);
   const [collectedAt, setCollectedAt] = useState(todayIsoDate());
-  const [observationGroup, setObservationGroup] = useState("Activity");
+  const [observationGroup, setObservationGroup] = useState(requestedMeasurement ? "Lab" : "Activity");
   const [labName, setLabName] = useState("");
-  const [rows, setRows] = useState<ManualMarkerRow[]>(() => [createEmptyRow("Steps", "steps", "", "count")]);
+  const [rows, setRows] = useState<ManualMarkerRow[]>(() => [requestedMeasurement
+    ? createEmptyRow(
+      requestedMeasurement.display,
+      requestedMeasurement.code,
+      "",
+      getPreferredUnit(requestedMeasurement, units)
+    )
+    : createEmptyRow("Steps", "steps", "", "count")]);
   const [saveDialog, setSaveDialog] = useState<{ groupName: string } | null>(null);
 
   const measurementTypes = useMemo(() => {

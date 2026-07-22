@@ -136,7 +136,7 @@ describe("App feature flows", () => {
     expect(screen.getByText(/needs more data/i)).toBeInTheDocument();
   });
 
-  it("presents available Biological Age results without a redundant status label", async () => {
+  it("presents complete Biological Age results after the required inputs", async () => {
     global.fetch = mockFetch({
       "/api/store": makeEmptyStore(),
       "/api/analytics": makeEmptyAnalytics(),
@@ -160,17 +160,14 @@ describe("App feature flows", () => {
     fireEvent.click(screen.getByRole("tab", { name: /^insights$/i }));
     fireEvent.click(screen.getByRole("tab", { name: /biological age/i }));
 
-    const labEvidence = await screen.findByText(/Lab evidence/i);
-    expect(screen.queryByText(/^Available$/i)).not.toBeInTheDocument();
-    expect(labEvidence.nextElementSibling).toHaveTextContent(/2026/i);
-    expect(screen.getByText(/2 of 2 required markers are usable/i)).toBeInTheDocument();
+    const inputsHeading = await screen.findByRole("heading", { name: /review required inputs \(2\)/i });
+    expect(within(inputsHeading.parentElement!).getByText("Ready")).toBeInTheDocument();
     expect(screen.getByText(/6.2 years below chronological age/i)).toBeInTheDocument();
     expect(screen.getByText("Chronological age").closest(".biological-age-comparison")).not.toBeNull();
     expect(screen.getByText("Estimated biological age").closest(".biological-age-comparison")).not.toBeNull();
 
-    const evidenceHeading = screen.getByRole("heading", { name: /evidence readiness/i });
     const resultHeading = screen.getByRole("heading", { name: /what the estimate shows/i });
-    expect(evidenceHeading.compareDocumentPosition(resultHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(inputsHeading.compareDocumentPosition(resultHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("opens the AI setup screen from Settings", async () => {
