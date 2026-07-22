@@ -1233,16 +1233,6 @@ export const MANUAL_LAB_MARKER_CATALOG = defaultMeasurementTypes
   .filter((type) => type.category === "lab")
   .map((type) => ({ marker: type.display, unit: type.canonicalUnit, measurementCode: type.code }));
 
-export {
-  classifyValue,
-  convertMeasurementValue,
-  findMeasurementType,
-  getPreferredUnit,
-  getReferenceRange,
-  normalizeMeasurementUnit,
-  toPreferredMeasurementValue
-} from "./measurementRegistry.js";
-
 function preferredUnitsFor(type: MeasurementType): Partial<Record<UnitSystem, string>> {
     const imperialUnit = imperialUnitFor(type);
     return imperialUnit ? { metric: type.canonicalUnit, imperial: imperialUnit } : { metric: type.canonicalUnit };

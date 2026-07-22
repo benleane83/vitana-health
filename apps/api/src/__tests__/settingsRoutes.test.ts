@@ -1,7 +1,17 @@
 import express from "express";
 import request from "supertest";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { planAiQuery } = vi.hoisted(() => ({ planAiQuery: vi.fn() }));
+
+vi.mock("../aiQueryPlanner.js", () => ({ planAiQuery }));
+
+import { plannerEvaluationCases } from "../aiQueryEvaluation.js";
 import { makeSettingsRoutes } from "../routes/settingsRoutes.js";
+
+beforeEach(() => {
+  planAiQuery.mockReset();
+});
 
 function settingsApp(desktopRuntimeController?: NonNullable<Parameters<typeof makeSettingsRoutes>[0]>["desktopRuntimeController"]) {
   const app = express();
@@ -55,5 +65,147 @@ describe("desktop runtime settings routes", () => {
     expect((await request(settingsApp(controller)).get("/api/settings/desktop")).status).toBe(500);
     expect((await request(settingsApp(controller)).put("/api/settings/desktop")
       .send({ backgroundServiceEnabled: true })).status).toBe(500);
+  });
+});
+
+describe("AI model compatibility validation", () => {
+  it("reports compatible when the single planner probe passes", async () => {
+    const testCase = plannerEvaluationCases.find((candidate) => candidate.probe)!;
+    planAiQuery.mockResolvedValue({
+      ok: true,
+      dsl: {
+        source: testCase.expected.source,
+        intent: testCase.expected.intents![0],
+        metric: testCase.expected.metric ?? null,
+        aggregation: "avg",
+        groupBy: testCase.expected.groupBy ?? null,
+        timeRange: { preset: testCase.expected.timePreset ?? "last_30d" },
+        sort: "desc",
+        limit: 20,
+        chartType: "none"
+      },
+      confidence: 1,
+      limitations: [],
+      assumptions: [],
+      modelElapsedMs: 1,
+      attempts: 1,
+      repaired: false,
+      structuredOutputMode: "enforced"
+    });
+
+    const response = await request(settingsApp()).post("/api/settings/ai/validate");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      ok: true,
+      compatibility: "compatible",
+      plannerProbe: {
+        passed: 1,
+        total: 1,
+        elapsedMs: 1,
+        structuredOutputMode: "enforced"
+      }
+    });
+    expect(planAiQuery).toHaveBeenCalledOnce();
+    expect(planAiQuery).toHaveBeenCalledWith(testCase.question, {
+      timeoutMs: 30000,
+      maxAttempts: 1
+    });
+  });
+
+  it("warns without blocking and reuses the cached planner probe", async () => {
+    const probeCases = plannerEvaluationCases.filter((testCase) => testCase.probe);
+    planAiQuery.mockImplementation(async (question: string) => {
+      const index = probeCases.findIndex((testCase) => testCase.question === question);
+      const testCase = probeCases[index];
+      if (index < 2) {
+        return {
+          ok: false,
+          error: "Unsupported test plan.",
+          limitations: [],
+          modelElapsedMs: 1,
+          attempts: 1,
+          repaired: false,
+          category: "semantic",
+          structuredOutputMode: "fallback"
+        };
+      }
+      return {
+        ok: true,
+        dsl: {
+          source: testCase.expected.source,
+          intent: testCase.expected.intents![0],
+          metric: testCase.expected.metric ?? null,
+          aggregation: testCase.expected.intents![0] === "count" ? "count" : null,
+          groupBy: testCase.expected.groupBy ?? null,
+          timeRange: { preset: testCase.expected.timePreset ?? "last_30d" },
+          sort: "desc",
+          limit: 20,
+          chartType: "none"
+        },
+        confidence: 1,
+        limitations: [],
+        assumptions: [],
+        modelElapsedMs: 1,
+        attempts: 1,
+        repaired: false,
+        structuredOutputMode: "enforced"
+      };
+    });
+
+    const app = settingsApp();
+    const first = await request(app).post("/api/settings/ai/validate");
+    const second = await request(app).post("/api/settings/ai/validate");
+
+    expect(first.status).toBe(200);
+    expect(first.body).toMatchObject({
+      ok: true,
+      compatibility: "limited",
+      plannerProbe: {
+        passed: 0,
+        total: 1,
+        elapsedMs: 1,
+        structuredOutputMode: "fallback"
+      }
+    });
+    expect(second.status).toBe(200);
+    expect(second.body.plannerProbe).toEqual(first.body.plannerProbe);
+    expect(planAiQuery).toHaveBeenCalledOnce();
+    expect(planAiQuery).toHaveBeenCalledWith(probeCases[0].question, {
+      timeoutMs: 30000,
+      maxAttempts: 1
+    });
+  });
+
+  it("reports a transient model failure with a safe upstream reason", async () => {
+    planAiQuery.mockResolvedValue({
+      ok: false,
+      error: "The model request failed.",
+      limitations: [
+        "Could not reach the configured model endpoint.",
+        "Model error: Model endpoint returned HTTP 429"
+      ],
+      modelElapsedMs: 12,
+      attempts: 1,
+      repaired: false,
+      category: "model",
+      structuredOutputMode: "enforced"
+    });
+
+    const response = await request(settingsApp()).post("/api/settings/ai/validate");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      ok: false,
+      compatibility: "limited",
+      plannerProbe: {
+        passed: 0,
+        total: 1,
+        elapsedMs: 12,
+        failureCategory: "model",
+        issues: ["metric-average-heart-rate: Model error: Model endpoint returned HTTP 429"]
+      }
+    });
+    expect(planAiQuery).toHaveBeenCalledOnce();
   });
 });

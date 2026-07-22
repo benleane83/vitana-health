@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
 import { defaultMeasurementTypes } from "@vitana/shared";
 import { callConfiguredModel } from "./modelClient.js";
 import { sanitizeQuestionForModel } from "./privacy.js";
@@ -20,7 +21,7 @@ export const TimeRangeSchema = z.object({
   preset: TimeRangePresetSchema.optional(),
   start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
-});
+}).strict();
 export type TimeRange = z.infer<typeof TimeRangeSchema>;
 
 export const QueryFiltersSchema = z.object({
@@ -54,8 +55,92 @@ export const QueryDSLSchema = z.object({
   limit: z.number().int().min(1).max(200),
   chartType: z.enum(["line", "bar", "none"]).nullable(),
   filters: QueryFiltersSchema.optional()
-});
+}).strict();
 export type QueryDSL = z.infer<typeof QueryDSLSchema>;
+
+const unsupportedStructuredOutputKeywords = new Set([
+  "$schema",
+  "format",
+  "maxLength",
+  "maximum",
+  "minLength",
+  "minimum",
+  "multipleOf",
+  "pattern"
+]);
+
+function toStructuredOutputSchema(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(toStructuredOutputSchema);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => !unsupportedStructuredOutputKeywords.has(key))
+      .map(([key, child]) => [key, toStructuredOutputSchema(child)])
+  );
+}
+
+export const QUERY_DSL_JSON_SCHEMA = toStructuredOutputSchema(zodToJsonSchema(QueryDSLSchema, {
+  $refStrategy: "none",
+  target: "openAi"
+})) as Record<string, unknown>;
+
+export interface QueryDslSemanticValidation {
+  valid: boolean;
+  issues: string[];
+}
+
+export function validateQueryDslSemantics(dsl: QueryDSL): QueryDslSemanticValidation {
+  const issues: string[] = [];
+  const source = dsl.source ?? (dsl.intent === "list_activities" ? "activities" : "metrics");
+
+  if (source === "metrics") {
+    if (!defaultMeasurementTypes.some((metric) => metric.code === dsl.metric)) {
+      issues.push(`Metric "${dsl.metric ?? "null"}" is not supported.`);
+    }
+    if (!["timeseries", "aggregation", "top_n", "latest"].includes(dsl.intent)) {
+      issues.push(`Intent "${dsl.intent}" is not supported for metrics.`);
+    }
+    if (dsl.filters) issues.push("Metric queries do not support domain filters.");
+  }
+
+  if (source === "activities") {
+    if (dsl.intent !== "list_activities") issues.push('Activities require intent "list_activities".');
+    if (dsl.metric !== null) issues.push("Activity queries require metric=null.");
+    if (dsl.filters) issues.push("Activity queries do not support domain filters.");
+  }
+
+  if (source === "health_events") {
+    if (!["list", "count", "latest", "timeseries"].includes(dsl.intent)) {
+      issues.push(`Intent "${dsl.intent}" is not supported for health events.`);
+    }
+    if (dsl.metric !== null) issues.push("Health event queries require metric=null.");
+    if (dsl.groupBy && !["day", "week", "kind", "status", "source"].includes(dsl.groupBy)) {
+      issues.push(`Group "${dsl.groupBy}" is not supported for health events.`);
+    }
+  }
+
+  if (source === "care_items") {
+    if (!["list", "count", "overdue"].includes(dsl.intent)) {
+      issues.push(`Intent "${dsl.intent}" is not supported for care items.`);
+    }
+    if (dsl.metric !== null) issues.push("Care item queries require metric=null.");
+    if (dsl.groupBy && !["kind", "status", "priority", "due_bucket"].includes(dsl.groupBy)) {
+      issues.push(`Group "${dsl.groupBy}" is not supported for care items.`);
+    }
+  }
+
+  if (dsl.intent === "timeseries" && !["day", "week"].includes(dsl.groupBy ?? "")) {
+    issues.push('Time-series queries require groupBy="day" or groupBy="week".');
+  }
+  if (dsl.intent === "aggregation" && dsl.groupBy !== null) {
+    issues.push("Aggregation queries require groupBy=null.");
+  }
+  if (dsl.timeRange.start && !dsl.timeRange.end || dsl.timeRange.end && !dsl.timeRange.start) {
+    issues.push("Custom time ranges require both start and end dates.");
+  }
+
+  return { valid: issues.length === 0, issues };
+}
 
 // ─── Result types ─────────────────────────────────────────────────────────────
 
@@ -66,7 +151,13 @@ export interface PlannerResult {
   limitations: string[];
   assumptions: string[];
   modelElapsedMs: number;
+  attempts: number;
+  repaired: boolean;
+  structuredOutputMode: "not_requested" | "enforced" | "fallback";
+  firstFailureCategory?: PlannerFailureCategory;
 }
+
+export type PlannerFailureCategory = "model" | "json" | "schema" | "semantic" | "compile";
 
 export interface PlannerError {
   ok: false;
@@ -74,6 +165,10 @@ export interface PlannerError {
   limitations: string[];
   suggestedRephrase?: string;
   modelElapsedMs: number;
+  attempts: number;
+  repaired: boolean;
+  category: PlannerFailureCategory;
+  structuredOutputMode: "not_requested" | "enforced" | "fallback";
 }
 
 export type PlannerOutcome = PlannerResult | PlannerError;
@@ -99,7 +194,7 @@ export function resolveTimeRange(timeRange: TimeRange, referenceDate?: Date): Re
     return { start: timeRange.start, end: timeRange.end, label: `${timeRange.start} to ${timeRange.end}` };
   }
 
-  const preset = timeRange.preset ?? "last_90d";
+  const preset = timeRange.preset ?? "last_30d";
 
   switch (preset) {
     case "this_month": {
@@ -188,6 +283,19 @@ function buildPlannerPrompt(question: string, timezone?: string): string {
   return `${PLANNER_SYSTEM}${tzNote}\n\nQuestion: ${question}\n\nRespond with the JSON object only:`;
 }
 
+function buildRepairPrompt(question: string, rawOutput: string, issues: string[], timezone?: string): string {
+  const priorOutput = rawOutput.slice(0, 4000);
+  return `${buildPlannerPrompt(question, timezone)}
+
+The previous response was invalid:
+${issues.join("\n")}
+
+Previous response:
+${priorOutput}
+
+Return one corrected JSON object only:`;
+}
+
 // ─── Confidence and limitations derivation ────────────────────────────────────
 
 function deriveConfidenceAndLimitations(
@@ -254,19 +362,86 @@ function extractJson(raw: string): string {
   return trimmed;
 }
 
+function normalizeStructuredOutputPlan(parsed: unknown): unknown {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return parsed;
+  const normalized = { ...(parsed as Record<string, unknown>) };
+  if (normalized.source === null) delete normalized.source;
+
+  if (normalized.timeRange && typeof normalized.timeRange === "object" && !Array.isArray(normalized.timeRange)) {
+    const timeRange = { ...(normalized.timeRange as Record<string, unknown>) };
+    for (const key of ["preset", "start", "end"]) {
+      if (timeRange[key] === null) delete timeRange[key];
+    }
+    normalized.timeRange = timeRange;
+  }
+
+  if (normalized.filters === null) {
+    delete normalized.filters;
+  } else if (normalized.filters && typeof normalized.filters === "object" && !Array.isArray(normalized.filters)) {
+    const filters = Object.fromEntries(
+      Object.entries(normalized.filters as Record<string, unknown>)
+        .filter(([, value]) => value !== null)
+    );
+    if (Object.keys(filters).length === 0) delete normalized.filters;
+    else normalized.filters = filters;
+  }
+  return normalized;
+}
+
+type ParsePlanResult =
+  | { ok: true; dsl: QueryDSL }
+  | { ok: false; category: Exclude<PlannerFailureCategory, "model">; issues: string[] };
+
+function parsePlan(rawText: string, validatePlan?: (dsl: QueryDSL) => string[]): ParsePlanResult {
+  let parsed: unknown;
+  try {
+    parsed = normalizeStructuredOutputPlan(JSON.parse(extractJson(rawText)));
+  } catch {
+    return { ok: false, category: "json", issues: ["Planner returned invalid JSON."] };
+  }
+
+  const validation = QueryDSLSchema.safeParse(parsed);
+  if (!validation.success) {
+    return {
+      ok: false,
+      category: "schema",
+      issues: validation.error.issues
+        .slice(0, 5)
+        .map((issue) => `${issue.path.join(".") || "root"}: ${issue.message}`)
+    };
+  }
+
+  const semantics = validateQueryDslSemantics(validation.data);
+  if (!semantics.valid) return { ok: false, category: "semantic", issues: semantics.issues };
+  const compileIssues = validatePlan?.(validation.data) ?? [];
+  return compileIssues.length > 0
+    ? { ok: false, category: "compile", issues: compileIssues }
+    : { ok: true, dsl: validation.data };
+}
+
 // ─── Main planner function ────────────────────────────────────────────────────
 
 export async function planAiQuery(
   question: string,
-  options?: { timezone?: string; timeoutMs?: number; allowCloud?: boolean }
+  options?: {
+    timezone?: string;
+    timeoutMs?: number;
+    allowCloud?: boolean;
+    validatePlan?: (dsl: QueryDSL) => string[];
+    maxAttempts?: 1 | 2;
+  }
 ): Promise<PlannerOutcome> {
-  const prompt = buildPlannerPrompt(sanitizeQuestionForModel(question), options?.timezone);
-  const modelResult = await callConfiguredModel(prompt, {
+  const sanitizedQuestion = sanitizeQuestionForModel(question);
+  const prompt = buildPlannerPrompt(sanitizedQuestion, options?.timezone);
+  let modelResult = await callConfiguredModel(prompt, {
     timeoutMs: options?.timeoutMs ?? 30000,
-    allowCloud: options?.allowCloud
+    allowCloud: options?.allowCloud,
+    structuredOutput: { name: "vitana_query_plan", schema: QUERY_DSL_JSON_SCHEMA },
+    deterministic: true,
+    maxOutputTokens: 700,
+    task: "query-planning"
   });
-
-  const elapsedMs = modelResult.elapsedMs;
+  let elapsedMs = modelResult.elapsedMs;
 
   if (!modelResult.ok || !modelResult.text) {
     return {
@@ -277,49 +452,64 @@ export async function planAiQuery(
         ...(modelResult.error ? [`Model error: ${modelResult.error}`] : [])
       ],
       suggestedRephrase: "Try asking: 'average heart rate last month' or 'steps trend this week'.",
-      modelElapsedMs: elapsedMs
+      modelElapsedMs: elapsedMs,
+      attempts: 1,
+      repaired: false,
+      category: "model",
+      structuredOutputMode: modelResult.structuredOutputMode ?? "not_requested"
     };
   }
 
-  const rawText = modelResult.text;
-  const jsonString = extractJson(rawText);
+  const firstRawText = modelResult.text;
+  let parsedPlan = parsePlan(firstRawText, options?.validatePlan);
+  const firstFailureCategory = parsedPlan.ok ? undefined : parsedPlan.category;
+  let attempts = 1;
+  if (!parsedPlan.ok && (options?.maxAttempts ?? 2) > 1) {
+    modelResult = await callConfiguredModel(
+      buildRepairPrompt(sanitizedQuestion, firstRawText, parsedPlan.issues, options?.timezone),
+      {
+        timeoutMs: options?.timeoutMs ?? 30000,
+        allowCloud: options?.allowCloud,
+        structuredOutput: { name: "vitana_query_plan", schema: QUERY_DSL_JSON_SCHEMA },
+        deterministic: true,
+        maxOutputTokens: 700,
+        task: "query-planning"
+      }
+    );
+    attempts = 2;
+    elapsedMs += modelResult.elapsedMs;
+    if (!modelResult.ok || !modelResult.text) {
+      return {
+        ok: false,
+        error: "The model could not repair its query plan.",
+        limitations: parsedPlan.issues,
+        suggestedRephrase: "Try asking about one metric or record type and include a time range.",
+        modelElapsedMs: elapsedMs,
+        attempts,
+        repaired: true,
+        category: "model",
+        structuredOutputMode: modelResult.structuredOutputMode ?? "not_requested"
+      };
+    }
+    parsedPlan = parsePlan(modelResult.text, options?.validatePlan);
+  }
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonString);
-  } catch {
+  if (!parsedPlan.ok) {
     return {
       ok: false,
-      error: "Planner returned invalid JSON.",
-      limitations: [
-        "The AI planner returned a malformed response. The question may be outside supported query classes.",
-        `Raw planner output (first 200 chars): ${rawText.slice(0, 200)}`
-      ],
-      suggestedRephrase: "Try: 'max daily steps this month' or 'average heart rate last month'.",
-      modelElapsedMs: elapsedMs
+      error: "The question could not be converted into a supported query.",
+      limitations: parsedPlan.issues,
+      suggestedRephrase: "Try asking about one metric or record type and include a time range.",
+      modelElapsedMs: elapsedMs,
+      attempts,
+      repaired: attempts > 1,
+      category: parsedPlan.category,
+      structuredOutputMode: modelResult.structuredOutputMode ?? "not_requested"
     };
   }
 
-  const validation = QueryDSLSchema.safeParse(parsed);
-  if (!validation.success) {
-    const issues = validation.error.issues
-      .slice(0, 3)
-      .map((issue) => `${issue.path.join(".") || "root"}: ${issue.message}`)
-      .join("; ");
-    return {
-      ok: false,
-      error: `DSL schema validation failed: ${issues}`,
-      limitations: [
-        "The planner output did not match the required schema.",
-        `Validation errors: ${issues}`
-      ],
-      suggestedRephrase: "Try: 'top exercises this month' or 'weekly steps trend last month'.",
-      modelElapsedMs: elapsedMs
-    };
-  }
-
-  const dsl = validation.data;
-  const { confidence, limitations, assumptions } = deriveConfidenceAndLimitations(dsl, rawText);
+  const dsl = parsedPlan.dsl;
+  const { confidence, limitations, assumptions } = deriveConfidenceAndLimitations(dsl, modelResult.text);
 
   return {
     ok: true,
@@ -327,6 +517,10 @@ export async function planAiQuery(
     confidence,
     limitations,
     assumptions,
-    modelElapsedMs: elapsedMs
+    modelElapsedMs: elapsedMs,
+    attempts,
+    repaired: attempts > 1,
+    structuredOutputMode: modelResult.structuredOutputMode ?? "not_requested",
+    firstFailureCategory
   };
 }

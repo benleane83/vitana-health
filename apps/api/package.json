@@ -18,8 +18,8 @@
     "prepare:duckdb": "node ../../scripts/prepare-duckdb-httpfs.mjs --output ../desktop/build/duckdb-extensions"
   },
   "dependencies": {
-    "@vitana/shared": "file:../../packages/shared",
     "@tesseract.js-data/eng": "^1.0.0",
+    "@vitana/shared": "file:../../packages/shared",
     "cors": "^2.8.5",
     "duckdb": "^1.4.4",
     "express": "^4.21.2",
@@ -28,7 +28,8 @@
     "qrcode": "^1.5.4",
     "selfsigned": "^5.5.0",
     "tesseract.js": "^7.0.0",
-    "zod": "^3.24.2"
+    "zod": "^3.24.2",
+    "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

@@ -384,9 +384,13 @@ Endpoints in this section return `x-vitana-lifecycle` to identify their compatib
 POST /api/query/ai
 ```
 **Request body:** `{ "question": "<text>", "timezone"?: "<IANA timezone>", "debug"?: false }`
-**Success `200`:** `{ "question", "answer", "limitations", "assumptions", "confidence", "plan", "sourceResolved", "intentResolved", "sql", "resolvedTimeRange", "rowCount", "rows", "chart", "model" }`
+**Success `200`:** `{ "outcome", "question", "answer", "limitations", "assumptions", "confidence", "plan", "sourceResolved", "intentResolved", "sql", "resolvedTimeRange", "rowCount", "rows", "chart", "model", "debug"? }`
 
 Runs the product's validated DSL-to-SQL pipeline for metrics, activities, health events, or care items. Queries are single-source, SELECT-only, capped at 200 rows and 366 days, and restricted to whitelisted projection views and columns. See the README for supported query classes and examples.
+
+`outcome` is `answered` or `no_data`. A valid query with no matching rows remains a `200` response. Model-controlled JSON, schema, semantic, or DSL compilation failures receive at most one repair call. SQL safety and execution failures are never sent back to the model for repair.
+
+AI query errors add `suggestions`, optional `suggestedRephrase`, and optional `diagnostics` when the request uses `debug: true`. Diagnostics may include failure category, attempt count, repair status, structured-output mode, and timings. They do not include raw model responses, health result rows, or credentials.
 
 ---
 
@@ -406,8 +410,11 @@ All error responses follow this shape:
 | `VALIDATION_ERROR` | 400 | Request body or params failed schema validation |
 | `EMPTY_PAYLOAD` | 400 | Request body was empty |
 | `PAYLOAD_TOO_LARGE` | 413 | Request body exceeded size limit |
-| `QUERY_UNRECOGNIZED` | 400 | NL query could not be parsed |
-| `QUERY_UNSUPPORTED` | 400 | NL query type not supported |
+| `QUERY_NOT_UNDERSTOOD` | 422 | Question could not be converted to a valid query plan after one repair |
+| `QUERY_UNSUPPORTED` | 422 | Question asks for a query class the compiler does not support |
+| `MODEL_UNAVAILABLE` | 502 | Configured model could not be reached or did not return output |
+| `MODEL_TIMEOUT` | 504 | Configured model exceeded its request timeout |
+| `QUERY_EXECUTION_FAILED` | 500 | Compiler safety validation or database execution failed |
 | `AUTH_REQUIRED` | 401 | No valid ****** provided |
 | `CAPABILITY_REQUIRED` | 403 | Companion lacks access to this operation |
 | `PROFILE_ACCESS_DENIED` | 403 | Companion profile grant does not match request |

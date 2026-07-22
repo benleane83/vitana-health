@@ -177,7 +177,22 @@ function AiSettingsPanel() {
     try {
       await persistSettings();
       const result = await api.settings.ai.validate();
-      setMessage(result.ok ? `Connection validated in ${result.elapsedMs} ms.` : result.error ?? "Validation failed.");
+      if (!result.ok) {
+        const issue = result.plannerProbe?.issues[0];
+        const freeOpenRouterModel = settings.endpoint.includes("openrouter.ai") && settings.model.endsWith(":free");
+        setMessage(
+          `${result.error ?? "Validation failed."}${issue ? ` Reason: ${issue}` : ""}${freeOpenRouterModel ? " Free OpenRouter models can be temporarily unavailable; retry in a moment." : ""} Your settings remain saved.`
+        );
+      } else if (result.compatibility === "limited" && result.plannerProbe) {
+        const issue = result.plannerProbe.issues[0];
+        setMessage(
+          `Connection works, but this model did not pass the AI Query compatibility check.${issue ? ` Reason: ${issue}` : ""} You can still use it.`
+        );
+      } else if (result.plannerProbe) {
+        setMessage("Connection and AI Query compatibility check passed.");
+      } else {
+        setMessage(`Connection validated in ${result.elapsedMs} ms.`);
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to validate AI settings.");
     } finally {

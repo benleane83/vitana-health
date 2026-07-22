@@ -44,6 +44,34 @@ export const aiQueryRequestSchema = z.object({
 }).strict();
 export type AiQueryRequest = z.input<typeof aiQueryRequestSchema>;
 
+export const aiQueryErrorCodeSchema = z.enum([
+  "QUERY_NOT_UNDERSTOOD",
+  "QUERY_UNSUPPORTED",
+  "MODEL_UNAVAILABLE",
+  "MODEL_TIMEOUT",
+  "QUERY_EXECUTION_FAILED"
+]);
+export type AiQueryErrorCode = z.infer<typeof aiQueryErrorCodeSchema>;
+
+export const aiQueryDiagnosticsSchema = z.object({
+  plannerElapsedMs: z.number().nonnegative().optional(),
+  summaryElapsedMs: z.number().nonnegative().optional(),
+  attempts: z.number().int().min(1).max(2).optional(),
+  repaired: z.boolean().optional(),
+  firstFailureCategory: z.enum(["model", "json", "schema", "semantic", "compile"]).optional(),
+  failureCategory: z.enum(["model", "json", "schema", "semantic", "compile", "sql_safety", "execution"]).optional(),
+  structuredOutputMode: z.enum(["not_requested", "enforced", "fallback"]).optional(),
+  issues: z.array(z.string()).max(10).optional()
+}).strict();
+
+export const aiQueryErrorResponseSchema = apiErrorResponseSchema.extend({
+  code: aiQueryErrorCodeSchema,
+  suggestions: z.array(z.string()).default([]),
+  suggestedRephrase: z.string().optional(),
+  diagnostics: aiQueryDiagnosticsSchema.optional()
+}).passthrough();
+export type AiQueryErrorResponse = z.infer<typeof aiQueryErrorResponseSchema>;
+
 export const aiQueryChartSeriesSchema = z.object({
   label: z.string(),
   value: z.number()
@@ -55,6 +83,7 @@ export const aiQueryChartSchema = z.object({
 }).strict();
 
 export const aiQueryResponseSchema = z.object({
+  outcome: z.enum(["answered", "no_data"]).default("answered"),
   question: z.string(),
   answer: z.string(),
   limitations: z.array(z.string()),
@@ -69,7 +98,7 @@ export const aiQueryResponseSchema = z.object({
   model: z.string().optional(),
   modelError: z.string().optional(),
   suggestedRephrase: z.string().optional(),
-  debug: z.object({ plannerElapsedMs: z.number().optional(), summaryElapsedMs: z.number().optional() }).passthrough().optional()
+  debug: aiQueryDiagnosticsSchema.optional()
 }).passthrough();
 export type AiQueryResponse = z.infer<typeof aiQueryResponseSchema>;
 
@@ -116,7 +145,17 @@ export const modelValidationResponseSchema = z.object({
   text: z.string().optional(),
   status: z.number().int().optional(),
   error: z.string().optional(),
-  bodySnippet: z.string().optional()
+  bodySnippet: z.string().optional(),
+  compatibility: z.enum(["compatible", "limited"]).optional(),
+  plannerProbe: z.object({
+    passed: z.number().int().nonnegative(),
+    total: z.number().int().positive(),
+    elapsedMs: z.number().nonnegative(),
+    structuredOutputMode: z.enum(["not_requested", "enforced", "fallback"]),
+    repairedCases: z.number().int().nonnegative(),
+    failureCategory: z.enum(["model", "json", "schema", "semantic", "compile"]).optional(),
+    issues: z.array(z.string())
+  }).strict().optional()
 }).passthrough();
 export type ModelValidationResponse = z.infer<typeof modelValidationResponseSchema>;
 

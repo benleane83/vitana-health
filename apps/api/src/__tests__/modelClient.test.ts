@@ -24,6 +24,40 @@ afterEach(() => {
 });
 
 describe("callConfiguredModel", () => {
+  it("requests deterministic schema-constrained output from Ollama", async () => {
+    delete process.env.LLM_PROVIDER;
+    delete process.env.OPENAI_RESPONSES_ENDPOINT;
+    delete process.env.OPENAI_API_KEY;
+    dataDirectory = mkdtempSync(join(tmpdir(), "vitana-model-client-test-"));
+    process.env.VITANA_DATA_DIR = dataDirectory;
+    saveAiSettings({
+      provider: "ollama",
+      endpoint: "http://127.0.0.1:11434/api/generate",
+      model: "test-model",
+      timeoutMs: 30000
+    });
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ response: '{"ok":true}' }), { status: 200 })
+    );
+    vi.stubGlobal("fetch", fetch);
+
+    const schema = { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] };
+    const result = await callConfiguredModel("Return JSON", {
+      structuredOutput: { name: "test_schema", schema },
+      deterministic: true,
+      maxOutputTokens: 128
+    });
+
+    expect(result).toMatchObject({ ok: true, structuredOutputMode: "enforced" });
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({
+      model: "test-model",
+      prompt: "Return JSON",
+      stream: false,
+      format: schema,
+      options: { temperature: 0, num_predict: 128 }
+    });
+  });
+
   it("does not send requests to cloud providers without consent", async () => {
     process.env.LLM_PROVIDER = "openai";
     process.env.OPENAI_RESPONSES_ENDPOINT = "https://example.test/v1/responses";
@@ -77,6 +111,48 @@ describe("callConfiguredModel", () => {
         })
       })
     );
+  });
+
+  it("falls back when an OpenRouter model rejects JSON Schema", async () => {
+    delete process.env.LLM_PROVIDER;
+    dataDirectory = mkdtempSync(join(tmpdir(), "vitana-model-client-test-"));
+    process.env.VITANA_DATA_DIR = dataDirectory;
+    saveAiSettings({
+      provider: "openai",
+      endpoint: "https://openrouter.ai/api/v1/chat/completions",
+      apiKey: "saved-openrouter-key",
+      model: "test/model",
+      timeoutMs: 30000
+    });
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response("unsupported", { status: 400 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        choices: [{ message: { content: '{"ok":true}' } }]
+      }), { status: 200 }));
+    vi.stubGlobal("fetch", fetch);
+
+    const schema = { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] };
+    const result = await callConfiguredModel("Return JSON", {
+      structuredOutput: { name: "test_schema", schema },
+      deterministic: true
+    });
+
+    expect(result).toMatchObject({ ok: true, structuredOutputMode: "fallback" });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({
+      model: "test/model",
+      temperature: 0,
+      provider: { require_parameters: true },
+      response_format: {
+        type: "json_schema",
+        json_schema: { name: "test_schema", strict: true, schema }
+      }
+    });
+    expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({
+      model: "test/model",
+      messages: [{ role: "user", content: "Return JSON" }],
+      temperature: 0
+    });
   });
 
   it("uses the native Anthropic Messages API contract", async () => {

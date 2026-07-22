@@ -7,12 +7,22 @@ import {
   type DesktopRuntimeSettingsUpdate
 } from "@vitana/shared";
 import { getAiSettings, saveAiSettings, toPublicAiSettings, type AiSettings } from "../aiSettings.js";
-import { callConfiguredModel } from "../modelClient.js";
+import { evaluatePlannerCase, plannerEvaluationCases } from "../aiQueryEvaluation.js";
+import { planAiQuery, type PlannerFailureCategory } from "../aiQueryPlanner.js";
 import { assertSafeCloudModelEndpoint, ModelEndpointPolicyError, validateModelEndpoint } from "../modelEndpointPolicy.js";
 
 const pendingOpenRouterStates = new Map<string, number>();
 const openRouterEndpoint = "https://openrouter.ai/api/v1/chat/completions";
 const openRouterStateExpiryMs = 10 * 60_000;
+type PlannerProbe = {
+  passed: number;
+  total: number;
+  elapsedMs: number;
+  structuredOutputMode: "not_requested" | "enforced" | "fallback";
+  repairedCases: number;
+  failureCategory?: PlannerFailureCategory;
+  issues: string[];
+};
 
 export function makeSettingsRoutes(options: {
   assertSafeCloudEndpoint?: (endpoint: string) => Promise<unknown>;
@@ -23,6 +33,7 @@ export function makeSettingsRoutes(options: {
   };
 } = {}): express.Router {
   const router = express.Router();
+  const plannerProbeCache = new Map<string, PlannerProbe>();
   const assertSafeCloudEndpoint = options.assertSafeCloudEndpoint ?? assertSafeCloudModelEndpoint;
   const openRouterCallbackOrigin = options.openRouterCallbackOrigin ?? `http://127.0.0.1:${process.env.PORT ?? "4317"}`;
 
@@ -72,6 +83,7 @@ export function makeSettingsRoutes(options: {
         endpoint,
         apiKey: parsed.provider === "openai" ? submittedApiKey || (!originChanged ? current.apiKey : undefined) : undefined
       };
+      plannerProbeCache.clear();
       response.json(saveAiSettings(settings));
     } catch (error) {
       next(error);
@@ -79,15 +91,63 @@ export function makeSettingsRoutes(options: {
   });
 
   router.post("/ai/validate", async (_request, response) => {
-    const result = await callConfiguredModel("Reply with exactly: local model ok");
-    if (!result.ok) {
-      response.status(400).json({
-        error: result.error || "Model validation failed.",
-        code: "MODEL_VALIDATION_FAILED"
-      });
-      return;
+    const settings = getAiSettings();
+    const cacheKey = `${settings.provider}|${settings.endpoint}|${settings.model}`;
+    let plannerProbe = plannerProbeCache.get(cacheKey);
+    if (!plannerProbe) {
+      const cases = plannerEvaluationCases.filter((testCase) => testCase.probe).slice(0, 1);
+      let passed = 0;
+      let repairedCases = 0;
+      let elapsedMs = 0;
+      let failureCategory: PlannerFailureCategory | undefined;
+      const issues: string[] = [];
+      const modes = new Set<"not_requested" | "enforced" | "fallback">();
+
+      for (const testCase of cases) {
+        const outcome = await planAiQuery(testCase.question, {
+          timeoutMs: settings.timeoutMs,
+          maxAttempts: 1
+        });
+        elapsedMs += outcome.modelElapsedMs;
+        modes.add(outcome.structuredOutputMode);
+        if (outcome.repaired) repairedCases += 1;
+        if (!outcome.ok) failureCategory ??= outcome.category;
+        const caseIssues = evaluatePlannerCase(testCase, outcome);
+        if (caseIssues.length === 0) passed += 1;
+        else {
+          const detail = !outcome.ok && outcome.category === "model"
+            ? outcome.limitations.find((limitation) => limitation.startsWith("Model error:")) ?? outcome.error
+            : caseIssues.join(" ");
+          issues.push(`${testCase.id}: ${detail}`);
+        }
+      }
+
+      plannerProbe = {
+        passed,
+        total: cases.length,
+        elapsedMs,
+        structuredOutputMode: modes.has("fallback")
+          ? "fallback"
+          : modes.has("enforced") ? "enforced" : "not_requested",
+        repairedCases,
+        failureCategory,
+        issues
+      };
+      plannerProbeCache.set(cacheKey, plannerProbe);
     }
-    response.json(result);
+
+    const modelUnavailable = plannerProbe.failureCategory === "model";
+    response.json({
+      ok: !modelUnavailable,
+      provider: settings.provider,
+      endpoint: settings.endpoint,
+      model: settings.model,
+      timeoutMs: settings.timeoutMs,
+      elapsedMs: plannerProbe.elapsedMs,
+      ...(modelUnavailable ? { error: "The configured model could not complete the compatibility probe." } : {}),
+      compatibility: plannerProbe.passed === plannerProbe.total ? "compatible" : "limited",
+      plannerProbe
+    });
   });
 
   router.get("/ai/openrouter/connect", (_request, response) => {

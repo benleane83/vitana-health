@@ -6,6 +6,10 @@ export interface ModelRequestOptions {
   timeoutMs?: number;
   provider?: "ollama" | "openai";
   allowCloud?: boolean;
+  structuredOutput?: { name: string; schema: Record<string, unknown> };
+  deterministic?: boolean;
+  maxOutputTokens?: number;
+  task?: string;
 }
 
 export interface ModelCallResult {
@@ -19,6 +23,7 @@ export interface ModelCallResult {
   status?: number;
   error?: string;
   bodySnippet?: string;
+  structuredOutputMode?: "not_requested" | "enforced" | "fallback";
 }
 
 export async function callConfiguredModel(prompt: string, options?: ModelRequestOptions): Promise<ModelCallResult> {
@@ -37,9 +42,9 @@ export async function callConfiguredModel(prompt: string, options?: ModelRequest
     };
   }
   if (provider === "openai") {
-    return callOpenAiResponses(prompt, settings, options?.model, timeoutMs);
+    return callOpenAiResponses(prompt, settings, options?.model, timeoutMs, options);
   }
-  return callOllama(prompt, settings, options?.model, timeoutMs);
+  return callOllama(prompt, settings, options?.model, timeoutMs, options);
 }
 
 export function resolvedModelProvider(override?: "ollama" | "openai"): "ollama" | "openai" {
@@ -56,24 +61,51 @@ export function currentModelConfig(): { provider: "ollama" | "openai"; endpoint:
   };
 }
 
-async function callOllama(prompt: string, settings: AiSettings, overrideModel: string | undefined, timeoutMs: number): Promise<ModelCallResult> {
+async function callOllama(
+  prompt: string,
+  settings: AiSettings,
+  overrideModel: string | undefined,
+  timeoutMs: number,
+  options?: ModelRequestOptions
+): Promise<ModelCallResult> {
   const endpoint = settings.endpoint;
   const model = overrideModel ?? settings.model;
-  const request = JSON.stringify({ model, prompt, stream: false });
-  return callJsonEndpoint({
+  const result = await callJsonEndpoint({
     provider: "ollama",
     endpoint,
     model,
     timeoutMs,
     headers: { "content-type": "application/json" },
-    requestBody: request,
+    requestBody: ollamaRequest(model, prompt, options),
+    structuredOutputMode: options?.structuredOutput ? "enforced" : "not_requested",
     extractText(payload) {
       return typeof payload.response === "string" ? payload.response.trim() : "";
     }
   });
+  if (options?.structuredOutput && (result.status === 400 || result.status === 422)) {
+    return callJsonEndpoint({
+      provider: "ollama",
+      endpoint,
+      model,
+      timeoutMs,
+      headers: { "content-type": "application/json" },
+      requestBody: ollamaRequest(model, prompt, { ...options, structuredOutput: undefined }),
+      structuredOutputMode: "fallback",
+      extractText(payload) {
+        return typeof payload.response === "string" ? payload.response.trim() : "";
+      }
+    });
+  }
+  return result;
 }
 
-async function callOpenAiResponses(prompt: string, settings: AiSettings, overrideModel: string | undefined, timeoutMs: number): Promise<ModelCallResult> {
+async function callOpenAiResponses(
+  prompt: string,
+  settings: AiSettings,
+  overrideModel: string | undefined,
+  timeoutMs: number,
+  options?: ModelRequestOptions
+): Promise<ModelCallResult> {
   const endpoint = settings.endpoint;
   const apiKey = settings.apiKey ?? "";
   const model = overrideModel ?? settings.model;
@@ -115,15 +147,18 @@ async function callOpenAiResponses(prompt: string, settings: AiSettings, overrid
     };
   }
   const headers = cloudHeaders(kind, apiKey);
-  const request = cloudRequest(kind, endpoint, model, prompt);
+  const request = cloudRequest(kind, endpoint, model, prompt, options);
 
-  return callJsonEndpoint({
+  const result = await callJsonEndpoint({
     provider: "openai",
     endpoint,
     model,
     timeoutMs,
     headers,
     requestBody: request,
+    structuredOutputMode: options?.structuredOutput && kind !== "anthropic"
+      ? "enforced"
+      : options?.structuredOutput ? "fallback" : "not_requested",
     extractText(payload) {
       if (kind === "anthropic") {
         const content = Array.isArray(payload.content) ? payload.content : [];
@@ -152,6 +187,23 @@ async function callOpenAiResponses(prompt: string, settings: AiSettings, overrid
       return chunks.join("\n").trim();
     }
   });
+  if (options?.structuredOutput && kind !== "anthropic" && (result.status === 400 || result.status === 422)) {
+    return callJsonEndpoint({
+      provider: "openai",
+      endpoint,
+      model,
+      timeoutMs,
+      headers,
+      requestBody: cloudRequest(kind, endpoint, model, prompt, { ...options, structuredOutput: undefined }),
+      structuredOutputMode: "fallback",
+      extractText(payload) {
+        if (typeof payload.output_text === "string") return payload.output_text.trim();
+        if (typeof payload.choices?.[0]?.message?.content === "string") return payload.choices[0].message.content.trim();
+        return "";
+      }
+    });
+  }
+  return result;
 }
 
 async function callJsonEndpoint(args: {
@@ -162,6 +214,7 @@ async function callJsonEndpoint(args: {
   headers: Record<string, string>;
   requestBody: string;
   extractText: (payload: any) => string;
+  structuredOutputMode?: "not_requested" | "enforced" | "fallback";
 }): Promise<ModelCallResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), args.timeoutMs);
@@ -186,7 +239,8 @@ async function callJsonEndpoint(args: {
         elapsedMs,
         status: response.status,
         error: `Model endpoint returned HTTP ${response.status}`,
-        bodySnippet: rawBody.slice(0, 2000)
+        bodySnippet: rawBody.slice(0, 2000),
+        structuredOutputMode: args.structuredOutputMode ?? "not_requested"
       };
     }
 
@@ -201,7 +255,8 @@ async function callJsonEndpoint(args: {
         timeoutMs: args.timeoutMs,
         elapsedMs,
         error: "Model response did not include text output",
-        bodySnippet: rawBody.slice(0, 2000)
+        bodySnippet: rawBody.slice(0, 2000),
+        structuredOutputMode: args.structuredOutputMode ?? "not_requested"
       };
     }
 
@@ -212,7 +267,8 @@ async function callJsonEndpoint(args: {
       model: args.model,
       timeoutMs: args.timeoutMs,
       elapsedMs,
-      text
+      text,
+      structuredOutputMode: args.structuredOutputMode ?? "not_requested"
     };
   } catch (error) {
     const elapsedMs = Date.now() - startedAt;
@@ -224,7 +280,8 @@ async function callJsonEndpoint(args: {
         model: args.model,
         timeoutMs: args.timeoutMs,
         elapsedMs,
-        error: "Model request timed out"
+        error: "Model request timed out",
+        structuredOutputMode: args.structuredOutputMode ?? "not_requested"
       };
     }
     const errorMessage = error instanceof Error ? error.message : "Unknown model request failure";
@@ -235,7 +292,8 @@ async function callJsonEndpoint(args: {
       model: args.model,
       timeoutMs: args.timeoutMs,
       elapsedMs,
-      error: errorMessage
+      error: errorMessage,
+      structuredOutputMode: args.structuredOutputMode ?? "not_requested"
     };
   } finally {
     clearTimeout(timer);
@@ -256,15 +314,59 @@ function cloudHeaders(kind: CloudModelKind, apiKey: string): Record<string, stri
   return { "content-type": "application/json", authorization: `Bearer ${apiKey}` };
 }
 
-function cloudRequest(kind: CloudModelKind, endpoint: string, model: string, prompt: string): string {
+function cloudRequest(
+  kind: CloudModelKind,
+  endpoint: string,
+  model: string,
+  prompt: string,
+  options?: ModelRequestOptions
+): string {
   if (kind === "anthropic") {
-    return JSON.stringify({ model, max_tokens: 256, messages: [{ role: "user", content: prompt }] });
+    return JSON.stringify({
+      model,
+      max_tokens: options?.maxOutputTokens ?? 256,
+      ...(options?.deterministic ? { temperature: 0 } : {}),
+      messages: [{ role: "user", content: prompt }]
+    });
   }
-  return JSON.stringify(
-    endpoint.includes("/chat/completions")
-      ? { model, messages: [{ role: "user", content: prompt }] }
-      : { model, input: prompt }
-  );
+  const structuredOutputRouting = kind === "openrouter" && options?.structuredOutput
+    ? { provider: { require_parameters: true } }
+    : {};
+  if (endpoint.includes("/chat/completions")) {
+    return JSON.stringify({
+      model,
+      messages: [{ role: "user", content: prompt }],
+      ...(options?.deterministic ? { temperature: 0 } : {}),
+      ...(options?.maxOutputTokens ? { max_tokens: options.maxOutputTokens } : {}),
+      ...structuredOutputRouting,
+      ...(options?.structuredOutput ? {
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: options.structuredOutput.name,
+            strict: true,
+            schema: options.structuredOutput.schema
+          }
+        }
+      } : {})
+    });
+  }
+  return JSON.stringify({
+    model,
+    input: prompt,
+    ...(options?.maxOutputTokens ? { max_output_tokens: options.maxOutputTokens } : {}),
+    ...structuredOutputRouting,
+    ...(options?.structuredOutput ? {
+      text: {
+        format: {
+          type: "json_schema",
+          name: options.structuredOutput.name,
+          strict: true,
+          schema: options.structuredOutput.schema
+        }
+      }
+    } : {})
+  });
 }
 
 function parseTimeoutMs(rawValue: string | undefined, fallback: number): number {
@@ -273,4 +375,19 @@ function parseTimeoutMs(rawValue: string | undefined, fallback: number): number 
     return fallback;
   }
   return parsed;
+}
+
+function ollamaRequest(model: string, prompt: string, options?: ModelRequestOptions): string {
+  return JSON.stringify({
+    model,
+    prompt,
+    stream: false,
+    ...(options?.structuredOutput ? { format: options.structuredOutput.schema } : {}),
+    ...(options?.deterministic || options?.maxOutputTokens ? {
+      options: {
+        ...(options.deterministic ? { temperature: 0 } : {}),
+        ...(options.maxOutputTokens ? { num_predict: options.maxOutputTokens } : {})
+      }
+    } : {})
+  });
 }

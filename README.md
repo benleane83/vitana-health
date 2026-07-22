@@ -257,14 +257,16 @@ The AI query endpoint provides broad natural-language coverage over your local w
 ### Architecture
 
 ```
-question → AI DSL Planner → validate DSL (Zod) → compile to SQL → validate SQL → execute DuckDB → summarize answer
+question → AI DSL planner → validate shape and semantics → compile to SQL → validate SQL → execute DuckDB → summarize answer
 ```
 
-1. **AI DSL Planner** (`aiQueryPlanner.ts`) — prompts the configured model to return a strict JSON query DSL (not raw SQL), validated by Zod schema.
+1. **AI DSL Planner** (`aiQueryPlanner.ts`) — requests a strict JSON query DSL (not raw SQL), then validates its Zod shape and source/intent/metric semantics. Compatible models receive a JSON Schema; BYO endpoints that reject schema controls fall back to the same prompt contract.
 2. **DSL Compiler** (`queryCompiler.ts`) — maps the validated DSL to parameterized SQL templates only; no free-form SQL from the model.
 3. **SQL Validator** — a separate safety pass denies disallowed tokens and non-whitelisted identifiers even though SQL is compiler-produced.
 4. **DuckDB execution** — runs the validated query against your local warehouse.
 5. **Answer summarization** — the model produces a one-sentence answer from the evidence rows.
+
+Malformed JSON, schema errors, semantic errors, and compiler-rejected plans receive at most one model repair attempt. SQL safety or database execution failures never trigger model repair.
 
 ### Request
 
@@ -279,13 +281,14 @@ Optional fields: `timezone` (IANA string), `debug` (boolean, adds planner timing
 
 | Field | Description |
 |---|---|
+| `outcome` | `answered` or `no_data`; valid no-data queries remain successful `200` responses |
 | `answer` | Natural-language answer from the model |
 | `plan` | The structured DSL returned by the planner |
 | `sourceResolved` / `intentResolved` | The dataset and operation selected by the planner/compiler |
 | `sql` | The compiler-produced SQL that was executed |
 | `rows` | Up to 100 result rows |
 | `chart` | Optional chart-ready series `{ type, series: [{label, value}] }` |
-| `confidence` | Planner confidence score 0–1 |
+| `confidence` | Internal heuristic retained for diagnostics; it is not displayed as calibrated certainty |
 | `limitations` | Any caveats or planner assumptions |
 | `resolvedTimeRange` | The exact date range applied to the query |
 
@@ -306,6 +309,8 @@ Optional fields: `timezone` (IANA string), `debug` (boolean, adds planner timing
 - **Time window cap**: Maximum 366-day time window per query.
 - **Row limit cap**: Maximum 200 rows per query.
 - **Graceful fallback**: Unsupported questions return a clarifying limitations message and suggested rephrase rather than raw model output.
+- **Bounded repair**: Model-controlled plan failures permit one repair call; compiler safety and execution failures permit none.
+- **Private diagnostics**: `debug: true` adds categories, attempt counts, structured-output mode, and timings, but never raw questions, result rows, API keys, or full model responses.
 
 ### Time semantics
 
@@ -326,6 +331,10 @@ Calendar month/week boundaries are resolved server-side before SQL compilation:
 - Cross-source comparisons are not supported; each query targets one dataset.
 - Health events support list, count, latest, and day/week count trends. Care items support list, grouped count, due-window, and overdue queries.
 - Lab marker questions are not currently supported by the AI query endpoint; review lab results in the Labs and Summary views.
+
+### Model compatibility
+
+The AI Settings **Validate** action sends one representative semantic planner probe, which also checks connectivity. Models that pass the probe are reported as compatible. A failure produces a warning but does not block saving or use. Structured JSON Schema is treated as a capability: Ollama and compatible OpenAI/OpenRouter models use it, while other BYO endpoints may use prompt-only fallback. Use a fixed model rather than `openrouter/free` when measuring repeatability because the free router may select different models between calls.
 
 ## Experimental Store-Grounded Query Fallback
 

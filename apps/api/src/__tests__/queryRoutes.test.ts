@@ -17,6 +17,89 @@ beforeEach(() => {
 });
 
 describe("POST /api/query/ai domain sources", () => {
+  it("returns a typed misunderstanding after one bounded repair", async () => {
+    const { app } = queryApp([]);
+    callConfiguredModel
+      .mockResolvedValueOnce(modelText("not json"))
+      .mockResolvedValueOnce(modelText("still not json"));
+
+    const response = await request(app)
+      .post("/api/query/ai")
+      .send({ question: "Could you work this out for me?", debug: true });
+
+    expect(response.status).toBe(422);
+    expect(response.body).toMatchObject({
+      code: "QUERY_NOT_UNDERSTOOD",
+      diagnostics: { attempts: 2, repaired: true, failureCategory: "json" }
+    });
+    expect(callConfiguredModel).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(response.body)).not.toContain("still not json");
+  });
+
+  it("returns a typed model availability failure", async () => {
+    const { app } = queryApp([]);
+    callConfiguredModel.mockResolvedValueOnce({
+      ok: false,
+      provider: "ollama",
+      endpoint: "http://localhost",
+      model: "test",
+      timeoutMs: 100,
+      elapsedMs: 4,
+      error: "connection refused"
+    });
+
+    const response = await request(app).post("/api/query/ai").send({ question: "average heart rate" });
+
+    expect(response.status).toBe(502);
+    expect(response.body).toMatchObject({ code: "MODEL_UNAVAILABLE" });
+  });
+
+  it("returns a typed model timeout failure", async () => {
+    const { app } = queryApp([]);
+    callConfiguredModel.mockResolvedValueOnce({
+      ok: false,
+      provider: "ollama",
+      endpoint: "http://localhost",
+      model: "test",
+      timeoutMs: 100,
+      elapsedMs: 100,
+      error: "Model request timed out"
+    });
+
+    const response = await request(app).post("/api/query/ai").send({ question: "average heart rate" });
+
+    expect(response.status).toBe(504);
+    expect(response.body).toMatchObject({ code: "MODEL_TIMEOUT" });
+  });
+
+  it("returns an explicit successful no-data result", async () => {
+    const { app } = queryApp([]);
+    callConfiguredModel.mockResolvedValueOnce(modelText(JSON.stringify(metricPlan())));
+
+    const response = await request(app).post("/api/query/ai").send({ question: "average heart rate" });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ outcome: "no_data", rowCount: 0, rows: [] });
+    expect(callConfiguredModel).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not ask the model to repair an execution failure", async () => {
+    const { app, runActiveCompiledQuery } = queryApp([]);
+    runActiveCompiledQuery.mockRejectedValueOnce(new Error("database unavailable"));
+    callConfiguredModel.mockResolvedValueOnce(modelText(JSON.stringify(metricPlan())));
+
+    const response = await request(app)
+      .post("/api/query/ai")
+      .send({ question: "average heart rate", debug: true });
+
+    expect(response.status).toBe(500);
+    expect(response.body).toMatchObject({
+      code: "QUERY_EXECUTION_FAILED",
+      diagnostics: { attempts: 1, repaired: false, failureCategory: "execution" }
+    });
+    expect(callConfiguredModel).toHaveBeenCalledTimes(1);
+  });
+
   it("runs a health event timeseries and maps event counts to a chart", async () => {
     const { app, runActiveCompiledQuery } = queryApp([{ day: "2026-07-01", count: 2 }]);
     planThenFailSummary({
@@ -89,6 +172,31 @@ function queryApp(rows: Array<Record<string, unknown>>) {
   app.use(express.json());
   app.use("/api/query", makeQueryRoutes(manager));
   return { app, runActiveCompiledQuery };
+}
+
+function modelText(text: string) {
+  return {
+    ok: true,
+    provider: "ollama",
+    endpoint: "http://localhost",
+    model: "test",
+    timeoutMs: 100,
+    elapsedMs: 1,
+    text
+  };
+}
+
+function metricPlan() {
+  return {
+    intent: "aggregation",
+    metric: "heart_rate",
+    aggregation: "avg",
+    groupBy: null,
+    timeRange: { preset: "last_30d" },
+    sort: "desc",
+    limit: 1,
+    chartType: "none"
+  };
 }
 
 function planThenFailSummary(plan: Record<string, unknown>) {

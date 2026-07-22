@@ -132,7 +132,8 @@ async function apiErrorFromResponse(response: Response): Promise<ApiError> {
     parsed.success ? parsed.data.error : text || response.statusText || "API request failed.",
     response.status,
     parsed.success ? parsed.data.code : "HTTP_ERROR",
-    parsed.success ? parsed.data.correlationId ?? headerCorrelationId : headerCorrelationId
+    parsed.success ? parsed.data.correlationId ?? headerCorrelationId : headerCorrelationId,
+    parsed.success ? parsed.data : undefined
   );
 }
 

@@ -1,14 +1,14 @@
 import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import type { AppBootstrap, BiologicalAgeReport, CloudAiConsent } from "@vitana/shared";
-import { api, type AiQueryResult, type LlmConfig } from "../../api.js";
+import { aiQueryErrorResponseSchema, type AppBootstrap, type BiologicalAgeReport, type CloudAiConsent } from "@vitana/shared";
+import { api, ApiError, type AiQueryResult, type LlmConfig } from "../../api.js";
 import { BiologicalAgePage } from "../../pages/BiologicalAgePage.js";
-import { QueryPage } from "../../pages/QueryPage.js";
+import { QueryPage, type QueryFailure } from "../../pages/QueryPage.js";
 import type { InsightsTab } from "../../types.js";
 
-type RemoteState<T> = {
+type RemoteState<T, TError = string> = {
   data?: T;
   busy: boolean;
-  error?: string;
+  error?: TError;
 };
 
 export function InsightsRoute({
@@ -37,7 +37,7 @@ export function InsightsRoute({
     document.getElementById(`insight-tab-${resolvedTab}`)?.focus();
   }
   const [biologicalAge, setBiologicalAge] = useState<RemoteState<BiologicalAgeReport>>({ busy: false });
-  const [query, setQuery] = useState<RemoteState<AiQueryResult>>({ busy: false });
+  const [query, setQuery] = useState<RemoteState<AiQueryResult, QueryFailure>>({ busy: false });
   const [question, setQuestion] = useState("");
   const [llmConfig, setLlmConfig] = useState<LlmConfig>();
   const [consentBusy, setConsentBusy] = useState(false);
@@ -72,22 +72,22 @@ export function InsightsRoute({
     if (llmConfig?.provider === "openai" && !cloudEnabled) {
       setQuery({
         busy: false,
-        error: "Cloud model prompts are disabled. Enable cloud prompts in the consent panel to run this query."
+        error: {
+          code: "CLOUD_CONSENT_REQUIRED",
+          message: "Cloud model prompts are disabled. Open provider details to enable cloud prompts."
+        }
       });
       return;
     }
     setQuery({ busy: true });
     try {
-      const data = await api.query.ai(prompt, { timezone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+      const data = await api.query.ai(prompt, {
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        debug: true
+      });
       setQuery({ data, busy: false });
     } catch (error) {
-      const normalized = normalizeApiError(error instanceof Error ? error.message : "Query failed.");
-      setQuery({
-        busy: false,
-        error: normalized.code === "CLOUD_CONSENT_REQUIRED"
-          ? "Cloud consent is required before off-device prompt processing. Use the consent panel above to enable cloud prompts."
-          : normalized.message || "Query failed."
-      });
+      setQuery({ busy: false, error: queryFailureFrom(error) });
     }
   }
 
@@ -106,7 +106,7 @@ export function InsightsRoute({
     } catch (error) {
       setQuery((current) => ({
         ...current,
-        error: error instanceof Error ? normalizeApiError(error.message).message : "Could not update cloud consent."
+        error: { message: error instanceof Error ? error.message : "Could not update cloud consent." }
       }));
     } finally {
       setConsentBusy(false);
@@ -174,11 +174,27 @@ export function InsightsRoute({
   );
 }
 
-function normalizeApiError(raw: string): { code?: string; message: string } {
-  try {
-    const parsed = JSON.parse(raw) as { code?: string; error?: string };
-    return { code: parsed.code, message: parsed.error ?? raw };
-  } catch {
-    return { message: raw };
+function queryFailureFrom(error: unknown): QueryFailure {
+  if (error instanceof ApiError) {
+    const parsed = aiQueryErrorResponseSchema.safeParse(error.details);
+    if (parsed.success) {
+      return {
+        message: parsed.data.error,
+        code: parsed.data.code,
+        suggestions: parsed.data.suggestions,
+        suggestedRephrase: parsed.data.suggestedRephrase,
+        diagnostics: parsed.data.diagnostics,
+        correlationId: parsed.data.correlationId ?? error.correlationId
+      };
+    }
+    if (error.code === "CLOUD_CONSENT_REQUIRED") {
+      return {
+        code: error.code,
+        message: "Cloud consent is required before off-device prompt processing. Open provider details to enable cloud prompts.",
+        correlationId: error.correlationId
+      };
+    }
+    return { message: error.message, code: error.code, correlationId: error.correlationId };
   }
+  return { message: error instanceof Error ? error.message : "Query failed." };
 }
