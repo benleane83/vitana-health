@@ -78,3 +78,34 @@ test("uses safe errors and installs only after graceful shutdown", async () => {
   await scheduled.pop()();
   assert.deepEqual(order, ["shutdown", "install"]);
 });
+
+test("allows retrying installation after graceful shutdown fails", async () => {
+  const { updater, scheduled } = fixture();
+  let installAttempts = 0;
+  updater.quitAndInstall = () => { installAttempts++; };
+
+  let prepareAttempts = 0;
+  const prepareToInstall = async () => {
+    prepareAttempts++;
+    if (prepareAttempts === 1) throw new Error("shutdown failed");
+  };
+  const retryController = createDesktopUpdaterController({
+    app: { isPackaged: true, getVersion: () => "1.2.3" },
+    updater,
+    diagnostics: { info() {}, error() {} },
+    channel: "lan",
+    prepareToInstall,
+    schedule: (callback) => scheduled.push(callback)
+  });
+  updater.emit("update-downloaded", { version: "1.2.4" });
+
+  await retryController.restartToInstall();
+  await scheduled.pop()();
+  assert.equal(retryController.getState().status, "downloaded");
+  assert.match(retryController.getState().error, /Try again/);
+
+  await retryController.restartToInstall();
+  await scheduled.pop()();
+  assert.equal(prepareAttempts, 2);
+  assert.equal(installAttempts, 1);
+});

@@ -64,46 +64,46 @@ function Test-HealthEndpoint([string]$Uri) {
   }
 }
 
+function Invoke-DesktopApi([string]$Method, [string]$Path, $Body, [Microsoft.PowerShell.Commands.WebRequestSession]$Session) {
+  $root = $activeHealthUri.Substring(0, $activeHealthUri.Length - "/api/health".Length)
+  $parameters = @{
+    Uri = "$root$Path"
+    Method = $Method
+    WebSession = $Session
+    ContentType = "application/json"
+  }
+  if ($activeHealthUri.StartsWith("https://")) {
+    $parameters.SkipCertificateCheck = $true
+  }
+  if ($null -ne $Body) {
+    $parameters.Body = ($Body | ConvertTo-Json -Compress)
+  }
+  Invoke-RestMethod @parameters
+}
+
+function Wait-ForHealthStop {
+  for ($elapsedSeconds = 0; $elapsedSeconds -lt 30; $elapsedSeconds++) {
+    if (-not (Test-HealthEndpoint $activeHealthUri)) {
+      return
+    }
+    Start-Sleep -Seconds 1
+  }
+  throw "The desktop health endpoint remained available after background mode was disabled and the window closed."
+}
+
+function Get-LoginStartupCommand {
+  $runKey = Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -ErrorAction SilentlyContinue
+  return @($runKey.PSObject.Properties.Value | Where-Object {
+    $_ -is [string] -and $_ -like "*$applicationName*"
+  }) | Select-Object -First 1
+}
+
 function Wait-ForHealth {
   for ($elapsedSeconds = 0; $elapsedSeconds -lt $effectiveHealthTimeoutSeconds; $elapsedSeconds++) {
     foreach ($healthUri in $healthUris) {
       if (Test-HealthEndpoint $healthUri) {
         $script:activeHealthUri = $healthUri
         return
-      }
-
-      function Invoke-DesktopApi([string]$Method, [string]$Path, $Body, [Microsoft.PowerShell.Commands.WebRequestSession]$Session) {
-        $root = $activeHealthUri.Substring(0, $activeHealthUri.Length - "/api/health".Length)
-        $parameters = @{
-          Uri = "$root$Path"
-          Method = $Method
-          WebSession = $Session
-          ContentType = "application/json"
-        }
-        if ($activeHealthUri.StartsWith("https://")) {
-          $parameters.SkipCertificateCheck = $true
-        }
-        if ($null -ne $Body) {
-          $parameters.Body = ($Body | ConvertTo-Json -Compress)
-        }
-        Invoke-RestMethod @parameters
-      }
-
-      function Wait-ForHealthStop {
-        for ($elapsedSeconds = 0; $elapsedSeconds -lt 30; $elapsedSeconds++) {
-          if (-not (Test-HealthEndpoint $activeHealthUri)) {
-            return
-          }
-          Start-Sleep -Seconds 1
-        }
-        throw "The desktop health endpoint remained available after background mode was disabled and the window closed."
-      }
-
-      function Get-LoginStartupCommand {
-        $runKey = Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -ErrorAction SilentlyContinue
-        return @($runKey.PSObject.Properties.Value | Where-Object {
-          $_ -is [string] -and $_ -like "*$applicationName*"
-        }) | Select-Object -First 1
       }
     }
     Start-Sleep -Seconds 1

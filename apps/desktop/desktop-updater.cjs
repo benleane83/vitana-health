@@ -129,7 +129,7 @@ function createDesktopUpdaterController({
         installStarted = false;
         diagnostics.error("Desktop update restart failed", diagnosticError(error));
         update({
-          status: "error",
+          status: "downloaded",
           error: "Vitana could not close safely to install the update. Try again."
         });
       }
