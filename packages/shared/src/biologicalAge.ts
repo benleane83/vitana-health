@@ -40,10 +40,10 @@ const plausibleRanges: Record<PhenoAgeCode, readonly [number, number]> = {
 };
 
 const phenoAgeCitation =
-  "Levine ME et al. An epigenetic biomarker of aging for lifespan and healthspan. Aging. 2018;10(4):573-591. doi:10.18632/aging.101414.";
+  "Liu Z et al. A new aging measure captures morbidity and mortality risk across diverse subpopulations. PLOS Medicine. 2018;15(12):e1002718.";
 
 const disclaimer =
-  "This wellness estimate is not a diagnosis, prognosis, or medical advice. Results depend on laboratory methods and complete, contemporaneous inputs; discuss questions or concerning results with a qualified clinician.";
+  "This is an informational wellness estimate, not medical advice, a diagnosis, a prognosis, or a prediction of lifespan. Results depend on complete, accurate lab data and can be affected by temporary health factors, laboratory methods, and collection dates. Discuss any concerns with a qualified clinician.";
 
 export function calculateBiologicalAge(store: BiologicalAgeSource, generatedAt = new Date().toISOString()): BiologicalAgeReport {
   if (store.profile.subjectKind && store.profile.subjectKind !== "adult") {
@@ -78,7 +78,7 @@ function calculatePhenoAge(store: BiologicalAgeSource, generatedAt: string): Bio
     id: "phenoage-levine-2018",
     name: "PhenoAge",
     version: "Levine 2018",
-    methodology: "Published mortality-score transformation using chronological age and nine laboratory biomarkers.",
+    methodology: "A published wellness measure that combines chronological age with nine routine blood markers.",
     citation: phenoAgeCitation,
     chronologicalAge,
     chronologicalAgeDetail: chronologicalAge === undefined
@@ -204,10 +204,7 @@ function ageForBirthDate(birthDate: string, date: string): number | undefined {
   const birth = new Date(`${birthDate}T00:00:00.000Z`);
   const reference = new Date(date);
   if (Number.isNaN(birth.getTime()) || Number.isNaN(reference.getTime()) || birth > reference) return undefined;
-  let age = reference.getUTCFullYear() - birth.getUTCFullYear();
-  if (
-    reference.getUTCMonth() < birth.getUTCMonth() ||
-    (reference.getUTCMonth() === birth.getUTCMonth() && reference.getUTCDate() < birth.getUTCDate())
-  ) age -= 1;
-  return Number.isFinite(age) && age >= 18 && age <= 120 ? age : undefined;
+  const age = (reference.getTime() - birth.getTime()) / (365.2425 * 24 * 60 * 60 * 1000);
+  if (!Number.isFinite(age) || age < 18 || age > 120) return undefined;
+  return Math.round(age * 10) / 10;
 }

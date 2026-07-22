@@ -1,5 +1,16 @@
-import type { BiologicalAgeReport } from "@vitana/shared";
-import { formatTimestamp } from "../utils.js";
+import type { BiologicalAgeInput, BiologicalAgeReport } from "@vitana/shared";
+
+const inputCategories: Record<string, string> = {
+  albumin: "Liver function / metabolic panel",
+  creatinine: "Kidney function / metabolic panel",
+  glucose: "Glucose / metabolic panel",
+  high_sensitivity_c_reactive_protein: "Inflammation",
+  lymphocyte_percentage: "Complete blood count",
+  mean_corpuscular_volume: "Complete blood count",
+  red_cell_distribution_width: "Complete blood count",
+  alkaline_phosphatase: "Liver function / metabolic panel",
+  white_blood_cell_count: "Complete blood count"
+};
 
 function formatAge(value: number | undefined): string {
   return value === undefined ? "—" : `${value.toFixed(1)} years`;
@@ -9,6 +20,22 @@ function describeAgeDifference(value: number | undefined): string {
   if (value === undefined) return "The difference could not be calculated.";
   if (Math.abs(value) < 0.05) return "The estimate is aligned with chronological age.";
   return `The estimate is ${Math.abs(value).toFixed(1)} years ${value < 0 ? "below" : "above"} chronological age.`;
+}
+
+function inputStatus(input: BiologicalAgeInput): "Used" | "Missing" | "Unusable" {
+  if (input.status === "used") return "Used";
+  return input.status === "missing" ? "Missing" : "Unusable";
+}
+
+function savedValue(input: BiologicalAgeInput): string {
+  if (input.status === "missing") return "No saved result found.";
+  if (input.value === undefined) return input.detail ?? "No usable result found.";
+  return `${input.value} ${input.unit ?? ""}`.trim();
+}
+
+function addResultHref(input: BiologicalAgeInput): string {
+  const query = new URLSearchParams({ group: "Lab", marker: input.code });
+  return `/import/manual?${query.toString()}`;
 }
 
 export function BiologicalAgePage({
@@ -22,65 +49,91 @@ export function BiologicalAgePage({
 }) {
   return (
     <section className="panel summary-panel biological-age-page">
-      <div className="summary-header">
+      <header className="summary-header">
         <div>
           <h2>Biological Age</h2>
-          <p>A deterministic wellness estimate based on chronological age and selected laboratory markers.</p>
+          <p>A wellness estimate based on your chronological age and selected laboratory markers.</p>
         </div>
-      </div>
+      </header>
       <div aria-live="polite" aria-atomic="true">
         {loading ? <p className="empty" role="status">Calculating biological age…</p> : null}
         {error ? <p className="empty" role="alert">{error}</p> : null}
       </div>
-      {report ? <p className="biological-age-disclaimer">{report.disclaimer}</p> : null}
+
       {report?.models.map((model) => {
-        const usedInputCount = model.inputs.filter((input) => input.status === "used").length;
-        const evidenceSummary = model.inputs.length > 0
-          ? `${usedInputCount} of ${model.inputs.length} required markers are usable for this estimate.`
-          : model.status === "available"
-            ? "The required evidence is available for this estimate."
-            : "Required evidence is not yet available for this estimate.";
+        const incompleteInputs = model.inputs.filter((input) => input.status !== "used");
+        const statusLabel = model.status === "available"
+          ? "Ready"
+          : model.status === "incomplete"
+            ? "Needs more data"
+            : "Not available";
 
         return (
-        <section className="summary-category biological-age-model" key={model.id}>
-          <div className="summary-category-toggle">
+          <section className="summary-category biological-age-model" key={model.id}>
             <div className="biological-age-model-heading">
-              <h3>{model.name} <span className="summary-readonly">({model.version})</span></h3>
+              <h3>{model.name}</h3>
               <p>{model.methodology}</p>
+              <a
+                className="biological-age-research-link"
+                href="https://journals.plos.org/plosmedicine/article?id=10.1371/journal.pmed.1002718"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Read the scientific research
+              </a>
             </div>
-            <span className={`biological-age-readiness ${model.status === "available" ? "is-ready" : "needs-data"}`}>
-              {model.status === "available" ? "Ready to review" : model.status === "incomplete" ? "Needs more data" : "Not available"}
-            </span>
-          </div>
 
-          <div className="biological-age-evidence" aria-labelledby={`${model.id}-evidence-heading`}>
-            <div>
-              <h4 id={`${model.id}-evidence-heading`}>Evidence readiness</h4>
-              <p>{evidenceSummary}</p>
-            </div>
-            <dl className="biological-age-evidence-facts">
-              <div>
-                <dt>Lab evidence</dt>
-                <dd>{model.panelCollectedAt ? formatTimestamp(model.panelCollectedAt) : "No usable panel date"}</dd>
+            <section className="biological-age-inputs" aria-labelledby={`${model.id}-inputs-heading`}>
+              <div className="biological-age-inputs-heading">
+                <h4 id={`${model.id}-inputs-heading`}>Review required inputs ({model.inputs.length})</h4>
+                <span className={`biological-age-readiness ${model.status === "available" ? "is-ready" : "needs-data"}`}>
+                  {statusLabel}
+                </span>
               </div>
-              <div>
-                <dt>Required markers</dt>
-                <dd>{model.inputs.length > 0 ? `${usedInputCount} usable / ${model.inputs.length} required` : "Not reported"}</dd>
+              {incompleteInputs.length > 0 ? (
+                <p className="biological-age-missing-summary">
+                  Missing or unusable ({incompleteInputs.length}): {incompleteInputs.map((input) => input.label).join(", ")}.
+                </p>
+              ) : null}
+              <div className="query-table-scroll">
+                <table>
+                  <caption className="sr-only">{model.name} required inputs</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Marker</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">Latest value</th>
+                      <th scope="col">Required unit</th>
+                      <th scope="col">Blood test category</th>
+                      <th scope="col">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {model.inputs.map((input) => (
+                      <tr key={input.code}>
+                        <td data-label="Marker">{input.label}</td>
+                        <td data-label="Status">
+                          <span className={`biological-age-input-status is-${input.status}`}>
+                            {inputStatus(input)}
+                          </span>
+                        </td>
+                        <td data-label="Current / selected value">{savedValue(input)}</td>
+                        <td data-label="Required unit">{input.normalizedUnit}</td>
+                        <td data-label="Blood test category">{inputCategories[input.code] ?? "Lab results"}</td>
+                        <td data-label="Action">
+                          {input.status === "used" ? "—" : (
+                            <a className="biological-age-add-result" href={addResultHref(input)}>
+                              Add result
+                            </a>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <div>
-                <dt>Age basis</dt>
-                <dd>{model.chronologicalAgeDetail ?? "Chronological age is not available."}</dd>
-              </div>
-            </dl>
-            {model.limitations.length > 0 ? (
-              <div className="biological-age-context">
-                <strong>Important context</strong>
-                <ul>{model.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}</ul>
-              </div>
-            ) : null}
-          </div>
+            </section>
 
-          <div className="summary-detail-table biological-age-details">
             {model.status === "available" ? (
               <section className="biological-age-result" aria-labelledby={`${model.id}-result-heading`}>
                 <h4 id={`${model.id}-result-heading`}>What the estimate shows</h4>
@@ -89,37 +142,18 @@ export function BiologicalAgePage({
                   <div><span>Chronological age</span><strong>{formatAge(model.chronologicalAge)}</strong></div>
                   <div><span>Estimated biological age</span><strong>{formatAge(model.biologicalAge)}</strong></div>
                 </div>
-                <p className="summary-detail-hint">The difference describes this model output; it is not a diagnosis, prognosis, or measure of overall health.</p>
               </section>
             ) : null}
-            {model.inputs.length > 0 ? (
-              <details className="biological-age-inputs" open={model.status !== "available"}>
-                <summary>Review required inputs ({model.inputs.length})</summary>
-                <div className="query-table-scroll">
-                  <table>
-                    <caption className="sr-only">{model.name} required inputs</caption>
-                    <thead><tr><th scope="col">Marker</th><th scope="col">Status</th><th scope="col">Selected value</th><th scope="col">Required unit</th></tr></thead>
-                    <tbody>
-                      {model.inputs.map((input) => (
-                        <tr key={input.code}>
-                          <td data-label="Marker">{input.label}</td>
-                          <td data-label="Status">{input.status === "used" ? "Used" : input.status === "missing" ? "Missing" : "Invalid"}</td>
-                          <td data-label="Selected value">{input.value === undefined ? input.detail ?? "—" : `${input.value} ${input.unit ?? ""}`}</td>
-                          <td data-label="Required unit">{input.normalizedUnit}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </details>
-            ) : null}
-            <div className="biological-age-method">
-              <h4>Method reference</h4>
-              <p className="summary-detail-hint">{model.citation}</p>
-            </div>
-          </div>
+          </section>
+        );
+      })}
+
+      {report ? (
+        <section className="biological-age-disclaimer" aria-labelledby="biological-age-disclaimer-heading">
+          <h3 id="biological-age-disclaimer-heading">Important information</h3>
+          <p>{report.disclaimer}</p>
         </section>
-      );})}
+      ) : null}
     </section>
   );
 }

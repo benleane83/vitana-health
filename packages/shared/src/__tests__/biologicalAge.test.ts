@@ -47,13 +47,14 @@ describe("calculateBiologicalAge", () => {
     expect(result.inputs.find((input) => input.code === "glucose")?.normalizedValue).toBeCloseTo(5.55, 3);
   });
 
-  it("uses the full birth date at the selected panel date", () => {
+  it("uses a one-decimal chronological age at the selected panel date", () => {
     const store = makeStore();
-    store.profile.birthDate = "1976-06-02";
+    store.profile.birthDate = "1976-12-01";
 
     const result = calculateBiologicalAge(store, "2026-06-02T00:00:00Z").models[0];
 
-    expect(result.chronologicalAge).toBe(49);
+    expect(result.chronologicalAge).toBe(49.5);
+    expect(result.biologicalAge).toBeCloseTo(44.21, 2);
   });
 
   it("uses the most recent present biomarker values even across separate panels", () => {
