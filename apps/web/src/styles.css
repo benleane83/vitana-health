@@ -1423,9 +1423,28 @@ h3 {
 
 .summary-delete-all {
   flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0.45rem 0.65rem;
   background: transparent;
-  border-color: oklch(70% 0.18 35 / 0.36);
+  border-color: transparent;
   color: var(--danger);
+  font-size: 0.88rem;
+  font-weight: 650;
+  transform: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .summary-delete-all:hover:not(:disabled) {
+    border-color: oklch(70% 0.18 35 / 0.28);
+    background: oklch(70% 0.18 35 / 0.09);
+    color: var(--danger);
+    transform: none;
+  }
+}
+
+.summary-delete-all:active:not(:disabled) {
+  background: oklch(70% 0.18 35 / 0.14);
+  transform: none;
 }
 
 .summary-detail-pagination {
