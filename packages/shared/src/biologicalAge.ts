@@ -204,10 +204,7 @@ function ageForBirthDate(birthDate: string, date: string): number | undefined {
   const birth = new Date(`${birthDate}T00:00:00.000Z`);
   const reference = new Date(date);
   if (Number.isNaN(birth.getTime()) || Number.isNaN(reference.getTime()) || birth > reference) return undefined;
-  let age = reference.getUTCFullYear() - birth.getUTCFullYear();
-  if (
-    reference.getUTCMonth() < birth.getUTCMonth() ||
-    (reference.getUTCMonth() === birth.getUTCMonth() && reference.getUTCDate() < birth.getUTCDate())
-  ) age -= 1;
-  return Number.isFinite(age) && age >= 18 && age <= 120 ? age : undefined;
+  const age = (reference.getTime() - birth.getTime()) / (365.2425 * 24 * 60 * 60 * 1000);
+  if (!Number.isFinite(age) || age < 18 || age > 120) return undefined;
+  return Math.round(age * 10) / 10;
 }

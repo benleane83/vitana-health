@@ -102,7 +102,7 @@ export function BiologicalAgePage({
                     <tr>
                       <th scope="col">Marker</th>
                       <th scope="col">Status</th>
-                      <th scope="col">Current / selected value</th>
+                      <th scope="col">Latest value</th>
                       <th scope="col">Required unit</th>
                       <th scope="col">Blood test category</th>
                       <th scope="col">Action</th>
