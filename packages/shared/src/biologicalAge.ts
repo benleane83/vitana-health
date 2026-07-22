@@ -40,10 +40,10 @@ const plausibleRanges: Record<PhenoAgeCode, readonly [number, number]> = {
 };
 
 const phenoAgeCitation =
-  "Levine ME et al. An epigenetic biomarker of aging for lifespan and healthspan. Aging. 2018;10(4):573-591. doi:10.18632/aging.101414.";
+  "Liu Z et al. A new aging measure captures morbidity and mortality risk across diverse subpopulations. PLOS Medicine. 2018;15(12):e1002718.";
 
 const disclaimer =
-  "This wellness estimate is not a diagnosis, prognosis, or medical advice. Results depend on laboratory methods and complete, contemporaneous inputs; discuss questions or concerning results with a qualified clinician.";
+  "This is an informational wellness estimate, not medical advice, a diagnosis, a prognosis, or a prediction of lifespan. Results depend on complete, accurate lab data and can be affected by temporary health factors, laboratory methods, and collection dates. Discuss any concerns with a qualified clinician.";
 
 export function calculateBiologicalAge(store: BiologicalAgeSource, generatedAt = new Date().toISOString()): BiologicalAgeReport {
   if (store.profile.subjectKind && store.profile.subjectKind !== "adult") {
@@ -78,7 +78,7 @@ function calculatePhenoAge(store: BiologicalAgeSource, generatedAt: string): Bio
     id: "phenoage-levine-2018",
     name: "PhenoAge",
     version: "Levine 2018",
-    methodology: "Published mortality-score transformation using chronological age and nine laboratory biomarkers.",
+    methodology: "A published wellness measure that combines chronological age with nine routine blood markers.",
     citation: phenoAgeCitation,
     chronologicalAge,
     chronologicalAgeDetail: chronologicalAge === undefined
