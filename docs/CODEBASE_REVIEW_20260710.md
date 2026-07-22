@@ -220,15 +220,15 @@ Centralized auth, rate limiting, error handling, and correlation-ID middleware r
 
 `.env.example` now documents every supported environment variable with descriptions, defaults, and generation hints. `apps/api/src/env.ts` validates and types the environment at startup using Zod. `docs/API_CONTRACT.md` provides a versioned reference for all endpoints, stable error codes, auth requirements, and cross-platform quick-start instructions (macOS/Linux, Windows CMD, PowerShell).
 
-### Open-source and product readiness
+### Source availability and product readiness
 
-#### [DONE] P0 — The repository has no open-source license
+#### [DONE] P0 — The repository has no explicit license
 
-GNU Affero General Public License v3.0 only (`AGPL-3.0-only`) was selected to support transparency, community copyleft, and protection against closed commercial forks. A root `LICENSE` file now contains the full AGPL-3.0 text, and `"license": "AGPL-3.0-only"` has been added to all workspace `package.json` files. A third-party license review is still advisable before a stable public release.
+Elastic License 2.0 (`Elastic-2.0`) was selected to support public source inspection while protecting hosted-service and license-key functionality. A root `LICENSE` file contains the full Elastic-2.0 text, and `"license": "Elastic-2.0"` is present in all workspace `package.json` files. Elastic-2.0 is source-available rather than OSI-approved Open Source. A third-party license review is still advisable before a stable public release.
 
 #### [DONE] P1 — Community and security documentation are missing
 
-`SECURITY.md` now documents supported versions, coordinated responsible disclosure (90-day window), the local-account threat model, in-scope and out-of-scope attack surfaces, health-data privacy notes, non-medical-use boundaries, and backup/recovery guidance. `CONTRIBUTING.md` covers the AGPL-3.0-only license (no CLA required), code of conduct, accepted contribution types, non-medical-use boundaries, development setup, PR process, and the support/release policy.
+`SECURITY.md` now documents supported versions, coordinated responsible disclosure (90-day window), the local-account threat model, in-scope and out-of-scope attack surfaces, health-data privacy notes, non-medical-use boundaries, and backup/recovery guidance. `CONTRIBUTING.md` covers the Elastic-2.0 license, the current restriction on unsolicited contributions, code of conduct, non-medical-use boundaries, development setup, approved PR process, and the support/release policy.
 
 #### [DONE] P2 — Product boundaries and deprecations need explicit decisions
 
@@ -238,8 +238,8 @@ Four overlapping query endpoints remain without lifecycle/deprecation annotation
 
 ### Pending-order items already completed
 
-- [DONE] Open-source license: `AGPL-3.0-only` selected; root `LICENSE` and SPDX metadata in all `package.json` files.
-- [DONE] Project stewardship documentation: `SECURITY.md` (threat model, responsible disclosure, backup guidance, non-medical-use) and `CONTRIBUTING.md` (AGPL-3.0-only, no CLA, code of conduct, PR process, safety boundaries) added.
+- [DONE] Source-available license: `Elastic-2.0` selected; root `LICENSE` and SPDX metadata in all `package.json` files.
+- [DONE] Project stewardship documentation: `SECURITY.md` (threat model, responsible disclosure, backup guidance, non-medical-use) and `CONTRIBUTING.md` (Elastic-2.0, contribution intake policy, code of conduct, approved PR process, safety boundaries) added.
 - [DONE] Web accessibility core flows: interaction semantics, accessible dialogs/destructive confirmations, and comprehensive live announcements.
 - [DONE] Safe operations and diagnostics: minimized public errors/health output plus redacted structured observability with correlation IDs.
 - [DONE] Environment and lifecycle documentation: `.env.example` and `docs/API_CONTRACT.md` now in place.

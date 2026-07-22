@@ -4,30 +4,38 @@ Thank you for your interest in contributing. This document covers everything you
 
 ## License and copyright
 
-This project is licensed under the **GNU Affero General Public License v3.0 only** (`AGPL-3.0-only`). See [LICENSE](LICENSE) for the full text.
+This project is source-available under the **Elastic License 2.0**
+(`Elastic-2.0`). See [LICENSE](LICENSE) for the full terms. Elastic-2.0 is not an
+Open Source license under the Open Source Initiative definition.
 
-By submitting a contribution you confirm that:
+The project is not currently accepting unsolicited code or documentation
+contributions. This keeps copyright ownership and future licensing options
+clear while the product is under active development.
 
-1. You wrote the contribution yourself, or have the right to submit it under the AGPL-3.0-only license.
-2. Your contribution is licensed to the project under AGPL-3.0-only.
-3. You understand that AGPL-3.0-only is a strong copyleft license — derivative works and modified versions that are run over a network must also be released under the same license.
+Do not open a pull request unless the maintainer has agreed to the proposed work
+and its contribution terms in writing. Approval to discuss or implement a
+change does not by itself transfer copyright or grant the project relicensing
+rights. Unsolicited pull requests will not be merged.
 
-**No Contributor License Agreement (CLA) is required.** The AGPL-3.0-only license covers all contributions automatically.
+Issue reports, feature suggestions, and other feedback remain welcome. Security
+vulnerabilities must use the private process in [SECURITY.md](SECURITY.md).
 
 ## Code of conduct
 
-This project follows basic open-source norms: be respectful, assume good faith, and keep discussion focused on the work. Harassment, personal attacks, and discriminatory language are not tolerated. Violations can be reported to the maintainer (see [SECURITY.md](SECURITY.md) for contact details).
+This project follows basic community norms: be respectful, assume good faith, and keep discussion focused on the work. Harassment, personal attacks, and discriminatory language are not tolerated. Violations can be reported to the maintainer (see [SECURITY.md](SECURITY.md) for contact details).
 
-## What kinds of contributions are welcome?
+## What kinds of feedback are welcome?
 
-- Bug fixes and correctness improvements.
-- Security fixes (please follow the [responsible disclosure process](SECURITY.md) for vulnerabilities before opening a PR).
-- Accessibility improvements (the project targets WCAG AA).
-- Performance and reliability improvements in line with the existing architecture.
-- Documentation fixes and improvements.
-- Test coverage for untested code paths.
+- Reproducible bug reports and correctness issues.
+- Security reports submitted through the [responsible disclosure process](SECURITY.md).
+- Accessibility findings (the project targets WCAG AA).
+- Performance and reliability observations.
+- Documentation errors and unclear instructions.
+- Focused feature suggestions consistent with the product scope.
 
-**Please open an issue or start a discussion before beginning significant new features.** The project has a deliberate local-first, multi-profile, privacy-first scope, and substantial new features should be validated against that direction first.
+The project has a deliberate local-first, multi-profile, privacy-first scope.
+Please start with an issue or discussion rather than implementing a proposed
+change.
 
 ## Non-medical use boundaries
 
@@ -107,13 +115,16 @@ Core and desktop tests run in the regular CI workflow. Integration tests run on 
 
 See [`.env.example`](.env.example) for environment variable documentation, and [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md) for the API reference.
 
-## Submitting a pull request
+## Approved pull requests
+
+These steps apply only after the maintainer has approved the work and confirmed
+the required contribution terms in writing:
 
 1. **Fork** the repository and create a branch from `main`.
 2. **Write or update tests** for any behaviour you change. Run `npm test` and the integration or durability suite when your change touches those boundaries.
 3. **Type-check** before submitting: `npm run typecheck`.
 4. **Keep commits focused.** One logical change per commit makes review easier.
-5. **Describe what and why** in the PR description, not just what changed. Link any related issues.
+5. **Describe what and why** in the PR description, not just what changed. Link the approval discussion and any related issues.
 6. Open the PR against `main`.
 
 CI will run type-checking, tests, and a dependency security audit automatically. PRs are not merged until all checks pass.

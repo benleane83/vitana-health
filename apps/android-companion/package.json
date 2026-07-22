@@ -1,7 +1,7 @@
 {
   "name": "@vitana/android-companion",
   "version": "1.0.0",
-  "license": "AGPL-3.0-only",
+  "license": "Elastic-2.0",
   "main": "index.ts",
   "dependencies": {
     "@expo/metro-runtime": "57.0.3",

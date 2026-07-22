@@ -1,7 +1,7 @@
 {
   "name": "@vitana/web",
   "version": "0.1.0",
-  "license": "AGPL-3.0-only",
+  "license": "Elastic-2.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",

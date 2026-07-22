@@ -1,7 +1,7 @@
 {
   "name": "vitana",
   "version": "0.1.0",
-  "license": "AGPL-3.0-only",
+  "license": "Elastic-2.0",
   "private": true,
   "type": "module",
   "packageManager": "npm@10.9.2",

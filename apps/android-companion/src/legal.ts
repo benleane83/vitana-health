@@ -1,4 +1,6 @@
-Elastic License 2.0
+export const SOFTWARE_COPYRIGHT = "Copyright 2026 Ben Leane.";
+
+export const ELASTIC_LICENSE_2_0_TEXT = `Elastic License 2.0
 
 URL: https://www.elastic.co/licensing/elastic-license
 
@@ -90,4 +92,8 @@ these terms.
 
 **use** means anything you do with the software requiring one of your licenses.
 
-**trademark** means trademarks, service marks, and similar rights.
+**trademark** means trademarks, service marks, and similar rights.`;
+
+export const ELASTIC_LICENSE_2_0_DISPLAY_TEXT = ELASTIC_LICENSE_2_0_TEXT
+  .replace(/^## /gm, "")
+  .replace(/\*/g, "");

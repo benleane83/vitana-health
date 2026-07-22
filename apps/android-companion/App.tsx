@@ -1,4 +1,4 @@
-import { Alert, Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator, type NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -7,6 +7,7 @@ import { StatusBar } from "expo-status-bar";
 import { ChartNoAxesColumnIncreasing, HeartPulse, Home, MonitorSmartphone, Plus } from "lucide-react-native";
 import { MobileApiProvider, useMobileApi } from "./src/MobileApiProvider";
 import { EntitlementProvider } from "./src/EntitlementProvider";
+import { ELASTIC_LICENSE_2_0_DISPLAY_TEXT, SOFTWARE_COPYRIGHT } from "./src/legal";
 import { PairScreen } from "./src/PairScreen";
 import type { RootStackParamList, TabParamList } from "./src/navigationTypes";
 import { DashboardScreen } from "./src/screens/DashboardScreen";
@@ -30,6 +31,7 @@ export default function App() {
               <Stack.Screen name="Main" component={MainTabs} options={{ headerShown: false }} />
               <Stack.Screen name="Pair" component={PairRoute} options={{ presentation: "modal", title: "Pair this phone" }} />
               <Stack.Screen name="Connection" component={ConnectionScreen} options={{ presentation: "modal", title: "Connection" }} />
+              <Stack.Screen name="License" component={LicenseScreen} options={{ title: "Software license" }} />
               <Stack.Screen
                 name="TrackDetail"
                 component={TrackDetailScreen}
@@ -197,6 +199,7 @@ function ConnectionScreen({ navigation }: NativeStackScreenProps<RootStackParamL
           ]
         )}>Reset local data</Button>
       ) : null}
+      <Button secondary onPress={() => navigation.navigate("License")}>Software license</Button>
       <Message
         title={demoMode ? "Your connection is unchanged" : "Local-first connection"}
         detail={demoMode
@@ -205,6 +208,18 @@ function ConnectionScreen({ navigation }: NativeStackScreenProps<RootStackParamL
             ? "Health data is kept in a SQLCipher database protected by a device-backed key. Pairing with a PC does not upload it."
             : "Health data is fetched only while your paired PC is reachable and is not cached on this phone."}
       />
+    </Screen>
+  );
+}
+
+function LicenseScreen() {
+  return (
+    <Screen>
+      <ScrollView contentContainerStyle={styles.licenseContent}>
+        <Text style={styles.licenseCopyright} selectable>{SOFTWARE_COPYRIGHT}</Text>
+        <Text style={styles.meta}>Vitana Health is source-available under the following terms.</Text>
+        <Text style={styles.licenseText} selectable>{ELASTIC_LICENSE_2_0_DISPLAY_TEXT}</Text>
+      </ScrollView>
     </Screen>
   );
 }
@@ -229,5 +244,8 @@ const styles = StyleSheet.create({
   modeOptionDisabled: { opacity: 0.5 },
   modeOptionText: { color: colors.muted, fontSize: type.label, fontWeight: "700" },
   modeOptionTextSelected: { color: colors.primary },
-  modeHint: { color: colors.muted, fontSize: type.label, lineHeight: 18 }
+  modeHint: { color: colors.muted, fontSize: type.label, lineHeight: 18 },
+  licenseContent: { gap: spacing.sm, paddingBottom: spacing.xl },
+  licenseCopyright: { color: colors.textStrong, fontSize: type.title, fontWeight: "700" },
+  licenseText: { color: colors.text, fontSize: type.body, lineHeight: 22 }
 });

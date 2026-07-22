@@ -18,7 +18,7 @@
     "package": "electron-builder",
     "package:signed": "electron-builder --config.forceCodeSigning=true"
   },
-  "license": "AGPL-3.0-only",
+  "license": "Elastic-2.0",
   "type": "commonjs",
   "build": {
     "appId": "app.vitanahealth.desktop",
@@ -45,6 +45,10 @@
       "!**/node_modules/duckdb/{binding.gyp,binding.gyp.in,Makefile,tsconfig.json,vendor.py,.mocharc.json}"
     ],
     "extraResources": [
+      {
+        "from": "../../LICENSE",
+        "to": "LICENSE.txt"
+      },
       {
         "from": "../web/dist",
         "to": "web"

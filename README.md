@@ -2,6 +2,13 @@
 
 A local-first health analytics app for Android Health Connect sync, manual blood-test results, profile metrics, deterministic analytics, and guarded AI recommendations from a configurable model runtime.
 
+## License
+
+Copyright 2026 Ben Leane. Vitana Health is source-available under the
+[Elastic License 2.0](LICENSE) (`Elastic-2.0`). It is not licensed as Open Source
+under the Open Source Initiative definition. The terms in [LICENSE](LICENSE)
+govern use, copying, modification, and distribution.
+
 ## Stack
 
 - Frontend: React + Vite

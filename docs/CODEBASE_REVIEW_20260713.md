@@ -267,7 +267,7 @@ The web client discards HTTP status and correlation IDs and throws raw response 
 - De-identified, bounded cloud query evidence and explicit query consent UI.
 - Deterministic import identities and Health Connect provenance retention.
 - Clear wellness/non-diagnostic product language.
-- AGPL licensing, disclosure policy, contribution guidance, and pinned CI Actions.
+- Elastic-2.0 source-available licensing, disclosure policy, contribution guidance, and pinned CI Actions.
 
 ## Recommended release sequence
 
