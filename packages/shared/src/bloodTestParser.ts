@@ -91,7 +91,7 @@ export function parseBloodTestScanText(
     reportDate,
     sourceText: normalizedText,
     checksum: sourceChecksum,
-    parserVersion: "body-composition-text-v1",
+    parserVersion: "blood-test-text-v1",
     diagnostics: diagnostics.slice(0, 50),
     rows: [...rows.values()]
   };
@@ -101,7 +101,7 @@ export function buildBloodTestImportFromDraft(payload: BloodTestDraftCommitPaylo
   const imported = buildManualObservationImport({
     observedAt: payload.reportDate ?? importedAt,
     label: "Lab",
-    observations: payload.rows.filter((row) => row.included).map((row) => ({
+    observations: payload.rows.filter((row) => row.included !== false).map((row) => ({
       measurementName: row.displayName || row.label,
       measurementCode: row.measurementCode,
       value: Number(row.value),

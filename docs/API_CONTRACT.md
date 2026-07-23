@@ -12,7 +12,9 @@ All API endpoints begin with `/api/`. The server enforces:
 
 - **Correlation IDs** — every response carries an `x-correlation-id` header.
 - **Auth** — most endpoints require a `Bearer` token in the `Authorization` header. Two bootstrap endpoints (pairing request / status) are deliberately pre-auth.
-- **Rate limits** — pairing and query endpoints are separately limited to 30 req/min; LLM endpoints to 10 req/min; all other endpoints to 120 req/min per IP.
+- **Rate limits** — all API requests are limited to 300 req/min per IP, with
+  tighter route-group limits for pairing (30), settings (30), queries (30), LLM
+  (10), and backup operations (5 create/restore; 10 inspect) per minute.
 - **Stable error codes** — see [Error codes](#error-codes).
 
 ---
@@ -90,6 +92,41 @@ Responses include `status`, `currentVersion`, immutable `channel`, and optional
 `availableVersion`, `lastCheckedAt`, safe `error`, and download `progress`.
 Standalone/web development hosts report `unsupported`; commands return
 `501 DESKTOP_UPDATES_UNSUPPORTED`. Feed URLs are never returned.
+
+### AI provider settings
+
+These authenticated, owner-only endpoints configure the local or approved cloud
+model used by the AI query service. Responses never include an API key; they
+return `hasApiKey` instead.
+
+```text
+GET  /api/settings/ai
+PUT  /api/settings/ai
+POST /api/settings/ai/validate
+```
+
+`PUT /api/settings/ai` accepts this strict body:
+
+```json
+{
+  "provider": "ollama",
+  "endpoint": "http://127.0.0.1:11434/v1",
+  "apiKey": "optional-for-ollama; required-as-applicable-for-openai",
+  "model": "model-name",
+  "timeoutMs": 30000
+}
+```
+
+`provider` is `ollama` or `openai`; `endpoint` must be a valid URL, `model` is
+required, and `timeoutMs` is an integer from 1,000 through 180,000 milliseconds.
+Cloud endpoints are checked against the model-endpoint safety policy. An OpenAI
+endpoint-origin change requires resubmission of its API key. The validation route
+runs a bounded compatibility probe and returns model identity, elapsed time,
+compatibility state, and safe probe diagnostics.
+
+`GET /api/settings/ai/openrouter/connect` begins the optional OpenRouter browser
+authorization flow. Its callback endpoint is internal to that flow and returns
+HTML rather than a JSON API response.
 
 ---
 
@@ -215,6 +252,121 @@ DELETE /api/profiles/:id
 ```
 **Success `200`:** `{ "deletedProfileId": "<id>", "activeProfileId": "<id>", "profiles": ProfileEntry[] }`
 
+### Cloud AI consent
+
+```text
+GET /api/profile/cloud-ai-consent
+PUT /api/profile/cloud-ai-consent
+```
+
+Both routes are authenticated and owner-only. `GET` returns the active profile's
+consent state, defaulting to disabled when it has never been set:
+
+```json
+{
+  "enabled": false,
+  "providerScopeAccepted": false,
+  "consentedAt": "2026-07-23T12:00:00.000Z",
+  "consentVersion": "v1"
+}
+```
+
+`PUT` accepts `{ "enabled", "providerScopeAccepted", "consentVersion"? }`.
+Enabling records the current consent timestamp; disabling clears the accepted
+scope and timestamp. AI requests can use a cloud provider only when the active
+profile has the required consent.
+
+### Reset built-in measurement metadata
+
+```text
+POST /api/profile/measurement-types/reset
+```
+
+Authenticated, owner-only. Refreshes built-in measurement metadata from the
+current registry without deleting health records or custom measurement types.
+
+**Success `200`:**
+```json
+{ "profileId": "self", "refreshed": 108, "inserted": 0 }
+```
+
+## Backups
+
+Backup operations are authenticated and owner-only. They use independent rate
+limits: create and restore allow 5 requests/minute, and inspect allows 10
+requests/minute. A restore places every non-health endpoint into temporary
+maintenance mode until it completes.
+
+### Create an encrypted portable backup
+
+```text
+POST /api/backups/create
+```
+
+**Request body:**
+```json
+{ "passphrase": "at-least-12-characters", "scope": "active" }
+```
+
+`scope` is `active` or `all` and defaults to `all`. The response is an
+`application/octet-stream` `.vitana-backup` attachment. The passphrase is never
+returned or stored by this endpoint.
+
+### Inspect a backup without restoring it
+
+```text
+POST /api/backups/inspect
+```
+
+Send the encrypted backup as an `application/octet-stream` request body, up to
+100 MB, and send the passphrase in `x-backup-passphrase` (minimum 12
+characters). **Success `200`:**
+
+```json
+{
+  "formatVersion": 1,
+  "createdAt": "2026-07-23T12:00:00.000Z",
+  "scope": "all",
+  "profiles": [{
+    "profileId": "self",
+    "displayName": "Alex",
+    "digestValid": true,
+    "observationCount": 42,
+    "existsLocally": true
+  }]
+}
+```
+
+### Restore profiles from a backup
+
+```text
+POST /api/backups/restore
+```
+
+Send the same binary body and `x-backup-passphrase` header as inspection, plus
+an `x-restore-decisions` header containing a JSON array of profile decisions:
+
+```json
+[
+  { "profileId": "self", "decision": "replace", "acknowledgeReplacement": "REPLACE_CONFIRMED" },
+  { "profileId": "family-member", "decision": "create-copy" }
+]
+```
+
+Each decision is `replace`, `create-copy`, or `skip`. `replace` requires the
+literal `REPLACE_CONFIRMED` acknowledgement. **Success `200`:**
+
+```json
+{
+  "restored": [{ "profileId": "self", "decision": "replace", "success": true }],
+  "activeProfileId": "self"
+}
+```
+
+Entries restored as copies include `newProfileId`. The service rejects a
+concurrent restore with `409 RESTORE_IN_PROGRESS` and returns `400
+DECRYPT_FAILED` for an incorrect passphrase or corrupt encrypted payload.
+
 ---
 
 ## Data (store / analytics / export)
@@ -245,6 +397,88 @@ GET /api/summary
 GET /api/summary/:measurementCode
 ```
 **Success `200`:** `SummaryEntry[]` or `Observation[]`
+
+### Get biological-age report
+
+```text
+GET /api/biological-age
+```
+
+Authenticated, owner-only. **Success `200`:** `BiologicalAgeReport`, calculated
+from the active profile's available source measurements. A report can include
+limitations when the available data is insufficient; it is not a diagnosis.
+
+### Get measurement chart data
+
+```text
+GET /api/summary/:measurementCode/chart?range=all|1y|3m|1m&mode=auto|raw
+```
+
+Authenticated, owner-only. `range` and `mode` are optional and default through
+the shared chart query schema. **Success `200`:** `HealthDataChartSeries`,
+including the selected measurement, unit, source samples, and chart points.
+
+### Set or clear a personal reference range
+
+```text
+PUT    /api/summary/:measurementCode/reference-range
+DELETE /api/summary/:measurementCode/reference-range
+```
+
+Authenticated, owner-only. `PUT` accepts a strict body with a required `unit`
+and at least one finite bound:
+
+```json
+{ "low": 70, "high": 99, "unit": "mg/dL" }
+```
+
+When both bounds are supplied, `low` must not exceed `high`. Both methods return
+`ReferenceRangeState` for the measurement after the mutation.
+
+## Care
+
+Care endpoints are authenticated. Companion credentials with the relevant Care
+capability are restricted to their assigned profile; owner credentials use the
+active profile. List endpoints return a strict paginated envelope:
+
+```json
+{ "items": [], "total": 0, "offset": 0, "limit": 20, "hasMore": false }
+```
+
+### Health events
+
+```text
+GET    /api/care/health-events
+POST   /api/care/health-events
+PATCH  /api/care/health-events/:id
+DELETE /api/care/health-events/:id
+```
+
+The list accepts `limit` (1-100, default 20), `offset`, `search`, `kind`,
+`status`, `occurredFrom`, `occurredTo`, and `includeId`. Create and update use a
+strict body containing `kind`, `status`, and `occurredAt`, with optional
+`occurredEnd`, `provider`, and `notes`. Timestamps are ISO 8601 with an offset,
+and the end cannot precede the start. Create returns `201`; update returns `200`;
+both return `HealthEventMutationResponse`. Deleting returns
+`DeleteHealthEventResponse`, `404 HEALTH_EVENT_NOT_FOUND` when absent, or `409
+CARE_HEALTH_EVENT_LINK_CONFLICT` when linked care items prevent deletion.
+
+### Care items
+
+```text
+GET    /api/care/items
+POST   /api/care/items
+PATCH  /api/care/items/:id
+DELETE /api/care/items/:id
+```
+
+The list accepts `limit` (1-100, default 20), `offset`, `search`, `status`,
+`priority`, `dueFrom`, `dueTo`, and `includeId`. Create and update use a strict
+body with `title`, `kind`, `priority`, and `status`; optional due/reminder
+timestamps, notes, and health-event links are supported. A reminder requires a
+due start and cannot be later than it. Create returns `201`; update returns
+`200`; both return `CareItemMutationResponse`. Delete returns
+`DeleteCareItemResponse` or `404 CARE_ITEM_NOT_FOUND`.
 
 ### Delete an observation
 ```
@@ -434,12 +668,21 @@ All error responses follow this shape:
 | `AUTH_REQUIRED` | 401 | No valid ****** provided |
 | `CAPABILITY_REQUIRED` | 403 | Companion lacks access to this operation |
 | `PROFILE_ACCESS_DENIED` | 403 | Companion profile grant does not match request |
+| `OWNER_REQUIRED` | 403 | Backup or owner-only operation was attempted without owner access |
 | `AUTH_LOOPBACK_ONLY` | 403 | Endpoint only accessible from loopback (127.x) |
 | `PAIRING_CODE_INVALID` | 400 | Pairing code missing or expired |
 | `PAIRING_SECRET_REQUIRED` | 400 | VITANA_SECRET not configured |
 | `PAIRING_NOT_FOUND` | 404 | Pairing request ID not found |
 | `DEVICE_NOT_FOUND` | 404 | Device pairing not found |
 | `OBSERVATION_NOT_FOUND` | 404 | Observation ID not found |
+| `HEALTH_EVENT_NOT_FOUND` | 404 | Health event ID not found |
+| `CARE_ITEM_NOT_FOUND` | 404 | Care item ID not found |
+| `CARE_HEALTH_EVENT_LINK_CONFLICT` | 409 | Health event cannot be deleted while linked care items exist |
+| `DECRYPT_FAILED` | 400 | Backup passphrase was incorrect or the encrypted backup is corrupt |
+| `RESTORE_IN_PROGRESS` | 409 | Another backup restore currently owns the restore lock |
+| `MAINTENANCE_MODE` | 503 | A restore temporarily blocks non-health API requests |
+| `DESKTOP_RUNTIME_UNSUPPORTED` | 501 | The host does not provide desktop runtime settings |
+| `DESKTOP_UPDATES_UNSUPPORTED` | 501 | The host does not provide desktop updates |
 | `RATE_LIMITED` | 429 | Too many requests — retry after 60 s |
 | `REQUEST_ERROR` | 502 | Upstream request (model/service) failed |
 | `INTERNAL_ERROR` | 500 | Unexpected server error |

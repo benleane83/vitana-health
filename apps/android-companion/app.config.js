@@ -1,18 +1,15 @@
 const allowCleartext = process.env.VITANA_ALLOW_CLEARTEXT === "1";
-const standalonePoc = process.env.VITANA_STANDALONE_POC === "1";
 
 module.exports = {
   expo: {
-    name: standalonePoc ? "Vitana Standalone Test" : "Vitana",
-    slug: "vitana",
+    name: "Vitana",
+    slug: "local-fitness-companion",
     version: "1.0.0",
     orientation: "portrait",
     icon: "./assets/icon.png",
     userInterfaceStyle: "light",
     android: {
-      package: standalonePoc
-        ? "app.vitanahealth.companion.standalone"
-        : "app.vitanahealth.companion",
+      package: "app.vitanahealth",
       allowBackup: false,
       usesCleartextTraffic: allowCleartext,
       permissions: [
@@ -66,15 +63,14 @@ module.exports = {
         }
       }]
     ],
-    runtimeVersion: standalonePoc ? "standalone-poc-1.0.0" : "1.0.0",
+    runtimeVersion: "1.0.0",
     updates: {
-      enabled: !standalonePoc,
+      enabled: true,
       url: "https://u.expo.dev/2cc5cf1b-57e8-4e6f-8709-662259497a57",
       fallbackToCacheTimeout: 0
     },
     extra: {
       allowCleartext,
-      standalonePoc,
       eas: {
         projectId: "2cc5cf1b-57e8-4e6f-8709-662259497a57"
       }

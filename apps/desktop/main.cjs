@@ -155,8 +155,7 @@ async function launch() {
   process.env.HOST = "0.0.0.0";
   process.env.PORT = process.env.PORT || "4317";
   process.env.VITANA_DATA_DIR = app.getPath("userData");
-  process.env.VITANA_STORAGE_BACKEND = process.env.VITANA_STORAGE_BACKEND ||
-    (process.env.VITANA_DUCKDB_ROLLBACK ? "json" : "duckdb");
+  process.env.VITANA_STORAGE_BACKEND = "duckdb";
   process.env.VITANA_WEB_ROOT = packaged
     ? path.join(process.resourcesPath, "web")
     : path.resolve(__dirname, "../web/dist");

@@ -77,10 +77,65 @@ export function normalizeFieldKey(key: string): string {
 }
 
 export function readNumber(value: string | undefined): number | undefined {
+  return parseLocaleNumber(value);
+}
+
+/**
+ * Parses numeric imports that use either comma or dot decimal separators.
+ * Values whose single separator could be either a decimal point or a thousands
+ * separator (for example, "1,234") are rejected rather than guessed.
+ */
+export function parseLocaleNumber(value: string | undefined): number | undefined {
   if (!value) return undefined;
-  const normalized = value.replace(/,/g, "").replace(/(\d)[ ]+([.,])[ ]+(\d)/g, "$1$2$3").replace(/([.,])[ ]+(\d)/g, "$1$2");
-  const parsed = Number.parseFloat(normalized);
+  const normalized = value.trim().replace(/[\u00A0\u202F]/g, " ").replace(/\s*([.,])\s*/g, "$1");
+  const match = /^([+-]?)([\d., ]+)$/.exec(normalized);
+  if (!match) return undefined;
+
+  const sign = match[1];
+  const numeric = match[2];
+  const commaCount = (numeric.match(/,/g) ?? []).length;
+  const dotCount = (numeric.match(/\./g) ?? []).length;
+  let canonical: string | undefined;
+
+  if (commaCount > 0 && dotCount > 0) {
+    const decimalSeparator = numeric.lastIndexOf(",") > numeric.lastIndexOf(".") ? "," : ".";
+    const groupingSeparator = decimalSeparator === "," ? "." : ",";
+    const [integerPart, fractionPart, ...extraParts] = numeric.split(decimalSeparator);
+    if (extraParts.length > 0 || !fractionPart || !/^\d+$/.test(fractionPart) || integerPart.includes(decimalSeparator)) return undefined;
+    const integer = normalizeGroupedInteger(integerPart, [groupingSeparator, " "]);
+    if (!integer) return undefined;
+    canonical = `${integer}.${fractionPart}`;
+  } else if (commaCount > 0 || dotCount > 0) {
+    const separator = commaCount > 0 ? "," : ".";
+    const parts = numeric.split(separator);
+    if (parts.length === 2 && /^\d{1,2}$/.test(parts[1])) {
+      const integer = normalizeGroupedInteger(parts[0], [" "]);
+      if (!integer) return undefined;
+      canonical = `${integer}.${parts[1]}`;
+    } else if (parts.length > 2 && parts.slice(1).every((part) => /^\d{3}$/.test(part))) {
+      const integer = normalizeGroupedInteger(numeric, [separator]);
+      if (!integer) return undefined;
+      canonical = integer;
+    } else {
+      return undefined;
+    }
+  } else {
+    canonical = normalizeGroupedInteger(numeric, [" "]);
+  }
+
+  if (!canonical) return undefined;
+  const parsed = Number(`${sign}${canonical}`);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function normalizeGroupedInteger(value: string, separators: string[]): string | undefined {
+  if (/^\d+$/.test(value)) return value;
+  const usedSeparators = separators.filter((separator) => value.includes(separator));
+  if (usedSeparators.length !== 1) return undefined;
+  const separator = usedSeparators[0];
+  const escapedSeparator = escapeRegExp(separator);
+  if (!new RegExp(`^\\d{1,3}(?:${escapedSeparator}\\d{3})+$`).test(value)) return undefined;
+  return value.split(separator).join("");
 }
 
 export function readDate(value: string | undefined): string | undefined {

@@ -163,7 +163,7 @@ export function createApp(
 
   // Rate limiting
   const rateBuckets = new Map<string, { count: number; resetAt: number }>();
-  function rateLimit(max: number, windowMs: number) {
+  function rateLimit(policy: string, max: number, windowMs: number) {
     return (request: express.Request, response: express.Response, next: express.NextFunction): void => {
       const now = Date.now();
       if (rateBuckets.size > 5_000) {
@@ -172,7 +172,7 @@ export function createApp(
         }
       }
       const routeGroup = request.baseUrl || request.path.split("/").slice(0, 3).join("/");
-      const key = `${request.ip}:${routeGroup}`;
+      const key = `${policy}:${request.ip}:${routeGroup}`;
       const current = rateBuckets.get(key);
       const bucket =
         !current || current.resetAt <= now ? { count: 0, resetAt: now + windowMs } : current;
@@ -189,14 +189,14 @@ export function createApp(
     };
   }
 
-  app.use(rateLimit(300, 60_000));
-  app.use("/api/pairing", rateLimit(30, 60_000));
-  app.use("/api/llm", rateLimit(10, 60_000));
-  app.use("/api/settings", rateLimit(30, 60_000));
-  app.use("/api/query", rateLimit(30, 60_000));
-  app.use("/api/backups/create", rateLimit(5, 60_000));
-  app.use("/api/backups/inspect", rateLimit(10, 60_000));
-  app.use("/api/backups/restore", rateLimit(5, 60_000));
+  app.use(rateLimit("api", 300, 60_000));
+  app.use("/api/pairing", rateLimit("pairing", 30, 60_000));
+  app.use("/api/llm", rateLimit("llm", 10, 60_000));
+  app.use("/api/settings", rateLimit("settings", 30, 60_000));
+  app.use("/api/query", rateLimit("query", 30, 60_000));
+  app.use("/api/backups/create", rateLimit("backups-create", 5, 60_000));
+  app.use("/api/backups/inspect", rateLimit("backups-inspect", 10, 60_000));
+  app.use("/api/backups/restore", rateLimit("backups-restore", 5, 60_000));
 
   // Maintenance mode middleware — returns 503 during restore except /api/health
   app.use((request, response, next) => {
@@ -353,8 +353,8 @@ export function createApp(
 
   // Static web serving
   if (options.webRoot && existsSync(options.webRoot)) {
-    app.use(rateLimit(120, 60_000), express.static(options.webRoot));
-    app.get("*", rateLimit(120, 60_000), (_request, response) =>
+    app.use(rateLimit("static", 120, 60_000), express.static(options.webRoot));
+    app.get("*", rateLimit("static", 120, 60_000), (_request, response) =>
       response.sendFile(path.join(options.webRoot!, "index.html"))
     );
   }

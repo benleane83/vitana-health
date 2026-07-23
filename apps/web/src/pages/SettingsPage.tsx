@@ -3,9 +3,17 @@ import { api } from "../api.js";
 import type { AiSettings, DesktopRuntimeSettings, DesktopUpdateState } from "../api.js";
 import type { SettingsView } from "../types.js";
 
-export function SettingsPage({ view, onViewChange }: {
+type ConfirmAction = (
+  title: string,
+  description: string,
+  confirmLabel: string,
+  destructive: boolean
+) => Promise<boolean>;
+
+export function SettingsPage({ view, onViewChange, confirm }: {
   view: SettingsView;
   onViewChange: (view: SettingsView) => void;
+  confirm: ConfirmAction;
 }) {
   const tabs: Array<{ view: SettingsView; id: string; panelId: string; label: string }> = [
     { view: "app", id: "settings-tab-app", panelId: "settings-panel-app", label: "App" },
@@ -51,7 +59,7 @@ export function SettingsPage({ view, onViewChange }: {
         </div>
         {view === "app" ? (
           <div id="settings-panel-app" role="tabpanel" aria-labelledby="settings-tab-app">
-            <AppSettingsPanel />
+            <AppSettingsPanel confirm={confirm} />
           </div>
         ) : (
           <div id="settings-panel-ai" role="tabpanel" aria-labelledby="settings-tab-ai">
@@ -63,7 +71,7 @@ export function SettingsPage({ view, onViewChange }: {
   );
 }
 
-function AppSettingsPanel() {
+function AppSettingsPanel({ confirm }: { confirm: ConfirmAction }) {
   const [settings, setSettings] = useState<DesktopRuntimeSettings>();
   const [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState<string>();
@@ -141,8 +149,11 @@ function AppSettingsPanel() {
   }
 
   async function resetMeasurementMetadata() {
-    const confirmed = window.confirm(
-      "Reset built-in measurement metadata for the active profile from the current registry? This keeps health records and custom measurement types unchanged."
+    const confirmed = await confirm(
+      "Reset measurement metadata",
+      "Reset built-in measurement metadata for the active profile from the current registry? This keeps health records and custom measurement types unchanged.",
+      "Reset metadata",
+      true
     );
     if (!confirmed) return;
 

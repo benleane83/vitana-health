@@ -30,6 +30,7 @@ import {
   loadOperatingMode,
   resolveOperatingMode,
   saveOperatingMode,
+  shouldCreateStandaloneSource,
   type CompanionOperatingMode
 } from "./operatingModeStore";
 import type { CompanionMutationService } from "./companionDataSource";
@@ -92,8 +93,10 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
   const generation = useRef(0);
   const demoSource = useMemo(() => createDemoDataSource(), []);
   const standaloneSource = useMemo(
-    () => preferencesLoaded && operatingMode === "standalone" ? createStandaloneDataSource() : undefined,
-    [operatingMode, preferencesLoaded]
+    () => shouldCreateStandaloneSource(preferencesLoaded, operatingMode, demoMode)
+      ? createStandaloneDataSource()
+      : undefined,
+    [demoMode, operatingMode, preferencesLoaded]
   );
   const source = useMemo<CompanionDataSource | undefined>(() => {
     if (!preferencesLoaded) return undefined;

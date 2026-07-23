@@ -10,6 +10,7 @@ import {
   parseBloodTestScanText,
   parseObservationCsv
 } from "../parsers.js";
+import { parseLocaleNumber } from "../parserPrimitives.js";
 
 // ─── checksum ──────────────────────────────────────────────────────────────────
 
@@ -27,6 +28,22 @@ describe("checksum", () => {
 
   it("returns a SHA-256 digest", () => {
     expect(checksum("test")).toBe("sha256-9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08");
+  });
+});
+
+describe("parseLocaleNumber", () => {
+  it.each([
+    ["12,5", 12.5],
+    ["1.234,56", 1234.56],
+    ["1,234.56", 1234.56],
+    ["1 234,56", 1234.56],
+    ["1\u00a0234.56", 1234.56]
+  ])("parses %s without rescaling", (input, expected) => {
+    expect(parseLocaleNumber(input)).toBe(expected);
+  });
+
+  it.each(["1,234", "1.234", "12,34,5", "12 34", "12.3.4"])("rejects ambiguous or malformed input: %s", (input) => {
+    expect(parseLocaleNumber(input)).toBeUndefined();
   });
 });
 
@@ -64,6 +81,13 @@ describe("parseBloodTestCsv — happy path", () => {
   it("creates observations for each marker", () => {
     const result = parseBloodTestCsv("labs.csv", bloodTestCsv);
     expect(result.observations).toHaveLength(3);
+  });
+
+  it("keeps an import processed when a missing unit only produces an informational diagnostic", () => {
+    const result = parseBloodTestCsv("labs.csv", "marker,value\nglucose,95");
+
+    expect(result.sourceImport.status).toBe("processed");
+    expect(result.sourceImport.diagnostics).toEqual(["Used canonical unit for lab row with no unit: Glucose."]);
   });
 });
 
@@ -171,6 +195,7 @@ describe("generic observation imports", () => {
   it("maps generic CSV observations and generates a fallback code", () => {
     const result = parseObservationCsv("observations.csv", "observedAt,measurement,value,unit\n2026-06-15,Custom score,7,points");
     expect(result.sourceImport.sourceKind).toBe("observation-csv");
+    expect(result.sourceImport.status).toBe("processed");
     expect(result.observations[0].measurementCode).toBe("manual_custom_score");
     expect(result.observationGroups[0].metadata).toStrictEqual({});
   });
@@ -180,6 +205,7 @@ describe("parseBloodTestScanText", () => {
   it("creates editable blood-test draft rows with diagnostics", () => {
     const result = parseBloodTestScanText("cbc-2026-06-15.pdf", "Report date: 2026-06-15\nGlucose: 95 mg/dL");
     expect(result.rows).toEqual([expect.objectContaining({ measurementCode: "glucose", included: true, confidence: "high" })]);
+    expect(result.parserVersion).toBe("blood-test-text-v1");
     expect(result.reportDate).toContain("2026-06-15");
   });
 
@@ -320,5 +346,22 @@ describe("buildBloodTestImportFromDraft", () => {
     });
     expect(result.observationGroups).toEqual([expect.objectContaining({ kind: "lab_panel", label: "Lab" })]);
     expect(result.observations[0].observationGroupId).toBe(result.observationGroups[0].id);
+  });
+
+  it("includes legacy rows unless they were explicitly excluded", () => {
+    const legacyRow = {
+      id: "iron",
+      label: "Iron",
+      measurementCode: "iron",
+      displayName: "Iron",
+      value: 13.7,
+      unit: "µmol/L",
+      confidence: "high"
+    } as unknown as import("../parserTypes.js").BodyCompositionDraftRow;
+    const result = buildBloodTestImportFromDraft({
+      fileName: "results.pdf", reportDate: "2026-06-15", sourceChecksum: "results", rows: [legacyRow]
+    });
+
+    expect(result.observations).toHaveLength(1);
   });
 });

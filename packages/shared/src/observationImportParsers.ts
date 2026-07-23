@@ -15,13 +15,28 @@ import type {
   ParsedImport
 } from "./parserTypes.js";
 
+type DiagnosticSeverity = "info" | "error";
+
+interface ImportDiagnostic {
+  message: string;
+  severity: DiagnosticSeverity;
+}
+
+function importStatus(diagnostics: readonly ImportDiagnostic[]): "processed" | "needs-review" {
+  return diagnostics.some((diagnostic) => diagnostic.severity === "error") ? "needs-review" : "processed";
+}
+
+function diagnosticMessages(diagnostics: readonly ImportDiagnostic[]): string[] {
+  return diagnostics.map((diagnostic) => diagnostic.message);
+}
+
 export function parseBloodTestCsv(fileName: string, content: string, importedAt = new Date().toISOString(), units: UnitSystem = "metric"): ParsedImport {
   const rows = parseCsv(content);
   const sourceChecksum = checksum(content);
   const importId = stableId("import", ["blood-test-csv", fileName, sourceChecksum]);
   const sourceId = stableId("source", ["blood-test-csv", fileName, sourceChecksum]);
   const groupId = stableId("group", ["lab_panel", sourceChecksum]);
-  const diagnostics: string[] = [];
+  const diagnostics: ImportDiagnostic[] = [];
   const collectedAt = readDate(rows[0]?.collectedAt ?? rows[0]?.collected_at ?? rows[0]?.date) ?? importedAt;
   const group: ObservationGroup = {
     id: groupId,
@@ -40,11 +55,11 @@ export function parseBloodTestCsv(fileName: string, content: string, importedAt 
     const measurementType = findMeasurementType(label);
     const value = readNumber(normalized.value ?? normalized.result);
     if (!measurementType || value === undefined) {
-      diagnostics.push(`Skipped lab row with unrecognized marker or missing value: ${JSON.stringify(row).slice(0, 180)}`);
+      diagnostics.push({ severity: "error", message: `Skipped lab row with unrecognized marker or missing value: ${JSON.stringify(row).slice(0, 180)}` });
       continue;
     }
     const unit = normalized.unit || getPreferredUnit(measurementType, units);
-    if (!normalized.unit) diagnostics.push(`Used canonical unit for lab row with no unit: ${measurementType.display}.`);
+    if (!normalized.unit) diagnostics.push({ severity: "info", message: `Used canonical unit for lab row with no unit: ${measurementType.display}.` });
     observations.push({
       id: stableId("obs", ["blood-test-csv", sourceChecksum, measurementType.code, String(value), unit]),
       measurementCode: measurementType.code,
@@ -67,8 +82,8 @@ export function parseBloodTestCsv(fileName: string, content: string, importedAt 
       parserVersion: "blood-test-csv-v1",
       checksum: sourceChecksum,
       rowCount: rows.length,
-      status: diagnostics.length > rows.length / 2 ? "needs-review" : "processed",
-      diagnostics: diagnostics.slice(0, 25),
+      status: importStatus(diagnostics),
+      diagnostics: diagnosticMessages(diagnostics).slice(0, 25),
       rawContent: content
     },
     dataSource: { id: sourceId, sourceKind: "blood-test-csv", label: `Blood test CSV: ${fileName}`, importId, createdAt: importedAt },
@@ -84,7 +99,7 @@ export function parseObservationCsv(fileName: string, content: string, importedA
   const sourceChecksum = checksum(content);
   const importId = stableId("import", ["observation-csv", fileName, sourceChecksum]);
   const sourceId = stableId("source", ["observation-csv", fileName, sourceChecksum]);
-  const diagnostics: string[] = [];
+  const diagnostics: ImportDiagnostic[] = [];
   const first = normalizeKeys(rows[0] ?? {});
   const observedAt = readDate(first.observed_at ?? first.collected_at ?? first.date) ?? importedAt;
   const label = first.label || first.panel_name || "Observation CSV";
@@ -108,11 +123,11 @@ export function parseObservationCsv(fileName: string, content: string, importedA
     const measurementType = (code ? findMeasurementType(code) : undefined) ?? findMeasurementType(name);
     const value = readNumber(normalized.value ?? normalized.result);
     if (value === undefined || (!name && !code)) {
-      diagnostics.push(`Skipped observation row with missing measurement or value: ${JSON.stringify(row).slice(0, 180)}`);
+      diagnostics.push({ severity: "error", message: `Skipped observation row with missing measurement or value: ${JSON.stringify(row).slice(0, 180)}` });
       continue;
     }
     const measurementCode = measurementType?.code ?? code ?? fallbackMeasurementCode(name);
-    if (!measurementType) diagnostics.push(`Used generated code for "${name || code}".`);
+    if (!measurementType) diagnostics.push({ severity: "info", message: `Used generated code for "${name || code}".` });
     const unit = normalized.unit || (measurementType ? getPreferredUnit(measurementType, units) : "unknown");
     const rowObservedAt = readDate(normalized.observed_at ?? normalized.collected_at ?? normalized.date) ?? observedAt;
     observations.push({
@@ -136,8 +151,8 @@ export function parseObservationCsv(fileName: string, content: string, importedA
       parserVersion: "observation-csv-v1",
       checksum: sourceChecksum,
       rowCount: rows.length,
-      status: diagnostics.length > rows.length / 2 ? "needs-review" : "processed",
-      diagnostics: diagnostics.slice(0, 25),
+      status: importStatus(diagnostics),
+      diagnostics: diagnosticMessages(diagnostics).slice(0, 25),
       rawContent: content
     },
     dataSource: { id: sourceId, sourceKind: "observation-csv", label: `Observation CSV: ${fileName}`, importId, createdAt: importedAt },
@@ -163,7 +178,7 @@ export function buildManualObservationImport(
   groupKind: ObservationGroup["kind"] = "custom",
   units: UnitSystem = "metric"
 ): ParsedImport {
-  const diagnostics: string[] = [];
+  const diagnostics: ImportDiagnostic[] = [];
   const panelName = payload.label.trim() || "Manual observations";
   const collectedAt = readDate(payload.observedAt) ?? importedAt;
   const serializedPayload = JSON.stringify({ collectedAt, panelName, sourceName: payload.sourceName?.trim(), observations: payload.observations });
@@ -191,11 +206,11 @@ export function buildManualObservationImport(
       : markerName ? findMeasurementType(markerName) : undefined;
     const value = row.value;
     if (!Number.isFinite(value)) {
-      diagnostics.push(`Skipped manual observation with invalid value: ${JSON.stringify(row).slice(0, 180)}`);
+      diagnostics.push({ severity: "error", message: `Skipped manual observation with invalid value: ${JSON.stringify(row).slice(0, 180)}` });
       continue;
     }
     if (!measurementType && !markerName && !markerCode) {
-      diagnostics.push(`Skipped manual observation with no name or code: ${JSON.stringify(row).slice(0, 180)}`);
+      diagnostics.push({ severity: "error", message: `Skipped manual observation with no name or code: ${JSON.stringify(row).slice(0, 180)}` });
       continue;
     }
     const displayName = markerName || measurementType?.display || markerCode || "Manual marker";
@@ -231,8 +246,8 @@ export function buildManualObservationImport(
       parserVersion: "manual-lab-entry-v1",
       checksum: sourceChecksum,
       rowCount: payload.observations.length,
-      status: diagnostics.length > payload.observations.length / 2 ? "needs-review" : "processed",
-      diagnostics: diagnostics.slice(0, 25),
+      status: importStatus(diagnostics),
+      diagnostics: diagnosticMessages(diagnostics).slice(0, 25),
       rawContent: serializedPayload
     },
     dataSource: { id: sourceId, sourceKind: "manual-entry", label: `Manual observations: ${panelName}`, importId, createdAt: importedAt },

@@ -24,6 +24,26 @@ afterEach(() => {
 });
 
 describe("backup rate limits", () => {
+  it("allows the full pairing status polling budget before rate limiting", async () => {
+    const manager = {} as ProfileStoreManager;
+    const pairings = new PairingStore();
+    const app = createApp(manager, pairings);
+    const challenge = pairings.createChallenge();
+    const pairing = pairings.request("polling-phone", "Polling Phone", challenge.code)!;
+
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const response = await request(app)
+        .get(`/api/pairing/status/${pairing.record.id}`)
+        .set("x-pairing-secret", pairing.pollingSecret);
+      expect(response.status).toBe(200);
+    }
+
+    const limited = await request(app)
+      .get(`/api/pairing/status/${pairing.record.id}`)
+      .set("x-pairing-secret", pairing.pollingSecret);
+    expect(limited.status).toBe(429);
+  });
+
   it("uses independent buckets for create, inspect, and restore", async () => {
     const manager = {} as ProfileStoreManager;
     const app = createApp(manager, new PairingStore());

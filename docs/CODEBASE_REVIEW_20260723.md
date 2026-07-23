@@ -1,14 +1,18 @@
 # Codebase and Play Store Readiness Review
 
-**Reviewed:** 2026-07-23  
-**Revision:** `debbda8`  
+**Reviewed:** 2026-07-23
+
+**Original revision:** `debbda8`
+
+**Remediation verified:** `bfe78d6`
+
 **Scope:** Android companion, API and encrypted storage, web and shared packages, desktop packaging, CI/release controls, public declarations, and automated tests
 
 ## Executive assessment
 
 Vitana has strong foundations: per-profile encrypted storage, capability-scoped companion access, production TLS pinning, bounded Health Connect defaults, schema-validated API boundaries, hardened Electron settings, and a substantial fast test suite.
 
-It is not ready for a public release yet. Two independent recovery paths can currently lose health data: desktop backup restore omits complete data domains, and Android Standalone mode selects a new profile after every app restart. The Android binary and Play-facing documentation also disagree about Standalone storage, billing, EAS Update traffic, and extended Health Connect history access. Resolve the P0 and Android P1 findings before Play submission.
+It is not ready for a public release yet. The desktop backup restore blocker has been resolved. Android Standalone profile persistence, Demo-mode resource lifetime, and Play-facing declarations have also been remediated. Paid-release configuration and the remaining release-evidence findings still need resolution before Play submission.
 
 ## Method and validation
 
@@ -23,51 +27,65 @@ The review traced representative write/read flows across clients, authorization,
 | Durability tests and `audit:ci` | Not reached after integration setup failure |
 | Production dependency audits | No result: configured registry host could not be resolved |
 
+### Post-review remediation validation
+
+The desktop restore changes were validated separately after the original review environment was repaired:
+
+| Check | Result |
+| --- | --- |
+| API and web typechecks | Passed |
+| Focused route, recovery, and concurrency tests | 12 passed |
+| Encrypted DuckDB restore integration tests | 6 passed |
+| Independent backup endpoint rate-limit regression test | Passed |
+| Manual create, inspect, and replace workflow | Passed; one profile restored successfully |
+| Restore-panel desktop and 390 px layout checks | Passed; no horizontal overflow |
+
 The web tests pass but repeatedly emit React `act(...)` warnings. These do not fail CI, but they reduce the signal of asynchronous UI tests.
 
 ## Release blockers
 
-### P0 — Backup restore silently omits data and “replace” does not replace
+### P0 — Backup restore silently omits data and “replace” does not replace — RESOLVED
 
-Backup creation exports personal reference ranges, devices, measurement metadata, health events, care items, insights, and audit events (`apps/api/src/storage/duckdbExport.ts:140-192`). Restore only reconstructs import/observation domains (`apps/api/src/routes/backupRoutes.ts:332-396`). A successful restore therefore silently drops clinically meaningful data such as immunizations, medication administrations, reminders, insights, and custom reference ranges.
+**Status at `bfe78d6`: resolved.** Restore orchestration is now owned by `ProfileStoreManager.restoreProfiles()`. Each selected snapshot is hydrated through the full-fidelity repository path into a fresh encrypted side database, checked for parity, and promoted only after hydration succeeds.
 
-For an existing profile, the `replace` path updates the profile row and merges imports into the live database (`apps/api/src/routes/backupRoutes.ts:279-285`). Existing observation IDs are ignored rather than replaced (`apps/api/src/storage/duckdbImportPersistence.ts:140-145`), and records removed since the backup remain present.
+The `replace` decision now swaps the complete staged database rather than merging imports into the live database. Records changed after the backup are restored to their backed-up values, and records created after the backup are removed. The integration fixture covers personal reference ranges, devices, measurement metadata, health events, care items, insights, audit events, imports, observations, and changed/deleted observation behavior.
 
-**Action:** restore into a fresh encrypted database using the same full-fidelity hydration path as initial storage creation, verify parity, then atomically swap it into place. Add a round-trip test containing every stored domain and changed/deleted observations.
+**Verification:** full-domain encrypted round-trip tests pass in `duckdbActivation.integration.test.ts`.
 
-### P0 — Android Standalone data becomes invisible after every relaunch
+### P0 — Android Standalone data becomes invisible after every relaunch — RESOLVED
 
 Each native repository creation generates a new profile ID (`apps/android-companion/src/standalone/createStandaloneRepository.native.ts:5-13`). Initialization inserts that new profile and uses it for all subsequent profile-filtered queries (`apps/android-companion/src/standalone/sqliteLocalStore.ts:95-108`). The encrypted database and key persist, but the selected profile ID does not, so prior readings remain orphaned and the relaunched app appears empty. Standalone is the default for an unpaired installation (`apps/android-companion/src/operatingModeStore.ts:16-21`).
 
-**Action:** persist and reuse one stable local profile ID, or adopt the existing profile row when opening the database. Add a native reopen test proving observations survive process restart.
+**Status: resolved.** Encrypted SQLite initialization now adopts the persisted profile containing the most observations/imports before considering a generated default, with deterministic tie-breakers for an empty database. Repository recreation therefore continues querying the existing profile-scoped observations instead of creating and selecting an empty profile.
+
+**Verification:** the focused SQLite local-store regression recreates the repository with a different process-time default ID and confirms that the persisted profile and observation counts remain visible.
 
 ## High-priority findings
 
-### P1 — Restore rollback and crash recovery are non-functional
+### P1 — Restore rollback and crash recovery are non-functional — RESOLVED
 
-The error response claims the previous state was restored (`apps/api/src/routes/backupRoutes.ts:317-323`), but `rollback()` only marks and deletes the journal (`apps/api/src/storage/restoreJournal.ts:118-122`). It does not undo completed mutations. `RestoreJournal.recover()` exists (`restoreJournal.ts:58-79`) but is never called, and the journal never receives usable old/new database paths.
+**Status at `bfe78d6`: resolved.** Restore journals now record staged, live, and rollback database paths plus snapshots of registry and manifest metadata. Failure compensation reverses completed swaps, restores metadata, verifies expected paths, and reports restoration only after compensation succeeds. Incomplete journals are recovered during profile-store startup.
 
-**Action:** stage side databases, journal every swap, recover incomplete journals during startup, and return a rollback claim only after verified compensation.
+**Verification:** focused tests cover interrupted swaps, metadata recovery, rollback verification, and startup recovery.
 
-### P1 — Body-fat imports are multiplied by 100
+### P1 — Body-fat imports are multiplied by 100 — RESOLVED
 
-The Health Connect mapper stores `record.percentage * 100` (`apps/android-companion/src/syncHealthConnect.ts:195-198`). Android Health Connect percentages are already expressed from 0 to 100, as reflected by the adjacent oxygen-saturation mapper (`syncHealthConnect.ts:123-126`).
+**Status: resolved.** The Health Connect mapper now stores `record.percentage` directly, preserving the 0-to-100 values Health Connect provides.
 
-**Action:** remove the multiplier and add a focused Body Fat mapping regression test before accepting Health Connect data.
 
-### P1 — Comma-decimal health values are silently rescaled
+### P1 — Comma-decimal health values are silently rescaled — RESOLVED
 
-`readNumber` removes every comma before parsing (`packages/shared/src/parserPrimitives.ts:79-84`). Values such as `12,5` become `125`, while mixed formats such as `1.234,56` are also corrupted. Multiple report and CSV parsers accept commas in numeric input, so this is a data-integrity blocker for a global release.
+**Status: resolved.** `readNumber` now delegates to an explicit locale-aware parser in `packages/shared/src/parserPrimitives.ts`. It accepts unambiguous comma-decimal, dot-decimal, grouped, space-grouped, and non-breaking-space inputs, while rejecting ambiguous and malformed single-separator formats rather than silently rescaling values.
 
-**Action:** implement one explicit locale-aware numeric parser and directly test comma decimals, grouping separators, spaces, and ambiguous inputs.
+**Verification:** the focused shared parser suite passed with direct coverage for `12,5`, `1.234,56`, `1,234.56`, space grouping, non-breaking-space grouping, and ambiguous or malformed inputs.
 
-### P1 — Production behavior and Play declarations disagree
+### P1 — Production behavior and Play declarations disagree — RESOLVED
 
 The production app exposes and defaults to encrypted Standalone storage (`App.tsx:115-170`, `operatingModeStore.ts:16-21`), while the privacy policy and Data Safety document describe health data as transferred to and retained only by the paired desktop (`docs/PRIVACY_POLICY.md:15-23`, `docs/PLAY_DATA_SAFETY.md:9-20`). Production also contacts Expo for EAS updates (`apps/android-companion/app.config.js:70-74`), despite the absolute “no vendor data uploads” statement.
 
 The manifest requests extended Health Connect history permission (`app.config.js:34`), but the Health Connect declaration does not explicitly name or justify that special permission (`docs/HEALTH_CONNECT_DECLARATION.md:5-15`).
 
-**Action:** decide the exact v1 feature set, then make the binary, privacy policy, Data Safety answers, Health Connect declaration, inventory, and reviewer instructions describe the same behavior.
+**Status: resolved.** The privacy policy, Data Safety guide, Health Connect declaration, data inventory, and release runbook now distinguish encrypted on-device Standalone storage from Connected-mode transfer. They disclose EAS Update service traffic without claiming that health records are sent to Expo, and explicitly document the conditional `READ_HEALTH_DATA_HISTORY` request for user-selected windows over 30 days.
 
 ### P1 — Paid-release configuration is internally inconsistent
 
@@ -77,11 +95,13 @@ If gating is enabled as written, a cached AsyncStorage boolean permanently grant
 
 **Action:** either remove IAP from v1 and update the runbook, or complete purchase verification, revocation/refund handling, restore behavior, and license testing before submission.
 
-### P1 — Demo mode can close and then reuse the Standalone database
+### P1 — Demo mode can close and then reuse the Standalone database — RESOLVED
 
 The Standalone data source is memoized independently of Demo mode (`apps/android-companion/src/MobileApiProvider.tsx:93-103`). Changing to Demo mode changes `source`, whose effect cleanup disposes the Standalone repository (`MobileApiProvider.tsx:279-284`, `standaloneDataSource.ts:44-46`). Turning Demo mode off reuses that same data-source object with its closed repository.
 
-**Action:** scope disposal to the Standalone source lifetime or recreate it after disposal, and test Standalone → Demo → Standalone.
+**Status: resolved.** Demo mode now removes the Standalone source from its memoized source slot. Entering Demo disposes the old source, and leaving Demo creates a new source that reopens the persisted encrypted database instead of reusing the disposed object.
+
+**Verification:** the focused operating-mode policy regression covers Standalone → Demo → Standalone source eligibility.
 
 ## Medium-priority findings
 
@@ -97,35 +117,35 @@ The Windows tag workflow verifies signatures, updater metadata, smoke behavior, 
 
 **Action:** record the EAS artifact, commit, channel, version code, configuration, checksum, and test-track promotion as protected release evidence. Target API 35 is currently accepted, but move to API 36 before Google Play’s 2026 deadline.
 
-### P2 — API contract documentation has substantial drift
+### P2 — API contract documentation has substantial drift — RESOLVED
 
 `docs/API_CONTRACT.md` omits current Care, backup/restore, biological-age, chart/reference-range, cloud-consent, metadata-reset, desktop-settings, and AI-settings endpoints used by `packages/api-client/src/index.ts` and `apps/web/src/api.ts`.
 
 **Action:** update the contract from the current route surface and add a lightweight route/documentation consistency check.
 
-### P2 — Import parsers contain provenance and status inconsistencies
+### P2 — Import parsers contain provenance and status inconsistencies — RESOLVED
 
-The blood-test parser identifies itself as `body-composition-text-v1` and treats an undefined `included` value differently from other parsers (`packages/shared/src/bloodTestParser.ts:94-104`). Generic import status counts informational diagnostics as failures, allowing a successful import to be labeled `needs-review` (`packages/shared/src/observationImportParsers.ts:47,70,139,234`).
+**Status: resolved.** Blood-test scan drafts now identify as `blood-test-text-v1`, and committed rows follow the standard `included !== false` convention. Generic CSV and manual import parsers now maintain internal diagnostic severity: skipped or invalid rows are errors, while defaults such as a canonical unit or generated code are informational. Only errors cause `needs-review`.
 
-**Action:** correct the parser version, standardize inclusion semantics, and classify diagnostics by severity before computing status.
+**Verification:** focused shared parser tests passed for correct scan provenance, legacy row inclusion, informational diagnostics retaining `processed` status, and generated-code CSV rows retaining `processed` status.
 
-### P2 — Concurrent restores are not mutually exclusive
+### P2 — Concurrent restores are not mutually exclusive — RESOLVED
 
-Restore maintenance uses a process-global boolean (`apps/api/src/routes/backupRoutes.ts:34-37,228,324-326`). A second restore can overlap and clear maintenance while the first is still mutating profile state.
+**Status at `bfe78d6`: resolved.** Restore uses a single-flight operation ID. A concurrent request is rejected while the active operation retains ownership of the lock, and only that operation can clear it.
 
-**Action:** use a single-flight restore lock and reject concurrent attempts.
+**Verification:** the route regression test holds one restore open, confirms the overlapping request is rejected, and confirms maintenance state is released by the owning restore.
 
-### P2 — Retired and duplicate runtime paths remain
+### P2 — Retired and duplicate runtime paths remain — RESOLVED
 
-The repository-root `main.cjs` is an unreferenced, broken duplicate of the desktop entry point. The real desktop launcher still sets a JSON rollback backend (`apps/desktop/main.cjs:158-159`), although current storage accepts DuckDB only (`apps/api/src/storage/profileStoreManager.ts:97-98,318-330`).
+**Status: resolved.** The unreferenced repository-root `main.cjs` has been deleted. The supported desktop launcher now unconditionally sets `VITANA_STORAGE_BACKEND` to `duckdb`, removing the stale JSON rollback environment switch.
 
-**Action:** delete the root duplicate and remove the non-functional JSON rollback switch.
+**Verification:** the desktop workspace test suite passed with 25 tests.
 
-### P2 — Destructive web action bypasses the accessible dialog
+### P2 — Destructive web action bypasses the accessible dialog — RESOLVED
 
-Measurement metadata reset uses `window.confirm` (`apps/web/src/pages/SettingsPage.tsx:144`) instead of the app’s accessible confirmation dialog.
+**Status: resolved.** Measurement metadata reset now uses the app-level `ConfirmDialog` service instead of `window.confirm`. The shared dialog captures the invoking element before opening and restores its focus after either confirmation or cancellation.
 
-**Action:** route the action through the existing dialog service and restore focus after all dialog closures.
+**Verification:** focused Settings and confirmation-dialog tests passed, including focus restoration after confirmation and cancellation.
 
 ## Maintenance debt
 
@@ -152,16 +172,21 @@ Measurement metadata reset uses `window.confirm` (`apps/web/src/pages/SettingsPa
 
 ## Previous-review status
 
-- **Portable backup/restore:** implemented but **not safely resolved** because restore is incomplete and non-atomic.
+- **Portable backup/restore:** **resolved at `bfe78d6`** with full-fidelity hydration, parity checks, atomic database promotion, verified compensation, and startup journal recovery.
 - **Tagged Windows artifact gate:** resolved for Windows; Android remains manual.
 - **Imperial analytics, latest lab alerts, child/pet range suppression, audit fail-closed behavior, trusted OAuth callback origin, atomic pairing registry writes, and profile validation:** verified as retained.
 - **Companion capability allowlist, pinned profile access, cloud consent, and least-privilege Health Connect defaults:** verified as retained.
 
+## Additional remediation completed
+
+- Backup creation, inspection, and restore now use independent rate-limit buckets, preventing a normal multi-step workflow from exhausting one shared allowance.
+- The restore acknowledgment checkbox uses scoped native-checkbox styling and remains aligned when its text wraps.
+- Restore results and the final restore action have explicit vertical spacing at desktop and narrow viewport widths.
+
 ## Recommended release order
 
-1. Fix and round-trip test full-fidelity desktop restore.
-2. Fix Standalone profile persistence, Body Fat scaling, and the Demo-mode lifecycle.
-3. Freeze the Android v1 feature/billing scope and align every Play declaration with the exact AAB.
-4. Run a physical-device Play internal-track pass, including reinstall/relaunch, font scaling, offline unpairing, Health Connect history, purchase/refund if enabled, and inspection of on-device storage.
-5. Gate integration and Android native pinning tests, then capture verifiable AAB release evidence.
-6. Address parser correctness before marketing a global launch; schedule module decomposition and retention work after correctness blockers.
+1. Freeze the Android v1 billing scope and align purchase configuration with the exact AAB.
+2. Validate the remediated Standalone persistence, Demo transition, and Play declarations on a physical device and in Play Console.
+3. Run a physical-device Play internal-track pass, including reinstall/relaunch, font scaling, offline unpairing, Health Connect history, purchase/refund if enabled, and inspection of on-device storage.
+4. Gate integration and Android native pinning tests, then capture verifiable AAB release evidence.
+5. Address parser correctness before marketing a global launch; schedule module decomposition and retention work after correctness blockers.
