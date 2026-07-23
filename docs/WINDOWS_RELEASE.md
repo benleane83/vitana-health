@@ -57,7 +57,7 @@ Disabling the setting must restore foreground-only behavior.
 ## Desktop update channels
 
 Production packages have an immutable, unauthenticated GitHub Releases provider
-for `benleane83/local-fitness-advisor`. They consume stable releases only.
+for `benleane83/vitana-health`. They consume stable releases only.
 LAN packages have an immutable generic HTTP provider supplied at packaging time;
 they never fall back to GitHub. Neither feed URL nor channel can be edited in the
 application.

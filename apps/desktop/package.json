@@ -74,7 +74,7 @@
       {
         "provider": "github",
         "owner": "benleane83",
-        "repo": "local-fitness-advisor",
+        "repo": "vitana-health",
         "channel": "latest",
         "releaseType": "release"
       }

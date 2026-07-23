@@ -39,7 +39,7 @@ test("Windows packages retain signed GitHub update metadata", () => {
   assert.deepEqual(packageJson.build.publish, [{
     provider: "github",
     owner: "benleane83",
-    repo: "local-fitness-advisor",
+    repo: "vitana-health",
     channel: "latest",
     releaseType: "release"
   }]);
