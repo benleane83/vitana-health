@@ -49,6 +49,21 @@ function Stop-DesktopProcess([System.Diagnostics.Process]$Process) {
   }
 }
 
+function Close-DesktopMainWindow([System.Diagnostics.Process]$Process) {
+  for ($elapsedSeconds = 0; $elapsedSeconds -lt 30; $elapsedSeconds++) {
+    if ($Process.HasExited) {
+      throw "Desktop process $($Process.Id) exited before its main window could be closed."
+    }
+    $Process.Refresh()
+    if ($Process.MainWindowHandle -ne 0 -and $Process.CloseMainWindow()) {
+      return
+    }
+    Start-Sleep -Seconds 1
+  }
+  Save-HealthDiagnostics
+  throw "Desktop process $($Process.Id) did not expose a closeable main window within 30 seconds."
+}
+
 function Test-HealthEndpoint([string]$Uri) {
   try {
     if ($Uri.StartsWith("https://")) {
@@ -192,7 +207,7 @@ try {
   if (-not $enabledSettings.backgroundServiceEnabled) {
     throw "The desktop API did not enable background service mode."
   }
-  $null = $firstLaunch.CloseMainWindow()
+  Close-DesktopMainWindow $firstLaunch
   Start-Sleep -Seconds 2
   if (-not (Test-HealthEndpoint $activeHealthUri)) {
     throw "Desktop health stopped after closing the window with background service mode enabled."
@@ -213,7 +228,7 @@ try {
     if ($disabledSettings.backgroundServiceEnabled -or (Get-LoginStartupCommand)) {
       throw "Disabling background service mode did not remove login registration."
     }
-    $null = $firstLaunch.CloseMainWindow()
+    Close-DesktopMainWindow $firstLaunch
     Wait-ForHealthStop
     $upgradeProcess = Start-Process -FilePath $Installer -ArgumentList "/S", "/D=$installRoot" -Wait -PassThru
     if ($upgradeProcess.ExitCode -ne 0) {
@@ -224,7 +239,7 @@ try {
     if ($disabledSettings.backgroundServiceEnabled -or (Get-LoginStartupCommand)) {
       throw "Disabling background service mode did not remove login registration."
     }
-    $null = $firstLaunch.CloseMainWindow()
+    Close-DesktopMainWindow $firstLaunch
     Wait-ForHealthStop
   }
 
