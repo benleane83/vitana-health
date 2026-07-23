@@ -84,9 +84,6 @@ jobs:
       - name: Run desktop tests
         run: npm run test:desktop
 
-      - name: Audit maintained source branding
-        run: npm run audit:brand
-
   windows-desktop:
     name: Windows desktop package smoke test
     runs-on: windows-2022

@@ -76,6 +76,24 @@ describe("computeAnalytics — latestMetrics", () => {
     const hrMetric = result.latestMetrics.find((m) => m.code === "heart_rate");
     expect(hrMetric?.status).toBe("high");
   });
+
+  it("keeps every latest observation available for AI insight generation", () => {
+    const store = makeEmptyStore();
+    const measurementTypes = defaultMeasurementTypes.slice(0, 13);
+    store.measurementTypes = measurementTypes;
+    store.observations = measurementTypes.map((type, index) => makeObservation({
+      id: `o${index}`,
+      measurementCode: type.code,
+      observedAt: "2026-01-01T00:00:00.000Z",
+      value: index + 1,
+      unit: type.canonicalUnit,
+      sourceId: "src1"
+    }));
+
+    const result = computeAnalytics(store);
+    expect(result.latestMetrics).toHaveLength(12);
+    expect(result.latestMetricsForInsight).toHaveLength(13);
+  });
 });
 
 describe("computeAnalytics — trendCards", () => {

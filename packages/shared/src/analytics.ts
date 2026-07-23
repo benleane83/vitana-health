@@ -33,7 +33,7 @@ export interface AnalyticsInput {
 export function computeAnalyticsFromInput(input: AnalyticsInput): AnalyticsSummary {
   const registry = new Map(input.measurementTypes.map((type) => [type.code, type]));
   const observationsByCode = groupBy(input.observations, (observation) => observation.measurementCode);
-  const latestMetrics = [...observationsByCode.entries()]
+  const latestMetricsForInsight = [...observationsByCode.entries()]
     .map(([code, observations]) => latestMetric(
       code,
       observations,
@@ -43,8 +43,8 @@ export function computeAnalyticsFromInput(input: AnalyticsInput): AnalyticsSumma
       input.personalReferenceRanges?.find((range) => range.measurementCode === code)
     ))
     .filter((metric): metric is NonNullable<typeof metric> => metric !== undefined)
-    .sort((a, b) => b.observedAt.localeCompare(a.observedAt))
-    .slice(0, 12);
+    .sort((a, b) => b.observedAt.localeCompare(a.observedAt));
+  const latestMetrics = latestMetricsForInsight.slice(0, 12);
 
   const trendCards = [...observationsByCode.entries()]
     .map(([code, observations]) => trendCard(code, observations, registry.get(code), input.units ?? "metric"))
@@ -80,6 +80,7 @@ export function computeAnalyticsFromInput(input: AnalyticsInput): AnalyticsSumma
   return {
     counts: input.counts,
     latestMetrics,
+    latestMetricsForInsight,
     trendCards,
     labAlerts,
     evidenceDigest

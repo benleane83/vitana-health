@@ -2,6 +2,7 @@ import type { Profile } from "@vitana/shared";
 
 const blockedPromptKeys = /(name|display|note|source|file|import|profile|device|id|birth|sex|goal|json|raw|token|auth|email|phone|address)/i;
 const allowedPromptKeys = /(value|unit|count|avg|min|max|sum|metric|code|status|flag|recorded|observed|start|end|date|day|week|month|activity|duration|distance|energy|heart|oxygen|glucose|cholesterol|steps|row)/i;
+const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * Cloud prompts may include user-entered text. Redact obvious direct identifiers.
@@ -9,7 +10,7 @@ const allowedPromptKeys = /(value|unit|count|avg|min|max|sum|metric|code|status|
 export function redactFreeText(input: string): string {
   return input
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
-    .replace(/\b(?:\+?\d[\d().\-\s]{7,}\d)\b/g, "[redacted-phone]")
+    .replace(/\b(?:\+?\d[\d().\-\s]{7,}\d)\b/g, (match) => isoDatePattern.test(match) ? match : "[redacted-phone]")
     .replace(/\b\d{3}[-\s]?\d{2}[-\s]?\d{4}\b/g, "[redacted-id]")
     .replace(/\b\d{8,}\b/g, "[redacted-number]")
     .trim();

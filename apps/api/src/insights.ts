@@ -13,12 +13,10 @@ export interface InsightGenerationInput {
   analytics: AnalyticsSummary;
 }
 
+const maxInsightMetrics = 100;
+
 export async function generateInsight({ profile, analytics }: InsightGenerationInput): Promise<Insight> {
-  const evidence = [
-    ...analytics.evidenceDigest,
-    ...analytics.latestMetrics.slice(0, 6).map((metric) => `${metric.label}: ${metric.value} ${metric.unit} on ${metric.observedAt.slice(0, 10)} (${metric.status}).`),
-    ...analytics.labAlerts.map((alert) => `${alert.marker}: ${alert.value} ${alert.unit} on ${alert.observedAt}, flagged ${alert.flag}${alert.reference ? ` against ${alert.reference}` : ""}.`)
-  ];
+  const evidence = buildInsightEvidence(analytics);
 
   const modelResult = await callConfiguredModel(buildInsightPrompt(evidence.map((item) => redactFreeText(item))), {
     allowCloud: hasCloudAiConsent(profile)
@@ -57,6 +55,27 @@ export async function generateInsight({ profile, analytics }: InsightGenerationI
     model: "deterministic",
     safetyNotice
   };
+}
+
+export function buildInsightEvidence(analytics: AnalyticsSummary): string[] {
+  const [sourceSummary, , labRangeSummary] = analytics.evidenceDigest;
+  const latestMetrics = analytics.latestMetricsForInsight ?? analytics.latestMetrics;
+  const includedMetrics = latestMetrics.slice(0, maxInsightMetrics);
+  const omittedMetricCount = latestMetrics.length - includedMetrics.length;
+  return [
+    ...(sourceSummary ? [sourceSummary] : []),
+    ...(labRangeSummary ? [labRangeSummary] : []),
+    ...includedMetrics.map((metric) => `${metric.label}: ${metric.value} ${metric.unit} on ${metric.observedAt.slice(0, 10)}${metric.status === "unknown" ? "" : ` (${metric.status})`}.`),
+    ...(omittedMetricCount > 0
+      ? [`${omittedMetricCount} additional latest observation${omittedMetricCount === 1 ? " was" : "s were"} omitted to keep this review within its ${maxInsightMetrics}-reading limit.`]
+      : []),
+    ...analytics.labAlerts.map((alert) => {
+      if (alert.flag === "unknown") {
+        return `${alert.marker}: ${alert.value} ${alert.unit} on ${alert.observedAt}${alert.reference ? `, reference ${alert.reference}` : ""}.`;
+      }
+      return `${alert.marker}: ${alert.value} ${alert.unit} on ${alert.observedAt}, flagged ${alert.flag}${alert.reference ? ` against ${alert.reference}` : ""}.`;
+    })
+  ];
 }
 
 function id(prefix: string): string {

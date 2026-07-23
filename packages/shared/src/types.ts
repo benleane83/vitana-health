@@ -568,14 +568,8 @@ export interface AnalyticsSummary {
     healthEvents: number;
     careItems: number;
   };
-  latestMetrics: Array<{
-    code: string;
-    label: string;
-    value: number;
-    unit: string;
-    observedAt: string;
-    status: "low" | "normal" | "high" | "unknown";
-  }>;
+  latestMetrics: LatestMetric[];
+  latestMetricsForInsight?: LatestMetric[];
   trendCards: Array<{
     code: string;
     label: string;
@@ -594,6 +588,15 @@ export interface AnalyticsSummary {
     flag: "low" | "high" | "critical" | "unknown";
   }>;
   evidenceDigest: string[];
+}
+
+export interface LatestMetric {
+    code: string;
+    label: string;
+    value: number;
+    unit: string;
+    observedAt: string;
+    status: "low" | "normal" | "high" | "unknown";
 }
 
 export type BiologicalAgeModelStatus = "available" | "incomplete" | "not-implemented";
