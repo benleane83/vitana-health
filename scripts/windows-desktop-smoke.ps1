@@ -168,8 +168,8 @@ try {
     throw "The packaged runtime did not create an encrypted DuckDB storage manifest."
   }
   $storage = Get-Content $manifest.FullName -Raw | ConvertFrom-Json
-  if ($storage.storageBackend -ne "duckdb") {
-    throw "The packaged runtime selected '$($storage.storageBackend)' instead of encrypted DuckDB."
+  if ($storage.backend -ne "duckdb") {
+    throw "Storage manifest '$($manifest.FullName)' selected '$($storage.backend)' instead of encrypted DuckDB."
   }
   if ($Scope -eq "Fast") {
     Stop-DesktopProcess $firstLaunch
