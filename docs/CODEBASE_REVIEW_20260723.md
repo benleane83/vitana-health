@@ -12,7 +12,7 @@
 
 Vitana has strong foundations: per-profile encrypted storage, capability-scoped companion access, production TLS pinning, bounded Health Connect defaults, schema-validated API boundaries, hardened Electron settings, and a substantial fast test suite.
 
-It is not ready for a public release yet. The desktop backup restore blocker has been resolved. Android Standalone profile persistence, Demo-mode resource lifetime, and Play-facing declarations have also been remediated. Paid-release configuration and the remaining release-evidence findings still need resolution before Play submission.
+It is not ready for a public release yet. The desktop backup restore blocker has been resolved. Android Standalone profile persistence, Demo-mode resource lifetime, and Play-facing declarations have also been remediated. Purchase gating is deliberately deferred for the initial free closed test; its entitlement and release requirements remain blockers for the first billing-enabled AAB. The remaining release-evidence findings also need resolution before public release.
 
 ## Method and validation
 
@@ -87,13 +87,15 @@ The manifest requests extended Health Connect history permission (`app.config.js
 
 **Status: resolved.** The privacy policy, Data Safety guide, Health Connect declaration, data inventory, and release runbook now distinguish encrypted on-device Standalone storage from Connected-mode transfer. They disclose EAS Update service traffic without claiming that health records are sent to Expo, and explicitly document the conditional `READ_HEALTH_DATA_HISTORY` request for user-selected windows over 30 days.
 
-### P1 — Paid-release configuration is internally inconsistent
+### P1 — Paid-release configuration is internally inconsistent — DEFERRED FOR FREE CLOSED TESTING
 
 Purchase gating is hard-disabled and all users are treated as entitled (`apps/android-companion/src/entitlementService.ts:3-4`, `src/EntitlementProvider.tsx:20-25`). The IAP plugin and Billing permission still ship, while the release runbook requires testing `scan_sync_unlock` (`docs/ANDROID_RELEASE.md:37-42,73-80`).
 
 If gating is enabled as written, a cached AsyncStorage boolean permanently grants offline ownership even when the store no longer reports the purchase (`entitlementService.ts:91-107,188-196`).
 
-**Action:** either remove IAP from v1 and update the runbook, or complete purchase verification, revocation/refund handling, restore behavior, and license testing before submission.
+**Status: accepted for the initial free closed test.** Purchase gating remains hard-disabled, the inactive entitlement service does not connect to Play Billing, and Scan and Sync remain available without a purchase. Keeping the native IAP dependency in this test build is intentional preparation for a later paid release. The release runbook now separates checks required for every release from checks required only for billing-enabled releases.
+
+This finding is not resolved for paid distribution. Before enabling gating, replace permanent cached ownership with an explicit verification and offline-grace policy, handle authoritative no-purchase and refund/revocation results, decide whether existing free-test users are grandfathered, update purchase-data declarations, and complete Play license testing. Billing must first ship in a new versioned AAB that returns to closed testing; it must not be activated in the free-test binary through an OTA update.
 
 ### P1 — Demo mode can close and then reuse the Standalone database — RESOLVED
 
@@ -185,8 +187,9 @@ The Windows tag workflow verifies signatures, updater metadata, smoke behavior, 
 
 ## Recommended release order
 
-1. Freeze the Android v1 billing scope and align purchase configuration with the exact AAB.
+1. Run the initial closed test with purchase gating explicitly disabled and record that billing state with the artifact.
 2. Validate the remediated Standalone persistence, Demo transition, and Play declarations on a physical device and in Play Console.
-3. Run a physical-device Play internal-track pass, including reinstall/relaunch, font scaling, offline unpairing, Health Connect history, purchase/refund if enabled, and inspection of on-device storage.
+3. Run a physical-device Play internal-track pass, including reinstall/relaunch, font scaling, offline unpairing, Health Connect history, and inspection of on-device storage.
 4. Gate integration and Android native pinning tests, then capture verifiable AAB release evidence.
-5. Address parser correctness before marketing a global launch; schedule module decomposition and retention work after correctness blockers.
+5. Before the first paid build, fix entitlement revalidation, choose the offline and grandfathering policies, update declarations, and test purchase/refund flows in a new closed-track AAB.
+6. Address parser correctness before marketing a global launch; schedule module decomposition and retention work after correctness blockers.
