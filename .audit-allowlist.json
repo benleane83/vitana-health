@@ -1,10 +1,4 @@
 {
-  "allowedHighOrCriticalPackages": [
-    "duckdb",
-    "node-gyp",
-    "make-fetch-happen",
-    "cacache",
-    "tar"
-  ],
-  "notes": "Temporary allowlist for 5 package nodes in the DuckDB > node-gyp > make-fetch-happen/cacache > tar chain. As of 2026-07-21, npm reports 11 no-fix tar advisories through this chain. Revisit monthly and on duckdb releases."
+  "allowedHighOrCriticalPackages": [],
+  "notes": "No active high or critical vulnerability exceptions. DuckDB's build-only node-gyp is overridden to 12.4.0 so all native tooling resolves patched tar 7 releases."
 }
