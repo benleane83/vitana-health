@@ -765,12 +765,7 @@ export interface ClinicianReport {
     samples: number;
     activities: number;
   };
-  latestMeasurements: Array<{
-    displayName: string;
-    value: number;
-    unit: string;
-    measuredAt: string;
-  }>;
+  latestMeasurements: ClinicianReportLatestMeasurement[];
   flaggedLabs: Array<{
     displayName: string;
     value: number;
@@ -792,6 +787,18 @@ export interface ClinicianReport {
     status: SourceImport["status"];
     rowCount: number;
   }>;
+}
+
+export interface ClinicianReportLatestMeasurement {
+  category: MeasurementType["category"] | "uncategorized";
+  displayName: string;
+  measuredAt: string;
+  value?: number;
+  unit?: string;
+  activity?: {
+    activityType: string;
+    durationMinutes?: number;
+  };
 }
 
 export interface DeleteObservationResponse {

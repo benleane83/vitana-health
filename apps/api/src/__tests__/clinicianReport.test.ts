@@ -45,4 +45,24 @@ describe("buildClinicianReport", () => {
     expect(buildClinicianReport(input).patient.height).toMatchObject({ unit: "in" });
     expect(buildClinicianReport(input).patient.height?.value).toBeCloseTo(70.87, 2);
   });
+
+  it("uses the complete latest-measurement snapshot instead of the capped analytics list", () => {
+    const data = store();
+    const latestMeasurements = Array.from({ length: 13 }, (_, index) => ({
+      category: index === 0 ? "body" as const : "lab" as const,
+      displayName: `Measurement ${index + 1}`,
+      value: index + 1,
+      unit: "unit",
+      measuredAt: `2026-01-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`
+    }));
+
+    const report = buildClinicianReport({
+      profile: data.profile,
+      analytics: computeAnalytics(data),
+      latestMeasurements,
+      sourceImports: data.sourceImports
+    });
+
+    expect(report.latestMeasurements).toEqual(latestMeasurements);
+  });
 });

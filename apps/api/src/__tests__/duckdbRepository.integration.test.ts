@@ -198,6 +198,21 @@ describe("DuckDbRepository fidelity", () => {
         fileName, sourceKind, importedAt, status, rowCount
       })));
       expect(JSON.stringify(sourceImports)).not.toContain("rawContent");
+      expect(await repository.clinicianReportLatestMeasurements()).toMatchObject([
+        {
+          category: "activity",
+          displayName: "Activity sessions",
+          measuredAt: "2026-07-12T09:30:00.000Z",
+          activity: { activityType: "walking", durationMinutes: 30 }
+        },
+        {
+          category: "body",
+          displayName: "Weight",
+          measuredAt: "2026-07-12T10:05:00.000Z",
+          value: expect.closeTo(177.47, 2),
+          unit: "lb"
+        }
+      ]);
       expect(buildClinicianReport({ profile: bootstrap.profile, analytics, sourceImports }, generatedAt)).toMatchObject({
         patient: { displayName: fixture.profile.displayName },
         totals: {

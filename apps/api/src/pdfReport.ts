@@ -1,5 +1,5 @@
 import PDFDocument from "pdfkit";
-import type { ClinicianReport } from "@vitana/shared";
+import type { ClinicianReport, ClinicianReportLatestMeasurement } from "@vitana/shared";
 
 function date(value: string): string {
   return value ? new Date(value).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : "Not recorded";
@@ -17,6 +17,27 @@ function bulletList(document: PDFKit.PDFDocument, items: string[], empty: string
   for (const item of items) document.text(`• ${item}`, { indent: 12 });
 }
 
+function categoryLabel(category: ClinicianReportLatestMeasurement["category"]): string {
+  return {
+    activity: "Activity",
+    body: "Body",
+    cardio: "Cardio",
+    derived: "Derived",
+    lab: "Lab",
+    sleep: "Sleep",
+    uncategorized: "Uncategorized"
+  }[category];
+}
+
+function latestMeasurementDescription(item: ClinicianReportLatestMeasurement): string {
+  if (item.value !== undefined && item.unit) return `${item.value} ${item.unit}`;
+  if (item.activity) {
+    const duration = item.activity.durationMinutes === undefined ? "" : `, ${item.activity.durationMinutes} min`;
+    return `${item.activity.activityType}${duration}`;
+  }
+  return "Recorded";
+}
+
 export async function createClinicianReportPdf(report: ClinicianReport): Promise<Buffer> {
   const document = new PDFDocument({ margin: 48, size: "A4", info: { Title: "Vitana Health clinician report" } });
   const chunks: Buffer[] = [];
@@ -26,7 +47,7 @@ export async function createClinicianReportPdf(report: ClinicianReport): Promise
     document.on("error", reject);
   });
 
-  document.fontSize(20).font("Helvetica-Bold").text("Health Data Report");
+  document.fontSize(20).font("Helvetica-Bold").text("Vitana Health Data Report");
   document.fontSize(10).font("Helvetica").text(`Generated: ${date(report.generatedAt)}`);
   document.text(`Profile: ${report.patient.displayName}`);
   const patientDetails = [
@@ -42,11 +63,24 @@ export async function createClinicianReportPdf(report: ClinicianReport): Promise
   );
 
   section(document, "Latest measurements");
-  bulletList(
-    document,
-    report.latestMeasurements.map((item) => `${item.displayName}: ${item.value} ${item.unit} (${date(item.measuredAt)})`),
-    "No measurements have been recorded."
-  );
+  if (!report.latestMeasurements.length) {
+    document.text("No measurements have been recorded.");
+  } else {
+    const byCategory = new Map<ClinicianReportLatestMeasurement["category"], ClinicianReportLatestMeasurement[]>();
+    for (const measurement of report.latestMeasurements) {
+      const category = byCategory.get(measurement.category) ?? [];
+      category.push(measurement);
+      byCategory.set(measurement.category, category);
+    }
+    for (const [category, measurements] of byCategory) {
+      document.moveDown(0.3).fontSize(11).font("Helvetica-Bold").text(categoryLabel(category)).fontSize(10).font("Helvetica");
+      bulletList(
+        document,
+        measurements.map((item) => `${item.displayName}: ${latestMeasurementDescription(item)} (${date(item.measuredAt)})`),
+        ""
+      );
+    }
+  }
 
   section(document, "Flagged laboratory results");
   bulletList(
@@ -59,13 +93,6 @@ export async function createClinicianReportPdf(report: ClinicianReport): Promise
 
   section(document, "Trends");
   bulletList(document, report.trends.map((item) => `${item.displayName} (${item.unit}): ${item.summary}`), "No trends are available.");
-
-  section(document, "Imported sources");
-  bulletList(
-    document,
-    report.sources.map((item) => `${item.fileName} (${item.sourceKind}, ${item.rowCount} rows, ${item.status}, imported ${date(item.importedAt)})`),
-    "No data sources have been imported."
-  );
 
   section(document, "Important");
   document.text(report.disclaimer);

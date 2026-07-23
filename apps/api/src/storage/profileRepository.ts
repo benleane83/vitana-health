@@ -2,6 +2,7 @@ import type {
   AppBootstrap,
   AnalyticsSummary,
   BiologicalAgeSource,
+  ClinicianReportLatestMeasurement,
   CareItemListQuery,
   CareItemMutationResponse,
   CreateCareItemInput,
@@ -90,6 +91,7 @@ export interface ProfileRepository {
   appBootstrap(): Promise<AppBootstrap>;
   analyticsSummary(): Promise<AnalyticsSummary>;
   biologicalAgeSource(): Promise<BiologicalAgeSource>;
+  clinicianReportLatestMeasurements(): Promise<ClinicianReportLatestMeasurement[]>;
   clinicianReportSourceImports(): Promise<ClinicianReportSourceImport[]>;
   storageCounts(): Promise<AppBootstrap["counts"]>;
   getProfile(): Promise<Profile>;

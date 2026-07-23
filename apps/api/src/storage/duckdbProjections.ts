@@ -4,6 +4,7 @@ import {
   type CareItemListQuery,
   biologicalAgeMeasurementCodes,
   classifyValueWithRange,
+  type ClinicianReportLatestMeasurement,
   computeAnalyticsFromInput,
   isHealthEventKind,
   type HealthEvent,
@@ -25,6 +26,7 @@ import {
   type ReferenceRangeState,
   getPreferredUnit,
   resolveReferenceRange
+  ,toPreferredMeasurementValue
 } from "@vitana/shared";
 import type { ClinicianReportSourceImport } from "../clinicianReport.js";
 import {
@@ -190,6 +192,80 @@ export async function clinicianReportSourceImports(connection: duckdb.Connection
     status: String(row.status) as ClinicianReportSourceImport["status"],
     rowCount: Number(row.row_count)
   }));
+}
+
+export async function clinicianReportLatestMeasurements(
+  connection: duckdb.Connection
+): Promise<ClinicianReportLatestMeasurement[]> {
+  const [profileRows, measurementRows, rows] = await Promise.all([
+    all(connection, "SELECT units FROM profile;"),
+    all(connection, "SELECT * FROM measurement_types ORDER BY ordinal;"),
+    all(connection, `
+      WITH measurement_entries AS (
+        SELECT measurement_code, observed_at AS measured_at, value, unit, id,
+          NULL::VARCHAR AS activity_type, NULL::DOUBLE AS duration_minutes
+        FROM observations
+        UNION ALL
+        SELECT measurement_code, end_at AS measured_at, value, unit, id,
+          NULL::VARCHAR AS activity_type, NULL::DOUBLE AS duration_minutes
+        FROM time_series_samples
+        UNION ALL
+        SELECT 'activity_sessions' AS measurement_code, COALESCE(end_at, start_at) AS measured_at,
+          NULL::DOUBLE AS value, NULL::VARCHAR AS unit, id, activity_type, duration_minutes
+        FROM activities
+      )
+      SELECT * EXCLUDE (measurement_rank) FROM (
+        SELECT
+          entries.*,
+          ROW_NUMBER() OVER (
+            PARTITION BY measurement_code
+            ORDER BY measured_at DESC, id DESC
+          ) AS measurement_rank
+        FROM measurement_entries entries
+      )
+      WHERE measurement_rank = 1
+      ORDER BY measurement_code;
+    `)
+  ]);
+  if (profileRows.length !== 1) {
+    throw new Error("DuckDB expected exactly one profile row.");
+  }
+
+  const measurementTypes = new Map(measurementRows.map(measurementTypeFromRow).map((type) => [type.code, type]));
+  const units = String(profileRows[0].units) as Profile["units"];
+  const categoryLabels: Record<ClinicianReportLatestMeasurement["category"], string> = {
+    activity: "Activity",
+    body: "Body",
+    cardio: "Cardio",
+    derived: "Derived",
+    lab: "Lab",
+    sleep: "Sleep",
+    uncategorized: "Uncategorized"
+  };
+  return rows.map((row) => {
+    const measurementCode = String(row.measurement_code);
+    const type = measurementTypes.get(measurementCode);
+    const value = optionalNumber(row.value);
+    const activityType = optionalString(row.activity_type);
+    const measurement: ClinicianReportLatestMeasurement = {
+      category: type?.category ?? (measurementCode === "activity_sessions" ? "activity" : "uncategorized"),
+      displayName: type?.display ?? humanizeCode(measurementCode),
+      measuredAt: isoTimestamp(row.measured_at)
+    };
+    if (type && value !== undefined) {
+      Object.assign(measurement, toPreferredMeasurementValue(value, String(row.unit), type, units));
+    }
+    if (activityType) {
+      measurement.activity = {
+        activityType,
+        durationMinutes: optionalNumber(row.duration_minutes)
+      };
+    }
+    return measurement;
+  }).sort((left, right) =>
+    categoryLabels[left.category].localeCompare(categoryLabels[right.category]) ||
+    left.displayName.localeCompare(right.displayName)
+  );
 }
 
 export async function summary(connection: duckdb.Connection) {

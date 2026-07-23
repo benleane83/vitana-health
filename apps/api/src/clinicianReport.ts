@@ -5,6 +5,7 @@ import {
   safetyNotice,
   type AnalyticsSummary,
   type ClinicianReport,
+  type ClinicianReportLatestMeasurement,
   type Profile,
   type SourceImport
 } from "@vitana/shared";
@@ -15,6 +16,7 @@ export interface ClinicianReportInput {
   profile: Profile;
   analytics: AnalyticsSummary;
   sourceImports: ClinicianReportSourceImport[];
+  latestMeasurements?: ClinicianReportLatestMeasurement[];
 }
 
 export function buildClinicianReport(input: ClinicianReportInput, generatedAt = new Date().toISOString()): ClinicianReport {
@@ -24,14 +26,13 @@ export function buildClinicianReport(input: ClinicianReportInput, generatedAt = 
   const height = profile.heightCm === undefined || !heightType
     ? undefined
     : { value: convertMeasurementValue(profile.heightCm, heightType, "cm", heightUnit) ?? profile.heightCm, unit: heightUnit };
-  const latestMeasurements = analytics.latestMetrics
-    .map((metric) => ({
-      displayName: metric.label,
-      value: metric.value,
-      unit: metric.unit,
-      measuredAt: metric.observedAt
-    }))
-    .sort((a, b) => b.measuredAt.localeCompare(a.measuredAt) || a.displayName.localeCompare(b.displayName));
+  const latestMeasurements = input.latestMeasurements ?? analytics.latestMetrics.map((metric) => ({
+    category: "uncategorized" as const,
+    displayName: metric.label,
+    value: metric.value,
+    unit: metric.unit,
+    measuredAt: metric.observedAt
+  }));
 
   const flaggedLabs = analytics.labAlerts
     .map((alert) => ({

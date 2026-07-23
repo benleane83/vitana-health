@@ -77,6 +77,7 @@ import {
   analyticsSummary as readAnalyticsSummary,
   appBootstrap as readAppBootstrap,
   biologicalAgeSource as readBiologicalAgeSource,
+  clinicianReportLatestMeasurements as readClinicianReportLatestMeasurements,
   clinicianReportSourceImports as readClinicianReportSourceImports,
   countActivities as readActivityCounts,
   dailyMetrics as readDailyMetrics,
@@ -209,6 +210,11 @@ export class DuckDbRepository implements ProfileRepository {
   async biologicalAgeSource(): Promise<BiologicalAgeSource> {
     this.assertOpen();
     return readBiologicalAgeSource(this.connection);
+  }
+
+  async clinicianReportLatestMeasurements() {
+    this.assertOpen();
+    return readClinicianReportLatestMeasurements(this.connection);
   }
 
   async clinicianReportSourceImports(): Promise<ClinicianReportSourceImport[]> {

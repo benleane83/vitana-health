@@ -371,12 +371,13 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
   router.get("/export/pdf", async (_request, response, next) => {
     try {
       const store = activeStore();
-      const [profile, analytics, sourceImports] = await Promise.all([
+      const [profile, analytics, latestMeasurements, sourceImports] = await Promise.all([
         store.getProfile(),
         store.analyticsSummary(),
+        store.clinicianReportLatestMeasurements(),
         store.clinicianReportSourceImports()
       ]);
-      const report = buildClinicianReport({ profile, analytics, sourceImports });
+      const report = buildClinicianReport({ profile, analytics, latestMeasurements, sourceImports });
       const pdf = await createClinicianReportPdf(report);
       response.setHeader("content-type", "application/pdf");
       response.setHeader("content-disposition", `attachment; filename="${reportFilename(report.patient.displayName)}"`);

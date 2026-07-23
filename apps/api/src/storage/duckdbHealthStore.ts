@@ -98,6 +98,10 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
     return this.repository.biologicalAgeSource();
   }
 
+  clinicianReportLatestMeasurements() {
+    return this.repository.clinicianReportLatestMeasurements();
+  }
+
   clinicianReportSourceImports() {
     return this.repository.clinicianReportSourceImports();
   }
