@@ -41,17 +41,23 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
 
   // Open / close the native <dialog> element and manage focus
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
     if (open) {
+      if (!returnFocusRef.current && document.activeElement instanceof HTMLElement && document.activeElement !== document.body) {
+        returnFocusRef.current = document.activeElement;
+      }
       if (!dialog.open) dialog.showModal();
       // Move focus to the safe (cancel) button
       cancelButtonRef.current?.focus();
     } else {
       if (dialog.open) dialog.close();
+      returnFocusRef.current?.focus();
+      returnFocusRef.current = null;
     }
   }, [open]);
 

@@ -189,7 +189,7 @@ export function ExportPage({
                 {restoreStatus.busy && !inspection ? "Inspecting backup…" : "Inspect backup"}
               </button>
               {inspection ? (
-                <div>
+                <div className="export-inspection-results">
                   <h3>Profiles in backup</h3>
                   <p className="summary-detail-hint">Created {new Date(inspection.createdAt).toLocaleString()}.</p>
                   {inspection.profiles.map((profile) => {
@@ -207,7 +207,7 @@ export function ExportPage({
                           </select>
                         </label>
                         {selection?.decision === "replace" ? (
-                          <label>
+                          <label className="export-replacement-acknowledgment">
                             <input
                               type="checkbox"
                               checked={selection.acknowledgeReplacement === "REPLACE_CONFIRMED"}
@@ -219,7 +219,7 @@ export function ExportPage({
                       </fieldset>
                     );
                   })}
-                  <button type="button" onClick={onRestoreBackup} disabled={restoreStatus.busy || !canRestore}>
+                  <button className="export-restore-action" type="button" onClick={onRestoreBackup} disabled={restoreStatus.busy || !canRestore}>
                     {restoreStatus.busy ? "Restoring backup…" : "Restore selected profiles"}
                   </button>
                 </div>

@@ -322,7 +322,7 @@ export function App() {
       </div>
 
       <div id="route-panel-settings" role="tabpanel" aria-labelledby={navTabIds.settings} hidden={route !== "settings"}>
-        {route === "settings" ? <SettingsPage view={settingsView} onViewChange={navigateSettings} /> : null}
+        {route === "settings" ? <SettingsPage view={settingsView} onViewChange={navigateSettings} confirm={confirm} /> : null}
       </div>
 
       <div

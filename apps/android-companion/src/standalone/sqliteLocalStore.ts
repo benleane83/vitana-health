@@ -93,6 +93,20 @@ export class SqliteLocalStore implements LocalStore {
   constructor(private readonly database: SQLiteDatabase) {}
 
   async initialize(defaultProfile: Profile): Promise<void> {
+    const existing = await this.database.getFirstAsync<{ id: string }>(
+      `SELECT profiles.id
+       FROM profiles
+       ORDER BY
+         (SELECT COUNT(*) FROM observations WHERE observations.profile_id = profiles.id) DESC,
+         (SELECT COUNT(*) FROM source_imports WHERE source_imports.profile_id = profiles.id) DESC,
+         profiles.updated_at ASC,
+         profiles.id ASC
+       LIMIT 1`
+    );
+    if (existing) {
+      this.profileId = existing.id;
+      return;
+    }
     await this.database.runAsync(
       "INSERT OR IGNORE INTO profiles (id, profile_json, updated_at) VALUES (?, ?, ?)",
       defaultProfile.id,

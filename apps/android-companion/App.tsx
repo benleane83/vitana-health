@@ -199,7 +199,6 @@ function ConnectionScreen({ navigation }: NativeStackScreenProps<RootStackParamL
           ]
         )}>Reset local data</Button>
       ) : null}
-      <Button secondary onPress={() => navigation.navigate("License")}>Software license</Button>
       <Message
         title={demoMode ? "Your connection is unchanged" : "Local-first connection"}
         detail={demoMode
@@ -208,6 +207,7 @@ function ConnectionScreen({ navigation }: NativeStackScreenProps<RootStackParamL
             ? "Health data is kept in a SQLCipher database protected by a device-backed key. Pairing with a PC does not upload it."
             : "Health data is fetched only while your paired PC is reachable and is not cached on this phone."}
       />
+      <Button secondary onPress={() => navigation.navigate("License")}>Software license</Button>
     </Screen>
   );
 }

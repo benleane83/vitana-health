@@ -13,7 +13,12 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
   }
 }));
 
-import { loadOperatingMode, resolveOperatingMode, saveOperatingMode } from "./operatingModeStore";
+import {
+  loadOperatingMode,
+  resolveOperatingMode,
+  saveOperatingMode,
+  shouldCreateStandaloneSource
+} from "./operatingModeStore";
 
 afterEach(() => {
   storage.values.clear();
@@ -37,5 +42,11 @@ describe("companion operating mode storage", () => {
     expect(resolveOperatingMode(null, false)).toBe("standalone");
     expect(resolveOperatingMode("standalone", true)).toBe("standalone");
     expect(resolveOperatingMode("connected", false)).toBe("connected");
+  });
+
+  it("recreates the standalone source after leaving Demo mode", () => {
+    expect(shouldCreateStandaloneSource(true, "standalone", false)).toBe(true);
+    expect(shouldCreateStandaloneSource(true, "standalone", true)).toBe(false);
+    expect(shouldCreateStandaloneSource(true, "standalone", false)).toBe(true);
   });
 });

@@ -79,7 +79,16 @@ export interface BodyCompositionDraftCommitPayload {
   rows: BodyCompositionDraftRow[];
 }
 
-export type BloodTestDraft = BodyCompositionDraft;
+export interface BloodTestDraft {
+  fileName: string;
+  reportDate?: string;
+  sourceText: string;
+  checksum: string;
+  parserVersion: "blood-test-text-v1";
+  diagnostics: string[];
+  rows: BodyCompositionDraftRow[];
+}
+
 export type BloodTestDraftCommitPayload = BodyCompositionDraftCommitPayload;
 
 // ─── Generic structured (CSV/TSV) upload import ───────────────────────────────

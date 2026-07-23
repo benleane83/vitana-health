@@ -19,3 +19,11 @@ export function resolveOperatingMode(
 ): CompanionOperatingMode {
   return stored ?? (hasPairedConnection ? "connected" : "standalone");
 }
+
+export function shouldCreateStandaloneSource(
+  preferencesLoaded: boolean,
+  operatingMode: CompanionOperatingMode,
+  demoMode: boolean
+): boolean {
+  return preferencesLoaded && operatingMode === "standalone" && !demoMode;
+}

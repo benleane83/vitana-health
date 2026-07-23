@@ -194,7 +194,7 @@ export const HEALTH_CONNECT_DESCRIPTORS = [
   })),
   defineHealthConnectDescriptor("BodyFat", "BodyFat", ["bodyFatPct"], (records) => ({
     bodyFatPct: records.map((record) => ({
-      time: record.time, value: record.percentage * 100, provenance: extractProvenance(record)
+      time: record.time, value: record.percentage, provenance: extractProvenance(record)
     })).filter((record) => Number.isFinite(record.value))
   }))
 ] as const;

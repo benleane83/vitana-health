@@ -6,7 +6,7 @@ This runbook applies to the Play Store Android companion. It defines the release
 
 The release owner is responsible for executing this runbook and recording the release in the repository's release notes.
 
-- Google Play App Signing must be enabled for `app.vitanahealth.companion` before the first production submission.
+- Google Play App Signing must be enabled for `app.vitanahealth` before the first production submission.
 - The Play upload credential is managed by Google Play and the authorized EAS/Expo account or CI secret store. Do not commit a keystore, upload key, service-account JSON, or access token.
 - Access to the EAS project and the Play Console production track is limited to release owners.
 - Production submissions require the public privacy-policy URL and completed Play Console declarations described in the privacy release work.
@@ -36,10 +36,17 @@ The release owner owns the user-visible application version in `apps/android-com
 
 ## Production build and submission
 
+The initial Play closed test is intentionally free. Keep
+`PURCHASE_GATING_ENABLED` set to `false` for that build. The bundled Play Billing
+support remains inactive and Scan and Sync stay available without a purchase.
+Record the billing state in the release notes so the tested behavior is explicit.
+
 Before the first billing-enabled build, create a managed one-time product in Play Console with
 the product ID `scan_sync_unlock` and activate it for the app. Add license tester accounts, then
 exercise purchase, cancellation, pending payment, acknowledgement, reinstall, and restore using
-Google's test payment methods; license testers are not charged.
+Google's test payment methods; license testers are not charged. Enable gating only in a new,
+versioned AAB and return that artifact to closed testing before promotion. Do not activate billing
+for an existing free-test binary through an EAS Update.
 
 Run these commands from the repository root after the version bump is committed:
 
@@ -68,24 +75,39 @@ Reviewers can inspect the Dashboard and Track experience without installing or p
 
 Demo mode does not contact a local PC, alter pairing credentials, or write sample records. Import, report scanning, manual entry, and Health Connect sync remain unavailable because they require a paired PC or native health provider. Turning Demo mode off restores the existing paired connection, if present.
 
+Standalone mode is separate from Demo mode. It stores the user's local profile and imported health records in a SQLCipher-encrypted database on the phone. Switching temporarily from Standalone to Demo and back reopens the same Standalone profile and data.
+
 ## Release checklist
 
+### Every release
+
 - [ ] `apps/android-companion/app.config.js` has the intended new `expo.version` and the commit is merged/tagged.
+- [ ] `PURCHASE_GATING_ENABLED` matches the intended release state, and that state is recorded in the release notes.
 - [ ] EAS project access and Play Console production-track access are limited to authorized release owners.
 - [ ] Play App Signing is enabled and no signing material is present in the repository or build logs.
 - [ ] Development, preview, and production EAS environments are distinct; production has no development-only values.
 - [ ] Repository checks pass: workspace typecheck, build, tests, and Android production dependency audit.
 - [ ] Production AAB build completes with a new remote Android version code, `production` channel, and cleartext disabled.
-- [ ] The active `scan_sync_unlock` one-time product is tested with Play license testers for purchase, cancellation, pending payment, acknowledgement, reinstall, and restore.
 - [ ] The exact AAB is tested on a physical Android device with the phone assigned to a profile different from the PC active profile: Dashboard refresh, Track search/detail/pagination, manual import, both camera/gallery scan types and row exclusion, HTTPS certificate-pin validation, Health Connect selected-category/cursor sync, revoke/disconnect, PC restart, maintenance, and offline recovery.
+- [ ] Standalone mode is tested by importing data, force-closing and relaunching the app, and confirming the same profile and records remain. Standalone → Demo → Standalone also restores usable persisted data.
+- [ ] Health Connect is tested with a 30-day window and a window over 30 days. The extended run requests `READ_HEALTH_DATA_HISTORY`; the 30-day run does not request extended history access.
 - [ ] Report drafts clear on backgrounding, cancellation, commit, and disconnect; small and large accessibility font scales remain usable.
-- [ ] AsyncStorage and SecureStore inspection confirms that report images, OCR text, manual-entry payloads, Dashboard responses, and Track responses are not persisted.
+- [ ] Storage inspection confirms that report images, OCR text, and review drafts are not persisted; Connected-mode Dashboard and Track responses remain memory-only; Standalone health records exist only in the SQLCipher-encrypted database; and its key remains in device-only SecureStore.
+- [ ] EAS Update traffic is inspected to confirm update requests contain no personal health records, and Play Data Safety answers match Expo's current disclosure for the shipped SDK version.
 - [ ] Reviewer Demo mode works without network access, exposes Dashboard and Track sample data, blocks all import actions, and preserves any existing paired connection when turned off.
 - [ ] A production-compatible OTA update is tested on the production channel only, or the release notes state that no OTA update is included.
 - [ ] Play Console metadata, content rating, Data Safety, and Health apps/Health Connect declarations are completed from `docs/PLAY_DATA_SAFETY.md` and `docs/HEALTH_CONNECT_DECLARATION.md`; they match `docs/HEALTH_CONNECT_DATA_INVENTORY.md` and the released binary.
 - [ ] The public privacy policy at `https://vitanahealth.app/privacy` is linked from the companion and matches `docs/HEALTH_CONNECT_DATA_INVENTORY.md`.
 - [ ] The release starts on the internal testing track; crash/ANR, policy, and tester feedback are reviewed before staged production rollout.
-- [ ] Release notes include the commit SHA, EAS build URL, Expo version, Android version code, Play release name, rollout percentage, and approver.
+- [ ] Release notes include the commit SHA, EAS build URL, Expo version, Android version code, Play release name, billing state, rollout percentage, and approver.
+
+### Billing-enabled releases only
+
+- [ ] Cached entitlement handling cannot permanently retain ownership after an authoritative online Play query reports no active purchase; the offline grace policy is defined and tested.
+- [ ] The active `scan_sync_unlock` managed one-time product is tested with Play license testers for purchase, cancellation, pending payment, acknowledgement, refund/revocation, reinstall, offline expiry, and restore.
+- [ ] Existing free-test users either become locked or are grandfathered according to the documented launch decision, without losing access to existing health data.
+- [ ] Purchase metadata handling is reflected in the privacy policy and Play Data Safety answers.
+- [ ] Billing is enabled in a new versioned AAB, and that exact artifact completes internal and closed-track testing before promotion; billing is not introduced by OTA update.
 
 ## Rollback
 

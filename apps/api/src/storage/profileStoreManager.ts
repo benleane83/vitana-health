@@ -21,6 +21,7 @@ import {
 import { initializeDuckDbRoot, type DuckDbOptions } from "./duckdbRuntime.js";
 import { DuckDbHealthStore } from "./duckdbHealthStore.js";
 import type { ManagedProfileRepository } from "./profileRepository.js";
+import { RestoreJournal } from "./restoreJournal.js";
 
 export type StoreSecurityMode = "env-secret" | "generated-local-key" | "os-secure-storage";
 
@@ -45,6 +46,20 @@ interface StorageBackendManifest {
   backend: "duckdb";
   activatedAt: string;
   profiles: Array<{ profileId: string; databaseFile: string }>;
+}
+
+export interface RestoreProfileRequest {
+  sourceProfileId: string;
+  decision: "replace" | "create-copy";
+  displayName: string;
+  data: HealthStoreData;
+}
+
+export interface RestoreProfileResult {
+  profileId: string;
+  decision: "replace" | "create-copy";
+  newProfileId?: string;
+  success: true;
 }
 
 const windowsX64HttpfsSha256 = "21eea4547cf5aa5231f4838906e8935067c956f56a5efd09035a51189af8a77b";
@@ -133,6 +148,118 @@ export class ProfileStoreManager {
     }
   }
 
+  async restoreProfiles(requests: RestoreProfileRequest[], journal: RestoreJournal): Promise<RestoreProfileResult[]> {
+    const manifest = this.requireOpenStorage();
+    const originalProfiles = [...this.profiles];
+    const originalManifest: StorageBackendManifest = {
+      ...manifest,
+      profiles: manifest.profiles.map((entry) => ({ ...entry }))
+    };
+    const originalStores = new Map(this.stores);
+    const reservedIds = new Set(this.profiles.map((profile) => profile.id));
+    const prepared: Array<{
+      request: RestoreProfileRequest;
+      targetId: string;
+      databaseFile: string;
+      livePath: string;
+      stagedPath: string;
+      rollbackPath?: string;
+      existed: boolean;
+    }> = [];
+
+    journal.snapshotMetadataFile(profilesPath());
+    journal.snapshotMetadataFile(storageBackendManifestPath());
+    journal.snapshotMetadataFile(activeProfilePath());
+    journal.setPhase("hydrating");
+
+    try {
+      for (const request of requests) {
+        const existsLocally = reservedIds.has(request.sourceProfileId);
+        const copyName = `${request.displayName} (restored ${new Date().toISOString().slice(0, 10)})`;
+        const targetId = request.decision === "replace" && existsLocally
+          ? request.sourceProfileId
+          : generateProfileId(request.decision === "create-copy" ? copyName : request.displayName, reservedIds);
+        reservedIds.add(targetId);
+        const displayName = request.decision === "create-copy" ? copyName : request.displayName;
+        const databaseFile = `health-store-${targetId}.duckdb`;
+        const livePath = resolve(this.root!, "databases", databaseFile);
+        const stagedPath = `${livePath}.restore-${journal.id}`;
+        const rollbackPath = existsLocally && targetId === request.sourceProfileId
+          ? `${livePath}.pre-restore-${journal.id}`
+          : undefined;
+        const snapshot: HealthStoreData = {
+          ...request.data,
+          profile: { ...request.data.profile, id: targetId, displayName }
+        };
+
+        journal.addEntry({
+          profileId: request.sourceProfileId,
+          decision: request.decision,
+          newProfileId: targetId === request.sourceProfileId ? undefined : targetId,
+          originalDatabaseFile: rollbackPath ? livePath : undefined,
+          newDatabaseFile: livePath,
+          stagedDatabaseFile: stagedPath,
+          rollbackDatabaseFile: rollbackPath,
+          status: "pending"
+        });
+        const stagedStore = await DuckDbHealthStore.hydrate(this.storeOptions(targetId, stagedPath), snapshot);
+        await stagedStore.close();
+        journal.updateEntryStatus(request.sourceProfileId, "hydrated");
+        prepared.push({ request, targetId, databaseFile, livePath, stagedPath, rollbackPath, existed: Boolean(rollbackPath) });
+      }
+
+      journal.setPhase("committing");
+      for (const item of prepared) {
+        if (item.existed) {
+          await this.stores.get(item.targetId)!.close();
+          renameSync(item.livePath, item.rollbackPath!);
+        }
+        renameSync(item.stagedPath, item.livePath);
+        const replacement = await DuckDbHealthStore.open(this.storeOptions(item.targetId, item.livePath));
+        this.stores.set(item.targetId, replacement);
+        journal.updateEntryStatus(item.request.sourceProfileId, "committed");
+      }
+
+      const restoredIds = new Set(prepared.map((item) => item.targetId));
+      const restoredProfiles = await Promise.all(
+        prepared.map(async (item) => profileListEntryFromProfile(await this.stores.get(item.targetId)!.getProfile()))
+      );
+      this.profiles = [
+        ...this.profiles.filter((profile) => !restoredIds.has(profile.id)),
+        ...restoredProfiles
+      ];
+      this.manifest = {
+        ...manifest,
+        profiles: [
+          ...manifest.profiles.filter((entry) => !restoredIds.has(entry.profileId)),
+          ...prepared.map((item) => ({ profileId: item.targetId, databaseFile: item.databaseFile }))
+        ]
+      };
+      persistProfileRegistry(this.profiles);
+      persistStorageBackendManifest(this.manifest);
+      journal.complete();
+      return prepared.map((item) => ({
+        profileId: item.request.sourceProfileId,
+        decision: item.request.decision,
+        ...(item.targetId === item.request.sourceProfileId ? {} : { newProfileId: item.targetId }),
+        success: true
+      }));
+    } catch (error) {
+      await Promise.all(prepared.map(async (item) => {
+        const store = this.stores.get(item.targetId);
+        if (store && store !== originalStores.get(item.targetId)) await store.close().catch(() => undefined);
+      }));
+      if (!journal.rollback()) throw new Error("Restore failed and compensation could not be verified.", { cause: error });
+      this.profiles = originalProfiles;
+      this.manifest = originalManifest;
+      this.stores = originalStores;
+      for (const item of prepared.filter((candidate) => candidate.existed)) {
+        this.stores.set(item.targetId, await DuckDbHealthStore.open(this.storeOptions(item.targetId, item.livePath)));
+      }
+      throw error;
+    }
+  }
+
   setActiveProfile(profileId: string): string {
     const normalizedId = normalizeProfileId(profileId);
     if (!this.profiles.some((entry) => entry.id === normalizedId)) {
@@ -196,6 +323,7 @@ export class ProfileStoreManager {
 
   private async openDuckDb(options: DuckDbActivationOptions): Promise<void> {
     validateDuckDbRuntime(options);
+    RestoreJournal.recover(resolveDataDir());
     this.root = initializeDuckDbRoot(options.root ?? duckdbStorageRoot());
     this.duckdbOptions = { httpfsExtensionPath: options.httpfsExtensionPath, memoryLimit: "256MB" };
     const existingManifest = loadStorageBackendManifest();

@@ -49,7 +49,7 @@ describe("desktop update settings", () => {
       channel: "lan",
       progress: { percent: 0, transferred: 0, total: 0 }
     });
-    render(<SettingsPage view="app" onViewChange={() => {}} />);
+    render(<SettingsPage view="app" onViewChange={() => {}} confirm={vi.fn()} />);
     expect(await screen.findByText(/LAN test channel/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Download update" }));
     await waitFor(() => expect(mocks.downloadUpdates).toHaveBeenCalledOnce());
@@ -62,19 +62,24 @@ describe("desktop update settings", () => {
       currentVersion: "development",
       channel: null
     });
-    render(<SettingsPage view="app" onViewChange={() => {}} />);
+    render(<SettingsPage view="app" onViewChange={() => {}} confirm={vi.fn()} />);
     expect(await screen.findByText(/unavailable in web development mode/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /check for updates/i })).not.toBeInTheDocument();
   });
 
   it("confirms and resets built-in measurement metadata for the active profile", async () => {
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
-    render(<SettingsPage view="app" onViewChange={() => {}} />);
+    const confirm = vi.fn().mockResolvedValue(true);
+    render(<SettingsPage view="app" onViewChange={() => {}} confirm={confirm} />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Reset metadata" }));
 
     await waitFor(() => expect(mocks.resetMeasurementMetadata).toHaveBeenCalledOnce());
-    expect(confirm).toHaveBeenCalledOnce();
+    expect(confirm).toHaveBeenCalledWith(
+      "Reset measurement metadata",
+      expect.stringContaining("Reset built-in measurement metadata"),
+      "Reset metadata",
+      true
+    );
     expect(await screen.findByText("Reset 108 measurement types.")).toBeInTheDocument();
   });
 });
