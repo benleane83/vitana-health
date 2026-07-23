@@ -495,11 +495,28 @@ textarea {
 }
 
 .settings-panel {
+  display: grid;
+  gap: var(--space-6);
   max-width: 720px;
 }
 
 .settings-panel h2 {
-  margin-top: 0;
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 1.28rem;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.settings-section {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.settings-section + .settings-section {
+  border-top: 1px solid var(--line);
+  padding-top: var(--space-6);
 }
 
 .settings-switch {
@@ -519,10 +536,47 @@ textarea {
   line-height: 1.45;
 }
 
+.settings-feedback {
+  margin: 0;
+  color: var(--muted);
+}
+
 .settings-switch input {
   width: 2.75rem;
   min-width: 2.75rem;
   height: 1.4rem;
+  accent-color: var(--primary);
+}
+
+.settings-update {
+  align-content: start;
+}
+
+.settings-update h3,
+.settings-update p {
+  margin: 0;
+}
+
+.settings-update h3 {
+  color: var(--text-strong);
+  font-size: 1.04rem;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.settings-update-version {
+  color: var(--text);
+}
+
+.settings-update-status {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.settings-update progress {
+  width: min(100%, 22rem);
+  height: 0.5rem;
   accent-color: var(--primary);
 }
 

@@ -96,7 +96,7 @@ function AppSettingsPanel() {
         });
       }
     };
-    void loadUpdates();
+    if (!updates) void loadUpdates();
     const active = updates?.status === "checking" || updates?.status === "downloading";
     const interval = active ? window.setInterval(() => { void loadUpdates(); }, 750) : undefined;
     return () => {
@@ -141,42 +141,44 @@ function AppSettingsPanel() {
   return (
     <section className="panel settings-panel">
       <h2>App</h2>
-      {loadError ? (
-        <div role="alert">
-          <p>{loadError}</p>
-          <button type="button" onClick={() => { void load(); }}>Retry</button>
-        </div>
-      ) : !settings ? (
-        <p className="empty">Loading app settings…</p>
-      ) : settings.supported ? (
-        <label className="settings-switch">
-          <span>
-            <strong>Keep the service running in the background</strong>
-            <small>Keep mobile sync available after closing the window and start the service at login.</small>
-          </span>
-          <input
-            type="checkbox"
-            role="switch"
-            checked={settings.backgroundServiceEnabled}
-            disabled={busy}
-            onChange={(event) => { void toggle(event.target.checked); }}
-          />
-        </label>
-      ) : (
-        <p className="empty">Desktop preferences will appear here when available.</p>
-      )}
-      {message ? <p role="status" aria-live="polite">{message}</p> : null}
-      <div className="settings-update">
+      <section className="settings-section" aria-labelledby="background-service-heading">
+        {loadError ? (
+          <div role="alert">
+            <p>{loadError}</p>
+            <button type="button" onClick={() => { void load(); }}>Retry</button>
+          </div>
+        ) : !settings ? (
+          <p className="empty">Loading app settings…</p>
+        ) : settings.supported ? (
+          <label className="settings-switch">
+            <span>
+              <strong id="background-service-heading">Keep the service running in the background</strong>
+              <small>Keep mobile sync available after closing the window and start the service at login.</small>
+            </span>
+            <input
+              type="checkbox"
+              role="switch"
+              checked={settings.backgroundServiceEnabled}
+              disabled={busy}
+              onChange={(event) => { void toggle(event.target.checked); }}
+            />
+          </label>
+        ) : (
+          <p className="empty">Desktop preferences will appear here when available.</p>
+        )}
+        {message ? <p className="settings-feedback" role="status" aria-live="polite">{message}</p> : null}
+      </section>
+      <section className="settings-section settings-update" aria-labelledby="desktop-updates-heading">
         <h3>Desktop updates</h3>
         {!updates ? <p className="empty">Loading update status…</p> : updates.status === "unsupported" ? (
           <p className="empty">Desktop updates are unavailable in web development mode.</p>
         ) : (
           <>
-            <p>
+            <p className="settings-update-version">
               Installed version <strong>{updates.currentVersion}</strong>
               {" · "}{updates.channel === "lan" ? "LAN test channel" : "Production channel"}
             </p>
-            <p role={updates.error ? "alert" : "status"} aria-live="polite">
+            <p className="settings-update-status" role={updates.error ? "alert" : "status"} aria-live="polite">
               {updates.error ??
                 (updates.status === "up-to-date" ? "Vitana is up to date." :
                   updates.status === "available" ? `Version ${updates.availableVersion} is available.` :
@@ -203,7 +205,7 @@ function AppSettingsPanel() {
             </div>
           </>
         )}
-      </div>
+      </section>
     </section>
   );
 }

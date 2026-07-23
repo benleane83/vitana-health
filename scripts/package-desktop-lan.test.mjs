@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
+import { assertDesktopUpdaterInstalled, createLanBuilderConfig } from "./package-desktop-lan.mjs";
 
 const script = path.resolve("scripts/package-desktop-lan.mjs");
 
@@ -35,4 +36,21 @@ test("LAN packaging requires a valid version and signing inputs before building"
   const signing = run({});
   assert.equal(signing.status, 1);
   assert.match(signing.stderr, /CSC_LINK and CSC_KEY_PASSWORD/);
+});
+
+test("LAN packaging detects a missing updater dependency before creating an installer", () => {
+  assert.throws(
+    () => assertDesktopUpdaterInstalled(() => { throw new Error("not found"); }),
+    /electron-updater is missing.*npm install --workspace @vitana\/desktop --include=prod/
+  );
+});
+
+test("LAN packaging uses a generic publisher array without changing desktop build settings", () => {
+  const config = createLanBuilderConfig(new URL("http://192.168.1.10:8082/"), "1.0.1-lan.1");
+
+  assert.deepEqual(config.publish, [{ provider: "generic", url: "http://192.168.1.10:8082/" }]);
+  assert.equal(config.extraMetadata.version, "1.0.1-lan.1");
+  assert.equal(config.extraMetadata.vitanaUpdateChannel, "lan");
+  assert.equal(config.win.verifyUpdateCodeSignature, true);
+  assert.equal(config.nsis.perMachine, true);
 });

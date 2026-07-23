@@ -43,25 +43,6 @@ function requestQuit() {
   app.quit();
 }
 
-async function shutdownApiForUpdate() {
-  if (updateInstallPending) return;
-  updateInstallPending = true;
-  quitting = true;
-  backgroundService.destroyTray();
-  if (!apiServer) return;
-  try {
-    await Promise.race([
-      apiServer.shutdown(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("Embedded API shutdown timed out.")), 10_000))
-    ]);
-    apiServer = undefined;
-  } catch (error) {
-    updateInstallPending = false;
-    quitting = false;
-    throw error;
-  }
-}
-
 async function createOrFocusWindow() {
   if (mainWindow && !mainWindow.isDestroyed()) {
     if (mainWindow.isMinimized()) mainWindow.restore();
@@ -225,4 +206,23 @@ app.on("before-quit", (event) => {
       console.error(error);
       app.exit(1);
     });
+
+    async function shutdownApiForUpdate() {
+      if (updateInstallPending) return;
+      updateInstallPending = true;
+      quitting = true;
+      backgroundService.destroyTray();
+      if (!apiServer) return;
+      try {
+        await Promise.race([
+          apiServer.shutdown(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Embedded API shutdown timed out.")), 10_000))
+        ]);
+        apiServer = undefined;
+      } catch (error) {
+        updateInstallPending = false;
+        quitting = false;
+        throw error;
+      }
+    }
 });

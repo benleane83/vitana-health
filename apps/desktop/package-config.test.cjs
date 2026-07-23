@@ -45,3 +45,16 @@ test("Windows packages retain signed GitHub update metadata", () => {
   }]);
   assert.equal(packageJson.dependencies["electron-updater"], "6.6.2");
 });
+
+test("desktop updater shutdown callback is available during main-process initialization", () => {
+  const mainProcess = readFileSync(path.join(__dirname, "main.cjs"), "utf8");
+  const shutdownCallback = mainProcess.indexOf("async function shutdownApiForUpdate()");
+  const updaterController = mainProcess.indexOf("const desktopUpdater = createDesktopUpdaterController(");
+  const beforeQuitHandler = mainProcess.indexOf("app.on(\"before-quit\"");
+
+  assert.ok(shutdownCallback >= 0);
+  assert.ok(updaterController >= 0);
+  assert.ok(beforeQuitHandler >= 0);
+  assert.ok(shutdownCallback < beforeQuitHandler);
+  assert.match(mainProcess.slice(updaterController, beforeQuitHandler), /prepareToInstall: shutdownApiForUpdate/);
+});

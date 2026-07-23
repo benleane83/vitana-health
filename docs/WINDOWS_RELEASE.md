@@ -70,8 +70,16 @@ select **Check for updates**, **Download update**, then **Restart to update** in
 ## One-time LAN setup
 
 1. On the development PC, create a separate self-signed or internal Authenticode
-   code-signing certificate. Export its PFX outside this repository and protect
-   its password. Never copy or reuse the production PFX.
+   code-signing certificate. For a self-signed LAN test identity, run:
+
+   ```powershell
+   .\scripts\create-lan-signing-certificate.ps1
+   ```
+
+   Enter the PFX password only at the PowerShell prompt. The helper creates the
+   protected `C:\secure\vitana-lan-test.pfx` and public
+   `C:\secure\vitana-lan-test.cer`; neither belongs in this repository. Never
+   copy or reuse the production PFX.
 2. Export only the public certificate and install it on each trusted test PC in
    both **Trusted Root Certification Authorities** and **Trusted Publishers**
    (Local Machine). Remove the old certificate from both stores during rotation
@@ -101,7 +109,15 @@ $env:CSC_KEY_PASSWORD = Read-Host "LAN PFX password"
 $env:VITANA_LAN_UPDATE_URL = "http://192.168.1.10:8082/"
 $env:VITANA_LAN_UPDATE_VERSION = "0.1.1-lan.1"
 npm run package:desktop:lan
-npm run serve:desktop:updates -- --lan --root apps/desktop/dist --port 8082
+   npm run serve:desktop:updates
+   ```
+
+   The npm command serves `apps/desktop/dist` on port `8082` in explicit LAN
+   mode. For a nondefault root or port, invoke Node directly:
+
+   ```powershell
+   node .\scripts\serve-desktop-updates.mjs --lan --root <directory> --port <port>
+   ```
 ```
 
 For an accepted local DNS name, set `VITANA_LAN_UPDATE_ALLOW_HOST` to that exact

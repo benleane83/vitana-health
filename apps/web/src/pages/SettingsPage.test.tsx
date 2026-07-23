@@ -50,7 +50,7 @@ describe("desktop update settings", () => {
     expect(await screen.findByText(/LAN test channel/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Download update" }));
     await waitFor(() => expect(mocks.downloadUpdates).toHaveBeenCalledOnce());
-    expect(screen.getByRole("progressbar")).toHaveAttribute("value", "0");
+    expect(await screen.findByRole("progressbar")).toHaveAttribute("value", "0");
   });
 
   it("clearly reports unsupported web development mode", async () => {

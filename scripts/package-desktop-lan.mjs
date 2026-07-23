@@ -1,24 +1,74 @@
 import { isIP } from "node:net";
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
+import { join, resolve } from "node:path";
 
-const feed = validateFeed(process.env.VITANA_LAN_UPDATE_URL);
-const version = process.env.VITANA_LAN_UPDATE_VERSION;
-if (!version || !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
-  fail("VITANA_LAN_UPDATE_VERSION must be an increasing SemVer version.");
-}
-if (!process.env.CSC_LINK || !process.env.CSC_KEY_PASSWORD) {
-  fail("CSC_LINK and CSC_KEY_PASSWORD are required for signed LAN packages.");
+const desktopPackageFile = new URL("../apps/desktop/package.json", import.meta.url);
+const requireDesktopDependency = createRequire(desktopPackageFile);
+
+export function createLanBuilderConfig(feed, version) {
+  const buildConfig = JSON.parse(readFileSync(desktopPackageFile, "utf8")).build;
+  return {
+    ...buildConfig,
+    extraMetadata: {
+      ...buildConfig.extraMetadata,
+      version,
+      vitanaUpdateChannel: "lan"
+    },
+    publish: [{
+      provider: "generic",
+      url: feed.toString()
+    }]
+  };
 }
 
-run("npm", ["run", "build"]);
-run("npm", ["run", "prepackage", "-w", "@vitana/desktop"]);
-run("npm", [
-  "run", "package:signed", "-w", "@vitana/desktop", "--",
-  `--config.extraMetadata.version=${version}`,
-  "--config.extraMetadata.vitanaUpdateChannel=lan",
-  "--config.publish.provider=generic",
-  `--config.publish.url=${feed.toString()}`
-]);
+export function assertDesktopUpdaterInstalled(resolveDependency = requireDesktopDependency.resolve) {
+  try {
+    resolveDependency("electron-updater");
+  } catch {
+    throw new Error("electron-updater is missing from the desktop workspace. Run npm install --workspace @vitana/desktop --include=prod before packaging.");
+  }
+}
+
+function main() {
+  const feed = validateFeed(process.env.VITANA_LAN_UPDATE_URL);
+  const version = process.env.VITANA_LAN_UPDATE_VERSION;
+  if (!version || !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
+    fail("VITANA_LAN_UPDATE_VERSION must be an increasing SemVer version.");
+  }
+  if (!process.env.CSC_LINK || !process.env.CSC_KEY_PASSWORD) {
+    fail("CSC_LINK and CSC_KEY_PASSWORD are required for signed LAN packages.");
+  }
+  try {
+    assertDesktopUpdaterInstalled();
+  } catch (error) {
+    fail(error.message);
+  }
+
+  const configDirectory = mkdtempSync(join(tmpdir(), "vitana-lan-builder-"));
+  const configPath = join(configDirectory, "electron-builder.json");
+  writeFileSync(configPath, `${JSON.stringify(createLanBuilderConfig(feed, version), null, 2)}\n`);
+
+  try {
+    run("npm", ["run", "build"]);
+    run("npm", ["run", "prepackage", "-w", "@vitana/desktop"]);
+    run("npm", [
+      "run", "package:signed", "-w", "@vitana/desktop", "--",
+      "--config", configPath
+    ]);
+  } catch (error) {
+    if (error instanceof PackageCommandError) {
+      process.exitCode = error.exitCode;
+      return;
+    }
+    throw error;
+  } finally {
+    rmSync(configDirectory, { recursive: true, force: true });
+  }
+}
 
 function validateFeed(raw) {
   let url;
@@ -49,10 +99,19 @@ function isPrivateIp(host) {
 
 function run(command, args) {
   const result = spawnSync(command, args, { stdio: "inherit", shell: process.platform === "win32" });
-  if (result.status !== 0) process.exit(result.status ?? 1);
+  if (result.status !== 0) throw new PackageCommandError(result.status ?? 1);
 }
 
 function fail(message) {
   console.error(message);
   process.exit(1);
 }
+
+class PackageCommandError extends Error {
+  constructor(exitCode) {
+    super("A desktop packaging command failed.");
+    this.exitCode = exitCode;
+  }
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
