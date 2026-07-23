@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildManualLabEntryImport } from "@vitana/shared";
 import { describeAnalyticsStorage, runAnalyticsQuery } from "../storage/analyticsBackend.js";
 import { ProfileStoreManager } from "../storage/profileStoreManager.js";
+import { RestoreJournal } from "../storage/restoreJournal.js";
+import { createDuckDbHealthStoreFixture } from "./support/duckdbFixture.js";
 
 const httpfsExtensionPath = findPreparedExtension();
 let tempDir: string;
@@ -109,6 +111,66 @@ describe.skipIf(!httpfsExtensionPath)("ProfileStoreManager DuckDB runtime", () =
 
     await expect(openManager()).rejects.toThrow("DuckDB database is missing for profile self");
   }, 30_000);
+
+  it("restores every stored domain and replaces changed or deleted observations", async () => {
+    const manager = await openManager();
+    try {
+      const fixture = createDuckDbHealthStoreFixture();
+      await manager.restoreProfiles([{
+        sourceProfileId: "self",
+        decision: "replace",
+        displayName: fixture.profile.displayName,
+        data: fixture
+      }], new RestoreJournal(tempDir, "fixture-seed"));
+
+      const event = await manager.getActiveStore().createHealthEvent({
+        kind: "immunization",
+        status: "completed",
+        occurredAt: "2026-07-18T12:00:00.000Z"
+      });
+      await manager.getActiveStore().createCareItem({
+        kind: "medication",
+        title: "Take medication",
+        dueStart: "2026-08-18T14:00:00.000Z",
+        priority: "normal",
+        status: "open",
+        originatingHealthEventId: event.healthEvent.id
+      });
+      const backupSnapshot = await manager.getActiveStore().exportData();
+      expect(backupSnapshot.devices).not.toHaveLength(0);
+      expect(backupSnapshot.personalReferenceRanges).not.toHaveLength(0);
+      expect(backupSnapshot.healthEvents).not.toHaveLength(0);
+      expect(backupSnapshot.careItems).not.toHaveLength(0);
+      expect(backupSnapshot.insights).not.toHaveLength(0);
+      expect(backupSnapshot.auditEvents).not.toHaveLength(0);
+
+      await manager.getActiveStore().updateObservation("observation-z", {
+        measurementCode: "weight",
+        observedAt: "2026-07-20T10:00:00.000Z",
+        value: 999,
+        unit: "kg"
+      });
+      await manager.getActiveStore().deleteObservation("observation-a");
+
+      await manager.restoreProfiles([{
+        sourceProfileId: "self",
+        decision: "replace",
+        displayName: backupSnapshot.profile.displayName,
+        data: backupSnapshot
+      }], new RestoreJournal(tempDir, "round-trip"));
+
+      const restoredSnapshot = await manager.getActiveStore().exportData();
+      expect({
+        ...restoredSnapshot,
+        auditEvents: restoredSnapshot.auditEvents.filter((event) => event.eventType !== "export-created")
+      }).toEqual({
+        ...backupSnapshot,
+        auditEvents: backupSnapshot.auditEvents.filter((event) => event.eventType !== "export-created")
+      });
+    } finally {
+      await manager.closeAll();
+    }
+  }, 60_000);
 });
 
 function openManager(): Promise<ProfileStoreManager> {

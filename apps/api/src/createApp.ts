@@ -194,7 +194,9 @@ export function createApp(
   app.use("/api/llm", rateLimit(10, 60_000));
   app.use("/api/settings", rateLimit(30, 60_000));
   app.use("/api/query", rateLimit(30, 60_000));
-  app.use("/api/backups", rateLimit(5, 60_000));
+  app.use("/api/backups/create", rateLimit(5, 60_000));
+  app.use("/api/backups/inspect", rateLimit(10, 60_000));
+  app.use("/api/backups/restore", rateLimit(5, 60_000));
 
   // Maintenance mode middleware — returns 503 during restore except /api/health
   app.use((request, response, next) => {

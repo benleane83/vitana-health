@@ -50,7 +50,16 @@ function createMockStoreManager(): ProfileStoreManager {
     getActiveProfileId: vi.fn().mockReturnValue("test-user"),
     getStore: vi.fn().mockReturnValue(mockStore),
     getActiveStore: vi.fn().mockReturnValue(mockStore),
-    createProfile: vi.fn().mockResolvedValue({ id: "test-user-copy", displayName: "Test User (restored)", updatedAt: "2024-01-01T00:00:00.000Z" })
+    createProfile: vi.fn().mockResolvedValue({ id: "test-user-copy", displayName: "Test User (restored)", updatedAt: "2024-01-01T00:00:00.000Z" }),
+    restoreProfiles: vi.fn().mockImplementation(async (requests, journal) => {
+      journal.complete();
+      return requests.map((request: { sourceProfileId: string; decision: "replace" | "create-copy" }) => ({
+        profileId: request.sourceProfileId,
+        decision: request.decision,
+        ...(request.decision === "create-copy" ? { newProfileId: "test-user-copy" } : {}),
+        success: true
+      }));
+    })
   } as unknown as ProfileStoreManager;
 }
 
@@ -407,6 +416,61 @@ describe("backupRoutes", () => {
         expect(body.restored[0].decision).toBe("skip");
         expect(body.restored[0].success).toBe(true);
       } finally {
+        server.close();
+      }
+    }, 30_000);
+
+    it("rejects a concurrent restore without releasing the active restore lock", async () => {
+      const sm = createMockStoreManager();
+      let releaseFirst!: () => void;
+      let firstStarted!: () => void;
+      const started = new Promise<void>((resolve) => { firstStarted = resolve; });
+      const blocked = new Promise<void>((resolve) => { releaseFirst = resolve; });
+      vi.mocked(sm.restoreProfiles).mockImplementationOnce(async (requests, journal) => {
+        firstStarted();
+        await blocked;
+        journal.complete();
+        return requests.map((request) => ({
+          profileId: request.sourceProfileId,
+          decision: request.decision,
+          success: true as const
+        }));
+      });
+      const { app } = createTestApp(sm);
+      const { server, port } = await listen(app);
+      const payload: BackupPayload = {
+        formatVersion: 1,
+        createdAt: "2024-06-01T00:00:00.000Z",
+        scope: "all",
+        profiles: [buildBackupProfileEntry(createTestStoreData())]
+      };
+      const encrypted = await encryptBackup(payload, "restore-passphrase!");
+      const request = () => httpRequest(port, "/api/backups/restore", {
+        method: "POST",
+        headers: {
+          "content-type": "application/octet-stream",
+          "x-backup-passphrase": "restore-passphrase!",
+          "x-restore-decisions": JSON.stringify([{
+            profileId: "test-user",
+            decision: "replace",
+            acknowledgeReplacement: "REPLACE_CONFIRMED"
+          }])
+        },
+        body: encrypted
+      });
+
+      try {
+        const first = request();
+        await started;
+        const second = await request();
+        expect(second.status).toBe(409);
+        expect(JSON.parse(second.body.toString()).code).toBe("RESTORE_IN_PROGRESS");
+        expect(isInMaintenanceMode()).toBe(true);
+        releaseFirst();
+        expect((await first).status).toBe(200);
+        expect(isInMaintenanceMode()).toBe(false);
+      } finally {
+        releaseFirst();
         server.close();
       }
     }, 30_000);
