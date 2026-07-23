@@ -34,12 +34,15 @@ module.exports = {
         "android.permission.health.READ_HEALTH_DATA_HISTORY"
       ],
       adaptiveIcon: {
-        backgroundColor: "#E6F4FE",
+        backgroundColor: "#E7EDFF",
         foregroundImage: "./assets/android-icon-foreground.png",
         backgroundImage: "./assets/android-icon-background.png",
         monochromeImage: "./assets/android-icon-monochrome.png"
       },
       predictiveBackGestureEnabled: false
+    },
+    web: {
+      favicon: "./assets/favicon.png"
     },
     plugins: [
       ["./plugins/withDevNetworkSecurity", { allowCleartext }],
