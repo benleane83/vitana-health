@@ -75,6 +75,22 @@ PUT /api/settings/desktop
 The request is strict and rejects additional properties. A host without a desktop
 runtime controller returns `501 DESKTOP_RUNTIME_UNSUPPORTED`.
 
+### Desktop updates
+
+Owner-only desktop update operations are separate from the settings mutation:
+
+```text
+GET  /api/settings/updates
+POST /api/settings/updates/check
+POST /api/settings/updates/download
+POST /api/settings/updates/restart
+```
+
+Responses include `status`, `currentVersion`, immutable `channel`, and optional
+`availableVersion`, `lastCheckedAt`, safe `error`, and download `progress`.
+Standalone/web development hosts report `unsupported`; commands return
+`501 DESKTOP_UPDATES_UNSUPPORTED`. Feed URLs are never returned.
+
 ---
 
 ## Pairing (device management)

@@ -1,11 +1,14 @@
 {
   "name": "@vitana/desktop",
   "version": "0.1.0",
+  "author": "Ben Leane",
   "description": "Packaged Vitana Health desktop application",
   "main": "main.cjs",
   "private": true,
+  "vitanaUpdateChannel": "production",
   "dependencies": {
-    "@vitana/api": "file:../api"
+    "@vitana/api": "file:../api",
+    "electron-updater": "6.6.2"
   },
   "devDependencies": {
     "electron": "43.1.0",
@@ -16,7 +19,7 @@
     "start": "electron .",
     "test": "node --test *.test.cjs",
     "package": "electron-builder",
-    "package:signed": "electron-builder --config.forceCodeSigning=true"
+    "package:signed": "electron-builder --publish never --config.forceCodeSigning=true"
   },
   "license": "Elastic-2.0",
   "type": "commonjs",
@@ -34,6 +37,7 @@
       "background-service-settings.cjs",
       "secure-store-key.cjs",
       "startup-diagnostics.cjs",
+      "desktop-updater.cjs",
       "user-data-migration.cjs",
       "build/*.ico",
       "package.json",
@@ -66,6 +70,15 @@
       "target": "nsis",
       "verifyUpdateCodeSignature": true
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "benleane83",
+        "repo": "local-fitness-advisor",
+        "channel": "latest",
+        "releaseType": "release"
+      }
+    ],
     "nsis": {
       "oneClick": false,
       "perMachine": true,

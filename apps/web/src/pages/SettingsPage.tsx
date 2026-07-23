@@ -1,6 +1,6 @@
 import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { api } from "../api.js";
-import type { AiSettings, DesktopRuntimeSettings } from "../api.js";
+import type { AiSettings, DesktopRuntimeSettings, DesktopUpdateState } from "../api.js";
 import type { SettingsView } from "../types.js";
 
 export function SettingsPage({ view, onViewChange }: {
@@ -68,6 +68,8 @@ function AppSettingsPanel() {
   const [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState<string>();
   const [message, setMessage] = useState<string>();
+  const [updates, setUpdates] = useState<DesktopUpdateState>();
+  const [updateBusy, setUpdateBusy] = useState(false);
 
   async function load() {
     setLoadError(undefined);
@@ -79,6 +81,45 @@ function AppSettingsPanel() {
   }
 
   useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    const loadUpdates = async () => {
+      try {
+        const next = await api.settings.updates.get();
+        if (!cancelled) setUpdates(next);
+      } catch {
+        if (!cancelled) setUpdates({
+          status: "error",
+          currentVersion: "unknown",
+          channel: null,
+          error: "Unable to read update status."
+        });
+      }
+    };
+    if (!updates) void loadUpdates();
+    const active = updates?.status === "checking" || updates?.status === "downloading";
+    const interval = active ? window.setInterval(() => { void loadUpdates(); }, 750) : undefined;
+    return () => {
+      cancelled = true;
+      if (interval !== undefined) window.clearInterval(interval);
+    };
+  }, [updates?.status]);
+
+  async function updateCommand(command: "check" | "download" | "restart") {
+    setUpdateBusy(true);
+    try {
+      setUpdates(await api.settings.updates[command]());
+    } catch (error) {
+      setUpdates((current) => ({
+        status: "error",
+        currentVersion: current?.currentVersion ?? "unknown",
+        channel: current?.channel ?? null,
+        error: error instanceof Error ? error.message : "Update action failed."
+      }));
+    } finally {
+      setUpdateBusy(false);
+    }
+  }
 
   async function toggle(enabled: boolean) {
     if (!settings) return;
@@ -100,31 +141,71 @@ function AppSettingsPanel() {
   return (
     <section className="panel settings-panel">
       <h2>App</h2>
-      {loadError ? (
-        <div role="alert">
-          <p>{loadError}</p>
-          <button type="button" onClick={() => { void load(); }}>Retry</button>
-        </div>
-      ) : !settings ? (
-        <p className="empty">Loading app settings…</p>
-      ) : settings.supported ? (
-        <label className="settings-switch">
-          <span>
-            <strong>Keep the service running in the background</strong>
-            <small>Keep mobile sync available after closing the window and start the service at login.</small>
-          </span>
-          <input
-            type="checkbox"
-            role="switch"
-            checked={settings.backgroundServiceEnabled}
-            disabled={busy}
-            onChange={(event) => { void toggle(event.target.checked); }}
-          />
-        </label>
-      ) : (
-        <p className="empty">Desktop preferences will appear here when available.</p>
-      )}
-      {message ? <p role="status" aria-live="polite">{message}</p> : null}
+      <section className="settings-section" aria-labelledby="background-service-heading">
+        {loadError ? (
+          <div role="alert">
+            <p>{loadError}</p>
+            <button type="button" onClick={() => { void load(); }}>Retry</button>
+          </div>
+        ) : !settings ? (
+          <p className="empty">Loading app settings…</p>
+        ) : settings.supported ? (
+          <label className="settings-switch">
+            <span>
+              <strong id="background-service-heading">Keep the service running in the background</strong>
+              <small>Keep mobile sync available after closing the window and start the service at login.</small>
+            </span>
+            <input
+              type="checkbox"
+              role="switch"
+              checked={settings.backgroundServiceEnabled}
+              disabled={busy}
+              onChange={(event) => { void toggle(event.target.checked); }}
+            />
+          </label>
+        ) : (
+          <p className="empty">Desktop preferences will appear here when available.</p>
+        )}
+        {message ? <p className="settings-feedback" role="status" aria-live="polite">{message}</p> : null}
+      </section>
+      <section className="settings-section settings-update" aria-labelledby="desktop-updates-heading">
+        <h3>Desktop updates</h3>
+        {!updates ? <p className="empty">Loading update status…</p> : updates.status === "unsupported" ? (
+          <p className="empty">Desktop updates are unavailable in web development mode.</p>
+        ) : (
+          <>
+            <p className="settings-update-version">
+              Installed version <strong>{updates.currentVersion}</strong>
+              {" · "}{updates.channel === "lan" ? "LAN test channel" : "Production channel"}
+            </p>
+            <p className="settings-update-status" role={updates.error ? "alert" : "status"} aria-live="polite">
+              {updates.error ??
+                (updates.status === "up-to-date" ? "Vitana is up to date." :
+                  updates.status === "available" ? `Version ${updates.availableVersion} is available.` :
+                    updates.status === "downloaded" ? `Version ${updates.availableVersion} is ready to install.` :
+                      updates.status === "checking" ? "Checking for updates…" :
+                        updates.status === "downloading" ? "Downloading update…" : "Ready to check for updates.")}
+            </p>
+            <progress
+              aria-label="Update download progress"
+              max={100}
+              value={updates.progress?.percent ?? 0}
+              style={{ visibility: updates.status === "downloading" || updates.status === "downloaded" ? "visible" : "hidden" }}
+            />
+            <div className="settings-actions">
+              <button type="button" disabled={updateBusy || updates.status === "checking" || updates.status === "downloading"} onClick={() => { void updateCommand("check"); }}>
+                Check for updates
+              </button>
+              {updates.status === "available" ? (
+                <button type="button" disabled={updateBusy} onClick={() => { void updateCommand("download"); }}>Download update</button>
+              ) : null}
+              {updates.status === "downloaded" ? (
+                <button type="button" disabled={updateBusy} onClick={() => { void updateCommand("restart"); }}>Restart to update</button>
+              ) : null}
+            </div>
+          </>
+        )}
+      </section>
     </section>
   );
 }

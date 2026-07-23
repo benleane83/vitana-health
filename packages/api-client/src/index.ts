@@ -11,6 +11,7 @@ import {
   deleteCareItemResponseSchema,
   deleteHealthEventResponseSchema,
   deleteObservationResponseSchema,
+  desktopUpdateStateSchema,
   healthDataChartSeriesResponseSchema,
   healthDataDetailResponseSchema,
   healthDataSummaryResponseSchema,
@@ -97,6 +98,12 @@ export function createApiClient(transport: ApiTransport) {
 
   return {
     health: () => request(healthResponseSchema, "/api/health"),
+    desktopUpdates: {
+      get: () => request(desktopUpdateStateSchema, "/api/settings/updates"),
+      check: () => request(desktopUpdateStateSchema, "/api/settings/updates/check", { method: "POST" }),
+      download: () => request(desktopUpdateStateSchema, "/api/settings/updates/download", { method: "POST" }),
+      restart: () => request(desktopUpdateStateSchema, "/api/settings/updates/restart", { method: "POST" })
+    },
     assignedProfiles: () => request(assignedProfilesResponseSchema, "/api/profiles"),
     bootstrap: () => request(appBootstrapResponseSchema, "/api/bootstrap"),
     analytics: () => request(analyticsSummaryResponseSchema, "/api/analytics"),
