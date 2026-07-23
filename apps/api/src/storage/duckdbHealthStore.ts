@@ -28,6 +28,7 @@ import { deriveProfileStorageKey } from "./profileKey.js";
 import type {
   ImportMutationResult,
   ManagedProfileRepository,
+  MeasurementRegistryResetResult,
   ProfileImport,
   ProfileRepository
 } from "./profileRepository.js";
@@ -132,6 +133,10 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
     return this.enqueueMutation(async () => {
       return this.repository.replaceProfile(profile);
     });
+  }
+
+  resetMeasurementTypeMetadataFromRegistry(): Promise<MeasurementRegistryResetResult> {
+    return this.enqueueMutation(() => this.repository.resetMeasurementTypeMetadataFromRegistry());
   }
 
   mergeImport(parsed: ProfileImport): Promise<ImportMutationResult> {

@@ -1,7 +1,7 @@
 import express from "express";
 import { z } from "zod";
 import type { ProfileStoreManager } from "../storage/profileStoreManager.js";
-import type { Profile } from "@vitana/shared";
+import type { MeasurementRegistryResetResponse, Profile } from "@vitana/shared";
 import type { PairingStore } from "../pairing.js";
 import type { AuthorizationPrincipal } from "../createApp.js";
 
@@ -100,6 +100,19 @@ export function makeProfileRoutes(storeManager: ProfileStoreManager): express.Ro
       const saved = await store.replaceProfile(profile);
       storeManager.syncProfileEntry(saved);
       response.json(saved);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/measurement-types/reset", async (_request, response, next) => {
+    try {
+      const store = storeManager.getActiveStore();
+      const result: MeasurementRegistryResetResponse = {
+        profileId: store.profileId,
+        ...await store.resetMeasurementTypeMetadataFromRegistry()
+      };
+      response.json(result);
     } catch (error) {
       next(error);
     }

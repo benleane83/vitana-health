@@ -28,6 +28,7 @@ import type {
   ImportMutationResponse as SharedImportMutationResponse,
   LlmConfigResponse as SharedLlmConfigResponse,
   ModelValidationResponse as SharedModelValidationResponse,
+  MeasurementRegistryResetResponse as SharedMeasurementRegistryResetResponse,
   PairedDevice as SharedPairedDevice,
   PendingPairing as SharedPendingPairing,
   PaginatedResult,
@@ -55,6 +56,7 @@ import {
   insightResponseSchema,
   llmConfigResponseSchema,
   modelValidationResponseSchema,
+  measurementRegistryResetResponseSchema,
   pairedDeviceSchema,
   pairedDevicesResponseSchema,
   pairingMutationResponseSchema,
@@ -163,6 +165,7 @@ export type AiSettings = SharedAiSettingsResponse;
 export type DesktopRuntimeSettings = SharedDesktopRuntimeSettingsResponse;
 export type DesktopUpdateState = SharedDesktopUpdateState;
 export type ModelValidation = SharedModelValidationResponse;
+export type MeasurementRegistryResetResponse = SharedMeasurementRegistryResetResponse;
 export type ProfilesResponse = SharedProfilesResponse;
 export type ImportMutationResponse = SharedImportMutationResponse;
 
@@ -252,6 +255,9 @@ export const api = {
     get: () => request(cloudAiConsentResponseSchema, "/api/profile/cloud-ai-consent"),
     set: (payload: { enabled: boolean; providerScopeAccepted: boolean; consentVersion?: string }) =>
       request(cloudAiConsentResponseSchema, "/api/profile/cloud-ai-consent", { method: "PUT", body: JSON.stringify(payload) })
+  },
+  measurementTypes: {
+    resetFromRegistry: () => request(measurementRegistryResetResponseSchema, "/api/profile/measurement-types/reset", { method: "POST" })
   },
   previewBodyCompositionReport: sharedApi.previewBodyCompositionReport,
   commitBodyCompositionReport: sharedApi.commitBodyCompositionReport,

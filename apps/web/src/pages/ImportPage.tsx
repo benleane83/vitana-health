@@ -347,12 +347,12 @@ function ManualMeasurementRow({
             ? measurementGroups.map(([category, types]) => (
               <optgroup key={category} label={measurementCategoryLabels[category]}>
                 {types.map((type) => (
-                  <option value={type.code} key={type.code}>{type.display} ({type.code})</option>
+                  <option value={type.code} key={type.code}>{type.display}</option>
                 ))}
               </optgroup>
             ))
             : measurementTypes.map((type) => (
-              <option value={type.code} key={type.code}>{type.display} ({type.code})</option>
+              <option value={type.code} key={type.code}>{type.display}</option>
             ))}
         </select>
         {showCustomFields ? (

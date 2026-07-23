@@ -135,6 +135,13 @@ export const desktopRuntimeSettingsUpdateSchema = z.object({
 }).strict();
 export type DesktopRuntimeSettingsUpdate = z.infer<typeof desktopRuntimeSettingsUpdateSchema>;
 
+export const measurementRegistryResetResponseSchema = z.object({
+  profileId: z.string(),
+  refreshed: z.number().int().nonnegative(),
+  inserted: z.number().int().nonnegative()
+}).strict();
+export type MeasurementRegistryResetResponse = z.infer<typeof measurementRegistryResetResponseSchema>;
+
 export const desktopUpdateStateSchema = z.object({
   status: z.enum(["unsupported", "idle", "checking", "available", "downloading", "downloaded", "up-to-date", "error"]),
   currentVersion: z.string(),

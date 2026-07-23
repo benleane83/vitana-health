@@ -94,7 +94,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
   },
   {
     code: "bmi",
-    display: "BMI",
+    display: "BMI (Body mass index)",
     description: "A number calculated from your height and weight, used as a simple screening measure for weight status.",
     category: "body",
     kind: "point",
@@ -117,7 +117,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
   },
   {
     code: "total_body_water",
-    display: "Total body water",
+    display: "TBW (Total body water)",
     description: "The estimated total amount of water in your body.",
     category: "body",
     kind: "point",
@@ -137,7 +137,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
   },
   {
     code: "basal_metabolic_rate",
-    display: "Basal metabolic rate",
+    display: "BMR (Basal metabolic rate)",
     description: "The estimated number of calories your body burns at rest each day to maintain basic functions.",
     category: "body",
     kind: "point",
@@ -373,7 +373,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
   },
   {
     code: "hrv_sdnn",
-    display: "HRV SDNN",
+    display: "HRV SDNN (Heart rate variability)",
     description: "A heart-rate-variability measure of the overall variation in time between consecutive heartbeats during a recording.",
     category: "cardio",
     kind: "point",
@@ -383,7 +383,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
   },
   {
     code: "hrv_rmssd",
-    display: "HRV RMSSD",
+    display: "HRV RMSSD (Heart rate variability)",
     description: "A heart-rate-variability measure of short-term differences in timing between consecutive heartbeats.",
     category: "cardio",
     kind: "point",
@@ -465,7 +465,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
   },
   {
     code: "hba1c",
-    display: "HbA1c",
+    display: "HbA1c (Haemoglobin A1c)",
     description: "A blood test that reflects your average blood sugar level over roughly the past two to three months.",
     category: "lab",
     kind: "panel-component",
@@ -558,7 +558,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
   },
   {
     code: "alkaline_phosphatase",
-    display: "Alkaline phosphatase",
+    display: "ALP (Alkaline phosphatase)",
     description: "A blood test measuring alkaline phosphatase, an enzyme found mainly in the liver and bones.",
     category: "lab",
     kind: "panel-component",
@@ -569,7 +569,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
   },
   {
     code: "alanine_aminotransferase",
-    display: "Alanine aminotransferase",
+    display: "ALT (Alanine aminotransferase)",
     description: "A blood test measuring alanine aminotransferase, an enzyme found mainly in the liver.",
     category: "lab",
     kind: "panel-component",
@@ -580,7 +580,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
   },
   {
     code: "aspartate_aminotransferase",
-    display: "Aspartate aminotransferase",
+    display: "AST (Aspartate aminotransferase)",
     description: "A blood test measuring aspartate aminotransferase, an enzyme found in the liver and other tissues such as muscle.",
     category: "lab",
     kind: "panel-component",
@@ -661,7 +661,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
   },
   {
     code: "gamma_glutamyl_transferase",
-    display: "Gamma-glutamyl transferase",
+    display: "GGT (Gamma-glutamyl transferase)",
     description: "A blood test measuring gamma-glutamyl transferase, an enzyme found mainly in the liver.",
     category: "lab",
     kind: "panel-component",
@@ -724,7 +724,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
   },
   {
     code: "thyroid_stimulating_hormone",
-    display: "Thyroid-stimulating hormone",
+    display: "TSH (Thyroid-stimulating hormone)",
     description: "A blood test measuring a pituitary hormone that signals your thyroid to release thyroid hormones.",
     category: "lab",
     kind: "panel-component",
@@ -768,7 +768,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
   },
   {
     code: "high_sensitivity_c_reactive_protein",
-    display: "High-sensitivity C-reactive protein",
+    display: "CRP (C-reactive protein)",
     description: "A sensitive blood test measuring C-reactive protein, a substance that rises when there is inflammation in your body.",
     category: "lab",
     kind: "panel-component",
@@ -825,7 +825,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
   },
   {
     code: "mean_corpuscular_volume",
-    display: "Mean corpuscular volume",
+    display: "MCV (Mean corpuscular volume)",
     description: "A blood test measuring the average size of your red blood cells.",
     category: "lab",
     kind: "panel-component",
@@ -838,7 +838,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
   },
   {
     code: "mean_corpuscular_haemoglobin",
-    display: "Mean corpuscular haemoglobin",
+    display: "MCH (Mean corpuscular haemoglobin)",
     description: "A blood test measuring the average amount of haemoglobin inside each red blood cell.",
     category: "lab",
     kind: "panel-component",
@@ -851,7 +851,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
   },
   {
     code: "mean_corpuscular_haemoglobin_concentration",
-    display: "Mean corpuscular haemoglobin concentration",
+    display: "MCHC (Mean corpuscular haemoglobin concentration)",
     description: "A blood test measuring the average concentration of haemoglobin within your red blood cells.",
     category: "lab",
     kind: "panel-component",
@@ -862,7 +862,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
   },
   {
     code: "red_cell_distribution_width",
-    display: "Red cell distribution width",
+    display: "RDW (Red cell distribution width)",
     description: "A blood test measuring how much variation there is in the size of your red blood cells.",
     category: "lab",
     kind: "panel-component",
@@ -930,7 +930,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
   },
   {
     code: "estimated_glomerular_filtration_rate",
-    display: "Estimated glomerular filtration rate",
+    display: "eGFR (Estimated glomerular filtration rate)",
     description: "An estimate, calculated from blood creatinine and other factors, of how well your kidneys filter waste from your blood.",
     category: "lab",
     kind: "panel-component",
@@ -1042,7 +1042,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
   },
   {
     code: "dehydroepiandrosterone_sulfate",
-    display: "Dehydroepiandrosterone sulfate",
+    display: "DHEAS (Dehydroepiandrosterone sulfate)",
     description: "A blood test measuring DHEA-S, a hormone produced mainly by your adrenal glands.",
     category: "lab",
     kind: "panel-component",
@@ -1150,7 +1150,7 @@ export const defaultMeasurementTypes: MeasurementType[] = [
   },
   {
     code: "forced_vital_capacity",
-    display: "Forced vital capacity",
+    display: "FVC (Forced vital capacity)",
     description: "The total amount of air you can forcefully blow out after taking as deep a breath as possible.",
     category: "cardio",
     kind: "point",

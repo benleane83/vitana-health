@@ -70,6 +70,8 @@ function AppSettingsPanel() {
   const [message, setMessage] = useState<string>();
   const [updates, setUpdates] = useState<DesktopUpdateState>();
   const [updateBusy, setUpdateBusy] = useState(false);
+  const [metadataResetBusy, setMetadataResetBusy] = useState(false);
+  const [metadataResetMessage, setMetadataResetMessage] = useState<string>();
 
   async function load() {
     setLoadError(undefined);
@@ -135,6 +137,26 @@ function AppSettingsPanel() {
       setMessage(error instanceof Error ? error.message : "Unable to save app settings.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function resetMeasurementMetadata() {
+    const confirmed = window.confirm(
+      "Reset built-in measurement metadata for the active profile from the current registry? This keeps health records and custom measurement types unchanged."
+    );
+    if (!confirmed) return;
+
+    setMetadataResetBusy(true);
+    setMetadataResetMessage(undefined);
+    try {
+      const result = await api.measurementTypes.resetFromRegistry();
+      setMetadataResetMessage(
+        `Reset ${result.refreshed} measurement type${result.refreshed === 1 ? "" : "s"}${result.inserted ? ` and added ${result.inserted}` : ""}.`
+      );
+    } catch (error) {
+      setMetadataResetMessage(error instanceof Error ? error.message : "Unable to reset measurement metadata.");
+    } finally {
+      setMetadataResetBusy(false);
     }
   }
 
@@ -205,6 +227,16 @@ function AppSettingsPanel() {
             </div>
           </>
         )}
+      </section>
+      <section className="settings-section" aria-labelledby="measurement-registry-heading">
+        <div className="settings-section-header">
+          <h3 id="measurement-registry-heading">Measurement registry</h3>
+          <button type="button" disabled={metadataResetBusy} onClick={() => { void resetMeasurementMetadata(); }}>
+            {metadataResetBusy ? "Resetting…" : "Reset metadata"}
+          </button>
+        </div>
+        <p className="empty">Reset the active profile's built-in measurement metadata from the current registry. Health records and custom measurement types are preserved.</p>
+        {metadataResetMessage ? <p className="settings-feedback" role="status" aria-live="polite">{metadataResetMessage}</p> : null}
       </section>
     </section>
   );

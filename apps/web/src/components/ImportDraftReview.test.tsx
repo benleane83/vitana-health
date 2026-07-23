@@ -52,6 +52,14 @@ describe("ImportDraftReview", () => {
       .toHaveTextContent("Select at least one measurement to save it.");
     expect(screen.getByRole("button", { name: "Save approved observations" })).toBeDisabled();
   });
+
+  it("shows display names without measurement codes in the known-measurement selector", () => {
+    render(<ReviewHarness initialRows={initialRows} />);
+
+    const select = screen.getByRole("combobox", { name: "Row 1 known measurement" });
+    expect(within(select).getByRole("option", { name: "Weight" })).toHaveValue("weight");
+    expect(within(select).queryByRole("option", { name: "Weight (weight)" })).not.toBeInTheDocument();
+  });
 });
 
 function ReviewHarness({ initialRows: startingRows }: { initialRows: UploadEditableRow[] }) {

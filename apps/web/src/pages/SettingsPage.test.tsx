@@ -7,7 +7,8 @@ const mocks = vi.hoisted(() => ({
   getUpdates: vi.fn(),
   checkUpdates: vi.fn(),
   downloadUpdates: vi.fn(),
-  restartUpdates: vi.fn()
+  restartUpdates: vi.fn(),
+  resetMeasurementMetadata: vi.fn()
 }));
 
 vi.mock("../api.js", () => ({
@@ -20,7 +21,8 @@ vi.mock("../api.js", () => ({
         download: mocks.downloadUpdates,
         restart: mocks.restartUpdates
       }
-    }
+    },
+    measurementTypes: { resetFromRegistry: mocks.resetMeasurementMetadata }
   }
 }));
 
@@ -35,6 +37,7 @@ beforeEach(() => {
     availableVersion: "1.1.0",
     channel: "lan"
   });
+  mocks.resetMeasurementMetadata.mockResolvedValue({ profileId: "self", refreshed: 108, inserted: 0 });
 });
 
 describe("desktop update settings", () => {
@@ -62,5 +65,16 @@ describe("desktop update settings", () => {
     render(<SettingsPage view="app" onViewChange={() => {}} />);
     expect(await screen.findByText(/unavailable in web development mode/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /check for updates/i })).not.toBeInTheDocument();
+  });
+
+  it("confirms and resets built-in measurement metadata for the active profile", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<SettingsPage view="app" onViewChange={() => {}} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Reset metadata" }));
+
+    await waitFor(() => expect(mocks.resetMeasurementMetadata).toHaveBeenCalledOnce());
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(await screen.findByText("Reset 108 measurement types.")).toBeInTheDocument();
   });
 });

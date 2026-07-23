@@ -65,6 +65,11 @@ export interface ImportMutationResult {
   auditEvent: HealthStoreData["auditEvents"][number];
 }
 
+export interface MeasurementRegistryResetResult {
+  refreshed: number;
+  inserted: number;
+}
+
 export class RepositoryValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -89,6 +94,7 @@ export interface ProfileRepository {
   storageCounts(): Promise<AppBootstrap["counts"]>;
   getProfile(): Promise<Profile>;
   replaceProfile(profile: Profile): Promise<Profile>;
+  resetMeasurementTypeMetadataFromRegistry(): Promise<MeasurementRegistryResetResult>;
   mergeImport(imported: ProfileImport): Promise<ImportMutationResult>;
   addInsight(insight: HealthStoreData["insights"][number]): Promise<HealthStoreData["insights"][number]>;
   exportData(): Promise<HealthStoreData>;

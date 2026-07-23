@@ -36,9 +36,10 @@ import {
   type DuckDbOptions,
   type EncryptedDuckDbDatabase
 } from "./duckdbRuntime.js";
-import type { ImportMutationResult, ProfileImport, ProfileRepository } from "./profileRepository.js";
+import type { ImportMutationResult, MeasurementRegistryResetResult, ProfileImport, ProfileRepository } from "./profileRepository.js";
 import {
   reconcileDefaultMeasurementTypes,
+  resetMeasurementTypeMetadataFromRegistry,
   schemaVersions as readSchemaVersions
 } from "./duckdbSchema.js";
 import {
@@ -228,6 +229,11 @@ export class DuckDbRepository implements ProfileRepository {
   async replaceProfile(profile: HealthStoreData["profile"]): Promise<HealthStoreData["profile"]> {
     this.assertOpen();
     return this.transaction(() => replaceDuckDbProfile(this.connection, profile));
+  }
+
+  async resetMeasurementTypeMetadataFromRegistry(): Promise<MeasurementRegistryResetResult> {
+    this.assertOpen();
+    return resetMeasurementTypeMetadataFromRegistry(this.connection, (operation) => this.transaction(operation));
   }
 
   async mergeImport(parsed: DuckDbImport): Promise<ImportMutationResult> {

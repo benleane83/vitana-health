@@ -116,12 +116,12 @@ export function ImportDraftReview({
               ? measurementGroups.map(([category, types]) => (
                 <optgroup key={category} label={measurementCategoryLabels[category]}>
                   {types.map((type) => (
-                    <option key={type.code} value={type.code}>{type.display} ({type.code})</option>
+                    <option key={type.code} value={type.code}>{type.display}</option>
                   ))}
                 </optgroup>
               ))
               : measurementTypes.map((type) => (
-                <option key={type.code} value={type.code}>{type.display} ({type.code})</option>
+                <option key={type.code} value={type.code}>{type.display}</option>
               ))}
           </select>
           {showCustomFields ? (

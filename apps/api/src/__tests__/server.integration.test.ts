@@ -6,7 +6,7 @@ import { join, resolve } from "node:path";
 import { ProfileStoreManager } from "../storage/profileStoreManager.js";
 import { PairingStore } from "../pairing.js";
 import { createApp } from "../createApp.js";
-import { buildManualLabEntryImport } from "@vitana/shared";
+import { buildManualLabEntryImport, defaultMeasurementTypes } from "@vitana/shared";
 
 let tempDir: string;
 let storeManager: ProfileStoreManager;
@@ -334,7 +334,8 @@ describe("central owner authorization", () => {
 
     const denied = [
       ["/api/profile", "get"], ["/api/export", "get"], ["/api/pairing/devices", "get"],
-      ["/api/settings/ai", "get"], ["/api/settings/ai", "put"], ["/api/query/ai", "post"]
+      ["/api/settings/ai", "get"], ["/api/settings/ai", "put"], ["/api/query/ai", "post"],
+      ["/api/profile/measurement-types/reset", "post"]
     ] as const;
     for (const [path, method] of denied) {
       expect((await request(app)[method](path).set("x-companion-token", token).send({})).status).toBe(403);
@@ -476,6 +477,16 @@ describe("GET /api/export/pdf", () => {
 });
 
 describe("profile lifecycle routes", () => {
+  it("resets measurement metadata for the active profile", async () => {
+    const response = await request(app)
+      .post("/api/profile/measurement-types/reset")
+      .set("authorization", ownerAuthorization);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(expect.objectContaining({ profileId: "self" }));
+    expect(response.body.refreshed + response.body.inserted).toBe(defaultMeasurementTypes.length);
+  });
+
   it.each([
     { subjectKind: "adult", birthDate: "2099-01-01", heightCm: 170 },
     { subjectKind: "adult", birthDate: "2015-01-01", heightCm: 170 },

@@ -91,3 +91,62 @@ export async function reconcileDefaultMeasurementTypes(
     }
   });
 }
+
+export interface MeasurementRegistryResetResult {
+  refreshed: number;
+  inserted: number;
+}
+
+export async function resetMeasurementTypeMetadataFromRegistry(
+  connection: duckdb.Connection,
+  runInTransaction: <T>(operation: () => Promise<T>) => Promise<T>
+): Promise<MeasurementRegistryResetResult> {
+  const existingRows = await all(connection, "SELECT code FROM measurement_types;");
+  const existingCodes = new Set(existingRows.map((row) => String(row.code)));
+
+  return runInTransaction(async () => {
+    const ordinalRows = await all(connection, "SELECT COALESCE(MAX(ordinal), -1) + 1 AS ordinal FROM measurement_types;");
+    let ordinal = Number(ordinalRows[0]?.ordinal ?? 0);
+    let refreshed = 0;
+    let inserted = 0;
+
+    for (const entry of defaultMeasurementTypes) {
+      if (existingCodes.has(entry.code)) {
+        await run(
+          connection,
+          `UPDATE measurement_types
+           SET display = ?, category = ?, kind = ?, canonical_unit = ?, aliases = ?, aggregation = ?, custom_properties = ?
+           WHERE code = ?;`,
+          entry.display,
+          entry.category,
+          entry.kind,
+          entry.canonicalUnit,
+          json(entry.aliases),
+          entry.aggregation,
+          json(measurementTypeProperties(entry)),
+          entry.code
+        );
+        refreshed += 1;
+        continue;
+      }
+
+      await run(
+        connection,
+        "INSERT INTO measurement_types VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);",
+        ordinal,
+        entry.code,
+        entry.display,
+        entry.category,
+        entry.kind,
+        entry.canonicalUnit,
+        json(entry.aliases),
+        entry.aggregation,
+        json(measurementTypeProperties(entry))
+      );
+      ordinal += 1;
+      inserted += 1;
+    }
+
+    return { refreshed, inserted };
+  });
+}

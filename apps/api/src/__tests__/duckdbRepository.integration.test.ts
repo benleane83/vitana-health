@@ -41,6 +41,35 @@ afterEach(() => {
 });
 
 describe("DuckDbRepository fidelity", () => {
+  it.skipIf(!httpfsExtensionPath)("resets registry measurement metadata without changing observations", async () => {
+    const databasePath = join(root, "databases", "health-store-registry-reset.duckdb-poc");
+    const fixture = createDuckDbHealthStoreFixture();
+    const weight = fixture.measurementTypes.find((type) => type.code === "weight");
+    if (!weight) throw new Error("Weight measurement type is missing from fixture.");
+    weight.display = "Legacy weight";
+    weight.description = "Legacy description";
+    weight.aliases = ["legacy weight"];
+    const existingMeasurementTypeCount = fixture.measurementTypes.length;
+    const observations = structuredClone(fixture.observations);
+    const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
+
+    try {
+      const result = await repository.resetMeasurementTypeMetadataFromRegistry();
+      const expectedWeight = defaultMeasurementTypes.find((type) => type.code === "weight");
+      if (!expectedWeight) throw new Error("Weight is missing from the default registry.");
+      const refreshedWeight = (await repository.appBootstrap()).measurementTypes.find((type) => type.code === "weight");
+
+      expect(result).toEqual({
+        refreshed: existingMeasurementTypeCount,
+        inserted: defaultMeasurementTypes.length - existingMeasurementTypeCount
+      });
+      expect(refreshedWeight).toEqual(expectedWeight);
+      expect((await repository.snapshot()).observations).toEqual(observations);
+    } finally {
+      await repository.close();
+    }
+  }, 30_000);
+
   it.skipIf(!httpfsExtensionPath)("persists, replaces, and removes canonical personal reference ranges", async () => {
     const databasePath = join(root, "databases", "health-store-reference-range.duckdb-poc");
     const fixture = createDuckDbHealthStoreFixture();
