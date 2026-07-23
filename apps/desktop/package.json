@@ -1,6 +1,6 @@
 {
   "name": "@vitana/desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": "Ben Leane",
   "description": "Packaged Vitana Health desktop application",
   "main": "main.cjs",
@@ -18,7 +18,7 @@
     "prepackage": "node ../../scripts/prepare-duckdb-httpfs.mjs --output build/duckdb-extensions --skip-runtime-verification",
     "start": "electron .",
     "test": "node --test *.test.cjs",
-    "package": "electron-builder"
+    "package": "electron-builder --publish=never"
   },
   "license": "Elastic-2.0",
   "type": "commonjs",

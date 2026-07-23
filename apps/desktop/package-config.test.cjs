@@ -25,6 +25,7 @@ test("electron-builder excludes DuckDB development files but keeps runtime files
 test("Windows preview packages use checksummed GitHub updates without Authenticode", () => {
   const packageJson = JSON.parse(readFileSync(path.join(__dirname, "package.json"), "utf8"));
 
+  assert.equal(packageJson.scripts.package, "electron-builder --publish=never");
   assert.equal(packageJson.vitanaUpdateChannel, "production");
   assert.equal(packageJson.build.win.target, "nsis");
   assert.equal(packageJson.build.win.signExecutable, false);
