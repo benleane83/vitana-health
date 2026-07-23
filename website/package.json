@@ -1,0 +1,21 @@
+{
+  "name": "@vitana/website",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12 <23",
+    "npm": ">=10 <11"
+  },
+  "scripts": {
+    "dev": "astro dev --host 127.0.0.1",
+    "build": "astro check && astro build",
+    "check": "astro check",
+    "preview": "astro preview --host 127.0.0.1"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.9",
+    "astro": "7.1.0",
+    "typescript": "6.0.3"
+  }
+}

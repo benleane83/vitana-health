@@ -30,12 +30,12 @@ We will not take legal action against researchers who act in good faith under th
 
 ## Threat model
 
-Vitana Health is a **local-first, single-user application**. Understanding its threat model helps frame which issues are in scope.
+Vitana Health is a **local-first, multi-profile wellness application**. Understanding its threat model helps frame which issues are in scope.
 
 ### In-scope threats
 
 - **LAN API exposure:** the API binds to a LAN address when the Android companion is paired; authentication and transport security (TLS + certificate pinning) protect this path, but weaknesses in those controls are in scope.
-- **Encrypted store:** the encrypted health store and its key (`data/local.key`) are colocated on disk by default. Any weakness in the encryption scheme, key derivation, atomic write path, or backup/recovery logic is in scope.
+- **Encrypted store:** each profile uses a separate AES-256-GCM encrypted DuckDB database. The packaged desktop wraps its data key with the operating system's secure storage; standalone production API deployments require an explicit secret. Weaknesses in encryption, key handling, profile isolation, atomic database promotion, or backup/recovery are in scope.
 - **Companion authentication:** the QR pairing flow, short-lived pairing codes, polling secrets, and companion token revocation are in scope.
 - **Injection and input validation:** SQL injection, path traversal, and request-body parsing weaknesses in the API are in scope.
 - **Dependency vulnerabilities:** exploitable CVEs in direct or transitive dependencies are in scope.
@@ -50,7 +50,7 @@ Vitana Health is a **local-first, single-user application**. Understanding its t
 
 ## Privacy and health data
 
-The app stores personal health data in an encrypted local DuckDB database. It has **no telemetry, cloud sync, or vendor data upload paths**. The only optional off-device data path is model prompt text when you configure a cloud provider yourself — and only after explicit per-profile consent.
+The desktop app stores personal health data in separate encrypted local DuckDB databases. Android Standalone mode uses an encrypted local SQLCipher database. Vitana has **no telemetry or health-data cloud sync**. The Android app contacts Expo's EAS Update service for app updates but does not send personal health records to it. The only optional health-data path to a cloud provider is minimized model prompt content when you configure that provider yourself and record explicit consent for the profile.
 
 If you discover a defect that could cause health data to leave the device unexpectedly, or to be accessible to other local users or processes without authorization, treat it as a high-severity security vulnerability and report it privately.
 
@@ -60,8 +60,9 @@ This application generates wellness-oriented summaries intended to support conve
 
 ## Backup and recovery
 
-Encrypted `health-store-*.enc` files are activation baselines for explicit rollback, not current DuckDB backups. The active DuckDB store does not yet have an automated backup or restore workflow.
+Vitana supports portable, password-protected backups of encrypted profile data. Restore hydrates each selected profile into a staged encrypted database, verifies parity, and promotes it only after hydration succeeds. Restore journals support compensation and startup recovery if a multi-profile operation is interrupted.
 
-- **Back up `data/`** (or the application-data directory for the packaged desktop app) regularly.
-- **Back up `data/local.key`** separately from the encrypted store and store it securely. Loss of the key means loss of access to your health data.
-- The encrypted files cannot be read without the key.
+- Store backup files and their passwords separately.
+- Keep more than one tested backup when the records are important to you.
+- Loss of the packaged desktop's OS-protected data key can make local profile databases unreadable; a portable backup remains independently recoverable with its backup password.
+- Standalone production API deployments must preserve their configured `VITANA_SECRET` securely.

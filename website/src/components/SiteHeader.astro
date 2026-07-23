@@ -1,0 +1,30 @@
+---
+interface Props {
+  currentPath: string;
+}
+
+const { currentPath } = Astro.props;
+const links = [
+  { href: "/#inside-vitana", label: "Inside Vitana" },
+  { href: "/#privacy", label: "Privacy" },
+  { href: "/security", label: "Security" },
+  { href: "/download", label: "Download" }
+];
+---
+
+<header class="site-header">
+  <div class="site-header__inner shell">
+    <a class="brand-lockup" href="/" aria-label="Vitana Health home">
+      <img src="/brand/vitana-mark.svg" alt="" width="40" height="40" />
+      <span>Vitana</span>
+    </a>
+    <nav class="site-nav" aria-label="Primary navigation">
+      {links.map((link) => (
+        <a href={link.href} aria-current={currentPath === link.href ? "page" : undefined}>
+          {link.label}
+        </a>
+      ))}
+    </nav>
+    <a class="button button--small" href="/#launch-updates">Get launch updates</a>
+  </div>
+</header>

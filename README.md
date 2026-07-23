@@ -1,22 +1,78 @@
 # Vitana Health
 
-A local-first health analytics app for Android Health Connect sync, manual blood-test results, profile metrics, deterministic analytics, and guarded AI recommendations from a configurable model runtime.
+<p align="center">
+  <img src="apps/branding/vitana-icon.svg" alt="Vitana Health logo" width="120" />
+</p>
 
-## License
+Vitana Health is a local-first app that helps families track and understand personal health data with encrypted per-profile storage, deterministic analytics, and optional guarded AI insights.
 
-Copyright 2026 Ben Leane. Vitana Health is source-available under the
-[Elastic License 2.0](LICENSE) (`Elastic-2.0`). It is not licensed as Open Source
-under the Open Source Initiative definition. The terms in [LICENSE](LICENSE)
-govern use, copying, modification, and distribution.
+## What Vitana Health does
 
-## Stack
+- Keeps health records local on your own computer by default.
+- Supports separate family-member profiles, including children and pets.
+- Syncs Android Health Connect data and supports manual observations.
+- Generates trend summaries and wellness-oriented questions to discuss with a clinician.
+- Exports a clinician-ready, non-diagnostic PDF for the active profile.
+
+## Privacy model
+
+- Your health data stays on your own computer by default.
+- Each family profile has its own encrypted local data store.
+- Imported files and raw records stay inside that encrypted store.
+- Vitana does not send analytics telemetry, sync your data to the cloud, or upload your records to vendor services.
+- AI is optional. If you connect a cloud AI provider, only the minimum text needed for the question is sent.
+- Cloud AI is blocked until you explicitly allow it for the active profile.
+- Identifying details (such as profile identity, source names, file names, import metadata, notes, and raw payloads) are excluded from cloud prompt data.
+- If you use a cloud provider, their retention and logging rules are controlled by that provider account.
+- Local AI mode keeps processing on-device.
+- Desktop app keys (including cloud API keys) are protected by your operating system when available.
+- API access is protected by owner authentication, and companion-device access can be revoked.
+- Pairing codes and polling secrets are short-lived and expire automatically.
+
+## Safety boundaries
+
+Vitana Health generates wellness-oriented summaries and questions to discuss with a clinician. It does not diagnose conditions, prescribe treatment, recommend medication changes, or handle urgent medical concerns.
+
+## Clinician PDF export
+
+Use the **Export** tab to download a PDF for the active profile. It includes profile details, data totals, recent measurements, flagged lab results and reference ranges, trends, and imported-source provenance. The report is a non-diagnostic summary intended to support a conversation with a healthcare professional.
+
+## Android companion app
+
+The Vitana Android companion app lives at `apps/android-companion`.
+
+It supports:
+
+- QR-based pairing with your PC
+- Dashboard totals and latest metrics for the paired profile
+- Tracking of health measurements and trends
+- Manual Activity, Body, and Lab observations
+- Camera/gallery report capture with OCR, editable row review, and approved-row commit
+- Manual "Sync now" for Health Connect, with category selection and 30-365 day initial sync window (30 days by default)
+
+Dashboard and Track data are fetched on demand and are not cached on the phone. Report images and OCR drafts remain in memory only and are cleared after commit, cancellation, disconnect, or app backgrounding. OCR, parsing, analytics, and encrypted health-data storage remain on the paired PC.
+
+See the [Android privacy policy](docs/PRIVACY_POLICY.md), [Health Connect data inventory](docs/HEALTH_CONNECT_DATA_INVENTORY.md), and release declaration instructions in [Android release](docs/ANDROID_RELEASE.md).
+
+The API import pipeline uses deterministic IDs so re-running sync keeps existing records deduplicated.
+
+## AI insights
+
+Vitana Health includes an AI-assisted natural-language query endpoint (`/api/query/ai`) that uses a DSL-to-SQL compiler pipeline with validation and safety guardrails.
+
+- Endpoint contract: [API contract](docs/API_CONTRACT.md)
+- Deep dive (architecture, request/response, guardrails, limitations): [AI query guide](docs/AI_QUERY.md)
+
+## Development
+
+### Stack
 
 - Frontend: React + Vite
 - API: Node.js + TypeScript + Express
 - Storage: one encrypted DuckDB database per profile on Windows x64
 - AI: optional local Ollama runtime or cloud OpenAI-compatible Responses API endpoint
 
-## Quick start
+### Quick start
 
 ```powershell
 npm install
@@ -27,7 +83,7 @@ On Windows x64, the normal development command verifies the pinned, signed DuckD
 
 On first use, the app creates its initial profile directly in an encrypted DuckDB database. Additional family-member profiles, including children and pets, receive separate encrypted databases. Runtime startup opens these canonical databases directly and does not load or migrate legacy JSON profiles.
 
-See [Encrypted DuckDB Architecture](docs/ENCRYPTED_DUCKDB_ARCHITECTURE.md) for initialization, key lifecycle, and platform limits.
+See [Encrypted DuckDB architecture](docs/ENCRYPTED_DUCKDB_ARCHITECTURE.md) for initialization, key lifecycle, and platform limits.
 
 The API generates and persists its owner credential automatically. A browser running on the same computer obtains an `HttpOnly` local session, so users never copy or enter a token.
 
@@ -47,43 +103,13 @@ The installer packages the API and web UI, configures private-network firewall a
 
 For signing, verification, checksums, and the protected Windows release process, see the [Windows release runbook](docs/WINDOWS_RELEASE.md).
 
-The packaged desktop can remain available for companion sync after its window closes. In
-**Settings > App**, enable **Keep the service running in the background**. This opt-in
-setting also starts the app hidden at user login. Reopen it from the tray or Start menu,
-and use **Quit** in the tray menu to stop the API completely. Disabling the setting
-removes login startup and restores foreground-only behavior, where closing the window
-stops companion access.
+The packaged desktop can remain available for companion sync after its window closes. In **Settings > App**, enable **Keep the service running in the background**. This opt-in setting also starts the app hidden at user login. Reopen it from the tray or Start menu, and use **Quit** in the tray menu to stop the API completely. Disabling the setting removes login startup and restores foreground-only behavior, where closing the window stops companion access.
 
-## Privacy model
-
-- Personal health data is stored locally in one encrypted DuckDB database per profile.
-- Raw imports are stored inside the encrypted local store and are omitted from normal API responses.
-- No external telemetry, cloud sync, or vendor data upload paths are implemented. Storage lifecycle events are recorded locally without profile data.
-- The only optional off-device path is model prompt text when you configure a cloud model provider yourself.
-- Cloud prompts are blocked until explicit cloud consent is recorded for the active profile.
-- Prompt payloads are minimized to de-identified query evidence. Direct identifiers (for example profile identity, source labels, file names, import metadata, free-form notes, and raw import payloads) are excluded from cloud prompt serialization.
-- If you use a cloud provider, you are responsible for that provider's data retention, logging, and compliance settings.
-- Local model mode (for example Ollama) keeps all processing on-device.
-- Set `VITANA_SECRET` to control the encryption passphrase for standalone use. The packaged desktop wraps its generated key with the operating system through Electron `safeStorage`.
-- The packaged desktop also wraps saved cloud-model API keys with Electron `safeStorage`; existing plaintext keys migrate when the desktop next opens them. A standalone API has no OS credential wrapper, so manually saved model keys remain in its mode-`0600` settings file; use environment variables where that persistence model is unsuitable.
-- Owner authentication protects all API data and administration routes. Companion tokens can be revoked from the paired-device list.
-- Pairing codes and polling secrets expire and are delivered through the owner-authenticated QR flow.
-
-## Safety boundaries
-
-The app generates wellness-oriented summaries and questions to discuss with a clinician. It does not diagnose conditions, prescribe treatment, recommend medication changes, or handle urgent medical concerns.
-
-## Clinician PDF export
-
-Use the **Export** tab to download a PDF for the active profile. It includes profile details, data totals, recent
-measurements, flagged lab results and reference ranges, trends, and imported-source provenance. The report is a
-non-diagnostic summary intended to support a conversation with a healthcare professional.
-
-## Model Runtime Configuration
+### Model runtime configuration
 
 The API supports two model providers for insight generation.
 
-### Option A: Local Ollama
+#### Option A: Local Ollama
 
 ```powershell
 $env:LLM_PROVIDER = "ollama"
@@ -92,7 +118,7 @@ $env:OLLAMA_MODEL = "qwen3:14b"
 $env:MODEL_TIMEOUT_MS = "90000"
 ```
 
-### Option B: Supported cloud model API
+#### Option B: Supported cloud model API
 
 ```powershell
 $env:LLM_PROVIDER = "openai"
@@ -112,31 +138,21 @@ Check active runtime configuration:
 Invoke-RestMethod -Uri "http://127.0.0.1:4317/api/health"
 ```
 
-## Android Companion App (Expo / Health Connect)
+### Local analytics (DuckDB)
 
-An Android MVP companion app lives at `apps/android-companion`.
+Encrypted DuckDB is both the canonical profile store and analytics engine on Windows x64. Queries read the active encrypted profile directly through normalized tables and daily/weekly views.
 
-It supports:
+Inspect the active analytics storage metadata and row counts with:
 
-- QR-based pairing with the local API
-- Dashboard totals and latest metrics for the single profile assigned during pairing
-- Read-only Track search, sorting, metric trends, source context, and paginated history
-- Manual Activity, Body, and Lab observations
-- Camera/gallery report capture with PC-side OCR, editable row review, and approved-row commit
-- Manual "Sync now" action
-- Optional Health Connect category selection (none selected by default) and a 30–365 day initial sync window (30 days by default)
-- POST to `POST /api/import/health-connect` on your local API
+```powershell
+Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:4317/api/analytics/storage"
+```
 
-Dashboard and Track data are fetched on demand and are not cached on the phone. Report images
-and OCR drafts remain in memory only and are cleared after commit, cancellation, disconnect, or
-app backgrounding. OCR, parsing, analytics, and encrypted health-data storage remain on the
-paired PC.
+The application does not create a separate plaintext analytics warehouse. JSON remains available as an explicit data export format, but it is not a runtime storage backend or profile migration source.
 
-See the [Android privacy policy](docs/PRIVACY_POLICY.md), [Health Connect data inventory](docs/HEALTH_CONNECT_DATA_INVENTORY.md), and release declaration instructions in [docs/ANDROID_RELEASE.md](docs/ANDROID_RELEASE.md).
+### Android companion development and release
 
-The API import pipeline uses deterministic IDs so re-running sync keeps existing records deduplicated.
-
-### Preview the companion on Windows
+#### Preview the companion on Windows
 
 Use the watcher-free Expo Web preview before publishing an EAS Update:
 
@@ -144,7 +160,7 @@ Use the watcher-free Expo Web preview before publishing an EAS Update:
 npm run preview:web -w apps/android-companion
 ```
 
-Open `http://127.0.0.1:8082` and use the browser's responsive device toolbar to test phone-sized layouts. The command creates a fresh static export before serving it, avoiding Metro's unreliable recursive file watcher on Windows mapped drives. Restart the command after source changes to rebuild the preview. Coding agents can open the same URL in the VS Code integrated browser to inspect the accessibility tree, interact with controls, and capture desktop or mobile-sized screenshots.
+Open `http://127.0.0.1:8082` and use the browser's responsive device toolbar to test phone-sized layouts. The command creates a fresh static export before serving it, avoiding Metro's unreliable recursive file watcher on Windows mapped drives. Restart the command after source changes to rebuild the preview.
 
 For hot reload on a local drive or a system with Watchman, use `npm run web -w apps/android-companion` instead.
 
@@ -164,7 +180,7 @@ For the PC app, run `npm run dev`, then use `npm run dev:health` to verify its A
 
 This is a rendering preview rather than a second companion client. The Android pairing flow is unchanged, and camera capture, Health Connect, native secure storage, certificate pinning, and Android permission behavior still require an Android development or preview build. Use the web preview for navigation, layout, forms, dashboard and Track presentation, loading states, and other platform-neutral UI work.
 
-### Build an APK for sideloading
+#### Build an APK for sideloading
 
 ```powershell
 cd apps/android-companion
@@ -206,7 +222,7 @@ The development profile sets `VITANA_ALLOW_CLEARTEXT=1`; other profiles explicit
 
 For Play Store AAB signing, versioning, EAS environment separation, testing, staged rollout, and rollback, follow [the Android production release runbook](docs/ANDROID_RELEASE.md).
 
-### Health Connect import endpoint
+#### Health Connect import endpoint
 
 The companion app posts structured JSON to:
 
@@ -232,114 +248,9 @@ $body = @{
 Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:4317/api/import/health-connect" -ContentType "application/json" -Body $body
 ```
 
-## Local Analytics (DuckDB)
+## License
 
-Encrypted DuckDB is both the canonical profile store and analytics engine on Windows x64. Queries read the active encrypted profile directly through normalized tables and daily/weekly views.
-
-Inspect the active analytics storage metadata and row counts with:
-
-```powershell
-Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:4317/api/analytics/storage"
-```
-
-The application does not create a separate plaintext analytics warehouse. JSON remains available as an explicit data export format, but it is not a runtime storage backend or profile migration source.
-
-## AI-Powered Natural Language Query (`/api/query/ai`)
-
-The AI query endpoint provides broad natural-language coverage over your local warehouse using a **DSL → SQL compiler pipeline** with safety guardrails.
-
-### Architecture
-
-```
-question → AI DSL planner → validate shape and semantics → compile to SQL → validate SQL → execute DuckDB → summarize answer
-```
-
-1. **AI DSL Planner** (`aiQueryPlanner.ts`) — requests a strict JSON query DSL (not raw SQL), then validates its Zod shape and source/intent/metric semantics. Compatible models receive a JSON Schema; BYO endpoints that reject schema controls fall back to the same prompt contract.
-2. **DSL Compiler** (`queryCompiler.ts`) — maps the validated DSL to parameterized SQL templates only; no free-form SQL from the model.
-3. **SQL Validator** — a separate safety pass denies disallowed tokens and non-whitelisted identifiers even though SQL is compiler-produced.
-4. **DuckDB execution** — runs the validated query against your local warehouse.
-5. **Answer summarization** — the model produces a one-sentence answer from the evidence rows.
-
-Malformed JSON, schema errors, semantic errors, and compiler-rejected plans receive at most one model repair attempt. SQL safety or database execution failures never trigger model repair.
-
-### Request
-
-```powershell
-$body = @{ question = "average heart rate last month" } | ConvertTo-Json
-Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:4317/api/query/ai" -ContentType "application/json" -Body $body
-```
-
-Optional fields: `timezone` (IANA string), `debug` (boolean, adds planner timing to response).
-
-### Response fields
-
-| Field | Description |
-|---|---|
-| `outcome` | `answered` or `no_data`; valid no-data queries remain successful `200` responses |
-| `answer` | Natural-language answer from the model |
-| `plan` | The structured DSL returned by the planner |
-| `sourceResolved` / `intentResolved` | The dataset and operation selected by the planner/compiler |
-| `sql` | The compiler-produced SQL that was executed |
-| `rows` | Up to 100 result rows |
-| `chart` | Optional chart-ready series `{ type, series: [{label, value}] }` |
-| `confidence` | Internal heuristic retained for diagnostics; it is not displayed as calibrated certainty |
-| `limitations` | Any caveats or planner assumptions |
-| `resolvedTimeRange` | The exact date range applied to the query |
-
-### Supported query classes
-
-- Time-series trends: `steps trend this week`, `daily heart rate last month`
-- Aggregations: `average heart rate last month`, `total steps this month`
-- Top-N: `max daily steps this month`, `top 10 step days`
-- Latest reading: `latest heart rate`
-- Activity summaries: `top exercises this month`
-- Health events: `list immunizations this year`, `weekly health event counts`, `latest medication administration`
-- Care items: `open high-priority care items due this month`, `care items by status`, `how many care items are overdue?`
-
-### Safety guardrails
-
-- **SELECT-only**: Non-SELECT tokens (`DROP`, `DELETE`, `INSERT`, `UPDATE`, `CREATE`, etc.) are blocked at both compile and validate stages.
-- **Table/column whitelist**: Only the metric views, `activities`, `v_ai_health_events`, and `v_ai_care_items` with their known columns are allowed.
-- **Time window cap**: Maximum 366-day time window per query.
-- **Row limit cap**: Maximum 200 rows per query.
-- **Graceful fallback**: Unsupported questions return a clarifying limitations message and suggested rephrase rather than raw model output.
-- **Bounded repair**: Model-controlled plan failures permit one repair call; compiler safety and execution failures permit none.
-- **Private diagnostics**: `debug: true` adds categories, attempt counts, structured-output mode, and timings, but never raw questions, result rows, API keys, or full model responses.
-
-### Time semantics
-
-Calendar month/week boundaries are resolved server-side before SQL compilation:
-
-| Phrase | Resolved range |
-|---|---|
-| `this month` | First day to last day of current calendar month |
-| `last month` | First day to last day of previous calendar month |
-| `this week` | Monday to Sunday of current week |
-| `last week` | Monday to Sunday of previous week |
-| `last 30d` (default) | Rolling 30 days from today |
-
-### Known limitations
-
-- The AI planner requires a running model runtime (Ollama or OpenAI-compatible). If the model is unavailable, a graceful error with suggested rephrases is returned.
-- Compound queries (e.g. "steps AND heart rate together") may be simplified to the first metric.
-- Cross-source comparisons are not supported; each query targets one dataset.
-- Health events support list, count, latest, and day/week count trends. Care items support list, grouped count, due-window, and overdue queries.
-- Lab marker questions are not currently supported by the AI query endpoint; review lab results in the Labs and Summary views.
-
-### Model compatibility
-
-The AI Settings **Validate** action sends one representative semantic planner probe, which also checks connectivity. Models that pass the probe are reported as compatible. A failure produces a warning but does not block saving or use. Structured JSON Schema is treated as a capability: Ollama and compatible OpenAI/OpenRouter models use it, while other BYO endpoints may use prompt-only fallback. Use a fixed model rather than `openrouter/free` when measuring repeatability because the free router may select different models between calls.
-
-## Experimental Store-Grounded Query Fallback
-
-`POST /api/query/ask-store` is an experimental diagnostic fallback for a warehouse that is unavailable or being refreshed. It is not used by the web app and may change or be removed without a compatibility guarantee.
-
-```powershell
-$body = @{ question = "What was my latest oxygen saturation?" } | ConvertTo-Json
-Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:4317/api/query/ask-store" -ContentType "application/json" -Body $body
-```
-
-Current supported examples:
-
-- "What was the last heart rate recorded?"
-- "What was my latest oxygen saturation?"
+Copyright 2026 Ben Leane. Vitana Health is source-available under the
+[Elastic License 2.0](LICENSE) (`Elastic-2.0`). It is not licensed as Open Source
+under the Open Source Initiative definition. The terms in [LICENSE](LICENSE)
+govern use, copying, modification, and distribution.

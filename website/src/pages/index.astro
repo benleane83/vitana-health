@@ -1,0 +1,144 @@
+---
+import ProductScene from "../components/ProductScene.astro";
+import SiteLayout from "../layouts/SiteLayout.astro";
+---
+
+<SiteLayout
+  title="Vitana Health | Your private health workspace"
+  description="Bring your health data together, understand patterns over time, and keep the record on devices you control."
+>
+  <section class="hero">
+    <div class="shell hero__copy">
+      <p class="hero__brand">Vitana Health</p>
+      <h1>All your health.<br />In one place.</h1>
+      <p class="hero__lead">Bring scattered readings into focus, follow the patterns that matter to you, and keep your health record close.</p>
+      <div class="hero__actions">
+        <a class="button" href="#launch-updates">Get launch updates</a>
+        <a class="text-link" href="#inside-vitana">See inside Vitana <span aria-hidden="true">&darr;</span></a>
+      </div>
+    </div>
+    <div class="shell hero__product">
+      <ProductScene />
+    </div>
+  </section>
+
+  <section class="trust-strip" aria-label="Vitana principles">
+    <div class="shell trust-strip__inner">
+      <span>Local-first by design</span>
+      <span>Encrypted per profile</span>
+      <span>No telemetry</span>
+      <span>Your data stays useful offline</span>
+    </div>
+  </section>
+
+  <section class="story-section shell" id="inside-vitana">
+    <div class="section-intro">
+      <h2>Health data should tell a story you can follow.</h2>
+      <p>Vitana brings everyday readings, activity, sleep, body measurements, and imported reports into one calm timeline.</p>
+    </div>
+    <div class="record-composition">
+      <div class="record-composition__copy">
+        <h3>Bring the pieces together.</h3>
+        <p>Sync selected Health Connect categories, add observations by hand, or review report data before it joins your record.</p>
+        <ul class="plain-list">
+          <li>Choose exactly what to import</li>
+          <li>See source and observed time</li>
+          <li>Keep every family profile separate</li>
+        </ul>
+      </div>
+      <div class="timeline-art" aria-label="Synthetic health timeline showing sleep, activity, and body measurements">
+        <div class="timeline-art__header"><strong>July</strong><span>All sources</span></div>
+        <div class="timeline-row timeline-row--lavender"><span class="timeline-date">22</span><div><strong>Sleep</strong><small>7 h 42 min · Health Connect</small></div><span>Good consistency</span></div>
+        <div class="timeline-row timeline-row--seafoam"><span class="timeline-date">21</span><div><strong>Daily activity</strong><small>8,246 steps · Health Connect</small></div><span>Above your 4-week average</span></div>
+        <div class="timeline-row timeline-row--blush"><span class="timeline-date">19</span><div><strong>Weight</strong><small>72.4 kg · Manual entry</small></div><span>Added by you</span></div>
+        <div class="timeline-row"><span class="timeline-date">18</span><div><strong>Resting heart rate</strong><small>62 bpm · Health Connect</small></div><span>Within recent pattern</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="pattern-band">
+    <div class="shell pattern-band__inner">
+      <div class="pattern-art" aria-label="Synthetic 12-week wellness trend">
+        <div class="pattern-art__top"><span>12-week view</span><span>Rest and recovery</span></div>
+        <div class="pattern-art__metric"><strong>Steadier</strong><span>over the last 4 weeks</span></div>
+        <svg viewBox="0 0 700 260" aria-hidden="true" preserveAspectRatio="none">
+          <path d="M0 187 C65 173 105 212 168 174 S265 98 330 123 S430 186 493 132 S591 76 700 83" />
+          <circle cx="700" cy="83" r="8" />
+        </svg>
+        <div class="pattern-art__legend"><span>May</span><span>June</span><span>July</span></div>
+      </div>
+      <div class="pattern-band__copy">
+        <h2>Patterns, not verdicts.</h2>
+        <p>Step back from single readings and see how your data moves over time. Vitana separates measured trends from AI-assisted explanations and keeps wellness insights inside careful boundaries.</p>
+        <a class="text-link text-link--light" href="/security">How Vitana earns trust <span aria-hidden="true">&rarr;</span></a>
+      </div>
+    </div>
+  </section>
+
+  <section class="profiles-section shell">
+    <div class="profiles-section__copy">
+      <h2>One home. Distinct records.</h2>
+      <p>Keep separate encrypted profiles for the people, children, and pets in your household. Each profile has its own record, settings, consent, and connected devices.</p>
+    </div>
+    <div class="profile-stack" aria-label="Example Vitana family profiles">
+      <article class="profile-card profile-card--primary"><span class="profile-avatar">S</span><div><strong>Sam</strong><small>Primary profile · Updated today</small></div><span class="profile-status">Active</span></article>
+      <article class="profile-card profile-card--blush"><span class="profile-avatar">M</span><div><strong>Mina</strong><small>Family profile · Updated yesterday</small></div><span class="profile-status">Private</span></article>
+      <article class="profile-card profile-card--seafoam"><span class="profile-avatar">P</span><div><strong>Pepper</strong><small>Pet profile · Updated 4 days ago</small></div><span class="profile-status">Private</span></article>
+    </div>
+  </section>
+
+  <section class="privacy-section" id="privacy">
+    <div class="shell privacy-section__inner">
+      <div class="privacy-section__copy">
+        <h2>Your health data should not have to leave home to be useful.</h2>
+        <p>Vitana stores each profile in an encrypted local database. It has no advertising, product analytics, telemetry, or health-data cloud sync.</p>
+        <a class="button button--secondary" href="/privacy">Read the privacy policy</a>
+      </div>
+      <div class="privacy-proof">
+        <div class="privacy-proof__mark" aria-hidden="true"><span></span><span></span><span></span></div>
+        <dl>
+          <div><dt>Storage</dt><dd>Encrypted and local</dd></div>
+          <div><dt>Profiles</dt><dd>Separated by design</dd></div>
+          <div><dt>Telemetry</dt><dd>None</dd></div>
+          <div><dt>Cloud AI</dt><dd>Optional, explicit consent</dd></div>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <section class="companion-section shell">
+    <div class="companion-visual" aria-hidden="true">
+      <div class="companion-phone">
+        <div class="phone-window__notch"></div>
+        <div class="companion-phone__brand"><img src="/brand/vitana-mark.svg" alt="" width="32" height="32" /><strong>Vitana</strong></div>
+        <span class="companion-phone__label">Connected to your PC</span>
+        <strong class="companion-phone__title">Your day so far</strong>
+        <div class="companion-ring"><span>8,246<small>steps</small></span></div>
+        <div class="companion-phone__row"><span>Last sync</span><strong>Just now</strong></div>
+      </div>
+    </div>
+    <div class="companion-section__copy">
+      <h2>Your record, within reach.</h2>
+      <p>Use the Android companion to review recent readings, add observations, and sync selected Health Connect data directly to your paired PC over your local network.</p>
+      <p class="availability-note">Android first. iOS is planned for a later release.</p>
+    </div>
+  </section>
+
+  <section class="launch-section" id="launch-updates">
+    <div class="shell launch-section__inner">
+      <div>
+        <h2>Be there when Vitana is ready.</h2>
+        <p class="launch-summary">The PC app and Android companion are still being prepared for their first public release.</p>
+        <p class="launch-status">In development</p>
+      </div>
+      <form class="launch-form" aria-describedby="launch-form-note">
+        <label for="launch-email">Email address</label>
+        <div class="launch-form__controls">
+          <input id="launch-email" type="email" placeholder="you@example.com" disabled />
+          <button class="button" type="button" disabled>Updates opening soon</button>
+        </div>
+        <p id="launch-form-note">No email is collected yet. This page will be updated when the launch list opens.</p>
+      </form>
+    </div>
+  </section>
+</SiteLayout>

@@ -1,0 +1,50 @@
+---
+import SiteLayout from "../layouts/SiteLayout.astro";
+---
+
+<SiteLayout
+  title="Privacy | Vitana Health"
+  description="How Vitana Health handles, stores, transfers, and deletes health data in its desktop and Android apps."
+>
+  <article class="legal-page shell">
+    <header class="legal-page__header">
+      <span class="legal-page__meta">Effective July 20, 2026</span>
+      <h1>Privacy that follows from how Vitana works.</h1>
+      <p>Vitana Health is a local-first wellness application. This policy applies to the Vitana Android app and its paired Vitana Health desktop API.</p>
+    </header>
+    <div class="legal-content">
+      <section>
+        <h2>Information Vitana processes</h2>
+        <p>The companion reads only the Health Connect categories you choose: steps, heart rate, oxygen saturation, heart-rate variability, basal metabolic rate, height, VO2 max, weight, exercise sessions, distance, active calories, total calories, sleep sessions, and body fat.</p>
+        <p>No category is selected by default. The first import defaults to 30 days, and you can choose a window from 30 to 365 days.</p>
+        <p>The companion also processes a random device identifier, local pairing and connection details, sync selections and cursors, and camera or gallery access when you pair by QR code or capture a health report. It does not retain report images, OCR text, or review drafts after that workflow ends.</p>
+      </section>
+      <section>
+        <h2>How information is used and transferred</h2>
+        <p>In Standalone mode, selected Health Connect records and manual entries stay in an encrypted local database on your phone and support local wellness analytics.</p>
+        <p>In Connected mode, selected records travel only to the profile assigned during pairing, over your local network. Report images are sent to the paired PC for OCR and parsing, and you review rows before committing them.</p>
+        <p>Vitana does not use health data for advertising, sell it, or use it for eligibility decisions. It has no cloud backup, advertising, telemetry, or product analytics. The Android app contacts Expo's EAS Update service for app updates; ordinary update-request metadata may be sent, but personal health records are not.</p>
+      </section>
+      <section>
+        <h2>Storage, retention, and deletion</h2>
+        <p>Standalone mode uses a SQLCipher-encrypted SQLite database whose key is held in Android secure storage. Connected mode stores imported health data in the assigned profile's local AES-256-GCM encrypted DuckDB database on the paired PC.</p>
+        <p>Vitana does not automatically expire or evict health records. Data remains until you delete observations, reset local data, or delete a desktop profile. Disconnecting removes the phone's connection record and pairing token; revoking a companion prevents that token from accessing the paired profile again.</p>
+      </section>
+      <section>
+        <h2>Optional cloud-model processing</h2>
+        <p>Local analytics and a locally configured Ollama model stay on the device. If you explicitly enable a cloud model for a desktop profile, Vitana may send a minimized, redacted question and bounded structured query results to the provider you configure.</p>
+        <p>This feature requires recorded consent for that profile and is separate from Android Health Connect sync. Do not enable it unless you accept the provider's privacy terms.</p>
+      </section>
+      <section>
+        <h2>Security</h2>
+        <p>Companion transfers use HTTPS, certificate pinning, pairing approval, and revocable tokens. Desktop profile databases use AES-256-GCM encryption; Standalone mode uses SQLCipher, with keys protected by platform secure storage.</p>
+        <p>No security control can guarantee protection from every risk, especially on an unlocked or compromised device. See the <a href="/security">security overview</a> for the current threat model and reporting process.</p>
+      </section>
+      <section>
+        <h2>Contact and changes</h2>
+        <p>For privacy questions, contact the maintainer through <a href="https://github.com/benleane83">GitHub</a>. Report security issues privately using the instructions on the security page rather than posting sensitive details publicly.</p>
+        <p>Vitana will update this policy before materially changing the categories processed, purposes, transfer destinations, or retention practices.</p>
+      </section>
+    </div>
+  </article>
+</SiteLayout>

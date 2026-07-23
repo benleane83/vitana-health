@@ -1,0 +1,48 @@
+---
+import SiteLayout from "../layouts/SiteLayout.astro";
+---
+
+<SiteLayout
+  title="Security | Vitana Health"
+  description="Vitana Health's local-first security model, encryption, pairing controls, and private vulnerability reporting process."
+>
+  <article class="legal-page shell">
+    <header class="legal-page__header">
+      <span class="legal-page__meta">Security overview</span>
+      <h1>Local-first is the boundary, not the whole answer.</h1>
+      <p>Vitana combines encrypted per-profile storage, OS-backed key protection, local-network pairing controls, and narrow data access to reduce where sensitive health data can travel.</p>
+    </header>
+    <div class="legal-content">
+      <section>
+        <h2>Encrypted profile storage</h2>
+        <p>Each desktop profile has a separate AES-256-GCM encrypted DuckDB database. The packaged desktop app generates a random data key, wraps it with the operating system's secure storage, and keeps only the wrapped form on disk.</p>
+        <p>The Android companion's Standalone mode uses a SQLCipher-encrypted SQLite database and protects its key with Android secure storage.</p>
+      </section>
+      <section>
+        <h2>Paired local connections</h2>
+        <p>The desktop API becomes available on the local network only for companion use. Production connections require HTTPS and pin the certificate public-key hash established during pairing.</p>
+        <p>Companion tokens are revocable and bound to the assigned profile and capability set. A paired phone does not receive general access to other profiles.</p>
+      </section>
+      <section>
+        <h2>Backups and recovery</h2>
+        <p>Portable backups use a versioned, password-protected AES-256-GCM format with bounded decompression and per-profile integrity digests. Restore stages each profile separately, checks parity, and promotes the replacement database only after hydration succeeds.</p>
+        <p>Keep backup passwords separate from backup files. Loss of the OS-protected desktop key can otherwise make local profile databases unreadable.</p>
+      </section>
+      <section>
+        <h2>Optional AI boundaries</h2>
+        <p>Cloud model access is off by default and requires explicit consent for each profile. When enabled, Vitana applies provider allowlisting, public-address checks, manual redirect handling, redaction, bounded query results, and SELECT-only query compilation.</p>
+        <p>Local analytics and locally configured Ollama processing do not require sending the prompt to a cloud provider.</p>
+      </section>
+      <section>
+        <h2>Report a vulnerability</h2>
+        <p>Do not file public GitHub issues for security vulnerabilities. Contact the maintainer privately using the details on the <a href="https://github.com/benleane83">GitHub profile</a> and include impact, reproduction steps, and the tested version or commit.</p>
+        <p>Reports are acknowledged within 72 hours. Vitana follows a 90-day coordinated disclosure window and will not take legal action against researchers acting in good faith.</p>
+      </section>
+      <section>
+        <h2>Scope and limitations</h2>
+        <p>Weaknesses in LAN transport, encrypted storage, pairing, authorization, input validation, backup and recovery, dependencies, and cloud-prompt minimization are in scope.</p>
+        <p>Vitana is a wellness application. It does not diagnose conditions, prescribe treatment, recommend medication changes, or handle urgent medical concerns.</p>
+      </section>
+    </div>
+  </article>
+</SiteLayout>

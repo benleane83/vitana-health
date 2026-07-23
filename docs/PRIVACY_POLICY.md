@@ -36,4 +36,4 @@ For privacy questions or requests, contact the maintainer through [https://githu
 
 ## Changes
 
-We will update this policy before materially changing the categories collected, purposes, transfer destinations, or retention practices. The current version is published at this stable URL: `https://vitanahealth.app/privacy`.
+We will update this policy before materially changing the categories collected, purposes, transfer destinations, or retention practices. The current version is published at this stable URL: `https://www.vitanahealth.app/privacy`.

@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Vitana flower mark">
+  <rect width="1024" height="1024" fill="#E7EDFF" />
+  <g transform="translate(197 150) scale(7)">
+    <defs>
+      <linearGradient id="top-petal" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#FFD9F5" />
+        <stop offset="0.58" stop-color="#A668DD" />
+        <stop offset="1" stop-color="#6958AC" />
+      </linearGradient>
+      <linearGradient id="left-petal" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#A9C5FF" />
+        <stop offset="0.74" stop-color="#5771B1" />
+      </linearGradient>
+      <linearGradient id="right-petal" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#5771B1" />
+        <stop offset="0.74" stop-color="#A9C5FF" />
+      </linearGradient>
+    </defs>
+    <path fill="url(#top-petal)" d="M48 0 C66 14 72 33 65 52 C60 63 53 68 48 68 C43 68 36 63 31 52 C24 33 30 14 48 0 Z" />
+    <path fill="url(#left-petal)" d="M5 38 C26 46 46 62 51 87 C51 94 50 99 49 102 C28 97 10 83 4 65 C2 55 3 45 5 38 Z" />
+    <path fill="url(#right-petal)" d="M91 38 C70 46 50 62 45 87 C45 94 46 99 47 102 C68 97 86 83 92 65 C94 55 93 45 91 38 Z" />
+    <rect x="45" y="42" width="6" height="52" rx="3" fill="#FEFEFF" />
+    <circle cx="48" cy="52" r="11" fill="#F2EDFF" stroke="#FEFEFF" stroke-width="4" />
+  </g>
+</svg>
