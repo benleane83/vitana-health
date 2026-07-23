@@ -7,7 +7,7 @@ function createDesktopUpdaterController({
   schedule = setTimeout,
   startupDelayMs = 5_000
 }) {
-  const supported = Boolean(app.isPackaged && ["lan", "production"].includes(channel));
+  const supported = Boolean(app.isPackaged && channel === "production");
   let operation;
   let installStarted = false;
   let state = {

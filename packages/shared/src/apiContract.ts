@@ -145,7 +145,7 @@ export type MeasurementRegistryResetResponse = z.infer<typeof measurementRegistr
 export const desktopUpdateStateSchema = z.object({
   status: z.enum(["unsupported", "idle", "checking", "available", "downloading", "downloaded", "up-to-date", "error"]),
   currentVersion: z.string(),
-  channel: z.enum(["lan", "production"]).nullable(),
+  channel: z.literal("production").nullable(),
   availableVersion: z.string().optional(),
   lastCheckedAt: z.string().datetime({ offset: true }).optional(),
   progress: z.object({

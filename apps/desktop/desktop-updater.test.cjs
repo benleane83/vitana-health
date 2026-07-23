@@ -3,7 +3,7 @@ const { EventEmitter } = require("node:events");
 const { test } = require("node:test");
 const { createDesktopUpdaterController } = require("./desktop-updater.cjs");
 
-function fixture({ packaged = true, channel = "lan" } = {}) {
+function fixture({ packaged = true, channel = "production" } = {}) {
   const updater = new EventEmitter();
   updater.checkForUpdates = async () => {};
   updater.downloadUpdate = async () => {};
@@ -93,7 +93,7 @@ test("allows retrying installation after graceful shutdown fails", async () => {
     app: { isPackaged: true, getVersion: () => "1.2.3" },
     updater,
     diagnostics: { info() {}, error() {} },
-    channel: "lan",
+    channel: "production",
     prepareToInstall,
     schedule: (callback) => scheduled.push(callback)
   });

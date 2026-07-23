@@ -35,7 +35,7 @@ beforeEach(() => {
     status: "available",
     currentVersion: "1.0.0",
     availableVersion: "1.1.0",
-    channel: "lan"
+    channel: "production"
   });
   mocks.resetMeasurementMetadata.mockResolvedValue({ profileId: "self", refreshed: 108, inserted: 0 });
 });
@@ -46,11 +46,11 @@ describe("desktop update settings", () => {
       status: "downloading",
       currentVersion: "1.0.0",
       availableVersion: "1.1.0",
-      channel: "lan",
+      channel: "production",
       progress: { percent: 0, transferred: 0, total: 0 }
     });
     render(<SettingsPage view="app" onViewChange={() => {}} confirm={vi.fn()} />);
-    expect(await screen.findByText(/LAN test channel/)).toBeInTheDocument();
+    expect(await screen.findByText(/GitHub release channel/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Download update" }));
     await waitFor(() => expect(mocks.downloadUpdates).toHaveBeenCalledOnce());
     expect(await screen.findByRole("progressbar")).toHaveAttribute("value", "0");

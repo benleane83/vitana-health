@@ -10,10 +10,9 @@ permissions:
   contents: write
 
 jobs:
-  signed-windows-release:
-    name: Signed Windows installer
+  windows-preview-release:
+    name: Unsigned Windows preview installer
     runs-on: windows-2022
-    environment: windows-release
     permissions:
       contents: write
 
@@ -41,25 +40,20 @@ jobs:
       - name: Install DuckDB native binding
         run: npm rebuild duckdb
 
-      - name: Package signed Windows installer
-        env:
-          CSC_LINK: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 }}
-          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PFX_PASSWORD }}
-        run: npm run package:desktop:signed
+      - name: Package unsigned Windows preview installer
+        run: npm run package:desktop
 
-      - name: Verify Authenticode signatures
+      - name: Verify preview artifacts are unsigned
         shell: pwsh
-        env:
-          WINDOWS_SIGNING_SUBJECT: ${{ vars.WINDOWS_SIGNING_SUBJECT }}
         run: |
           $files = @(
-            Get-ChildItem apps/desktop/dist/*.exe
-            Get-ChildItem apps/desktop/dist/win-unpacked/*.exe
+            Get-ChildItem apps/desktop/dist/*.exe | Select-Object -First 1
+            Get-Item "apps/desktop/dist/win-unpacked/Vitana Health.exe"
           )
           foreach ($file in $files) {
             $signature = Get-AuthenticodeSignature $file
-            if ($signature.Status -ne "Valid" -or $signature.SignerCertificate.Subject -notlike "*$env:WINDOWS_SIGNING_SUBJECT*") {
-              throw "Signature verification failed for $($file.FullName): $($signature.Status)"
+            if ($signature.Status -ne "NotSigned") {
+              throw "Unsigned preview artifact unexpectedly has signature status $($signature.Status): $($file.FullName)"
             }
           }
 
@@ -102,10 +96,10 @@ jobs:
             ForEach-Object { "$($_.Hash.ToLower()) *$($_.Path | Split-Path -Leaf)" } |
             Set-Content apps/desktop/dist/SHA256SUMS.txt
 
-      - name: Upload signed update assets and evidence
+      - name: Upload preview update assets and evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: signed-windows-release
+          name: unsigned-windows-preview-release
           path: |
             apps/desktop/dist/*.exe
             apps/desktop/dist/*.yml
@@ -115,7 +109,7 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-      - name: Publish signed desktop update
+      - name: Publish unsigned desktop preview update
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -128,5 +122,5 @@ jobs:
             if ($release.isDraft) { throw "The matching GitHub Release must not be a draft." }
             gh release upload $env:GITHUB_REF_NAME $files --clobber
           } else {
-            gh release create $env:GITHUB_REF_NAME $files --verify-tag --generate-notes
+            gh release create $env:GITHUB_REF_NAME $files --verify-tag --generate-notes --title "Vitana Health Preview $env:GITHUB_REF_NAME"
           }

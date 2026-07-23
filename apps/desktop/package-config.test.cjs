@@ -3,19 +3,11 @@ const { readFileSync } = require("node:fs");
 const path = require("node:path");
 const { test } = require("node:test");
 
-test("electron-builder publisherName stays within the Windows config", () => {
-  const packageJson = JSON.parse(readFileSync(path.join(__dirname, "package.json"), "utf8"));
-
-  assert.equal(packageJson.build.npmRebuild, false);
-  assert.equal(Object.hasOwn(packageJson.build, "publisherName"), false);
-  assert.equal(Object.hasOwn(packageJson.build.win, "publisherName"), false);
-  assert.equal(packageJson.build.win.signtoolOptions.publisherName, "Vitana Health");
-});
-
 test("electron-builder excludes DuckDB development files but keeps runtime files", () => {
   const packageJson = JSON.parse(readFileSync(path.join(__dirname, "package.json"), "utf8"));
   const files = packageJson.build.files;
 
+  assert.equal(packageJson.build.npmRebuild, false);
   assert.ok(files.includes("startup-diagnostics.cjs"));
   assert.ok(files.includes("desktop-updater.cjs"));
   assert.ok(files.includes("background-service.cjs"));
@@ -30,12 +22,15 @@ test("electron-builder excludes DuckDB development files but keeps runtime files
   assert.ok(files.every((filter) => !filter.includes("node_modules/duckdb/lib")));
 });
 
-test("Windows packages retain signed GitHub update metadata", () => {
+test("Windows preview packages use checksummed GitHub updates without Authenticode", () => {
   const packageJson = JSON.parse(readFileSync(path.join(__dirname, "package.json"), "utf8"));
 
   assert.equal(packageJson.vitanaUpdateChannel, "production");
   assert.equal(packageJson.build.win.target, "nsis");
-  assert.equal(packageJson.build.win.verifyUpdateCodeSignature, true);
+  assert.equal(packageJson.build.win.signExecutable, false);
+  assert.equal(packageJson.build.win.verifyUpdateCodeSignature, false);
+  assert.equal(Object.hasOwn(packageJson.build.win, "signtoolOptions"), false);
+  assert.equal(packageJson.build.nsis.artifactName, "Vitana-Health-Setup-${version}.${ext}");
   assert.deepEqual(packageJson.build.publish, [{
     provider: "github",
     owner: "benleane83",

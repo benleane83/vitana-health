@@ -209,7 +209,7 @@ function AppSettingsPanel({ confirm }: { confirm: ConfirmAction }) {
           <>
             <p className="settings-update-version">
               Installed version <strong>{updates.currentVersion}</strong>
-              {" · "}{updates.channel === "lan" ? "LAN test channel" : "Production channel"}
+              {" · GitHub release channel"}
             </p>
             <p className="settings-update-status" role={updates.error ? "alert" : "status"} aria-live="polite">
               {updates.error ??

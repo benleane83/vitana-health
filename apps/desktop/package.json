@@ -18,8 +18,7 @@
     "prepackage": "node ../../scripts/prepare-duckdb-httpfs.mjs --output build/duckdb-extensions --skip-runtime-verification",
     "start": "electron .",
     "test": "node --test *.test.cjs",
-    "package": "electron-builder",
-    "package:signed": "electron-builder --publish never --config.forceCodeSigning=true"
+    "package": "electron-builder"
   },
   "license": "Elastic-2.0",
   "type": "commonjs",
@@ -64,11 +63,9 @@
     ],
     "win": {
       "icon": "build/icon.ico",
-      "signtoolOptions": {
-        "publisherName": "Vitana Health"
-      },
+      "signExecutable": false,
       "target": "nsis",
-      "verifyUpdateCodeSignature": true
+      "verifyUpdateCodeSignature": false
     },
     "publish": [
       {
@@ -80,6 +77,7 @@
       }
     ],
     "nsis": {
+      "artifactName": "Vitana-Health-Setup-${version}.${ext}",
       "oneClick": false,
       "perMachine": true,
       "allowToChangeInstallationDirectory": false,
