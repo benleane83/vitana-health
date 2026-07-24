@@ -22,6 +22,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useMobileApi } from "../MobileApiProvider";
 import { Button, Card, Message, Screen } from "../ui/components";
 import { colors, spacing } from "../ui/theme";
+import { userFacingError } from "../userFacingError";
 
 type CareView = "items" | "health-events";
 type ReminderSelection = "" | CareItemReminderLead | "existing";
@@ -89,7 +90,7 @@ export function CareScreen() {
       setEvents(nextEvents.items);
       setPickerEvents(nextEvents.items);
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : "Unable to load care data.");
+      setMessage(userFacingError(caught, "Unable to load care data. Try again."));
     } finally {
       setLoading(false);
     }
@@ -123,7 +124,7 @@ export function CareScreen() {
       setMessage(view === "health-events" ? "Health event saved." : "Care item saved.");
       await load();
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : "Unable to save care data.");
+      setMessage(userFacingError(caught, "Unable to save care data. Try again."));
     } finally {
       setBusy(false);
     }
@@ -137,7 +138,7 @@ export function CareScreen() {
       setMessage(view === "health-events" ? "Health event deleted." : "Care item deleted.");
       await load();
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : "Unable to delete care data.");
+      setMessage(userFacingError(caught, "Unable to delete care data. Try again."));
     } finally {
       setBusy(false);
     }

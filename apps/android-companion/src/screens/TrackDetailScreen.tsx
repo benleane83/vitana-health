@@ -15,6 +15,7 @@ import { useMobileApi } from "../MobileApiProvider";
 import type { RootStackParamList } from "../navigationTypes";
 import { Button, Card, Loading, Message, Screen } from "../ui/components";
 import { colors, spacing } from "../ui/theme";
+import { userFacingError } from "../userFacingError";
 
 type Props = NativeStackScreenProps<RootStackParamList, "TrackDetail">;
 type ReadingDraft = { observedAt: Date; value: string; unit: string; note: string };
@@ -53,7 +54,7 @@ export function TrackDetailScreen({ route }: Props) {
     void healthDataDetail(route.params.measurementCode).then((value) => {
       if (current) setDetail(value);
     }).catch((caught: unknown) => {
-      if (current) setError(caught instanceof Error ? caught.message : "Unable to load metric.");
+      if (current) setError(userFacingError(caught, "Unable to load this metric. Try again."));
     }).finally(() => {
       if (current) setLoading(false);
     });
@@ -75,7 +76,7 @@ export function TrackDetailScreen({ route }: Props) {
       });
       setDetail((current) => current ? mergeHealthDataDetail(current, next) : next);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to load more history.");
+      setError(userFacingError(caught, "Unable to load more history. Try again."));
     } finally {
       setLoadingMore(false);
     }
@@ -130,7 +131,7 @@ export function TrackDetailScreen({ route }: Props) {
       } catch (caught) {
         setActionFeedback({
           entryId: editing.id,
-          detail: caught instanceof Error ? caught.message : "Unable to update this reading.",
+          detail: userFacingError(caught, "Unable to update this reading. Try again."),
           title: "Could not update reading",
           tone: "danger"
         });
@@ -181,7 +182,7 @@ export function TrackDetailScreen({ route }: Props) {
         await refreshTrack();
       } catch (caught) {
         setActionFeedback({
-          detail: caught instanceof Error ? caught.message : "Unable to add this reading.",
+          detail: userFacingError(caught, "Unable to add this reading. Try again."),
           title: "Could not add reading",
           tone: "danger"
         });
@@ -219,7 +220,7 @@ export function TrackDetailScreen({ route }: Props) {
         setPendingDeletion(undefined);
         setActionFeedback({
           entryId: entry.id,
-          detail: caught instanceof Error ? caught.message : "Unable to delete this reading.",
+          detail: userFacingError(caught, "Unable to delete this reading. Try again."),
           title: "Could not delete reading",
           tone: "danger"
         });

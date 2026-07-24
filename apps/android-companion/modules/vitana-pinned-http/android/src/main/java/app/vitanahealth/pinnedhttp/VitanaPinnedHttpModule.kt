@@ -17,8 +17,25 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
 class VitanaPinnedHttpModule : Module() {
+  private data class ClientKey(val publicKeyHash: String, val timeoutMs: Int)
+
+  private val clients = object : LinkedHashMap<ClientKey, OkHttpClient>(4, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<ClientKey, OkHttpClient>): Boolean {
+      if (size <= 4) return false
+      closeClient(eldest.value)
+      return true
+    }
+  }
+
   override fun definition() = ModuleDefinition {
     Name("VitanaPinnedHttp")
+
+    OnDestroy {
+      synchronized(clients) {
+        clients.values.forEach(::closeClient)
+        clients.clear()
+      }
+    }
 
     AsyncFunction("request") {
       url: String,
@@ -28,27 +45,7 @@ class VitanaPinnedHttpModule : Module() {
       publicKeyHash: String,
       timeoutMs: Int? ->
       val requestTimeoutMs = (timeoutMs ?: 15_000).coerceIn(1_000, 120_000)
-      val trustManager = object : X509TrustManager {
-        override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
-        override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) = Unit
-        override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {
-          val certificate = chain.firstOrNull() ?: throw java.security.cert.CertificateException("Server sent no certificate.")
-          if (!PinnedPublicKeyVerifier.matches(certificate.publicKey.encoded, publicKeyHash)) {
-            throw java.security.cert.CertificateException("Server identity did not match the scanned QR code.")
-          }
-        }
-      }
-      val sslContext = SSLContext.getInstance("TLS")
-      sslContext.init(null, arrayOf(trustManager), SecureRandom())
-      val client = OkHttpClient.Builder()
-        .sslSocketFactory(sslContext.socketFactory, trustManager)
-        .connectTimeout(minOf(requestTimeoutMs, 8_000).toLong(), TimeUnit.MILLISECONDS)
-        .writeTimeout(requestTimeoutMs.toLong(), TimeUnit.MILLISECONDS)
-        .readTimeout(requestTimeoutMs.toLong(), TimeUnit.MILLISECONDS)
-        .callTimeout(requestTimeoutMs.toLong(), TimeUnit.MILLISECONDS)
-        // The QR-pinned key is the server identity and remains valid when its private LAN address changes.
-        .hostnameVerifier { _, _ -> true }
-        .build()
+      val client = clientFor(publicKeyHash, requestTimeoutMs)
       val requestBuilder = Request.Builder().url(url)
       headers.forEach { (name, value) -> requestBuilder.header(name, value) }
       val requestBody = body?.toRequestBody(headers["Content-Type"]?.toMediaTypeOrNull())
@@ -62,14 +59,49 @@ class VitanaPinnedHttpModule : Module() {
           )
         }
       } catch (error: SocketTimeoutException) {
-        throw Exception("Pinned HTTPS request timed out while waiting for the API response. URL: $url")
+        throw Exception("The request timed out. Check that your paired PC is awake and reachable, then try again.")
       } catch (error: UnknownHostException) {
-        throw Exception("Pinned HTTPS request failed because the API host could not be resolved. URL: $url")
+        throw Exception("Could not find your paired PC on the local network. Check its connection and try again.")
       } catch (error: ConnectException) {
-        throw Exception("Pinned HTTPS request could not connect to the API. Verify the server is running and reachable on your LAN. URL: $url")
+        throw Exception("Could not connect to your paired PC. Check that it is running and reachable, then try again.")
       } catch (error: IOException) {
-        throw Exception("Pinned HTTPS request failed due to a network I/O error: ${error.message ?: "unknown error"}. URL: $url")
+        throw Exception("The connection to your paired PC was interrupted. Check the local network and try again.")
       }
     }
+  }
+
+  private fun clientFor(publicKeyHash: String, timeoutMs: Int): OkHttpClient {
+    val key = ClientKey(publicKeyHash, timeoutMs)
+    synchronized(clients) {
+      return clients.getOrPut(key) {
+        val trustManager = object : X509TrustManager {
+          override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
+          override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) = Unit
+          override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {
+            val certificate = chain.firstOrNull()
+              ?: throw java.security.cert.CertificateException("Server sent no certificate.")
+            if (!PinnedPublicKeyVerifier.matches(certificate.publicKey.encoded, publicKeyHash)) {
+              throw java.security.cert.CertificateException("Server identity did not match the scanned QR code.")
+            }
+          }
+        }
+        val sslContext = SSLContext.getInstance("TLS")
+        sslContext.init(null, arrayOf(trustManager), SecureRandom())
+        OkHttpClient.Builder()
+          .sslSocketFactory(sslContext.socketFactory, trustManager)
+          .connectTimeout(minOf(timeoutMs, 8_000).toLong(), TimeUnit.MILLISECONDS)
+          .writeTimeout(timeoutMs.toLong(), TimeUnit.MILLISECONDS)
+          .readTimeout(timeoutMs.toLong(), TimeUnit.MILLISECONDS)
+          .callTimeout(timeoutMs.toLong(), TimeUnit.MILLISECONDS)
+          // The QR-pinned key is the server identity and remains valid when its private LAN address changes.
+          .hostnameVerifier { _, _ -> true }
+          .build()
+      }
+    }
+  }
+
+  private fun closeClient(client: OkHttpClient) {
+    client.dispatcher.executorService.shutdown()
+    client.connectionPool.evictAll()
   }
 }
