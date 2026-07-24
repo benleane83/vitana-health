@@ -4,8 +4,11 @@
  * Rules:
  * - DO NOT log request bodies, model prompts, or data payloads.
  * - Redact any field names matching credential/auth patterns before logging.
- * - All output goes to stderr as newline-delimited JSON.
+ * - Output goes to stderr and, when configured, a newline-delimited JSON log file.
  */
+
+import { appendFileSync, mkdirSync } from "node:fs";
+import path from "node:path";
 
 const SENSITIVE_VALUE = /\b(password|token|secret|key|auth|credential|pin)\b\s*(?:=|:)\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi;
 const BEARER_VALUE = /\bbearer\s+[^\s,;]+/gi;
@@ -28,7 +31,16 @@ export interface LogRecord {
 }
 
 function write(record: LogRecord): void {
-  process.stderr.write(JSON.stringify(record) + "\n");
+  const line = JSON.stringify(record) + "\n";
+  process.stderr.write(line);
+  const logFile = process.env.VITANA_LOG_FILE;
+  if (!logFile) return;
+  try {
+    mkdirSync(path.dirname(logFile), { recursive: true });
+    appendFileSync(logFile, line, "utf8");
+  } catch {
+    // Diagnostics must not affect API availability.
+  }
 }
 
 function redactMessage(msg: string): string {

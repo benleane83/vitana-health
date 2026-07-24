@@ -1,7 +1,13 @@
 const assert = require("node:assert/strict");
-const { readFileSync } = require("node:fs");
+const { existsSync, readFileSync } = require("node:fs");
 const path = require("node:path");
 const { test } = require("node:test");
+
+function readPngDimensions(filePath) {
+  const png = readFileSync(filePath);
+  assert.equal(png.subarray(1, 4).toString("ascii"), "PNG");
+  return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
+}
 
 test("electron-builder excludes DuckDB development files but keeps runtime files", () => {
   const packageJson = JSON.parse(readFileSync(path.join(__dirname, "package.json"), "utf8"));
@@ -60,6 +66,15 @@ test("Store packages use an isolated AppX target and placeholder identity", () =
     "internetClientServer",
     "privateNetworkClientServer"
   ]);
+
+  for (const [fileName, dimensions] of [
+    ["Square44x44Logo.png", { width: 44, height: 44 }],
+    ["StoreLogo.png", { width: 50, height: 50 }]
+  ]) {
+    const logoPath = path.join(__dirname, "build", "appx", fileName);
+    assert.ok(existsSync(logoPath), `${fileName} must override electron-builder's default logo`);
+    assert.deepEqual(readPngDimensions(logoPath), dimensions);
+  }
 });
 
 test("desktop updater shutdown callback is available during main-process initialization", () => {

@@ -85,37 +85,26 @@ export async function insertObservationRows(
   observations: Observation[],
   firstOrdinal: number
 ): Promise<void> {
-  const chunkSize = 500;
-  for (let index = 0; index < observations.length; index += chunkSize) {
-    const chunk = observations.slice(index, index + chunkSize).map((entry, chunkIndex) => ({
-      ordinal: firstOrdinal + index + chunkIndex,
-      id: entry.id,
-      measurementCode: entry.measurementCode,
-      observedAt: entry.observedAt,
-      effectiveStart: entry.effectiveStart ?? null,
-      effectiveEnd: entry.effectiveEnd ?? null,
-      value: entry.value,
-      unit: entry.unit,
-      sourceId: entry.sourceId,
-      observationGroupId: entry.observationGroupId ?? null,
-      deviceId: entry.deviceId ?? null,
-      note: entry.note ?? null,
-      sourceJsonPresent: entry.sourceJson !== undefined,
-      sourceJson: optionalJsonValue(entry.sourceJson)
-    }));
-    await run(
-      connection,
-      `INSERT OR IGNORE INTO observations
-      SELECT
-        CAST(value->>'ordinal' AS BIGINT), value->>'id', value->>'measurementCode',
-        CAST(value->>'observedAt' AS TIMESTAMP), CAST(value->>'effectiveStart' AS TIMESTAMP),
-        CAST(value->>'effectiveEnd' AS TIMESTAMP), CAST(value->>'value' AS DOUBLE), value->>'unit',
-        value->>'sourceId', value->>'observationGroupId', value->>'deviceId', value->>'note',
-        CAST(value->>'sourceJsonPresent' AS BOOLEAN), CAST(value->>'sourceJson' AS JSON)
-      FROM json_each(?);`,
-      JSON.stringify(chunk)
-    );
-  }
+  await insertRows(
+    connection,
+    "INSERT OR IGNORE INTO observations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+    observations.map((entry, index) => [
+      firstOrdinal + index,
+      entry.id,
+      entry.measurementCode,
+      entry.observedAt,
+      entry.effectiveStart ?? null,
+      entry.effectiveEnd ?? null,
+      entry.value,
+      entry.unit,
+      entry.sourceId,
+      entry.observationGroupId ?? null,
+      entry.deviceId ?? null,
+      entry.note ?? null,
+      entry.sourceJson !== undefined,
+      optionalJsonValue(entry.sourceJson)
+    ])
+  );
 }
 
 export function json(value: unknown): string {

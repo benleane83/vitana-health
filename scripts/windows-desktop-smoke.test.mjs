@@ -46,6 +46,7 @@ test("Store smoke uses AppX package lifecycle and captures package diagnostics",
   assert.match(script, /Packages\\\$?\(\$installedPackage\.PackageFamilyName\)/);
   assert.match(script, /Get-NetFirewallRule -DisplayName "\*Vitana\*"/);
   assert.match(script, /Get-CimInstance Win32_StartupCommand/);
+  assert.match(script, /InstallLocation "app\\resources\\duckdb-extensions"/);
   assert.match(script, /store-smoke-test\.json/);
 });
 

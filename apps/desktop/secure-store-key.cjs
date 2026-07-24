@@ -1,15 +1,53 @@
 const { randomBytes } = require("node:crypto");
 const {
+  closeSync,
   existsSync,
   mkdirSync,
+  openSync,
   readFileSync,
   renameSync,
   rmSync,
-  writeFileSync
+  writeFileSync,
+  writeSync
 } = require("node:fs");
 const path = require("node:path");
 
 const keyFileName = "store-key.v1.json";
+const initializationLockFileName = "store-key.v1.initializing";
+
+async function prepareSecureStoreKey(options) {
+  const {
+    safeStorage,
+    userDataPath,
+    platform = process.platform,
+    processId = process.pid,
+    now = () => Date.now(),
+    delay = (milliseconds) => new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds))
+  } = options;
+  assertSecureStorageAvailable(safeStorage, platform);
+  if (platform !== "win32" || existsSync(path.join(userDataPath, keyFileName))) {
+    return { finalize() {} };
+  }
+
+  mkdirSync(userDataPath, { recursive: true });
+  const lockPath = path.join(userDataPath, initializationLockFileName);
+  acquireInitializationLock(lockPath, processId, now());
+  try {
+    if (existsSync(path.join(userDataPath, keyFileName))) {
+      return initializationHandle(lockPath);
+    }
+    safeStorage.encryptString("vitana-secure-store-readiness");
+    await waitForPersistedWindowsEncryptionState(userDataPath, delay);
+    const probe = safeStorage.encryptString("vitana-secure-store-verification");
+    if (safeStorage.decryptString(probe) !== "vitana-secure-store-verification") {
+      throw new Error("The OS secure store failed its startup verification.");
+    }
+    return initializationHandle(lockPath);
+  } catch (error) {
+    rmSync(lockPath, { force: true });
+    throw error;
+  }
+}
 
 function loadOrCreateSecureStoreKey(options) {
   const { safeStorage, userDataPath, legacyKeyPath, platform = process.platform } = options;
@@ -94,4 +132,62 @@ function readLegacyKey(legacyKeyPath) {
   return passphrase;
 }
 
-module.exports = { loadOrCreateSecureStoreKey };
+function acquireInitializationLock(lockPath, processId, createdAt) {
+  try {
+    const descriptor = openSync(lockPath, "wx", 0o600);
+    try {
+      writeSync(descriptor, JSON.stringify({ processId, createdAt }));
+    } finally {
+      closeSync(descriptor);
+    }
+  } catch (error) {
+    if (error?.code !== "EEXIST") throw error;
+    if (isStaleInitializationLock(lockPath, createdAt)) {
+      rmSync(lockPath, { force: true });
+      return acquireInitializationLock(lockPath, processId, createdAt);
+    }
+    throw new Error("Health storage is being initialized by another Vitana Health process. Close this window and try again.");
+  }
+}
+
+function isStaleInitializationLock(lockPath, now) {
+  try {
+    const parsed = JSON.parse(readFileSync(lockPath, "utf8"));
+    if (!Number.isSafeInteger(parsed.processId) || !Number.isFinite(parsed.createdAt)) return true;
+    if (now - parsed.createdAt > 5 * 60_000) return true;
+    try {
+      process.kill(parsed.processId, 0);
+      return false;
+    } catch (error) {
+      return error?.code === "ESRCH";
+    }
+  } catch {
+    return true;
+  }
+}
+
+async function waitForPersistedWindowsEncryptionState(userDataPath, delay) {
+  const localStatePath = path.join(userDataPath, "Local State");
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    try {
+      const localState = JSON.parse(readFileSync(localStatePath, "utf8"));
+      if (typeof localState?.os_crypt?.encrypted_key === "string" && localState.os_crypt.encrypted_key.length > 0) {
+        return;
+      }
+    } catch {
+      // Chromium may still be creating or atomically replacing Local State.
+    }
+    await delay(50);
+  }
+  throw new Error("The OS secure store did not persist its encryption state during startup.");
+}
+
+function initializationHandle(lockPath) {
+  return {
+    finalize() {
+      rmSync(lockPath, { force: true });
+    }
+  };
+}
+
+module.exports = { loadOrCreateSecureStoreKey, prepareSecureStoreKey };

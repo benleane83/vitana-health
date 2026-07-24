@@ -178,7 +178,7 @@ try {
     throw "The Store-test runtime did not create an encrypted DuckDB database."
   }
 
-  $extensionDirectory = Join-Path $installedPackage.InstallLocation "resources\duckdb-extensions"
+  $extensionDirectory = Join-Path $installedPackage.InstallLocation "app\resources\duckdb-extensions"
   $extensionManifest = Get-Content (Join-Path $extensionDirectory "manifest.json") -Raw | ConvertFrom-Json
   $extensionHash = (Get-FileHash (Join-Path $extensionDirectory "httpfs.duckdb_extension") -Algorithm SHA256).Hash
   if ($extensionHash.ToLower() -ne $extensionManifest.sha256.ToLower()) {
