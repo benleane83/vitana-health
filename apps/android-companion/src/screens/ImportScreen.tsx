@@ -402,7 +402,7 @@ function ScanImport() {
     if (!client) return;
     setBusy(true);
     setStatusTone("info");
-    setStatus("Preparing report for PC-side OCR…");
+    setStatus("Preparing report for PC scanning…");
     try {
       const result = camera
         ? await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 1 })

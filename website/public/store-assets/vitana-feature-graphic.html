@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1024, initial-scale=1" />
+    <title>Vitana Play Store feature graphic</title>
+    <style>
+      :root {
+        --canvas: #f5f7fc;
+        --surface: #fefeff;
+        --surface-soft: #f1f4fb;
+        --surface-strong: #e8edf8;
+        --text: #34304c;
+        --text-strong: #28233f;
+        --text-muted: #716d84;
+        --line: #d9deeb;
+        --primary: #6751aa;
+        --primary-strong: #554096;
+        --primary-soft: #eee9fa;
+        --lavender-soft: #f3ecfa;
+        --info-soft: #e5f6f4;
+        --info-strong: #246c68;
+        --success: #48ac87;
+        --success-strong: #286a55;
+        --font: Aptos, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      }
+
+      * { box-sizing: border-box; }
+      html, body { width: 1024px; height: 500px; margin: 0; overflow: hidden; }
+      body { font-family: var(--font); background: var(--canvas); color: var(--text); }
+      .graphic {
+        position: relative;
+        display: grid;
+        grid-template-columns: 39% 61%;
+        width: 1024px;
+        height: 500px;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 12% 15%, #eee8fa 0 0, transparent 310px),
+          radial-gradient(circle at 90% 82%, #e3f6f3 0 0, transparent 330px),
+          var(--canvas);
+      }
+      .copy { position: relative; z-index: 2; align-self: center; padding: 0 24px 0 58px; }
+      .brand { display: flex; align-items: center; gap: 12px; color: var(--text-strong); font-size: 25px; font-weight: 800; }
+      .brand img { width: 48px; height: 48px; border-radius: 11px; }
+      h1 { max-width: 340px; margin: 35px 0 0; color: var(--text-strong); font-size: 50px; line-height: 0.98; letter-spacing: 0; }
+      .tagline { max-width: 315px; margin: 22px 0 0; color: var(--text-muted); font-size: 20px; font-weight: 600; line-height: 1.35; }
+      .privacy { display: flex; align-items: center; gap: 8px; margin-top: 28px; color: var(--success-strong); font-size: 15px; font-weight: 750; }
+      .privacy::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--success); }
+
+      .scene { position: relative; align-self: end; height: 452px; }
+      .desktop {
+        position: absolute;
+        top: 46px;
+        left: 0;
+        width: 660px;
+        height: 430px;
+        overflow: hidden;
+        border-radius: 16px 0 0 0;
+        background: var(--surface);
+        box-shadow: 0 8px 22px rgba(52, 45, 83, 0.14);
+      }
+      .topbar { display: flex; align-items: center; justify-content: space-between; height: 52px; padding: 0 22px; border-bottom: 1px solid var(--line); }
+      .mini-brand { display: flex; align-items: center; gap: 8px; color: var(--text-strong); font-weight: 800; }
+      .mini-brand img { width: 26px; height: 26px; border-radius: 6px; }
+      .profile { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; }
+      .profile i { display: grid; place-items: center; width: 27px; height: 27px; border-radius: 50%; background: var(--primary-soft); color: var(--primary-strong); font-style: normal; }
+      .desktop-body { display: grid; grid-template-columns: 102px 1fr; height: 378px; }
+      .sidebar { display: flex; flex-direction: column; gap: 8px; padding: 20px 12px; border-right: 1px solid var(--line); background: var(--surface-soft); }
+      .sidebar span { padding: 8px 10px; border-radius: 999px; color: #7d798e; font-size: 11px; font-weight: 700; }
+      .sidebar span:first-child { background: var(--primary); color: white; }
+      .dashboard { padding: 20px; background: #edf0f7; }
+      .welcome { display: flex; align-items: center; justify-content: space-between; padding: 18px; border-radius: 12px; background: var(--lavender-soft); }
+      .welcome div { display: grid; gap: 4px; }
+      .welcome span { color: var(--text-muted); font-size: 11px; }
+      .welcome strong { color: var(--text-strong); font-size: 19px; }
+      .welcome em { display: flex; align-items: center; gap: 6px; color: var(--success-strong); font-size: 10px; font-style: normal; font-weight: 750; }
+      .welcome em::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--success); }
+      .panels { display: grid; grid-template-columns: 1.45fr 0.8fr; gap: 12px; margin-top: 12px; }
+      .panel { height: 218px; padding: 18px; border-radius: 12px; background: var(--surface); }
+      .panel-head { display: flex; justify-content: space-between; color: var(--text-muted); font-size: 10px; font-weight: 700; }
+      .metric { display: block; margin-top: 6px; color: var(--text-strong); font-size: 27px; line-height: 1; }
+      .metric small { font-size: 10px; font-weight: 500; }
+      .chart { width: 100%; height: 108px; margin-top: 10px; }
+      .chart-area { fill: url(#chart-fill-store); }
+      .chart-line { fill: none; stroke: var(--primary); stroke-width: 5; stroke-linecap: round; }
+      .months { display: flex; justify-content: space-between; color: #8d899a; font-size: 9px; }
+      .reading { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+      .reading:last-child { border: 0; }
+      .reading span { color: var(--text-muted); font-size: 10px; }
+      .reading strong { color: var(--text-strong); font-size: 11px; }
+      .reading small { grid-column: 1 / -1; color: #8d899a; font-size: 8px; }
+
+      .phone {
+        position: absolute;
+        right: 36px;
+        bottom: -20px;
+        width: 174px;
+        height: 350px;
+        padding: 25px 13px 14px;
+        border: 7px solid var(--text-strong);
+        border-radius: 29px;
+        background: var(--surface);
+        box-shadow: 0 12px 24px rgba(40, 35, 63, 0.23);
+      }
+      .notch { position: absolute; top: 7px; left: 50%; width: 54px; height: 8px; border-radius: 99px; background: var(--text-strong); transform: translateX(-50%); }
+      .phone-head { display: flex; align-items: center; justify-content: space-between; margin: 7px 0 16px; color: var(--text-strong); font-size: 10px; font-weight: 700; }
+      .phone-head img { width: 25px; height: 25px; border-radius: 6px; }
+      .phone-label { color: #858194; font-size: 9px; }
+      .phone-title { display: block; max-width: 125px; margin-top: 3px; color: var(--text-strong); font-size: 17px; line-height: 1.08; }
+      .phone-reading { display: grid; gap: 3px; margin-top: 12px; padding: 12px; border-radius: 9px; color: var(--info-strong); background: var(--info-soft); }
+      .phone-reading + .phone-reading { color: var(--primary-strong); background: var(--lavender-soft); }
+      .phone-reading span, .phone-reading small { font-size: 8px; }
+      .phone-reading strong { color: var(--text-strong); font-size: 19px; line-height: 1; }
+      .tabs { display: flex; justify-content: space-between; margin-top: 15px; padding-top: 10px; border-top: 1px solid var(--line); color: #858194; font-size: 7px; }
+      .tabs span:first-child { color: var(--primary); font-weight: 800; }
+    </style>
+  </head>
+  <body>
+    <main class="graphic" aria-label="Vitana feature graphic">
+      <section class="copy">
+        <div class="brand"><img src="../brand/vitana-mark.svg" alt="" />Vitana</div>
+        <h1>Your health.<br />Your devices.<br />Your control.</h1>
+        <p class="tagline">A private health workspace for you and your family.</p>
+        <div class="privacy">Local-first by design</div>
+      </section>
+      <section class="scene" aria-label="Vitana desktop and mobile dashboards">
+        <div class="desktop">
+          <div class="topbar">
+            <div class="mini-brand"><img src="../brand/vitana-mark.svg" alt="" />Vitana</div>
+            <div class="profile"><i>S</i> Sam</div>
+          </div>
+          <div class="desktop-body">
+            <aside class="sidebar"><span>Dashboard</span><span>Import</span><span>Track</span><span>Care</span><span>Insights</span><span>Export</span></aside>
+            <div class="dashboard">
+              <div class="welcome">
+                <div><span>Good morning, Sam</span><strong>See how your week is taking shape.</strong></div>
+                <em>Private on this device</em>
+              </div>
+              <div class="panels">
+                <div class="panel">
+                  <div class="panel-head"><span>Resting heart rate</span><span>12 weeks</span></div>
+                  <strong class="metric">62 <small>bpm</small></strong>
+                  <svg class="chart" viewBox="0 0 330 120" preserveAspectRatio="none" aria-hidden="true">
+                    <defs><linearGradient id="chart-fill-store" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6751aa" stop-opacity=".2" /><stop offset="1" stop-color="#6751aa" stop-opacity="0" /></linearGradient></defs>
+                    <path class="chart-area" d="M0 82 C35 70 54 91 82 73 S128 38 155 50 S202 88 229 65 S270 26 330 35 L330 120 L0 120 Z" />
+                    <path class="chart-line" d="M0 82 C35 70 54 91 82 73 S128 38 155 50 S202 88 229 65 S270 26 330 35" />
+                  </svg>
+                  <div class="months"><span>May</span><span>June</span><span>July</span></div>
+                </div>
+                <div class="panel">
+                  <div class="panel-head"><span>Latest readings</span><span style="color: var(--success-strong)">Today</span></div>
+                  <div class="reading"><span>Sleep</span><strong>7 h 42 min</strong><small>Health Connect</small></div>
+                  <div class="reading"><span>Steps</span><strong>8,246</strong><small>Health Connect</small></div>
+                  <div class="reading"><span>Weight</span><strong>72.4 kg</strong><small>Manual entry</small></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="phone">
+          <div class="notch"></div>
+          <div class="phone-head"><img src="../brand/vitana-mark.svg" alt="" /><span>Sam</span></div>
+          <span class="phone-label">Dashboard</span>
+          <strong class="phone-title">Your health at a glance</strong>
+          <div class="phone-reading"><span>Steps</span><strong>8,246</strong><small>Updated 4 min ago</small></div>
+          <div class="phone-reading"><span>Sleep</span><strong>7 h 42 min</strong><small>Last night</small></div>
+          <div class="tabs"><span>Dashboard</span><span>Import</span><span>Track</span></div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
