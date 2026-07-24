@@ -16,7 +16,7 @@ describe("createApiClient", () => {
     const seen: ApiTransportRequest[] = [];
     const client = createApiClient(async (request) => {
       seen.push(request);
-      return response({ status: "idle", currentVersion: "1.0.0", channel: "production" });
+      return response({ status: "idle", currentVersion: "1.0.0", channel: "production", distributionChannel: "github" });
     });
 
     await client.desktopUpdates.get();
