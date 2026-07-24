@@ -148,7 +148,7 @@ const storeFields = {
   insights: z.array(insightSchema),
   auditEvents: z.array(z.object({
     id: z.string(), createdAt: z.string(),
-    eventType: z.enum(["store-created", "profile-updated", "migration-applied", "import-processed", "insight-generated", "export-created", "observation-updated", "observation-deleted", "observation-type-deleted", "daily-step-aggregates-deleted", "health-event-created", "health-event-updated", "health-event-deleted", "care-item-created", "care-item-updated", "care-item-completed", "care-item-cancelled", "care-item-deleted", "personal-reference-range-set", "personal-reference-range-removed"]),
+    eventType: z.enum(["store-created", "profile-updated", "migration-applied", "import-processed", "insight-generated", "export-created", "observation-updated", "observation-deleted", "observation-type-deleted", "daily-step-aggregates-deleted", "health-event-created", "health-event-updated", "health-event-deleted", "care-item-created", "care-item-updated", "care-item-completed", "care-item-cancelled", "care-item-deleted", "personal-reference-range-set", "personal-reference-range-removed", "profile-photo-replaced", "profile-photo-deleted"]),
     detail: z.string()
   }).strict())
 };

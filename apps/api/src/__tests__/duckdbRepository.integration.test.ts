@@ -60,8 +60,8 @@ describe("DuckDbRepository fidelity", () => {
     const secondFixture = createDuckDbHealthStoreFixture();
     secondFixture.profile.id = "second";
     const second = await DuckDbRepository.hydrate(root, secondPath, key, secondFixture, { httpfsExtensionPath });
-    const original = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0xff, 0xd9]);
-    const replacement = Buffer.from([0xff, 0xd8, 0xff, 0xe1, 0xff, 0xd9]);
+    const original = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(64 * 1024, 1), Buffer.from([0xff, 0xd9])]);
+    const replacement = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe1]), Buffer.alloc(64 * 1024, 2), Buffer.from([0xff, 0xd9])]);
 
     try {
       expect(await first.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);

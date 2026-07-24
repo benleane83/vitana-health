@@ -418,11 +418,51 @@ textarea {
   gap: 0.5rem;
 }
 
+.profile-photo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.profile-photo-action {
+  background-color: var(--surface);
+  border-color: var(--line);
+  color: var(--text);
+  font-weight: 700;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .profile-photo-action:hover:not(:disabled) {
+    background-color: var(--surface-2);
+    border-color: var(--line-strong);
+    color: var(--text-strong);
+  }
+}
+
+.profile-photo-remove {
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--line));
+  color: oklch(46% 0.13 28);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .profile-photo-remove:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--danger) 8%, var(--surface));
+    border-color: color-mix(in srgb, var(--danger) 55%, var(--line));
+    color: oklch(42% 0.14 28);
+  }
+}
+
 .profile-photo-editor input[type="file"] {
   height: 1px;
   opacity: 0;
   position: absolute;
   width: 1px;
+}
+
+.profile-photo-feedback {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
 }
 
 .profile-menu-label {
@@ -460,6 +500,9 @@ textarea {
 }
 
 .profile-menu-item {
+  align-items: center;
+  display: flex;
+  gap: var(--space-2);
   min-height: 36px;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;

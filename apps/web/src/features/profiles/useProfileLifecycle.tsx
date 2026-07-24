@@ -141,12 +141,21 @@ export function useProfileLifecycle(onNotice: (message: string) => void, confirm
     });
   }
 
-  async function replaceProfilePhoto(file: File) {
-    await run("Profile photo updated.", async () => {
+  async function replaceProfilePhoto(file: File): Promise<string | undefined> {
+    setUi((current) => ({ ...current, busy: true }));
+    try {
       const contentBase64 = await normalizeProfilePhoto(file);
       await api.profilePhoto.replace({ contentType: "image/jpeg", contentBase64 });
       await refresh();
-    });
+      onNotice("Profile photo updated.");
+      return undefined;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unexpected local error.";
+      onNotice(message);
+      return message;
+    } finally {
+      setUi((current) => ({ ...current, busy: false }));
+    }
   }
 
   async function removeProfilePhoto() {
@@ -198,7 +207,7 @@ export function ProfileLifecycleDialogs({ lifecycle }: { lifecycle: ProfileLifec
           profile={lifecycle.profile}
           profilePhotoRevision={lifecycle.bootstrap?.profilePhoto?.revision}
           onClose={lifecycle.closeEditor}
-          onPhotoChange={(file) => { void lifecycle.replaceProfilePhoto(file); }}
+          onPhotoChange={lifecycle.replaceProfilePhoto}
           onPhotoRemove={() => { void lifecycle.removeProfilePhoto(); }}
           onSubmit={lifecycle.saveProfile}
         />

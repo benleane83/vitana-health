@@ -53,12 +53,13 @@ export function ProfileEditDialog({
   profile?: Profile;
   profilePhotoRevision?: string;
   onClose: () => void;
-  onPhotoChange: (file: File) => void;
+  onPhotoChange: (file: File) => Promise<string | undefined>;
   onPhotoRemove: () => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const firstFocusRef = useRef<HTMLInputElement>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const [subjectKind, setSubjectKind] = useState<NonNullable<Profile["subjectKind"]>>(profile?.subjectKind ?? "adult");
@@ -68,6 +69,7 @@ export function ProfileEditDialog({
       ? ""
       : String(units === "imperial" ? centimetersToInches(profile.heightCm) : profile.heightCm)
   );
+  const [photoFeedback, setPhotoFeedback] = useState<string>();
   const today = new Date().toISOString().slice(0, 10);
   const adultBirthDateMaximum = new Date();
   adultBirthDateMaximum.setFullYear(adultBirthDateMaximum.getFullYear() - 18);
@@ -109,7 +111,6 @@ export function ProfileEditDialog({
     >
       <div className="panel-heading-row">
         <div>
-          <p className="eyebrow">Editable local context</p>
           <h2 id="profile-dialog-title">Edit profile</h2>
         </div>
         <button type="button" onClick={onClose} aria-label="Close profile editor">Close</button>
@@ -117,23 +118,35 @@ export function ProfileEditDialog({
       <div className="profile-photo-editor">
         <ProfileAvatar displayName={profile?.displayName ?? "Profile"} revision={profilePhotoRevision} />
         <div>
-          <label className="button" htmlFor="profile-photo-input">
-            {profilePhotoRevision ? "Replace photo" : "Choose photo"}
-          </label>
+          <div className="profile-photo-actions">
+            <button
+              className="profile-photo-action"
+              type="button"
+              disabled={busy}
+              onClick={() => photoInputRef.current?.click()}
+            >
+              {profilePhotoRevision ? "Replace photo" : "Choose photo"}
+            </button>
+            {profilePhotoRevision ? (
+              <button className="profile-photo-action profile-photo-remove" type="button" disabled={busy} onClick={onPhotoRemove}>Remove photo</button>
+            ) : null}
+          </div>
           <input
+            ref={photoInputRef}
             id="profile-photo-input"
             type="file"
             accept="image/jpeg,image/png,image/webp"
             disabled={busy}
-            onChange={(event) => {
+            onChange={async (event) => {
               const file = event.currentTarget.files?.[0];
-              if (file) onPhotoChange(file);
               event.currentTarget.value = "";
+              if (!file) return;
+              setPhotoFeedback("Saving photo...");
+              const error = await onPhotoChange(file);
+              setPhotoFeedback(error ?? "Photo saved.");
             }}
           />
-          {profilePhotoRevision ? (
-            <button type="button" disabled={busy} onClick={onPhotoRemove}>Remove photo</button>
-          ) : null}
+          {photoFeedback ? <p className="profile-photo-feedback" role="status">{photoFeedback}</p> : null}
         </div>
       </div>
       <form onSubmit={onSubmit} className="profile-form">

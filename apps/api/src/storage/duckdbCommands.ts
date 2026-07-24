@@ -118,12 +118,12 @@ export async function replaceProfilePhoto(
   const updatedAt = new Date().toISOString();
   await run(
     connection,
-    `INSERT INTO profile_media VALUES ('profile-photo', ?, ?, ?, ?)
+    `INSERT INTO profile_media VALUES ('profile-photo', ?, from_base64(?), ?, ?)
       ON CONFLICT (media_kind) DO UPDATE SET
         content_type = EXCLUDED.content_type, content = EXCLUDED.content,
         revision = EXCLUDED.revision, updated_at = EXCLUDED.updated_at;`,
     contentType,
-    bytes,
+    bytes.toString("base64"),
     revision,
     updatedAt
   );

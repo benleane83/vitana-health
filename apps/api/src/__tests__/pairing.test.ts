@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -84,6 +84,33 @@ describe("PairingStore authorization grants", () => {
 
     expect(store.validateToken(first.token)).toBeNull();
     expect(store.validateToken(second.token)?.allowedProfileIds).toEqual(["other"]);
+  });
+
+  it("lists connected devices before revoked devices, with latest revocation first", () => {
+    vi.useFakeTimers();
+    try {
+      const store = new PairingStore();
+      stores.push(store);
+
+      vi.setSystemTime(new Date("2026-07-22T10:00:00.000Z"));
+      const firstRevoked = approvedPairing(store, "phone-a");
+      store.revoke(firstRevoked.request.record.id);
+
+      vi.setSystemTime(new Date("2026-07-23T10:00:00.000Z"));
+      const secondRevoked = approvedPairing(store, "phone-b");
+      store.revoke(secondRevoked.request.record.id);
+
+      vi.setSystemTime(new Date("2026-07-24T10:00:00.000Z"));
+      const active = approvedPairing(store, "phone-c");
+
+      expect(store.listDevices().map((record) => record.id)).toEqual([
+        active.request.record.id,
+        secondRevoked.request.record.id,
+        firstRevoked.request.record.id
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps the persisted registry valid while coalescing usage updates", async () => {
