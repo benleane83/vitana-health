@@ -6,6 +6,7 @@ import { parsePairingPayload } from "./pairingPayload";
 import { pinnedFetch } from "./pinnedFetch";
 import { Button, Card, Message } from "./ui/components";
 import { colors, radii, spacing, type } from "./ui/theme";
+import { userFacingError } from "./userFacingError";
 
 type PairStatus = "idle" | "detected" | "requesting" | "waiting" | "approved" | "denied" | "error";
 
@@ -73,7 +74,7 @@ export function PairScreen({
       setStatus("detected");
       setMessage(`Found server: ${url}`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not read the QR code. Aim at the pairing QR code shown in the web app.");
+      setMessage(userFacingError(error, "Could not read the QR code. Aim at the pairing QR code shown in the web app."));
       scannedRef.current = false;
     }
   }
@@ -93,13 +94,19 @@ export function PairScreen({
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ deviceId, deviceName: "Android Companion", pairingCode })
       });
-      const body = (await response.json()) as Record<string, unknown>;
+      const body = await response.json().catch(() => ({})) as Record<string, unknown>;
+      if (!response.ok) {
+        throw new Error(typeof body.error === "string" ? body.error : "The paired PC rejected the pairing request.");
+      }
 
       if (body.status === "approved" && typeof body.token === "string") {
         await saveConnection({ url: detectedUrl, token: body.token, publicKeyHash, pairedAt: new Date().toISOString() });
         setStatus("approved");
         setMessage("Paired successfully! Returning to sync screen…");
-        setTimeout(() => onComplete({ url: detectedUrl, token: body.token as string, publicKeyHash }), 1500);
+        pollTimeoutRef.current = setTimeout(
+          () => onComplete({ url: detectedUrl, token: body.token as string, publicKeyHash }),
+          1500
+        );
         return;
       }
 
@@ -115,7 +122,7 @@ export function PairScreen({
       }
     } catch (error) {
       setStatus("error");
-      setMessage(error instanceof Error ? error.message : "Connection failed. Check the server is running and reachable on the network.");
+      setMessage(userFacingError(error, "Connection failed. Check the PC is running and reachable on your local network."));
     }
   }
 
@@ -142,8 +149,18 @@ export function PairScreen({
         const response = await pinnedFetch(`${url}/api/pairing/status/${pairingId}`, pinnedHash, {
           headers: { Accept: "application/json", "x-pairing-secret": pollingSecret }
         });
-        const body = (await response.json()) as Record<string, unknown>;
+        const body = await response.json().catch(() => ({})) as Record<string, unknown>;
         if (cancelledRef.current) return;
+        if (!response.ok) {
+          if (response.status === 401 || response.status === 403 || response.status === 404) {
+            cancelledRef.current = true;
+            setStatus("error");
+            setMessage("This pairing request is no longer valid. Scan a new pairing QR code.");
+            return;
+          }
+          scheduleNext();
+          return;
+        }
         if (body.status === "approved" && typeof body.token === "string") {
           cancelledRef.current = true;
           if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);

@@ -9,6 +9,7 @@ vi.mock("react-native-health-connect", () => ({
   requestPermission: vi.fn()
 }));
 vi.mock("@react-native-async-storage/async-storage", () => ({ default: {} }));
+vi.mock("expo-crypto", () => ({ getRandomBytesAsync: vi.fn() }));
 vi.mock("expo-secure-store", () => ({}));
 vi.mock("./pinnedFetch", () => ({ pinnedFetch: vi.fn() }));
 

@@ -36,6 +36,7 @@ import {
 import type { CompanionMutationService } from "./companionDataSource";
 import type { CompanionObservationMutationService } from "./companionDataSource";
 import { createStandaloneDataSource } from "./standalone/standaloneDataSource";
+import { userFacingError } from "./userFacingError";
 
 export type { ConnectionState } from "./connectionState";
 
@@ -113,7 +114,7 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
 
   const classifyError = useCallback((caught: unknown) => {
     setConnectionState(connectionStateForError(caught));
-    setError(caught instanceof Error ? caught.message : "Unable to reach the paired PC.");
+    setError(userFacingError(caught, "Unable to reach the paired PC."));
   }, []);
 
   const reloadConnection = useCallback(async () => {
@@ -270,17 +271,28 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let current = true;
-    void Promise.all([loadConnection(), loadDemoMode(), loadOperatingMode()]).then(([nextConnection, nextDemoMode, storedMode]) => {
-      if (!current) return;
-      const nextOperatingMode = resolveOperatingMode(storedMode, Boolean(nextConnection?.token));
-      generation.current += 1;
-      setConnection(nextConnection);
-      setDemoModeState(nextDemoMode);
-      setOperatingModeState(nextOperatingMode);
-      setConnectionState(nextDemoMode || nextOperatingMode === "standalone" ? "online" : nextConnection?.token ? "connecting" : "unpaired");
-      setPreferencesLoaded(true);
-      if (!storedMode) void saveOperatingMode(nextOperatingMode).catch(() => undefined);
-    });
+    void Promise.all([loadConnection(), loadDemoMode(), loadOperatingMode()])
+      .then(([nextConnection, nextDemoMode, storedMode]) => {
+        if (!current) return;
+        const nextOperatingMode = resolveOperatingMode(storedMode, Boolean(nextConnection?.token));
+        generation.current += 1;
+        setConnection(nextConnection);
+        setDemoModeState(nextDemoMode);
+        setOperatingModeState(nextOperatingMode);
+        setConnectionState(nextDemoMode || nextOperatingMode === "standalone" ? "online" : nextConnection?.token ? "connecting" : "unpaired");
+        setPreferencesLoaded(true);
+        if (!storedMode) void saveOperatingMode(nextOperatingMode).catch(() => undefined);
+      })
+      .catch((caught: unknown) => {
+        if (!current) return;
+        generation.current += 1;
+        setConnection(null);
+        setDemoModeState(false);
+        setOperatingModeState("standalone");
+        setConnectionState("online");
+        setError(userFacingError(caught, "Could not load saved app settings. Restart the app and try again."));
+        setPreferencesLoaded(true);
+      });
     return () => { current = false; };
   }, []);
   useEffect(() => {

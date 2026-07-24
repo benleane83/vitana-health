@@ -387,14 +387,14 @@ async function uploadChunk(endpointUrl: string, publicKeyHash: string | null | u
       lastNetworkError = message;
       const retryable = /network i\/o error|timed out|could not connect|connection abort|connection reset/i.test(message);
       if (!retryable || attempt === MAX_UPLOAD_ATTEMPTS) {
-        throw new Error(`Sync request failed before the API could respond: ${message}`);
+        throw new Error(message);
       }
       await sleep(attempt * 1000);
     }
   }
 
   if (!response) {
-    throw new Error(`Sync request failed before the API could respond: ${lastNetworkError ?? "Unknown network error"}`);
+    throw new Error(lastNetworkError ?? "Could not reach your paired PC. Check the local network and try again.");
   }
 
   const body = (await response.json().catch(() => ({}))) as { error?: unknown; counts?: { observations?: number; timeSeriesSamples?: number; activitySessions?: number } };
@@ -402,7 +402,7 @@ async function uploadChunk(endpointUrl: string, publicKeyHash: string | null | u
     if (response.status === 413) {
       throw new Error("Sync payload exceeded API size limits. Reduce selected categories or sync window and try again.");
     }
-    throw new Error(typeof body.error === "string" ? body.error : `Sync endpoint returned ${response.status}.`);
+    throw new Error(typeof body.error === "string" ? body.error : "Your paired PC could not complete the sync. Try again.");
   }
   return body;
 }

@@ -33,6 +33,7 @@ import { useMobileApi } from "../MobileApiProvider";
 import type { RootStackParamList, TabParamList } from "../navigationTypes";
 import { syncHealthConnect } from "../syncHealthConnect";
 import { LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS } from "../pinnedFetch";
+import { userFacingError } from "../userFacingError";
 import { Button, Card, Message, Screen } from "../ui/components";
 import { colors, radii, spacing, type } from "../ui/theme";
 
@@ -293,7 +294,7 @@ function ManualImport() {
       await refreshAfterImport();
     } catch (caught) {
       setStatusTone("danger");
-      setStatus(caught instanceof Error ? caught.message : "Import failed.");
+      setStatus(userFacingError(caught, "Import failed. Try again."));
     } finally {
       setBusy(false);
     }
@@ -425,7 +426,7 @@ function ScanImport() {
       setStatus("Review OCR results before importing.");
     } catch (caught) {
       setStatusTone("danger");
-      setStatus(caught instanceof Error ? caught.message : "Report preview failed.");
+      setStatus(userFacingError(caught, "Report preview failed. Check the connection to your paired PC and try again."));
     } finally {
       setBusy(false);
     }
@@ -468,7 +469,7 @@ function ScanImport() {
       await refreshAfterImport();
     } catch (caught) {
       setStatusTone("danger");
-      setStatus(caught instanceof Error ? caught.message : "Report import failed.");
+      setStatus(userFacingError(caught, "Report import failed. Check the connection to your paired PC and try again."));
     } finally {
       setBusy(false);
     }
@@ -525,7 +526,7 @@ function HealthConnectImport() {
       return true;
     } catch (caught) {
       setStatusTone("danger");
-      setStatus(caught instanceof Error ? caught.message : "Could not save Sync settings.");
+      setStatus(userFacingError(caught, "Could not save Sync settings. Try again."));
       return false;
     } finally {
       setUpdating(false);
@@ -576,7 +577,7 @@ function HealthConnectImport() {
       await refreshAfterImport();
     } catch (caught) {
       setStatusTone("danger");
-      setStatus(caught instanceof Error ? caught.message : "Sync failed.");
+      setStatus(userFacingError(caught, "Sync failed. Check the connection to your paired PC and try again."));
     } finally {
       setSyncing(false);
       setSyncProgress("");

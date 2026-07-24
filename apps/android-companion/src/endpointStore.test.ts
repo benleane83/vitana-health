@@ -10,6 +10,7 @@ const storage = vi.hoisted(() => ({
   setSecureItem: vi.fn(),
   deleteSecureItem: vi.fn()
 }));
+const crypto = vi.hoisted(() => ({ getRandomBytesAsync: vi.fn() }));
 
 vi.mock("@react-native-async-storage/async-storage", () => ({
   default: {
@@ -23,6 +24,7 @@ vi.mock("expo-secure-store", () => ({
   setItemAsync: storage.setSecureItem,
   deleteItemAsync: storage.deleteSecureItem
 }));
+vi.mock("expo-crypto", () => crypto);
 
 import {
   clearConnection,
@@ -36,6 +38,7 @@ const deviceIdKey = "vitana.deviceId";
 const tokenKey = "vitana.companionToken";
 
 beforeEach(() => {
+  crypto.getRandomBytesAsync.mockResolvedValue(Uint8Array.from({ length: 16 }, (_, index) => index));
   storage.getItem.mockImplementation(async (key: string) => storage.async.get(key) ?? null);
   storage.setItem.mockImplementation(async (key: string, value: string) => { storage.async.set(key, value); });
   storage.removeItem.mockImplementation(async (key: string) => { storage.async.delete(key); });
@@ -71,6 +74,13 @@ describe("connection storage", () => {
       healthConnectCategories: [],
       healthConnectDisclosureAcknowledged: false
     });
+  });
+
+  it("generates first-run device identifiers from cryptographically secure random bytes", async () => {
+    await saveConnection({ url: "https://desktop.test" });
+
+    expect(crypto.getRandomBytesAsync).toHaveBeenCalledWith(16);
+    expect(storage.secure.get(deviceIdKey)).toBe("000102030405060708090a0b0c0d0e0f");
   });
 
   it("limits the initial sync window to 30–365 days", async () => {
