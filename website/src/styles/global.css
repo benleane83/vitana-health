@@ -278,6 +278,7 @@ button, input { font: inherit; }
   .mock-sidebar, .latest-panel { display: none; }
   .mock-summary { grid-template-columns: 1fr; }
   .mock-welcome { align-items: flex-start; flex-direction: column; }
+  .mock-welcome > div { max-width: calc(100% - 8rem); }
   .phone-window { right: -0.6rem; }
 }
 @media (max-width: 30rem) {
