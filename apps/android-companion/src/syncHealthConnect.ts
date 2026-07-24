@@ -385,7 +385,7 @@ async function uploadChunk(endpointUrl: string, publicKeyHash: string | null | u
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown network error";
       lastNetworkError = message;
-      const retryable = /network i\/o error|timed out|could not connect|connection (?:abort|reset|interrupted)/i.test(message);
+      const retryable = /network i\/o error|timed out|could not connect|connection (?:abort|reset)|interrupted/i.test(message);
       if (!retryable || attempt === MAX_UPLOAD_ATTEMPTS) {
         throw new Error(message);
       }
