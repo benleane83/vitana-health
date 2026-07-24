@@ -152,6 +152,21 @@ describe("Health Connect sync", () => {
     expect(mocks.pinnedFetch.mock.calls[1][2].body).toBe(mocks.pinnedFetch.mock.calls[0][2].body);
   });
 
+  it("retries an interrupted native connection", async () => {
+    mocks.pinnedFetch
+      .mockRejectedValueOnce(new Error("The connection to your paired PC was interrupted. Check the local network and try again."))
+      .mockResolvedValueOnce(response);
+
+    const sync = syncHealthConnect("https://desktop.test", "companion-token", null, "pin", {
+      deviceId: "device-1",
+      categories: ["Steps"]
+    });
+    await vi.advanceTimersByTimeAsync(1000);
+    await sync;
+
+    expect(mocks.pinnedFetch).toHaveBeenCalledTimes(2);
+  });
+
   it("reports the permission, read, upload, and finalization stages", async () => {
     const onProgress = vi.fn();
 
