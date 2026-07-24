@@ -3,7 +3,7 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { createBackgroundServiceController } = require("./background-service.cjs");
 const { createBackgroundServiceSettingsStore } = require("./background-service-settings.cjs");
-const { loadOrCreateSecureStoreKey } = require("./secure-store-key.cjs");
+const { loadOrCreateSecureStoreKey, prepareSecureStoreKey } = require("./secure-store-key.cjs");
 const { createStartupDiagnostics } = require("./startup-diagnostics.cjs");
 const { createDesktopUpdaterController } = require("./desktop-updater.cjs");
 const { migrateUserDataDirectory } = require("./user-data-migration.cjs");
@@ -16,21 +16,27 @@ let updateInstallPending = false;
 let launchPromise;
 const backgroundLaunch = process.argv.includes("--background");
 let startupPathError;
-const brandedUserDataPath = path.join(app.getPath("appData"), "Vitana Health");
+const packageMetadata = require("./package.json");
+const distributionChannel = packageMetadata.vitanaDistributionChannel;
+const brandedUserDataPath = path.join(
+  app.getPath("appData"),
+  distributionChannel === "store" ? "Vitana Health Store Test" : "Vitana Health"
+);
 try {
-  migrateUserDataDirectory(app.getPath("appData"));
+  if (distributionChannel === "github") migrateUserDataDirectory(app.getPath("appData"));
 } catch (error) {
   startupPathError = error;
 }
 app.setPath("userData", brandedUserDataPath);
 const diagnostics = createStartupDiagnostics({ userDataPath: app.getPath("userData") });
 const settingsStore = createBackgroundServiceSettingsStore({ userDataPath: app.getPath("userData") });
-const updateChannel = require("./package.json").vitanaUpdateChannel;
+const updateChannel = packageMetadata.vitanaUpdateChannel;
 const desktopUpdater = createDesktopUpdaterController({
   app,
-  updater: require("electron-updater").autoUpdater,
+  updater: distributionChannel === "github" ? require("electron-updater").autoUpdater : undefined,
   diagnostics,
   channel: updateChannel,
+  distributionChannel,
   prepareToInstall: shutdownApiForUpdate
 });
 
@@ -155,6 +161,7 @@ async function launch() {
   process.env.HOST = "0.0.0.0";
   process.env.PORT = process.env.PORT || "4317";
   process.env.VITANA_DATA_DIR = app.getPath("userData");
+  process.env.VITANA_LOG_FILE = path.join(app.getPath("userData"), "logs", "api.ndjson");
   process.env.VITANA_STORAGE_BACKEND = "duckdb";
   process.env.VITANA_WEB_ROOT = packaged
     ? path.join(process.resourcesPath, "web")
@@ -171,13 +178,21 @@ async function launch() {
     decryptString: (value) => safeStorage.decryptString(value)
   });
   const configuredSecret = process.env.VITANA_SECRET;
-  const secureKey = configuredSecret
+  const secureKeyInitialization = configuredSecret
     ? undefined
-    : loadOrCreateSecureStoreKey({
-        safeStorage,
-        userDataPath: app.getPath("userData"),
-        legacyKeyPath: path.join(app.getPath("userData"), "local.key")
-      });
+    : await prepareSecureStoreKey({ safeStorage, userDataPath: app.getPath("userData") });
+  let secureKey;
+  try {
+    secureKey = configuredSecret
+      ? undefined
+      : loadOrCreateSecureStoreKey({
+          safeStorage,
+          userDataPath: app.getPath("userData"),
+          legacyKeyPath: path.join(app.getPath("userData"), "local.key")
+        });
+  } finally {
+    secureKeyInitialization?.finalize();
+  }
   apiServer = await startServer({
     storeSecurity: configuredSecret
       ? { passphrase: configuredSecret, securityMode: "env-secret" }

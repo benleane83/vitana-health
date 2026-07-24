@@ -1,10 +1,11 @@
 {
   "name": "@vitana/desktop",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "author": "Ben Leane",
   "description": "Packaged Vitana Health desktop application",
   "main": "main.cjs",
   "private": true,
+  "vitanaDistributionChannel": "github",
   "vitanaUpdateChannel": "production",
   "dependencies": {
     "@vitana/api": "file:../api",
@@ -18,7 +19,8 @@
     "prepackage": "node ../../scripts/prepare-duckdb-httpfs.mjs --output build/duckdb-extensions --skip-runtime-verification",
     "start": "electron .",
     "test": "node --test *.test.cjs",
-    "package": "electron-builder --publish=never"
+    "package": "electron-builder --publish=never",
+    "package:store": "npm run prepackage && electron-builder --win appx --x64 --publish=never --config.directories.output=dist-store --config.extraMetadata.vitanaDistributionChannel=store"
   },
   "license": "Elastic-2.0",
   "type": "commonjs",
@@ -69,6 +71,20 @@
       "signExecutable": false,
       "target": "nsis",
       "verifyUpdateCodeSignature": false
+    },
+    "appx": {
+      "artifactName": "Vitana-Health-Store-Test-${version}.${ext}",
+      "applicationId": "VitanaHealth",
+      "identityName": "VitanaHealth.StoreTest",
+      "publisher": "CN=Vitana Health Store Test",
+      "publisherDisplayName": "Vitana Health",
+      "displayName": "Vitana Health Store Test",
+      "backgroundColor": "#ffffff",
+      "capabilities": [
+        "runFullTrust",
+        "internetClientServer",
+        "privateNetworkClientServer"
+      ]
     },
     "publish": [
       {

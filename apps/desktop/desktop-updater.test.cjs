@@ -3,7 +3,7 @@ const { EventEmitter } = require("node:events");
 const { test } = require("node:test");
 const { createDesktopUpdaterController } = require("./desktop-updater.cjs");
 
-function fixture({ packaged = true, channel = "production" } = {}) {
+function fixture({ packaged = true, channel = "production", distributionChannel = "github" } = {}) {
   const updater = new EventEmitter();
   updater.checkForUpdates = async () => {};
   updater.downloadUpdate = async () => {};
@@ -16,6 +16,7 @@ function fixture({ packaged = true, channel = "production" } = {}) {
     updater,
     diagnostics,
     channel,
+    distributionChannel,
     prepareToInstall,
     schedule: (callback) => { scheduled.push(callback); }
   });
@@ -29,13 +30,37 @@ test("development mode is unsupported and performs no update request", async () 
   assert.deepEqual(controller.getState(), {
     status: "unsupported",
     currentVersion: "1.2.3",
-    channel: null
+    channel: null,
+    distributionChannel: "github"
   });
+
   assert.equal(scheduled.length, 0);
   controller.start();
   assert.equal(scheduled.length, 0);
   await controller.check();
   assert.equal(checks, 0);
+});
+
+test("Store packages expose managed updates without initializing the GitHub updater", async () => {
+  const { controller, updater, scheduled } = fixture({ distributionChannel: "store" });
+  let calls = 0;
+  updater.checkForUpdates = async () => { calls++; };
+  updater.downloadUpdate = async () => { calls++; };
+  updater.quitAndInstall = () => { calls++; };
+
+  assert.deepEqual(controller.getState(), {
+    status: "managed",
+    currentVersion: "1.2.3",
+    channel: null,
+    distributionChannel: "store"
+  });
+  assert.equal(updater.eventNames().length, 0);
+  controller.start();
+  await controller.check();
+  await controller.download();
+  await controller.restartToInstall();
+  assert.equal(scheduled.length, 0);
+  assert.equal(calls, 0);
 });
 
 test("tracks checks, availability, progress, and download completion", async () => {
@@ -68,7 +93,8 @@ test("uses safe errors and installs only after graceful shutdown", async () => {
     channel: "production",
     diagnostics: { info() {}, error(_message, error) { logged.push(error.message); } },
     prepareToInstall: async () => order.push("shutdown"),
-    schedule: (callback) => scheduled.push(callback)
+    schedule: (callback) => scheduled.push(callback),
+    distributionChannel: "github"
   });
   await controller.check();
   assert.equal(controller.getState().error.includes("private-feed"), false);
@@ -94,6 +120,7 @@ test("allows retrying installation after graceful shutdown fails", async () => {
     updater,
     diagnostics: { info() {}, error() {} },
     channel: "production",
+    distributionChannel: "github",
     prepareToInstall,
     schedule: (callback) => scheduled.push(callback)
   });
