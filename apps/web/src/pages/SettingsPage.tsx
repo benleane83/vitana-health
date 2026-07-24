@@ -102,6 +102,7 @@ function AppSettingsPanel({ confirm }: { confirm: ConfirmAction }) {
           status: "error",
           currentVersion: "unknown",
           channel: null,
+          distributionChannel: "github",
           error: "Unable to read update status."
         });
       }
@@ -124,6 +125,7 @@ function AppSettingsPanel({ confirm }: { confirm: ConfirmAction }) {
         status: "error",
         currentVersion: current?.currentVersion ?? "unknown",
         channel: current?.channel ?? null,
+        distributionChannel: current?.distributionChannel ?? "github",
         error: error instanceof Error ? error.message : "Update action failed."
       }));
     } finally {

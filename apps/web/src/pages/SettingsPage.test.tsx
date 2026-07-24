@@ -66,19 +66,20 @@ describe("desktop update settings", () => {
       distributionChannel: "github"
     });
 
-    it("reports Microsoft Store update ownership without updater controls", async () => {
-      mocks.getUpdates.mockResolvedValue({
-        status: "managed",
-        currentVersion: "1.0.0",
-        channel: null,
-        distributionChannel: "store"
-      });
-      render(<SettingsPage view="app" onViewChange={() => {}} confirm={vi.fn()} />);
-      expect(await screen.findByText(/managed automatically by Microsoft Store/i)).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: /check for updates/i })).not.toBeInTheDocument();
-    });
     render(<SettingsPage view="app" onViewChange={() => {}} confirm={vi.fn()} />);
     expect(await screen.findByText(/unavailable in web development mode/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /check for updates/i })).not.toBeInTheDocument();
+  });
+
+  it("reports Microsoft Store update ownership without updater controls", async () => {
+    mocks.getUpdates.mockResolvedValue({
+      status: "managed",
+      currentVersion: "1.0.0",
+      channel: null,
+      distributionChannel: "store"
+    });
+    render(<SettingsPage view="app" onViewChange={() => {}} confirm={vi.fn()} />);
+    expect(await screen.findByText(/managed automatically by Microsoft Store/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /check for updates/i })).not.toBeInTheDocument();
   });
 
