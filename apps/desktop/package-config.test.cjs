@@ -15,6 +15,9 @@ test("electron-builder excludes DuckDB development files but keeps runtime files
   assert.ok(files.includes("user-data-migration.cjs"));
   assert.ok(files.includes("build/*.ico"));
   assert.equal(packageJson.build.win.icon, "build/icon.ico");
+  assert.ok(files.includes("!**/node_modules/@vitana/api/data{,/**}"));
+  assert.ok(files.includes("!**/node_modules/@vitana/api/src{,/**}"));
+  assert.ok(files.includes("!**/node_modules/@vitana/api/{tsconfig.json,vitest.config.ts,vitest.durability.config.ts,vitest.integration.config.ts}"));
   assert.ok(files.includes("!**/node_modules/duckdb/src{,/**}"));
   assert.ok(files.includes("!**/node_modules/duckdb/test{,/**}"));
   assert.ok(files.includes("!**/node_modules/duckdb/examples{,/**}"));

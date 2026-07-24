@@ -1,6 +1,6 @@
 {
   "name": "@vitana/desktop",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "author": "Ben Leane",
   "description": "Packaged Vitana Health desktop application",
   "main": "main.cjs",
@@ -40,6 +40,9 @@
       "user-data-migration.cjs",
       "build/*.ico",
       "package.json",
+      "!**/node_modules/@vitana/api/data{,/**}",
+      "!**/node_modules/@vitana/api/src{,/**}",
+      "!**/node_modules/@vitana/api/{tsconfig.json,vitest.config.ts,vitest.durability.config.ts,vitest.integration.config.ts}",
       "!**/node_modules/duckdb/src{,/**}",
       "!**/node_modules/duckdb/test{,/**}",
       "!**/node_modules/duckdb/examples{,/**}",
