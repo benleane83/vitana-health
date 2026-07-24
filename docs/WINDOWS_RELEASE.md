@@ -33,9 +33,11 @@ and review release assets before sharing a build.
 
 4. The **Windows release** workflow packages the unsigned NSIS installer and asserts
    that both installer and application are `NotSigned`. It validates `latest.yml`,
-   its installer SHA-512, the block map, installation, packaged runtime, encrypted
-   DuckDB activation, persistence, and firewall cleanup.
+  its installer SHA-512, the block map, installation, packaged runtime, and encrypted
+  DuckDB activation. The longer background, restart, upgrade, and uninstall lifecycle
+  runs in full CI rather than delaying every tagged preview.
 5. Review the `unsigned-windows-preview-release` workflow artifact and smoke evidence.
+  Failed smoke runs upload startup diagnostics in the same artifact.
    The workflow creates or updates the matching non-draft GitHub Release with the
    installer, `latest.yml`, block map, and `SHA256SUMS.txt`.
 6. Install on a test PC, then verify the version, encrypted profiles, background mode,

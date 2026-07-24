@@ -20,10 +20,11 @@ $forcedShutdownTimeoutSeconds = [int]($forcedShutdownTimeoutMs / 1000)
 $effectiveHealthTimeoutSeconds = if ($HealthTimeoutSeconds -gt 0) {
   $HealthTimeoutSeconds
 } elseif ($Scope -eq "Fast") {
-  120
+  60
 } else {
-  240
+  120
 }
+$healthRequestTimeoutSeconds = 2
 $healthUris = @(
   "https://127.0.0.1:4317/api/health",
   "http://127.0.0.1:4317/api/health"
@@ -67,9 +68,9 @@ function Close-DesktopMainWindow([System.Diagnostics.Process]$Process) {
 function Test-HealthEndpoint([string]$Uri) {
   try {
     if ($Uri.StartsWith("https://")) {
-      $health = Invoke-RestMethod -Uri $Uri -SkipCertificateCheck
+      $health = Invoke-RestMethod -Uri $Uri -SkipCertificateCheck -TimeoutSec $healthRequestTimeoutSeconds
     } else {
-      $health = Invoke-RestMethod -Uri $Uri
+      $health = Invoke-RestMethod -Uri $Uri -TimeoutSec $healthRequestTimeoutSeconds
     }
     return $health.ok -eq $true
   } catch {
@@ -111,18 +112,19 @@ function Get-LoginStartupCommand {
   }) | Select-Object -First 1
 }
 
-function Wait-ForHealth {
-  for ($elapsedSeconds = 0; $elapsedSeconds -lt $effectiveHealthTimeoutSeconds; $elapsedSeconds++) {
+function Wait-ForHealth([string]$Phase) {
+  $deadline = [DateTime]::UtcNow.AddSeconds($effectiveHealthTimeoutSeconds)
+  while ([DateTime]::UtcNow -lt $deadline) {
     foreach ($healthUri in $healthUris) {
       if (Test-HealthEndpoint $healthUri) {
         $script:activeHealthUri = $healthUri
         return
       }
     }
-    Start-Sleep -Seconds 1
+    Start-Sleep -Milliseconds 500
   }
   Save-HealthDiagnostics
-  throw "The installed desktop application did not expose its local health endpoint within $effectiveHealthTimeoutSeconds seconds."
+  throw "The installed desktop application did not expose its local health endpoint during $Phase within $effectiveHealthTimeoutSeconds seconds."
 }
 
 function Save-HealthDiagnostics {
@@ -174,7 +176,7 @@ try {
 
   $firstLaunch = Start-Process -FilePath $application -PassThru
   $firstLaunchStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-  Wait-ForHealth
+  Wait-ForHealth "initial startup"
   $firstLaunchStopwatch.Stop()
   $manifest = Get-ChildItem $env:APPDATA -Filter "storage-backend.json" -Recurse |
     Sort-Object LastWriteTimeUtc -Descending |
@@ -248,7 +250,7 @@ try {
     throw "Updated desktop process was not running after restart."
   }
   $secondLaunchStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-  Wait-ForHealth
+  Wait-ForHealth "restart"
   $secondLaunchStopwatch.Stop()
   if ((Get-FileHash $manifest.FullName -Algorithm SHA256).Hash -ne $manifestHash) {
     throw "Encrypted DuckDB storage metadata did not persist across restart."
