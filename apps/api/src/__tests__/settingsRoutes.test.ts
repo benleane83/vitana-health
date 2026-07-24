@@ -32,7 +32,12 @@ function settingsApp(
 }
 
 describe("desktop update routes", () => {
-  const state = { status: "idle" as const, currentVersion: "1.0.0", channel: "production" as const };
+  const state = {
+    status: "idle" as const,
+    currentVersion: "1.0.0",
+    channel: "production" as const,
+    distributionChannel: "github" as const
+  };
 
   it("reports unsupported development hosts and rejects commands", async () => {
     expect((await request(settingsApp()).get("/api/settings/updates")).body.status).toBe("unsupported");

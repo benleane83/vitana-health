@@ -102,6 +102,7 @@ function AppSettingsPanel({ confirm }: { confirm: ConfirmAction }) {
           status: "error",
           currentVersion: "unknown",
           channel: null,
+          distributionChannel: "github",
           error: "Unable to read update status."
         });
       }
@@ -124,6 +125,7 @@ function AppSettingsPanel({ confirm }: { confirm: ConfirmAction }) {
         status: "error",
         currentVersion: current?.currentVersion ?? "unknown",
         channel: current?.channel ?? null,
+        distributionChannel: current?.distributionChannel ?? "github",
         error: error instanceof Error ? error.message : "Update action failed."
       }));
     } finally {
@@ -203,7 +205,15 @@ function AppSettingsPanel({ confirm }: { confirm: ConfirmAction }) {
       </section>
       <section className="settings-section settings-update" aria-labelledby="desktop-updates-heading">
         <h3>Desktop updates</h3>
-        {!updates ? <p className="empty">Loading update status…</p> : updates.status === "unsupported" ? (
+        {!updates ? <p className="empty">Loading update status…</p> : updates.status === "managed" ? (
+          <>
+            <p className="settings-update-version">
+              Installed version <strong>{updates.currentVersion}</strong>
+              {" · Microsoft Store distribution"}
+            </p>
+            <p className="empty">Updates are managed automatically by Microsoft Store.</p>
+          </>
+        ) : updates.status === "unsupported" ? (
           <p className="empty">Desktop updates are unavailable in web development mode.</p>
         ) : (
           <>

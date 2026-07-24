@@ -73,7 +73,8 @@ export function makeSettingsRoutes(options: {
   const unsupportedUpdateState: DesktopUpdateState = {
     status: "unsupported",
     currentVersion: "development",
-    channel: null
+    channel: null,
+    distributionChannel: "github"
   };
   router.get("/updates", (_request, response) => {
     response.json(options.desktopUpdaterController?.getState() ?? unsupportedUpdateState);

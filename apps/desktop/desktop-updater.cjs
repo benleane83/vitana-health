@@ -3,17 +3,20 @@ function createDesktopUpdaterController({
   updater,
   diagnostics,
   channel,
+  distributionChannel,
   prepareToInstall,
   schedule = setTimeout,
   startupDelayMs = 5_000
 }) {
-  const supported = Boolean(app.isPackaged && channel === "production");
+  const supported = Boolean(app.isPackaged && distributionChannel === "github" && channel === "production");
+  const storeManaged = Boolean(app.isPackaged && distributionChannel === "store");
   let operation;
   let installStarted = false;
   let state = {
-    status: supported ? "idle" : "unsupported",
+    status: supported ? "idle" : storeManaged ? "managed" : "unsupported",
     currentVersion: app.getVersion(),
-    channel: supported ? channel : null
+    channel: supported ? channel : null,
+    distributionChannel
   };
 
   function snapshot() {
@@ -79,7 +82,9 @@ function createDesktopUpdaterController({
       update({ status: "error", error: safeError(error), progress: undefined });
     });
   } else {
-    diagnostics.info("Desktop updates unsupported in development mode or invalid package channel");
+    diagnostics.info(storeManaged
+      ? "Desktop updates are managed by Microsoft Store"
+      : "Desktop updates unsupported in development mode or invalid package channel");
   }
 
   let startupScheduled = false;

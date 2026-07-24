@@ -3,7 +3,7 @@ const { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = require
 const { tmpdir } = require("node:os");
 const path = require("node:path");
 const { afterEach, test } = require("node:test");
-const { loadOrCreateSecureStoreKey } = require("./secure-store-key.cjs");
+const { loadOrCreateSecureStoreKey, prepareSecureStoreKey } = require("./secure-store-key.cjs");
 
 const roots = [];
 
@@ -89,4 +89,42 @@ test("refuses corrupt wrapped-key metadata without replacing it", () => {
     /metadata is invalid/
   );
   assert.equal(readFileSync(keyFile, "utf8"), corrupt);
+});
+
+test("waits for persisted Windows encryption state before creating a key", async () => {
+  const root = makeRoot();
+  let encryptionCalls = 0;
+  const safeStorage = makeSafeStorage();
+  safeStorage.encryptString = (value) => {
+    encryptionCalls += 1;
+    if (encryptionCalls === 1) {
+      writeFileSync(path.join(root, "Local State"), JSON.stringify({ os_crypt: { encrypted_key: "persisted" } }));
+    }
+    return Buffer.from(`wrapped:${value}`, "utf8");
+  };
+
+  const preparation = await prepareSecureStoreKey({
+    safeStorage,
+    userDataPath: root,
+    platform: "win32",
+    delay: async () => {}
+  });
+  const result = loadOrCreateSecureStoreKey({ safeStorage, userDataPath: root });
+  preparation.finalize();
+
+  assert.equal(encryptionCalls, 3);
+  assert.match(result.passphrase, /^[A-Za-z0-9_-]{43}$/);
+  assert.equal(existsSync(path.join(root, "store-key.v1.initializing")), false);
+});
+
+test("rejects a concurrent first-run key initialization without replacing its lock", async () => {
+  const root = makeRoot();
+  const lockPath = path.join(root, "store-key.v1.initializing");
+  writeFileSync(lockPath, JSON.stringify({ processId: process.pid, createdAt: Date.now() }));
+
+  await assert.rejects(
+    prepareSecureStoreKey({ safeStorage: makeSafeStorage(), userDataPath: root, platform: "win32" }),
+    /another Vitana Health process/
+  );
+  assert.equal(existsSync(lockPath), true);
 });

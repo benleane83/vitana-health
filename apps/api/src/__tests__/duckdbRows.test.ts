@@ -4,7 +4,7 @@ import type { Observation } from "@vitana/shared";
 import { insertObservationRows } from "../storage/duckdbRows.js";
 
 describe("insertObservationRows", () => {
-  it("uses bounded 500-row JSON batches for dense observations", async () => {
+  it("uses bounded scalar batches for dense observations", async () => {
     const run = vi.fn((...args: unknown[]) => {
       const callback = args.at(-1) as (error: Error | null) => void;
       callback(null);
@@ -14,11 +14,13 @@ describe("insertObservationRows", () => {
 
     await insertObservationRows(connection, observations, 100);
 
-    expect(run).toHaveBeenCalledTimes(2);
-    expect(JSON.parse(run.mock.calls[0][1] as string)).toHaveLength(500);
-    expect(JSON.parse(run.mock.calls[1][1] as string)).toHaveLength(1);
-    expect(JSON.parse(run.mock.calls[0][1] as string)[0].ordinal).toBe(100);
-    expect(JSON.parse(run.mock.calls[1][1] as string)[0].ordinal).toBe(600);
+    expect(run).toHaveBeenCalledTimes(3);
+    expect(run.mock.calls[0][0]).not.toContain("json_each");
+    expect(run.mock.calls[0]).toHaveLength(14 * 214 + 2);
+    expect(run.mock.calls[1]).toHaveLength(14 * 214 + 2);
+    expect(run.mock.calls[2]).toHaveLength(14 * 73 + 2);
+    expect(run.mock.calls[0][1]).toBe(100);
+    expect(run.mock.calls[2][1]).toBe(528);
   });
 });
 
