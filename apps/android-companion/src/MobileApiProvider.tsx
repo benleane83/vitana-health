@@ -252,10 +252,14 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
 
   const disconnect = useCallback(async () => {
     if (demoMode || !connection?.token) return;
-    await pinnedFetch(`${connection.url.replace(/\/+$/, "")}/api/pairing/revoke-self`, connection.publicKeyHash, {
-      method: "POST",
-      headers: { "x-companion-token": connection.token }
-    });
+    try {
+      await pinnedFetch(`${connection.url.replace(/\/+$/, "")}/api/pairing/revoke-self`, connection.publicKeyHash, {
+        method: "POST",
+        headers: { "x-companion-token": connection.token }
+      });
+    } catch {
+      // Local unpairing must remain available when the paired PC is offline.
+    }
     generation.current += 1;
     await Promise.all([clearConnection(), clearSelectedProfileId()]);
     setConnection(null);

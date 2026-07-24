@@ -34,9 +34,12 @@ export function PairScreen({
   const [cameraInstance, setCameraInstance] = useState(0);
   const scannedRef = useRef(false);
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelledRef = useRef(false);
 
   useEffect(() => {
+    cancelledRef.current = false;
     return () => {
+      cancelledRef.current = true;
       if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
     };
   }, []);
@@ -117,7 +120,6 @@ export function PairScreen({
   }
 
   function pollForApproval(url: string, pairingId: string, pollingSecret: string, pinnedHash: string | null) {
-    let cancelled = false;
     let attempts = 0;
     const maxAttempts = 60;
 
@@ -127,8 +129,8 @@ export function PairScreen({
     }
 
     async function poll() {
-      if (cancelled || attempts >= maxAttempts) {
-        if (!cancelled) {
+      if (cancelledRef.current || attempts >= maxAttempts) {
+        if (!cancelledRef.current) {
           setStatus("error");
           setMessage("Pairing timed out. Approve the request in the web app and try again.");
         }
@@ -141,15 +143,16 @@ export function PairScreen({
           headers: { Accept: "application/json", "x-pairing-secret": pollingSecret }
         });
         const body = (await response.json()) as Record<string, unknown>;
+        if (cancelledRef.current) return;
         if (body.status === "approved" && typeof body.token === "string") {
-          cancelled = true;
+          cancelledRef.current = true;
           if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
           await saveConnection({ url, token: body.token, publicKeyHash: pinnedHash, pairedAt: new Date().toISOString() });
           setStatus("approved");
           setMessage("Paired successfully! Returning to sync screen…");
           pollTimeoutRef.current = setTimeout(() => onComplete({ url, token: body.token as string, publicKeyHash: pinnedHash }), 1500);
         } else if (body.status === "denied") {
-          cancelled = true;
+          cancelledRef.current = true;
           if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
           setStatus("denied");
           setMessage("Pairing was denied on the PC. Ask the user to approve and try again.");
@@ -157,7 +160,7 @@ export function PairScreen({
           scheduleNext();
         }
       } catch {
-        scheduleNext();
+        if (!cancelledRef.current) scheduleNext();
       }
     }
 
@@ -165,6 +168,7 @@ export function PairScreen({
   }
 
   function retryCurrentMode() {
+    cancelledRef.current = false;
     scannedRef.current = false;
     setStatus("idle");
     setMessage("");

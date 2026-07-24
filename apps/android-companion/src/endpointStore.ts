@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Crypto from "expo-crypto";
 import * as SecureStore from "expo-secure-store";
 
 const CONNECTION_KEY = "vitana.connection";
@@ -43,14 +44,14 @@ export interface ConnectionDetails {
 
 interface StoredConnection extends Omit<ConnectionDetails, "token" | "deviceId"> {}
 
-function generateDeviceId(): string {
-  return Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
+async function generateDeviceId(): Promise<string> {
+  return Array.from(await Crypto.getRandomBytesAsync(16), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 export async function getDeviceId(): Promise<string> {
   const existing = await SecureStore.getItemAsync(DEVICE_ID_KEY);
   if (existing) return existing;
-  const id = generateDeviceId();
+  const id = await generateDeviceId();
   await SecureStore.setItemAsync(DEVICE_ID_KEY, id);
   return id;
 }
