@@ -1,4 +1,5 @@
 import type duckdb from "duckdb";
+import { createHash } from "node:crypto";
 import {
   careItemSchema,
   createCareItemInputSchema,
@@ -46,6 +47,7 @@ import {
   run
 } from "./duckdbRows.js";
 import { HealthEventDeleteConflictError, RepositoryValidationError } from "./profileRepository.js";
+import type { StoredProfilePhoto } from "./profileRepository.js";
 
 export async function getProfile(connection: duckdb.Connection): Promise<Profile> {
   const profileRows = await all(connection, "SELECT * FROM profile;");
@@ -89,6 +91,52 @@ export async function replaceProfile(
   );
   await insertAudit(connection, "profile-updated", "Profile details updated locally.");
   return nextProfile;
+}
+
+export async function getProfilePhoto(connection: duckdb.Connection): Promise<StoredProfilePhoto | undefined> {
+  const rows = await allWithParams(
+    connection,
+    "SELECT content_type, content, revision, updated_at FROM profile_media WHERE media_kind = ?;",
+    "profile-photo"
+  );
+  const row = rows[0];
+  if (!row) return undefined;
+  return {
+    contentType: "image/jpeg",
+    bytes: Buffer.from(row.content as Buffer),
+    revision: String(row.revision),
+    updatedAt: isoTimestamp(row.updated_at)
+  };
+}
+
+export async function replaceProfilePhoto(
+  connection: duckdb.Connection,
+  contentType: "image/jpeg",
+  bytes: Buffer
+): Promise<StoredProfilePhoto> {
+  const revision = createHash("sha256").update(bytes).digest("hex");
+  const updatedAt = new Date().toISOString();
+  await run(
+    connection,
+    `INSERT INTO profile_media VALUES ('profile-photo', ?, ?, ?, ?)
+      ON CONFLICT (media_kind) DO UPDATE SET
+        content_type = EXCLUDED.content_type, content = EXCLUDED.content,
+        revision = EXCLUDED.revision, updated_at = EXCLUDED.updated_at;`,
+    contentType,
+    bytes,
+    revision,
+    updatedAt
+  );
+  await insertAudit(connection, "profile-photo-replaced", "Profile photo replaced locally.");
+  return { contentType, bytes, revision, updatedAt };
+}
+
+export async function deleteProfilePhoto(connection: duckdb.Connection): Promise<boolean> {
+  const existing = await getProfilePhoto(connection);
+  if (!existing) return false;
+  await run(connection, "DELETE FROM profile_media WHERE media_kind = 'profile-photo';");
+  await insertAudit(connection, "profile-photo-deleted", "Profile photo removed locally.");
+  return true;
 }
 
 export async function addInsight(

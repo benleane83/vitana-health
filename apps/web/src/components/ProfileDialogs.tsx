@@ -9,6 +9,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import type { Profile, ProfileListEntry } from "@vitana/shared";
+import { ProfileAvatar } from "./ProfileAvatar.js";
 
 const FOCUSABLE =
   'button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
@@ -42,12 +43,18 @@ function trapFocus(event: React.KeyboardEvent<HTMLElement>, container: HTMLEleme
 export function ProfileEditDialog({
   busy,
   profile,
+  profilePhotoRevision,
   onClose,
+  onPhotoChange,
+  onPhotoRemove,
   onSubmit
 }: {
   busy: boolean;
   profile?: Profile;
+  profilePhotoRevision?: string;
   onClose: () => void;
+  onPhotoChange: (file: File) => void;
+  onPhotoRemove: () => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -106,6 +113,28 @@ export function ProfileEditDialog({
           <h2 id="profile-dialog-title">Edit profile</h2>
         </div>
         <button type="button" onClick={onClose} aria-label="Close profile editor">Close</button>
+      </div>
+      <div className="profile-photo-editor">
+        <ProfileAvatar displayName={profile?.displayName ?? "Profile"} revision={profilePhotoRevision} />
+        <div>
+          <label className="button" htmlFor="profile-photo-input">
+            {profilePhotoRevision ? "Replace photo" : "Choose photo"}
+          </label>
+          <input
+            id="profile-photo-input"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            disabled={busy}
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              if (file) onPhotoChange(file);
+              event.currentTarget.value = "";
+            }}
+          />
+          {profilePhotoRevision ? (
+            <button type="button" disabled={busy} onClick={onPhotoRemove}>Remove photo</button>
+          ) : null}
+        </div>
       </div>
       <form onSubmit={onSubmit} className="profile-form">
         <label htmlFor="profile-displayName">Name</label>
@@ -287,6 +316,11 @@ export function ProfileManagerDialog({
           const isActive = entry.id === activeProfileId;
           return (
             <div className={`profile-manager-row ${isActive ? "active" : ""}`} role="listitem" key={entry.id}>
+              <ProfileAvatar
+                compact
+                displayName={entry.displayName}
+                revision={isActive ? entry.profilePhoto?.revision : undefined}
+              />
               <div>
                 <strong>{entry.displayName}</strong>
                 <span>{isActive ? "Active profile" : "Stored locally"}</span>

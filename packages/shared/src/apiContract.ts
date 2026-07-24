@@ -18,6 +18,7 @@ import type {
   HealthEventMutationResponse,
   Insight,
   Profile,
+  ProfilePhotoResponse,
   ProfileListEntry,
   ReferenceRangeState,
   UpdateObservationResponse
@@ -203,8 +204,27 @@ export const pairedDevicesResponseSchema = z.array(pairedDeviceSchema);
 export const profileListEntrySchema: z.ZodType<ProfileListEntry> = z.object({
   id: z.string(),
   displayName: z.string(),
-  updatedAt: z.string()
+  updatedAt: z.string(),
+  profilePhoto: z.object({
+    revision: z.string().regex(/^[a-f0-9]{64}$/),
+    updatedAt: z.string().datetime({ offset: true })
+  }).strict().optional()
 }).strict();
+
+export const profilePhotoResponseSchema: z.ZodType<ProfilePhotoResponse> = z.object({
+  contentType: z.literal("image/jpeg"),
+  contentBase64: z.string().min(4).max(350_000).regex(
+    /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/,
+    "Expected canonical base64."
+  ),
+  revision: z.string().regex(/^[a-f0-9]{64}$/),
+  updatedAt: z.string().datetime({ offset: true })
+}).strict();
+export const profilePhotoUploadSchema = z.object({
+  contentType: z.literal("image/jpeg"),
+  contentBase64: z.string().min(4).max(350_000)
+}).strict();
+export const profilePhotoDeleteResponseSchema = z.object({ deleted: z.literal(true) }).strict();
 
 export const profilesResponseSchema = z.object({
   profiles: z.array(profileListEntrySchema),

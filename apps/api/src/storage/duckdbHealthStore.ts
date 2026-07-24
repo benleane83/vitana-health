@@ -139,6 +139,18 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
     });
   }
 
+  getProfilePhoto() {
+    return this.repository.getProfilePhoto();
+  }
+
+  replaceProfilePhoto(contentType: "image/jpeg", bytes: Buffer) {
+    return this.enqueueMutation(() => this.repository.replaceProfilePhoto(contentType, bytes));
+  }
+
+  deleteProfilePhoto() {
+    return this.enqueueMutation(() => this.repository.deleteProfilePhoto());
+  }
+
   resetMeasurementTypeMetadataFromRegistry(): Promise<MeasurementRegistryResetResult> {
     return this.enqueueMutation(() => this.repository.resetMeasurementTypeMetadataFromRegistry());
   }

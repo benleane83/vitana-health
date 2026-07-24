@@ -3,6 +3,7 @@ import type { AnalyticsSummary, AppBootstrap, Profile, ProfileListEntry } from "
 import { api } from "../../api.js";
 import { ProfileEditDialog, ProfileManagerDialog } from "../../components/ProfileDialogs.js";
 import { numberOrUndefined } from "../../utils.js";
+import { normalizeProfilePhoto } from "../../profilePhoto.js";
 
 type ProfileSnapshot = {
   bootstrap?: AppBootstrap;
@@ -140,6 +141,28 @@ export function useProfileLifecycle(onNotice: (message: string) => void, confirm
     });
   }
 
+  async function replaceProfilePhoto(file: File) {
+    await run("Profile photo updated.", async () => {
+      const contentBase64 = await normalizeProfilePhoto(file);
+      await api.profilePhoto.replace({ contentType: "image/jpeg", contentBase64 });
+      await refresh();
+    });
+  }
+
+  async function removeProfilePhoto() {
+    const approved = await confirm(
+      "Remove profile photo",
+      "Remove this profile photo? Initials will be shown instead.",
+      "Remove",
+      true
+    );
+    if (!approved) return;
+    await run("Profile photo removed.", async () => {
+      await api.profilePhoto.remove();
+      await refresh();
+    });
+  }
+
   const profile = snapshot.bootstrap?.profile;
   const activeProfile = snapshot.profiles.find((entry) => entry.id === snapshot.activeProfileId) ?? profile;
 
@@ -158,7 +181,9 @@ export function useProfileLifecycle(onNotice: (message: string) => void, confirm
     switchProfile,
     editProfile,
     createProfile,
-    deleteProfile
+    deleteProfile,
+    replaceProfilePhoto,
+    removeProfilePhoto
   };
 }
 
@@ -171,7 +196,10 @@ export function ProfileLifecycleDialogs({ lifecycle }: { lifecycle: ProfileLifec
         <ProfileEditDialog
           busy={lifecycle.ui.busy}
           profile={lifecycle.profile}
+          profilePhotoRevision={lifecycle.bootstrap?.profilePhoto?.revision}
           onClose={lifecycle.closeEditor}
+          onPhotoChange={(file) => { void lifecycle.replaceProfilePhoto(file); }}
+          onPhotoRemove={() => { void lifecycle.removeProfilePhoto(); }}
           onSubmit={lifecycle.saveProfile}
         />
       ) : null}

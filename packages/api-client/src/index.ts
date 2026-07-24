@@ -23,6 +23,9 @@ import {
   paginatedCareItemsResponseSchema,
   paginatedHealthEventsResponseSchema,
   personalReferenceRangeInputSchema,
+  profilePhotoDeleteResponseSchema,
+  profilePhotoResponseSchema,
+  profilePhotoUploadSchema,
   referenceRangeStateResponseSchema,
   updateObservationResponseSchema,
   uploadImportDraftResponseSchema
@@ -106,6 +109,15 @@ export function createApiClient(transport: ApiTransport) {
     },
     assignedProfiles: () => request(assignedProfilesResponseSchema, "/api/profiles"),
     bootstrap: () => request(appBootstrapResponseSchema, "/api/bootstrap"),
+    profilePhoto: {
+      get: () => request(profilePhotoResponseSchema, "/api/profile/photo"),
+      replace: (payload: { contentType: "image/jpeg"; contentBase64: string }) =>
+        request(profilePhotoResponseSchema, "/api/profile/photo", {
+          method: "PUT",
+          body: profilePhotoUploadSchema.parse(payload)
+        }),
+      remove: () => request(profilePhotoDeleteResponseSchema, "/api/profile/photo", { method: "DELETE" })
+    },
     analytics: () => request(analyticsSummaryResponseSchema, "/api/analytics"),
     summary: () => request(healthDataSummaryResponseSchema, "/api/summary"),
     healthDataDetail: (measurementCode: string, page?: { limit?: number; offset?: number }) =>

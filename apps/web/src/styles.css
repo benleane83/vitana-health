@@ -378,6 +378,53 @@ textarea {
   padding: 0.45rem 0.78rem;
 }
 
+.profile-avatar {
+  align-items: center;
+  background: var(--surface-2);
+  border-radius: 50%;
+  color: var(--primary);
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-weight: 700;
+  height: 64px;
+  justify-content: center;
+  overflow: hidden;
+  width: 64px;
+}
+
+.profile-avatar.compact {
+  font-size: 0.72rem;
+  height: 28px;
+  width: 28px;
+}
+
+.profile-avatar img {
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.profile-photo-editor {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.profile-photo-editor > div {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.profile-photo-editor input[type="file"] {
+  height: 1px;
+  opacity: 0;
+  position: absolute;
+  width: 1px;
+}
+
 .profile-menu-label {
   max-width: 170px;
   overflow: hidden;

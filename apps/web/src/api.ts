@@ -180,6 +180,7 @@ export type DeleteHealthEventMutationResponse = DeleteHealthEventResponse;
 export const api = {
   health: sharedApi.health,
   bootstrap: sharedApi.bootstrap,
+  profilePhoto: sharedApi.profilePhoto,
   analytics: sharedApi.analytics,
   biologicalAge: () => request(biologicalAgeResponseSchema, "/api/biological-age"),
   exportPdf: async () => {

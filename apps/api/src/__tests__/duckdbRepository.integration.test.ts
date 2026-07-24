@@ -26,6 +26,7 @@ import {
 } from "../storage/duckdbRuntime.js";
 import { createDuckDbHealthStoreFixture } from "./support/duckdbFixture.js";
 import { DuckDbRepository, digestHealthStoreData } from "../storage/duckdbRepository.js";
+import { all } from "../storage/duckdbRows.js";
 import { buildClinicianReport } from "../clinicianReport.js";
 
 const httpfsExtensionPath = findPreparedExtension();
@@ -41,6 +42,52 @@ afterEach(() => {
 });
 
 describe("DuckDbRepository fidelity", () => {
+  it.skipIf(!httpfsExtensionPath)("migrates to v9 and keeps profile photos encrypted, isolated, and outside exports", async () => {
+    const legacyPath = join(root, "databases", "health-store-photo-v8.duckdb-poc");
+    await createDuckDbSchema(root, legacyPath, key, { httpfsExtensionPath }, 8);
+    const legacy = await openEncryptedDuckDbDatabase(root, legacyPath, key, { httpfsExtensionPath });
+    try {
+      expect(await migrateDuckDbSchema(legacy)).toBe(9);
+      expect(await all(legacy.connection, "SELECT table_name FROM information_schema.tables WHERE table_name = 'profile_media';"))
+        .toHaveLength(1);
+    } finally {
+      await closeEncryptedDuckDbDatabase(legacy);
+    }
+
+    const firstPath = join(root, "databases", "health-store-photo-first.duckdb-poc");
+    const secondPath = join(root, "databases", "health-store-photo-second.duckdb-poc");
+    const first = await DuckDbRepository.hydrate(root, firstPath, key, createDuckDbHealthStoreFixture(), { httpfsExtensionPath });
+    const secondFixture = createDuckDbHealthStoreFixture();
+    secondFixture.profile.id = "second";
+    const second = await DuckDbRepository.hydrate(root, secondPath, key, secondFixture, { httpfsExtensionPath });
+    const original = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0xff, 0xd9]);
+    const replacement = Buffer.from([0xff, 0xd8, 0xff, 0xe1, 0xff, 0xd9]);
+
+    try {
+      expect(await first.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+      const created = await first.replaceProfilePhoto("image/jpeg", original);
+      expect(created.revision).toBe(createHash("sha256").update(original).digest("hex"));
+      expect(await second.getProfilePhoto()).toBeUndefined();
+      expect(await first.exportData()).not.toHaveProperty("profilePhoto");
+
+      const replaced = await first.replaceProfilePhoto("image/jpeg", replacement);
+      expect(replaced.revision).not.toBe(created.revision);
+      expect((await first.getProfilePhoto())?.bytes).toEqual(replacement);
+      expect(await first.deleteProfilePhoto()).toBe(true);
+      expect(await first.getProfilePhoto()).toBeUndefined();
+      expect(await first.deleteProfilePhoto()).toBe(false);
+    } finally {
+      await Promise.all([first.close(), second.close()]);
+    }
+
+    const reopened = await DuckDbRepository.open(root, firstPath, key, { httpfsExtensionPath });
+    try {
+      expect(await reopened.getProfilePhoto()).toBeUndefined();
+    } finally {
+      await reopened.close();
+    }
+  }, 30_000);
+
   it.skipIf(!httpfsExtensionPath)("resets registry measurement metadata without changing observations", async () => {
     const databasePath = join(root, "databases", "health-store-registry-reset.duckdb-poc");
     const fixture = createDuckDbHealthStoreFixture();
