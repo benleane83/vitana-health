@@ -95,7 +95,7 @@ export class ProfileStoreManager {
 
   syncProfilePhotoMetadata(profileId: string, profilePhoto?: ProfilePhotoMetadata): void {
     this.profiles = this.profiles.map((entry) =>
-      entry.id === profileId ? { ...entry, profilePhoto } : entry
+      entry.id === profileId ? { ...entry, profilePhoto: photoMetadata(profilePhoto) } : entry
     );
     persistProfileRegistry(this.profiles);
   }
@@ -524,7 +524,18 @@ function generateProfileId(displayName: string, existing: Set<string>): string {
 }
 
 function profileListEntryFromProfile(profile: Profile, profilePhoto?: ProfilePhotoMetadata): ProfileListEntry {
-  return { id: normalizeProfileId(profile.id), displayName: profile.displayName, updatedAt: profile.updatedAt, profilePhoto };
+  return {
+    id: normalizeProfileId(profile.id),
+    displayName: profile.displayName,
+    updatedAt: profile.updatedAt,
+    profilePhoto: photoMetadata(profilePhoto)
+  };
+}
+
+function photoMetadata(profilePhoto?: ProfilePhotoMetadata): ProfilePhotoMetadata | undefined {
+  return profilePhoto
+    ? { revision: profilePhoto.revision, updatedAt: profilePhoto.updatedAt }
+    : undefined;
 }
 
 function isDirectChildFileName(value: string): boolean {

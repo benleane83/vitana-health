@@ -320,11 +320,15 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
   }, [source]);
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") void retryPendingRevocation().catch(() => undefined);
-      else clearTransientData();
+      if (state === "active") {
+        void retryPendingRevocation().catch(() => undefined);
+        void refreshDashboard();
+      } else {
+        clearTransientData();
+      }
     });
     return () => subscription.remove();
-  }, [clearTransientData]);
+  }, [clearTransientData, refreshDashboard]);
   useEffect(() => {
     void retryPendingRevocation().catch(() => undefined);
   }, []);
