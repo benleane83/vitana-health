@@ -36,3 +36,25 @@ test("Windows releases use fast smoke coverage and retain failure evidence", () 
   assert.match(workflow, /-HealthTimeoutSeconds 60/);
   assert.match(workflow, /- name: Upload preview update assets and evidence\s+if: always\(\)/);
 });
+
+test("Store smoke uses AppX package lifecycle and captures package diagnostics", () => {
+  const script = readFileSync(new URL("./windows-store-smoke.ps1", import.meta.url), "utf8");
+
+  assert.match(script, /Add-AppxPackage -Path \$resolvedPackage/);
+  assert.match(script, /Remove-AppxPackage -Package \$installedPackage\.PackageFullName/);
+  assert.match(script, /shell:AppsFolder\\\$?\(\$installedPackage\.PackageFamilyName\)!\$ApplicationId/);
+  assert.match(script, /Packages\\\$?\(\$installedPackage\.PackageFamilyName\)/);
+  assert.match(script, /Get-NetFirewallRule -DisplayName "\*Vitana\*"/);
+  assert.match(script, /Get-CimInstance Win32_StartupCommand/);
+  assert.match(script, /store-smoke-test\.json/);
+});
+
+test("Store smoke remains separate from the NSIS release path", () => {
+  const releaseWorkflow = readFileSync(new URL("../.github/workflows/release-windows.yml", import.meta.url), "utf8");
+  const ciWorkflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+
+  assert.doesNotMatch(releaseWorkflow, /windows-store-smoke/);
+  assert.match(ciWorkflow, /desktop_package_format/);
+  assert.match(ciWorkflow, /npm run package:store/);
+  assert.match(ciWorkflow, /\.\/scripts\/windows-store-smoke\.ps1/);
+});
