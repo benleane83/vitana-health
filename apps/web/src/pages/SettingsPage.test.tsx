@@ -35,7 +35,8 @@ beforeEach(() => {
     status: "available",
     currentVersion: "1.0.0",
     availableVersion: "1.1.0",
-    channel: "production"
+    channel: "production",
+    distributionChannel: "github"
   });
   mocks.resetMeasurementMetadata.mockResolvedValue({ profileId: "self", refreshed: 108, inserted: 0 });
 });
@@ -47,6 +48,7 @@ describe("desktop update settings", () => {
       currentVersion: "1.0.0",
       availableVersion: "1.1.0",
       channel: "production",
+      distributionChannel: "github",
       progress: { percent: 0, transferred: 0, total: 0 }
     });
     render(<SettingsPage view="app" onViewChange={() => {}} confirm={vi.fn()} />);
@@ -60,7 +62,20 @@ describe("desktop update settings", () => {
     mocks.getUpdates.mockResolvedValue({
       status: "unsupported",
       currentVersion: "development",
-      channel: null
+      channel: null,
+      distributionChannel: "github"
+    });
+
+    it("reports Microsoft Store update ownership without updater controls", async () => {
+      mocks.getUpdates.mockResolvedValue({
+        status: "managed",
+        currentVersion: "1.0.0",
+        channel: null,
+        distributionChannel: "store"
+      });
+      render(<SettingsPage view="app" onViewChange={() => {}} confirm={vi.fn()} />);
+      expect(await screen.findByText(/managed automatically by Microsoft Store/i)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /check for updates/i })).not.toBeInTheDocument();
     });
     render(<SettingsPage view="app" onViewChange={() => {}} confirm={vi.fn()} />);
     expect(await screen.findByText(/unavailable in web development mode/i)).toBeInTheDocument();

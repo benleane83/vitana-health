@@ -29,6 +29,7 @@ test("Windows preview packages use checksummed GitHub updates without Authentico
   const packageJson = JSON.parse(readFileSync(path.join(__dirname, "package.json"), "utf8"));
 
   assert.equal(packageJson.scripts.package, "electron-builder --publish=never");
+  assert.equal(packageJson.vitanaDistributionChannel, "github");
   assert.equal(packageJson.vitanaUpdateChannel, "production");
   assert.equal(packageJson.build.win.target, "nsis");
   assert.equal(packageJson.build.win.signExecutable, false);
@@ -45,6 +46,22 @@ test("Windows preview packages use checksummed GitHub updates without Authentico
   assert.equal(packageJson.dependencies["electron-updater"], "6.6.2");
 });
 
+test("Store packages use an isolated AppX target and placeholder identity", () => {
+  const packageJson = JSON.parse(readFileSync(path.join(__dirname, "package.json"), "utf8"));
+
+  assert.match(packageJson.scripts["package:store"], /--win appx --x64/);
+  assert.match(packageJson.scripts["package:store"], /dist-store/);
+  assert.match(packageJson.scripts["package:store"], /vitanaDistributionChannel=store/);
+  assert.equal(packageJson.build.win.target, "nsis");
+  assert.equal(packageJson.build.appx.identityName, "VitanaHealth.StoreTest");
+  assert.equal(packageJson.build.appx.publisher, "CN=Vitana Health Store Test");
+  assert.deepEqual(packageJson.build.appx.capabilities, [
+    "runFullTrust",
+    "internetClientServer",
+    "privateNetworkClientServer"
+  ]);
+});
+
 test("desktop updater shutdown callback is available during main-process initialization", () => {
   const mainProcess = readFileSync(path.join(__dirname, "main.cjs"), "utf8");
   const shutdownCallback = mainProcess.indexOf("async function shutdownApiForUpdate()");
@@ -56,4 +73,5 @@ test("desktop updater shutdown callback is available during main-process initial
   assert.ok(beforeQuitHandler >= 0);
   assert.ok(shutdownCallback < beforeQuitHandler);
   assert.match(mainProcess.slice(updaterController, beforeQuitHandler), /prepareToInstall: shutdownApiForUpdate/);
+  assert.match(mainProcess, /distributionChannel === "store" \? "Vitana Health Store Test" : "Vitana Health"/);
 });

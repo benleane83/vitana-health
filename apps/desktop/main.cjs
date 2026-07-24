@@ -16,21 +16,27 @@ let updateInstallPending = false;
 let launchPromise;
 const backgroundLaunch = process.argv.includes("--background");
 let startupPathError;
-const brandedUserDataPath = path.join(app.getPath("appData"), "Vitana Health");
+const packageMetadata = require("./package.json");
+const distributionChannel = packageMetadata.vitanaDistributionChannel;
+const brandedUserDataPath = path.join(
+  app.getPath("appData"),
+  distributionChannel === "store" ? "Vitana Health Store Test" : "Vitana Health"
+);
 try {
-  migrateUserDataDirectory(app.getPath("appData"));
+  if (distributionChannel === "github") migrateUserDataDirectory(app.getPath("appData"));
 } catch (error) {
   startupPathError = error;
 }
 app.setPath("userData", brandedUserDataPath);
 const diagnostics = createStartupDiagnostics({ userDataPath: app.getPath("userData") });
 const settingsStore = createBackgroundServiceSettingsStore({ userDataPath: app.getPath("userData") });
-const updateChannel = require("./package.json").vitanaUpdateChannel;
+const updateChannel = packageMetadata.vitanaUpdateChannel;
 const desktopUpdater = createDesktopUpdaterController({
   app,
-  updater: require("electron-updater").autoUpdater,
+  updater: distributionChannel === "github" ? require("electron-updater").autoUpdater : undefined,
   diagnostics,
   channel: updateChannel,
+  distributionChannel,
   prepareToInstall: shutdownApiForUpdate
 });
 
