@@ -5,6 +5,7 @@ import * as SecureStore from "expo-secure-store";
 const CONNECTION_KEY = "vitana.connection";
 const DEVICE_ID_KEY = "vitana.deviceId";
 const TOKEN_KEY = "vitana.companionToken";
+const PENDING_REVOCATION_KEY = "vitana.pendingRevocation";
 const SELECTED_PROFILE_ID_KEY = "vitana.selectedProfileId";
 
 export const HEALTH_CONNECT_CATEGORIES = [
@@ -41,6 +42,8 @@ export interface ConnectionDetails {
   healthConnectCategories: HealthConnectCategory[];
   healthConnectDisclosureAcknowledged: boolean;
 }
+
+export type PendingRevocation = Pick<ConnectionDetails, "url" | "token" | "publicKeyHash">;
 
 interface StoredConnection extends Omit<ConnectionDetails, "token" | "deviceId"> {}
 
@@ -122,6 +125,27 @@ export async function updateHealthConnectSyncCursor(url: string, cursor: string)
 
 export async function clearConnection(): Promise<void> {
   await Promise.all([AsyncStorage.removeItem(CONNECTION_KEY), SecureStore.deleteItemAsync(TOKEN_KEY)]);
+}
+
+export async function loadPendingRevocation(): Promise<PendingRevocation | null> {
+  const raw = await SecureStore.getItemAsync(PENDING_REVOCATION_KEY);
+  if (!raw) return null;
+  try {
+    const pending = JSON.parse(raw) as Partial<PendingRevocation>;
+    return typeof pending.url === "string" && typeof pending.token === "string"
+      ? { url: pending.url, token: pending.token, publicKeyHash: pending.publicKeyHash ?? null }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function savePendingRevocation(pending: PendingRevocation): Promise<void> {
+  await SecureStore.setItemAsync(PENDING_REVOCATION_KEY, JSON.stringify(pending));
+}
+
+export async function clearPendingRevocation(): Promise<void> {
+  await SecureStore.deleteItemAsync(PENDING_REVOCATION_KEY);
 }
 
 export async function loadSelectedProfileId(): Promise<string | null> {

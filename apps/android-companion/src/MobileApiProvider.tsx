@@ -15,7 +15,6 @@ import type {
 import { clearConnection, clearSelectedProfileId, loadConnection } from "./endpointStore";
 import type { ConnectionDetails } from "./endpointStore";
 import { createCompanionApi } from "./api";
-import { pinnedFetch } from "./pinnedFetch";
 import { connectionStateForError, type ConnectionState } from "./connectionState";
 import type {
   CompanionCareService,
@@ -37,6 +36,7 @@ import type { CompanionMutationService } from "./companionDataSource";
 import type { CompanionObservationMutationService } from "./companionDataSource";
 import { createStandaloneDataSource } from "./standalone/standaloneDataSource";
 import { userFacingError } from "./userFacingError";
+import { queueConnectionRevocation, retryPendingRevocation } from "./pendingRevocation";
 
 export type { ConnectionState } from "./connectionState";
 
@@ -253,13 +253,11 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
 
   const disconnect = useCallback(async () => {
     if (demoMode || !connection?.token) return;
+    await queueConnectionRevocation(connection);
     try {
-      await pinnedFetch(`${connection.url.replace(/\/+$/, "")}/api/pairing/revoke-self`, connection.publicKeyHash, {
-        method: "POST",
-        headers: { "x-companion-token": connection.token }
-      });
+      await retryPendingRevocation();
     } catch {
-      // Local unpairing must remain available when the paired PC is offline.
+      // Securely retain the credential for revocation when the paired PC is reachable again.
     }
     generation.current += 1;
     await Promise.all([clearConnection(), clearSelectedProfileId()]);
@@ -303,10 +301,14 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
   }, [source]);
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
-      if (state !== "active") clearTransientData();
+      if (state === "active") void retryPendingRevocation().catch(() => undefined);
+      else clearTransientData();
     });
     return () => subscription.remove();
   }, [clearTransientData]);
+  useEffect(() => {
+    void retryPendingRevocation().catch(() => undefined);
+  }, []);
 
   const value = useMemo<MobileApiContextValue>(() => ({
     connection,
