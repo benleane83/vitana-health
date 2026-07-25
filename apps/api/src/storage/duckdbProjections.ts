@@ -51,7 +51,7 @@ import {
 } from "./duckdbRows.js";
 
 export async function appBootstrap(connection: duckdb.Connection): Promise<AppBootstrap> {
-  const [profileRows, measurementRows, templateRows, insightRows, counts] = await Promise.all([
+  const [profileRows, measurementRows, templateRows, insightRows, photoRows, counts] = await Promise.all([
     all(connection, "SELECT * FROM profile;"),
     all(connection, "SELECT * FROM measurement_types ORDER BY display, code;"),
     all(connection, `
@@ -68,6 +68,7 @@ export async function appBootstrap(connection: duckdb.Connection): Promise<AppBo
       ORDER BY g.label, marker, o.measurement_code;
     `),
     all(connection, "SELECT * FROM insights ORDER BY created_at DESC, ordinal ASC LIMIT 1;"),
+    all(connection, "SELECT revision, updated_at FROM profile_media WHERE media_kind = 'profile-photo';"),
     storageCounts(connection)
   ]);
   if (profileRows.length !== 1) {
@@ -91,6 +92,10 @@ export async function appBootstrap(connection: duckdb.Connection): Promise<AppBo
   }
   return {
     profile: profileFromRow(profileRows[0]),
+    profilePhoto: photoRows[0] ? {
+      revision: String(photoRows[0].revision),
+      updatedAt: isoTimestamp(photoRows[0].updated_at)
+    } : undefined,
     measurementTypes: measurementRows.map(measurementTypeFromRow),
     manualObservationGroupTemplates: [...templatesByLabel.values()],
     latestInsight: insightRows[0] ? insightFromRow(insightRows[0]) : undefined,

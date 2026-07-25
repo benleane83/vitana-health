@@ -25,6 +25,7 @@ import type {
   CareItem,
   HealthEvent,
   Profile,
+  ProfilePhotoMetadata,
   ReferenceRangeState,
   SourceImport,
   UpdateCareItemInput,
@@ -71,6 +72,11 @@ export interface MeasurementRegistryResetResult {
   inserted: number;
 }
 
+export interface StoredProfilePhoto extends ProfilePhotoMetadata {
+  contentType: "image/jpeg";
+  bytes: Buffer;
+}
+
 export class RepositoryValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -96,6 +102,9 @@ export interface ProfileRepository {
   storageCounts(): Promise<AppBootstrap["counts"]>;
   getProfile(): Promise<Profile>;
   replaceProfile(profile: Profile): Promise<Profile>;
+  getProfilePhoto(): Promise<StoredProfilePhoto | undefined>;
+  replaceProfilePhoto(contentType: "image/jpeg", bytes: Buffer): Promise<StoredProfilePhoto>;
+  deleteProfilePhoto(): Promise<boolean>;
   resetMeasurementTypeMetadataFromRegistry(): Promise<MeasurementRegistryResetResult>;
   mergeImport(imported: ProfileImport): Promise<ImportMutationResult>;
   addInsight(insight: HealthStoreData["insights"][number]): Promise<HealthStoreData["insights"][number]>;

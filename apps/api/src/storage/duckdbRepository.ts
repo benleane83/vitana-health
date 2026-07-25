@@ -61,9 +61,12 @@ import {
   deleteObservationRecordsByMeasurementCode as deleteDuckDbObservationRecordsByMeasurementCode,
   deleteObservationsByMeasurementCode as deleteDuckDbObservationsByMeasurementCode,
   deleteDailyAggregateStepSamples as deleteDuckDbDailyAggregateStepSamples,
+  deleteProfilePhoto as deleteDuckDbProfilePhoto,
+  getProfilePhoto as readProfilePhoto,
   getProfile as readProfile,
   insertObservationRecord as insertDuckDbObservationRecord,
   replaceProfile as replaceDuckDbProfile,
+  replaceProfilePhoto as replaceDuckDbProfilePhoto,
   updateCareItem as updateDuckDbCareItem,
   updateHealthEvent as updateDuckDbHealthEvent,
   updateObservation as updateDuckDbObservation,
@@ -235,6 +238,21 @@ export class DuckDbRepository implements ProfileRepository {
   async replaceProfile(profile: HealthStoreData["profile"]): Promise<HealthStoreData["profile"]> {
     this.assertOpen();
     return this.transaction(() => replaceDuckDbProfile(this.connection, profile));
+  }
+
+  async getProfilePhoto() {
+    this.assertOpen();
+    return readProfilePhoto(this.connection);
+  }
+
+  async replaceProfilePhoto(contentType: "image/jpeg", bytes: Buffer) {
+    this.assertOpen();
+    return this.transaction(() => replaceDuckDbProfilePhoto(this.connection, contentType, bytes));
+  }
+
+  async deleteProfilePhoto() {
+    this.assertOpen();
+    return this.transaction(() => deleteDuckDbProfilePhoto(this.connection));
   }
 
   async resetMeasurementTypeMetadataFromRegistry(): Promise<MeasurementRegistryResetResult> {

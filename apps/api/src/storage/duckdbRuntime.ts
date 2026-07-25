@@ -9,7 +9,7 @@ import {
 } from "../analyticalViews.js";
 
 const markerName = ".vitana-duckdb-poc";
-const schemaVersion = 8;
+const schemaVersion = 9;
 
 export interface DuckDbOptions {
   httpfsExtensionPath?: string;
@@ -384,6 +384,19 @@ const schemaVersion8Sql = `
   INSERT OR IGNORE INTO poc_metadata VALUES (8, CURRENT_TIMESTAMP, 'Normal and optimal personal reference range bounds');
 `;
 
+const schemaVersion9Sql = `
+  CREATE TABLE IF NOT EXISTS profile_media (
+    media_kind VARCHAR PRIMARY KEY,
+    content_type VARCHAR NOT NULL,
+    content BLOB NOT NULL,
+    revision VARCHAR NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
+    CHECK (media_kind = 'profile-photo'),
+    CHECK (content_type = 'image/jpeg')
+  );
+  INSERT OR IGNORE INTO poc_metadata VALUES (9, CURRENT_TIMESTAMP, 'Encrypted profile media');
+`;
+
 const schemaMigrations = [
   { version: 1, sql: schemaVersion1Sql },
   { version: 2, sql: schemaVersion2Sql },
@@ -392,5 +405,6 @@ const schemaMigrations = [
   { version: 5, sql: schemaVersion5Sql },
   { version: 6, sql: schemaVersion6Sql },
   { version: 7, sql: schemaVersion7Sql },
-  { version: 8, sql: schemaVersion8Sql }
+  { version: 8, sql: schemaVersion8Sql },
+  { version: 9, sql: schemaVersion9Sql }
 ] as const;

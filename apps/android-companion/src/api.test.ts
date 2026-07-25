@@ -42,6 +42,50 @@ describe("companion API adapter", () => {
       })
     );
   });
+
+  it("fetches and validates a bounded profile photo through the pinned transport", async () => {
+    pinnedFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        contentType: "image/jpeg",
+        contentBase64: "/9j/4P/Z",
+        revision: "a".repeat(64),
+        updatedAt: "2026-07-24T10:00:00.000Z"
+      }),
+      text: async () => ""
+    });
+    const { createCompanionApi } = await import("./api");
+
+    await expect(createCompanionApi(connection).profilePhoto.get()).resolves.toMatchObject({
+      contentType: "image/jpeg",
+      revision: "a".repeat(64)
+    });
+    expect(pinnedFetch).toHaveBeenCalledWith(
+      "https://pc.local:4317/api/profile/photo",
+      "sha256/test",
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({ "x-companion-token": "companion-token" })
+      })
+    );
+  });
+
+  it("rejects malformed photo data returned by the PC", async () => {
+    pinnedFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        contentType: "image/png",
+        contentBase64: "invalid",
+        revision: "bad",
+        updatedAt: "today"
+      }),
+      text: async () => ""
+    });
+    const { createCompanionApi } = await import("./api");
+    await expect(createCompanionApi(connection).profilePhoto.get()).rejects.toMatchObject({ name: "ZodError" });
+  });
 });
 
 describe("connection state transitions", () => {

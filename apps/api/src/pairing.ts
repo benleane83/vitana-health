@@ -220,7 +220,14 @@ export class PairingStore {
   }
 
   listDevices(): PairingRecord[] {
-    return [...this.records.values()].filter((record) => record.status === "approved").map((record) => this.publicRecord(record));
+    return [...this.records.values()]
+      .filter((record) => record.status === "approved")
+      .sort((left, right) => {
+        if (!left.revokedAt && right.revokedAt) return -1;
+        if (left.revokedAt && !right.revokedAt) return 1;
+        return Date.parse(right.revokedAt ?? right.requestedAt) - Date.parse(left.revokedAt ?? left.requestedAt);
+      })
+      .map((record) => this.publicRecord(record));
   }
 
   revoke(id: string): PairingRecord | null {

@@ -53,9 +53,11 @@ test("Store smoke uses AppX package lifecycle and captures package diagnostics",
 test("Store smoke remains separate from the NSIS release path", () => {
   const releaseWorkflow = readFileSync(new URL("../.github/workflows/release-windows.yml", import.meta.url), "utf8");
   const ciWorkflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const desktopSmokeWorkflow = readFileSync(new URL("../.github/workflows/desktop-smoke.yml", import.meta.url), "utf8");
 
   assert.doesNotMatch(releaseWorkflow, /windows-store-smoke/);
-  assert.match(ciWorkflow, /desktop_package_format/);
-  assert.match(ciWorkflow, /npm run package:store/);
-  assert.match(ciWorkflow, /\.\/scripts\/windows-store-smoke\.ps1/);
+  assert.doesNotMatch(ciWorkflow, /desktop_package_format|npm run package:store|\.\/scripts\/windows-store-smoke\.ps1/);
+  assert.match(desktopSmokeWorkflow, /desktop_package_format/);
+  assert.match(desktopSmokeWorkflow, /npm run package:store/);
+  assert.match(desktopSmokeWorkflow, /\.\/scripts\/windows-store-smoke\.ps1/);
 });

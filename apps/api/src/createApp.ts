@@ -69,6 +69,7 @@ function companionCapabilityFor(request: express.Request): import("./pairing.js"
     case "GET /profiles":
       return "profiles:list-minimal";
     case "GET /bootstrap":
+    case "GET /profile/photo":
     case "GET /analytics":
     case "GET /summary":
       return "assigned-profile:read";

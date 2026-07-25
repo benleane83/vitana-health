@@ -16,6 +16,7 @@ import {
   defaultMeasurementTypes,
   type HealthStoreData,
   type Profile,
+  type ProfilePhotoMetadata,
   type ProfileListEntry
 } from "@vitana/shared";
 import { initializeDuckDbRoot, type DuckDbOptions } from "./duckdbRuntime.js";
@@ -90,6 +91,13 @@ export class ProfileStoreManager {
 
   listProfiles(): ProfileListEntry[] {
     return [...this.profiles];
+  }
+
+  syncProfilePhotoMetadata(profileId: string, profilePhoto?: ProfilePhotoMetadata): void {
+    this.profiles = this.profiles.map((entry) =>
+      entry.id === profileId ? { ...entry, profilePhoto: photoMetadata(profilePhoto) } : entry
+    );
+    persistProfileRegistry(this.profiles);
   }
 
   getActiveProfileId(): string {
@@ -312,7 +320,7 @@ export class ProfileStoreManager {
     if (index < 0) {
       throw new Error(`DuckDB profile ${normalizedId} is not registered.`);
     }
-    this.profiles[index] = profileListEntryFromProfile(profile);
+    this.profiles[index] = profileListEntryFromProfile(profile, this.profiles[index].profilePhoto);
     persistProfileRegistry(this.profiles);
   }
 
@@ -349,9 +357,10 @@ export class ProfileStoreManager {
       }
       this.stores = opened;
       this.manifest = manifest;
-      this.profiles = await Promise.all(
-        [...opened.values()].map(async (store) => profileListEntryFromProfile(await store.getProfile()))
-      );
+      this.profiles = await Promise.all([...opened.values()].map(async (store) => {
+        const [profile, photo] = await Promise.all([store.getProfile(), store.getProfilePhoto()]);
+        return profileListEntryFromProfile(profile, photo);
+      }));
       persistProfileRegistry(this.profiles);
       const selectedProfileId = loadActiveProfileId();
       this.activeProfileId = selectedProfileId && opened.has(selectedProfileId)
@@ -514,8 +523,19 @@ function generateProfileId(displayName: string, existing: Set<string>): string {
   return `${base}-${suffix}`;
 }
 
-function profileListEntryFromProfile(profile: Profile): ProfileListEntry {
-  return { id: normalizeProfileId(profile.id), displayName: profile.displayName, updatedAt: profile.updatedAt };
+function profileListEntryFromProfile(profile: Profile, profilePhoto?: ProfilePhotoMetadata): ProfileListEntry {
+  return {
+    id: normalizeProfileId(profile.id),
+    displayName: profile.displayName,
+    updatedAt: profile.updatedAt,
+    profilePhoto: photoMetadata(profilePhoto)
+  };
+}
+
+function photoMetadata(profilePhoto?: ProfilePhotoMetadata): ProfilePhotoMetadata | undefined {
+  return profilePhoto
+    ? { revision: profilePhoto.revision, updatedAt: profilePhoto.updatedAt }
+    : undefined;
 }
 
 function isDirectChildFileName(value: string): boolean {

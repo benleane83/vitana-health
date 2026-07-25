@@ -326,6 +326,17 @@ export interface ProfileListEntry {
   id: string;
   displayName: string;
   updatedAt: string;
+  profilePhoto?: ProfilePhotoMetadata;
+}
+
+export interface ProfilePhotoMetadata {
+  revision: string;
+  updatedAt: string;
+}
+
+export interface ProfilePhotoResponse extends ProfilePhotoMetadata {
+  contentType: "image/jpeg";
+  contentBase64: string;
 }
 
 export interface SourceImport {
@@ -511,7 +522,9 @@ export interface AuditEvent {
     | "care-item-cancelled"
     | "care-item-deleted"
     | "personal-reference-range-set"
-    | "personal-reference-range-removed";
+    | "personal-reference-range-removed"
+    | "profile-photo-replaced"
+    | "profile-photo-deleted";
   detail: string;
 }
 
@@ -545,6 +558,7 @@ export interface ManualObservationGroupTemplate {
 
 export interface AppBootstrap {
   profile: Profile;
+  profilePhoto?: ProfilePhotoMetadata;
   measurementTypes: MeasurementType[];
   manualObservationGroupTemplates: ManualObservationGroupTemplate[];
   latestInsight?: Insight;
