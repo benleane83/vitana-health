@@ -17,7 +17,6 @@ import {
   manualGroupDefaults,
   normalizeGroupLabel,
   type BodyCompositionDraft,
-  type BodyCompositionDraftRow,
   type ManualObservationPayload
 } from "@vitana/shared";
 import { createCompanionApi } from "../api";
@@ -36,6 +35,15 @@ import { LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS } from "../pinnedFetch";
 import { userFacingError } from "../userFacingError";
 import { Button, Card, Message, Screen } from "../ui/components";
 import { colors, radii, spacing, type } from "../ui/theme";
+import {
+  dateOnlyToLocalDate,
+  groupScanRows,
+  localDateOnly,
+  scanReportDate,
+  toCommittedScanRows,
+  toEditableScanRows,
+  type ScanReportEditableRow
+} from "./scanReportReview";
 
 const privacyUrl = "https://vitanahealth.app/privacy";
 type ImportSource = "sync" | "scan" | "manual";
@@ -385,6 +393,9 @@ function ScanImport() {
   const { connection, refreshAfterImport, transientRevision } = useMobileApi();
   const [kind, setKind] = useState<ScanKind>("body-composition");
   const [draft, setDraft] = useState<BodyCompositionDraft>();
+  const [rows, setRows] = useState<ScanReportEditableRow[]>([]);
+  const [reportDate, setReportDate] = useState("");
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [status, setStatus] = useState("");
   const [statusTone, setStatusTone] = useState<"info" | "success" | "warning" | "danger">("info");
   const [busy, setBusy] = useState(false);
@@ -394,9 +405,16 @@ function ScanImport() {
     [connection]
   );
   useEffect(() => {
-    setDraft(undefined);
+    resetReview();
     setStatus("");
   }, [connection, transientRevision]);
+
+  function resetReview() {
+    setDraft(undefined);
+    setRows([]);
+    setReportDate("");
+    setDatePickerOpen(false);
+  }
 
   async function acquire(camera: boolean) {
     if (!client) return;
@@ -422,6 +440,8 @@ function ScanImport() {
         ? await client.previewBodyCompositionReport({ fileName: asset.fileName ?? "report.jpg", mimeType: "image/jpeg", contentBase64: resized.base64 })
         : await client.previewBloodTestReport({ fileName: asset.fileName ?? "report.jpg", mimeType: "image/jpeg", contentBase64: resized.base64 });
       setDraft(next);
+      setRows(toEditableScanRows(next.rows));
+      setReportDate(scanReportDate(next.reportDate));
       setStatusTone("warning");
       setStatus("Review OCR results before importing.");
     } catch (caught) {
@@ -432,40 +452,34 @@ function ScanImport() {
     }
   }
 
-  function patchRow(id: string, patch: Partial<BodyCompositionDraftRow>) {
-    setDraft((current) => current ? {
-      ...current,
-      rows: current.rows.map((row) => row.id === id ? { ...row, ...patch } : row)
-    } : current);
+  function patchRow(id: string, patch: Partial<ScanReportEditableRow>) {
+    setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
   }
 
   async function commit() {
     if (!client || !draft) return;
-    const rows = draft.rows.filter((row) => row.included);
-    if (!rows.length) {
+    let approvedRows;
+    try {
+      approvedRows = toCommittedScanRows(rows);
+    } catch (caught) {
       setStatusTone("warning");
-      setStatus("Include at least one row.");
-      return;
-    }
-    if (rows.some((row) => !row.measurementCode.trim() || !Number.isFinite(row.value) || !row.unit.trim())) {
-      setStatusTone("warning");
-      setStatus("Every included row needs a measurement, numeric value, and unit.");
+      setStatus(caught instanceof Error ? caught.message : "Review the selected rows before importing.");
       return;
     }
     setBusy(true);
     try {
       const payload = {
         fileName: draft.fileName,
-        reportDate: draft.reportDate,
+        reportDate,
         sourceText: draft.sourceText,
         sourceChecksum: draft.checksum,
-        rows
+        rows: approvedRows
       };
       if (kind === "body-composition") await client.commitBodyCompositionReport(payload);
       else await client.commitBloodTestReport(payload);
-      setDraft(undefined);
+      resetReview();
       setStatusTone("success");
-      setStatus(`${rows.length} approved ${rows.length === 1 ? "row" : "rows"} imported. View them in Track.`);
+      setStatus(`${approvedRows.length} approved ${approvedRows.length === 1 ? "row" : "rows"} imported. View them in Track.`);
       await refreshAfterImport();
     } catch (caught) {
       setStatusTone("danger");
@@ -475,30 +489,82 @@ function ScanImport() {
     }
   }
 
+  const groupedRows = groupScanRows(rows);
+
+  function renderRow(row: ScanReportEditableRow) {
+    return (
+      <Card key={row.id}>
+        <View style={styles.row}><Text style={[styles.heading, styles.flex]}>{row.label}</Text><Switch accessibilityLabel={`Include ${row.label}`} disabled={busy} value={row.included} onValueChange={(included) => patchRow(row.id, { included })} /></View>
+        <Text style={styles.meta}>OCR confidence: {row.confidence}</Text>
+        <TextInput accessibilityLabel={`Measurement for ${row.label}`} editable={!busy} style={styles.input} value={row.measurementCode} onChangeText={(measurementCode) => patchRow(row.id, { measurementCode })} />
+        <View style={styles.row}>
+          <TextInput accessibilityLabel={`Value for ${row.label}`} editable={!busy} style={[styles.input, styles.flex]} keyboardType="decimal-pad" value={row.value} onChangeText={(value) => patchRow(row.id, { value })} />
+          <TextInput accessibilityLabel={`Unit for ${row.label}`} editable={!busy} style={[styles.input, styles.flex]} value={row.unit} onChangeText={(unit) => patchRow(row.id, { unit })} />
+        </View>
+      </Card>
+    );
+  }
+
+  function renderGroup(title: string, groupRows: ScanReportEditableRow[], emptyMessage: string) {
+    return (
+      <View accessibilityLabel={`${title}, ${groupRows.length} ${groupRows.length === 1 ? "measurement" : "measurements"}`} style={styles.reviewGroup}>
+        <View style={styles.reviewGroupHeading}>
+          <Text style={styles.heading}>{title}</Text>
+          <Text style={styles.reviewGroupCount}>{groupRows.length}</Text>
+        </View>
+        {groupRows.length ? groupRows.map(renderRow) : <Text style={styles.reviewGroupEmpty}>{emptyMessage}</Text>}
+      </View>
+    );
+  }
+
   return (
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <View style={styles.chips}>
-        <Chip disabled={busy} label="Body composition" selected={kind === "body-composition"} onPress={() => { setKind("body-composition"); setDraft(undefined); }} />
-        <Chip disabled={busy} label="Blood test" selected={kind === "blood-test"} onPress={() => { setKind("blood-test"); setDraft(undefined); }} />
+        <Chip disabled={busy} label="Body composition" selected={kind === "body-composition"} onPress={() => { setKind("body-composition"); resetReview(); }} />
+        <Chip disabled={busy} label="Blood test" selected={kind === "blood-test"} onPress={() => { setKind("blood-test"); resetReview(); }} />
       </View>
       {!draft ? (
         <Card>
-          <Text style={styles.body}>Images travel only over your pinned local connection for OCR on the PC. Nothing is committed until you approve the rows.</Text>
+          <Text style={styles.body}>Images travel only over your local network for scanning on the PC. Nothing is committed until you approve the rows.</Text>
           <Button disabled={busy} onPress={() => { void acquire(true); }}>Take photo</Button>
           <Button disabled={busy} secondary onPress={() => { void acquire(false); }}>Choose from gallery</Button>
         </Card>
-      ) : draft.rows.map((row) => (
-        <Card key={row.id}>
-          <View style={styles.row}><Text style={[styles.heading, styles.flex]}>{row.label}</Text><Switch accessibilityLabel={`Include ${row.label}`} disabled={busy} value={row.included} onValueChange={(included) => patchRow(row.id, { included })} /></View>
-          <Text style={styles.meta}>OCR confidence: {row.confidence}</Text>
-          <TextInput accessibilityLabel={`Measurement for ${row.label}`} editable={!busy} style={styles.input} value={row.measurementCode} onChangeText={(measurementCode) => patchRow(row.id, { measurementCode })} />
-          <View style={styles.row}>
-            <TextInput accessibilityLabel={`Value for ${row.label}`} editable={!busy} style={[styles.input, styles.flex]} keyboardType="decimal-pad" value={Number.isFinite(row.value) ? String(row.value) : ""} onChangeText={(value) => patchRow(row.id, { value: parseNumericInput(value) })} />
-            <TextInput accessibilityLabel={`Unit for ${row.label}`} editable={!busy} style={[styles.input, styles.flex]} value={row.unit} onChangeText={(unit) => patchRow(row.id, { unit })} />
-          </View>
-        </Card>
-      ))}
-      {draft ? <><Button disabled={busy} onPress={() => { void commit(); }}>Import approved rows</Button><Button disabled={busy} secondary onPress={() => setDraft(undefined)}>Cancel review</Button></> : null}
+      ) : (
+        <>
+          <Card>
+            <Pressable
+              accessibilityHint="Opens the report date picker"
+              accessibilityLabel={`Report date: ${formatDateOnly(reportDate)}`}
+              accessibilityRole="button"
+              disabled={busy}
+              onPress={() => setDatePickerOpen(true)}
+              style={({ pressed }) => [styles.dateField, pressed && styles.dateFieldPressed, busy && styles.dateFieldDisabled]}
+            >
+              <View>
+                <Text style={styles.label}>Report date</Text>
+                <Text style={styles.dateValue}>{formatDateOnly(reportDate)}</Text>
+              </View>
+              <CalendarDays color={colors.primary} size={21} />
+            </Pressable>
+            {datePickerOpen ? (
+              <View style={styles.datePicker}>
+                <DateTimePicker
+                  value={dateOnlyToLocalDate(reportDate)}
+                  mode="date"
+                  onChange={(_event, value) => {
+                    if (value) setReportDate(localDateOnly(value));
+                    if (Platform.OS !== "ios") setDatePickerOpen(false);
+                  }}
+                />
+                {Platform.OS === "ios" ? <Button secondary onPress={() => setDatePickerOpen(false)}>Done</Button> : null}
+              </View>
+            ) : null}
+          </Card>
+          {renderGroup("Selected for save", groupedRows.selected, "Select at least one measurement to save it.")}
+          {renderGroup("Not selected", groupedRows.notSelected, "All measurements are selected for save.")}
+        </>
+      )}
+      {draft ? <><Button disabled={busy || groupedRows.selected.length === 0} onPress={() => { void commit(); }}>Import approved rows</Button><Button disabled={busy} secondary onPress={resetReview}>Cancel review</Button></> : null}
       {status ? <Message title={statusTone === "success" ? "Import complete" : statusTone === "danger" ? "Could not import report" : "Report status"} detail={status} tone={statusTone} /> : null}
       {status && statusTone === "success" ? <ViewImportedDataButton /> : null}
     </ScrollView>
@@ -684,6 +750,10 @@ function formatObservedDate(date: Date): string {
   return date.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
 }
 
+function formatDateOnly(value: string): string {
+  return dateOnlyToLocalDate(value).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+}
+
 function formatSyncCursor(cursor: string | null): string {
   if (!cursor) return "No previous Health Connect sync is stored.";
   const date = new Date(cursor);
@@ -744,5 +814,9 @@ const styles = StyleSheet.create({
   syncProgress: { alignItems: "center", backgroundColor: colors.infoMuted, borderRadius: radii.md, flexDirection: "row", gap: spacing.md, padding: spacing.md },
   advancedToggle: { alignItems: "center", flexDirection: "row", minHeight: 44 },
   advancedTogglePressed: { opacity: 0.72 },
-  advancedContent: { gap: spacing.md }
+  advancedContent: { gap: spacing.md },
+  reviewGroup: { gap: spacing.sm },
+  reviewGroupHeading: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", minHeight: 44 },
+  reviewGroupCount: { backgroundColor: colors.surfaceMuted, borderRadius: radii.pill, color: colors.text, fontSize: type.label, fontWeight: "800", minWidth: 30, overflow: "hidden", paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, textAlign: "center" },
+  reviewGroupEmpty: { backgroundColor: colors.surfaceMuted, borderRadius: radii.sm, color: colors.muted, fontSize: type.label, lineHeight: 18, padding: spacing.md }
 });
