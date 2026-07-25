@@ -1,4 +1,11 @@
 {
-  "allowedHighOrCriticalPackages": [],
-  "notes": "No active high or critical vulnerability exceptions. DuckDB's build-only node-gyp is overridden to 12.4.0 so all native tooling resolves patched tar 7 releases."
+  "allowedHighOrCriticalPackages": [
+    "@expo/fingerprint",
+    "@react-native-community/datetimepicker",
+    "brace-expansion",
+    "expo",
+    "glob",
+    "minimatch"
+  ],
+  "notes": "Temporary exception for CVE-2026-14257 (GHSA-mh99-v99m-4gvg): its published fix, brace-expansion 5.0.8, is not yet available from npm. The six entries above are all derivative records of that unavailable patch and must be removed once it publishes. DuckDB's build-only node-gyp is overridden to 12.4.0 so all native tooling resolves patched tar 7 releases."
 }
