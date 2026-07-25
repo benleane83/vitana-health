@@ -4,6 +4,11 @@ import { MemoryLocalStore } from "../standalone/memoryLocalStore";
 import { ReplicaClient, type ReplicaNetwork } from "./replicaClient";
 import { ReplicaSyncCoordinator } from "./syncCoordinator";
 
+vi.mock("../pinnedFetch", () => ({
+  DEFAULT_PINNED_REQUEST_TIMEOUT_MS: 15_000,
+  pinnedFetch: vi.fn()
+}));
+
 const identity = {
   serverInstanceId: "c65b97ac-ae21-4e39-9bed-1411718f85d6",
   profileId: "profile-1",
@@ -115,4 +120,3 @@ describe("connected replica sync coordinator", () => {
     expect(await store.replicaEntities(identity)).toHaveLength(1);
   });
 });
-

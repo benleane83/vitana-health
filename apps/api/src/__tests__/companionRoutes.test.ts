@@ -149,46 +149,6 @@ describe("companion route profile isolation", () => {
         observations: [{ measurementCode: "weight", value: 70, unit: "kg" }]
       });
 
-      it("binds replica handshake, snapshot, and deltas to the authenticated pairing and assigned profile", async () => {
-        const active = store("active");
-        const assigned = store("phone");
-        const manager = {
-          getActiveStore: () => active,
-          getStore: (profileId: string) => profileId === "phone" ? assigned : active,
-          listProfiles: () => [{ id: "active" }, { id: "phone" }]
-        } as unknown as ProfileStoreManager;
-        const pairings = new PairingStore();
-        const challenge = pairings.createChallenge();
-        const pairing = pairings.request("phone", "Phone", challenge.code)!;
-        pairings.approve(pairing.record.id, "phone");
-        const token = pairings.getStatus(pairing.record.id, pairing.pollingSecret)!.token!;
-        const app = createApp(manager, pairings);
-        const headers = { "x-companion-token": token };
-
-        const handshake = await request(app).get("/api/companion/sync/handshake?profileId=active").set(headers);
-        expect(handshake.status).toBe(200);
-        expect(handshake.body).toMatchObject({
-          protocolVersion: 1,
-          serverInstanceId: pairings.getServerInstanceId(),
-          profileId: "phone",
-          pairingId: pairing.record.id,
-          highWaterMark: { revision: 2, sequence: 4 }
-        });
-
-        const snapshot = await request(app).get("/api/companion/sync/snapshot?pageSize=1").set(headers);
-        expect(snapshot.status).toBe(200);
-        expect(snapshot.body).toMatchObject({
-          kind: "snapshot",
-          profileId: "phone",
-          complete: true
-        });
-        expect(assigned.startReplicaSnapshot).toHaveBeenCalledWith(pairing.record.id);
-        expect(active.startReplicaSnapshot).not.toHaveBeenCalled();
-
-        const deltas = await request(app).get("/api/companion/sync/deltas?afterSequence=4").set(headers);
-        expect(deltas.status).toBe(200);
-        expect(assigned.replicaDeltaPage).toHaveBeenCalledWith(4, undefined, 250);
-      });
     expect(manual.status).toBe(201);
 
     const commit = await request(app)
@@ -264,6 +224,47 @@ describe("companion route profile isolation", () => {
     expect(assigned.deleteObservation).toHaveBeenCalledWith("phone-observation");
     expect(active.updateObservation).not.toHaveBeenCalled();
     expect(active.deleteObservation).not.toHaveBeenCalled();
+  });
+
+  it("binds replica handshake, snapshot, and deltas to the authenticated pairing and assigned profile", async () => {
+    const active = store("active");
+    const assigned = store("phone");
+    const manager = {
+      getActiveStore: () => active,
+      getStore: (profileId: string) => profileId === "phone" ? assigned : active,
+      listProfiles: () => [{ id: "active" }, { id: "phone" }]
+    } as unknown as ProfileStoreManager;
+    const pairings = new PairingStore();
+    const challenge = pairings.createChallenge();
+    const pairing = pairings.request("phone", "Phone", challenge.code)!;
+    pairings.approve(pairing.record.id, "phone");
+    const token = pairings.getStatus(pairing.record.id, pairing.pollingSecret)!.token!;
+    const app = createApp(manager, pairings);
+    const headers = { "x-companion-token": token };
+
+    const handshake = await request(app).get("/api/companion/sync/handshake?profileId=active").set(headers);
+    expect(handshake.status).toBe(200);
+    expect(handshake.body).toMatchObject({
+      protocolVersion: 1,
+      serverInstanceId: pairings.getServerInstanceId(),
+      profileId: "phone",
+      pairingId: pairing.record.id,
+      highWaterMark: { revision: 2, sequence: 4 }
+    });
+
+    const snapshot = await request(app).get("/api/companion/sync/snapshot?pageSize=1").set(headers);
+    expect(snapshot.status).toBe(200);
+    expect(snapshot.body).toMatchObject({
+      kind: "snapshot",
+      profileId: "phone",
+      complete: true
+    });
+    expect(assigned.startReplicaSnapshot).toHaveBeenCalledWith(pairing.record.id);
+    expect(active.startReplicaSnapshot).not.toHaveBeenCalled();
+
+    const deltas = await request(app).get("/api/companion/sync/deltas?afterSequence=4").set(headers);
+    expect(deltas.status).toBe(200);
+    expect(assigned.replicaDeltaPage).toHaveBeenCalledWith(4, undefined, 250);
   });
 
   it("leaves owner reads on the active store", async () => {
