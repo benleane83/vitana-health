@@ -215,6 +215,47 @@ PUT /api/profile
 **Request body:** complete editable profile fields including `displayName`, `subjectKind`, `units`, and optional `birthDate`, `sex`, `heightCm`, `bloodType`, `goalSummary`, and `pet`. Future birth dates, subject-kind age mismatches, implausible heights, and pets without a species are rejected.  
 **Success `200`:** `Profile`
 
+### Profile photo
+
+```text
+GET /api/profile/photo
+PUT /api/profile/photo
+DELETE /api/profile/photo
+```
+
+`GET` is available to the owner for the active profile and to a companion for
+its single assigned profile. `PUT` and `DELETE` are owner-only; upload is
+therefore a PC feature while desktop and mobile may both display the photo.
+All successful photo responses and photo `404` responses use
+`Cache-Control: no-store`.
+
+`PUT` accepts a normalized JPEG as JSON:
+
+```json
+{ "contentType": "image/jpeg", "contentBase64": "<canonical-base64>" }
+```
+
+The decoded payload must not exceed 256 KiB. The API rejects malformed base64,
+other MIME types, and data without JPEG magic bytes. It computes the SHA-256
+revision itself and returns the same bounded JSON transport for `PUT` and
+`GET`:
+
+```json
+{
+  "contentType": "image/jpeg",
+  "contentBase64": "<canonical-base64>",
+  "revision": "<sha256-hex>",
+  "updatedAt": "2026-07-24T10:00:00.000Z"
+}
+```
+
+Missing photos return `404`; successful deletion returns `{ "deleted": true }`.
+Only `{ "revision", "updatedAt" }` metadata appears in profile-list and
+bootstrap responses. Photo bytes are stored only in the profile's encrypted
+DuckDB database. Desktop normalizes JPEG, PNG, and WebP input to a centered
+256×256 JPEG at approximately 85% quality and does not retain the source image
+or its EXIF metadata.
+
 ### List all profiles
 ```
 GET /api/profiles
@@ -310,7 +351,9 @@ POST /api/backups/create
 
 `scope` is `active` or `all` and defaults to `all`. The response is an
 `application/octet-stream` `.vitana-backup` attachment. The passphrase is never
-returned or stored by this endpoint.
+returned or stored by this endpoint. Profile photos are intentionally excluded
+from backup creation and restore; replaced and restored-as-copy profiles start
+without photo metadata.
 
 ### Inspect a backup without restoring it
 
@@ -457,8 +500,8 @@ DELETE /api/care/health-events/:id
 The list accepts `limit` (1-100, default 20), `offset`, `search`, `kind`,
 `status`, `occurredFrom`, `occurredTo`, and `includeId`. Create and update use a
 strict body containing `kind`, `status`, and `occurredAt`, with optional
-`occurredEnd`, `provider`, and `notes`. Timestamps are ISO 8601 with an offset,
-and the end cannot precede the start. Create returns `201`; update returns `200`;
+`provider` and `notes`. `occurredAt` is the event's single Date timestamp.
+Timestamps are ISO 8601 with an offset. Create returns `201`; update returns `200`;
 both return `HealthEventMutationResponse`. Deleting returns
 `DeleteHealthEventResponse`, `404 HEALTH_EVENT_NOT_FOUND` when absent, or `409
 CARE_HEALTH_EVENT_LINK_CONFLICT` when linked care items prevent deletion.
@@ -469,15 +512,28 @@ CARE_HEALTH_EVENT_LINK_CONFLICT` when linked care items prevent deletion.
 GET    /api/care/items
 POST   /api/care/items
 PATCH  /api/care/items/:id
+POST   /api/care/items/:id/complete
 DELETE /api/care/items/:id
 ```
 
-The list accepts `limit` (1-100, default 20), `offset`, `search`, `status`,
+The list accepts `limit` (1-100, default 20), `offset`, `search`, `kind`, `status`,
 `priority`, `dueFrom`, `dueTo`, and `includeId`. Create and update use a strict
 body with `title`, `kind`, `priority`, and `status`; optional due/reminder
-timestamps, notes, and health-event links are supported. A reminder requires a
-due start and cannot be later than it. Create returns `201`; update returns
-`200`; both return `CareItemMutationResponse`. Delete returns
+timestamps and notes are supported. `dueStart` is the single Due Date timestamp.
+`reminderAt` is independent: it may be omitted or set before, on, or after the
+due date, and does not require a due date. Create returns `201`; update returns
+`200`; both return `CareItemMutationResponse`.
+
+Callers cannot create a completed item or transition an item to `completed`
+through the generic create/update endpoints. `POST /api/care/items/:id/complete`
+accepts the strict body `{ "occurredAt": "<ISO timestamp>", "kind": "<health event kind>" }`.
+It atomically creates a completed manual-entry Health Event, marks the open care
+item completed at the same timestamp, stores the internal completion link, and
+returns `CompleteCareItemResponse`. Completion provenance is returned as
+`completedHealthEventId` / `completedHealthEvent` but is not caller-authored.
+Edits to a completed item preserve its completed status, timestamp, and link.
+Missing items return `404 CARE_ITEM_NOT_FOUND`; completing a completed,
+cancelled, or skipped item returns `409 CARE_ITEM_NOT_OPEN`. Delete returns
 `DeleteCareItemResponse` or `404 CARE_ITEM_NOT_FOUND`.
 
 ### Delete an observation
@@ -677,6 +733,7 @@ All error responses follow this shape:
 | `OBSERVATION_NOT_FOUND` | 404 | Observation ID not found |
 | `HEALTH_EVENT_NOT_FOUND` | 404 | Health event ID not found |
 | `CARE_ITEM_NOT_FOUND` | 404 | Care item ID not found |
+| `CARE_ITEM_NOT_OPEN` | 409 | Care item completion was requested for a completed, cancelled, or skipped item |
 | `CARE_HEALTH_EVENT_LINK_CONFLICT` | 409 | Health event cannot be deleted while linked care items exist |
 | `DECRYPT_FAILED` | 400 | Backup passphrase was incorrect or the encrypted backup is corrupt |
 | `RESTORE_IN_PROGRESS` | 409 | Another backup restore currently owns the restore lock |

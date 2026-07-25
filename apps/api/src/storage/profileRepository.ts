@@ -5,6 +5,8 @@ import type {
   ClinicianReportLatestMeasurement,
   CareItemListQuery,
   CareItemMutationResponse,
+  CompleteCareItemInput,
+  CompleteCareItemResponse,
   CreateCareItemInput,
   CreateHealthEventInput,
   DataSource,
@@ -30,6 +32,7 @@ import type {
   CareItem,
   HealthEvent,
   Profile,
+  ProfilePhotoMetadata,
   ReferenceRangeState,
   SourceImport,
   UpdateCareItemInput,
@@ -76,6 +79,11 @@ export interface MeasurementRegistryResetResult {
   inserted: number;
 }
 
+export interface StoredProfilePhoto extends ProfilePhotoMetadata {
+  contentType: "image/jpeg";
+  bytes: Buffer;
+}
+
 export class RepositoryValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -92,6 +100,15 @@ export class HealthEventDeleteConflictError extends Error {
   }
 }
 
+export class CareItemCompletionConflictError extends Error {
+  readonly code = "CARE_ITEM_NOT_OPEN" as const;
+
+  constructor() {
+    super("Only open care items can be completed.");
+    this.name = "CareItemCompletionConflictError";
+  }
+}
+
 export interface ProfileRepository {
   appBootstrap(): Promise<AppBootstrap>;
   analyticsSummary(): Promise<AnalyticsSummary>;
@@ -101,6 +118,9 @@ export interface ProfileRepository {
   storageCounts(): Promise<AppBootstrap["counts"]>;
   getProfile(): Promise<Profile>;
   replaceProfile(profile: Profile): Promise<Profile>;
+  getProfilePhoto(): Promise<StoredProfilePhoto | undefined>;
+  replaceProfilePhoto(contentType: "image/jpeg", bytes: Buffer): Promise<StoredProfilePhoto>;
+  deleteProfilePhoto(): Promise<boolean>;
   resetMeasurementTypeMetadataFromRegistry(): Promise<MeasurementRegistryResetResult>;
   mergeImport(imported: ProfileImport): Promise<ImportMutationResult>;
   startMobileMigration(pairingId: string, manifest: MobileMigrationManifest): Promise<MobileMigrationStartResponse>;
@@ -115,6 +135,7 @@ export interface ProfileRepository {
   listCareItems(query: CareItemListQuery): Promise<PaginatedResult<CareItem>>;
   createCareItem(input: CreateCareItemInput): Promise<CareItemMutationResponse>;
   updateCareItem(id: string, input: UpdateCareItemInput): Promise<CareItemMutationResponse | undefined>;
+  completeCareItem(id: string, input: CompleteCareItemInput): Promise<CompleteCareItemResponse | undefined>;
   deleteCareItem(id: string): Promise<DeleteCareItemResponse | undefined>;
   updateObservation(id: string, input: UpdateObservationInput): Promise<UpdateObservationResponse | undefined>;
   deleteObservation(id: string): Promise<DeleteObservationResponse | undefined>;

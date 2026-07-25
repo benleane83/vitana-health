@@ -1,9 +1,12 @@
 import express from "express";
 import { z } from "zod";
 import type { ProfileStoreManager } from "../storage/profileStoreManager.js";
-import type { MeasurementRegistryResetResponse, Profile } from "@vitana/shared";
+import { profilePhotoUploadSchema, type MeasurementRegistryResetResponse, type Profile } from "@vitana/shared";
 import type { PairingStore } from "../pairing.js";
 import type { AuthorizationPrincipal } from "../createApp.js";
+import { resolvePrincipalStore } from "../requestPrincipal.js";
+
+const maximumProfilePhotoBytes = 256 * 1024;
 
 const profileSchema = z.object({
   displayName: z.string().min(1).max(80),
@@ -77,6 +80,65 @@ const setActiveProfileSchema = z.object({
 
 export function makeProfileRoutes(storeManager: ProfileStoreManager): express.Router {
   const router = express.Router();
+
+  router.get("/photo", async (_request, response, next) => {
+    try {
+      response.setHeader("cache-control", "no-store");
+      const store = resolvePrincipalStore(
+        storeManager,
+        response.locals.principal as AuthorizationPrincipal
+      );
+      const photo = await store.getProfilePhoto();
+      if (!photo) {
+        response.status(404).json({ error: "Profile photo not found.", code: "PROFILE_PHOTO_NOT_FOUND" });
+        return;
+      }
+      response.json({
+        contentType: photo.contentType,
+        contentBase64: photo.bytes.toString("base64"),
+        revision: photo.revision,
+        updatedAt: photo.updatedAt
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.put("/photo", async (request, response, next) => {
+    try {
+      requireOwner(response);
+      response.setHeader("cache-control", "no-store");
+      const payload = profilePhotoUploadSchema.parse(request.body ?? {});
+      const bytes = decodeProfilePhoto(payload.contentBase64);
+      const store = storeManager.getActiveStore();
+      const photo = await store.replaceProfilePhoto(payload.contentType, bytes);
+      storeManager.syncProfilePhotoMetadata(store.profileId, photo);
+      response.json({
+        contentType: photo.contentType,
+        contentBase64: photo.bytes.toString("base64"),
+        revision: photo.revision,
+        updatedAt: photo.updatedAt
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.delete("/photo", async (_request, response, next) => {
+    try {
+      requireOwner(response);
+      response.setHeader("cache-control", "no-store");
+      const store = storeManager.getActiveStore();
+      if (!await store.deleteProfilePhoto()) {
+        response.status(404).json({ error: "Profile photo not found.", code: "PROFILE_PHOTO_NOT_FOUND" });
+        return;
+      }
+      storeManager.syncProfilePhotoMetadata(store.profileId);
+      response.json({ deleted: true });
+    } catch (error) {
+      next(error);
+    }
+  });
 
   router.get("/", async (_request, response, next) => {
     try {
@@ -167,6 +229,38 @@ export function makeProfileRoutes(storeManager: ProfileStoreManager): express.Ro
   });
 
   return router;
+}
+
+function requireOwner(response: express.Response): void {
+  const principal = response.locals.principal as AuthorizationPrincipal;
+  if (principal.kind !== "owner") {
+    throw Object.assign(new Error("Only the profile owner can change profile photos."), { status: 403 });
+  }
+}
+
+function decodeProfilePhoto(contentBase64: string): Buffer {
+  if (
+    contentBase64.length % 4 !== 0 ||
+    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(contentBase64)
+  ) {
+    throw photoValidationError("Profile photo must be canonical base64.");
+  }
+  const bytes = Buffer.from(contentBase64, "base64");
+  if (bytes.length === 0 || bytes.length > maximumProfilePhotoBytes) {
+    throw photoValidationError(`Profile photo must not exceed ${maximumProfilePhotoBytes} decoded bytes.`);
+  }
+  if (
+    bytes.length < 5 ||
+    bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff ||
+    bytes.at(-2) !== 0xff || bytes.at(-1) !== 0xd9
+  ) {
+    throw photoValidationError("Profile photo must contain JPEG data.");
+  }
+  return bytes;
+}
+
+function photoValidationError(message: string): z.ZodError {
+  return new z.ZodError([{ code: z.ZodIssueCode.custom, path: ["contentBase64"], message }]);
 }
 
 export function makeProfilesRoutes(storeManager: ProfileStoreManager, pairingStore: PairingStore): express.Router {

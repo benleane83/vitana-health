@@ -378,6 +378,93 @@ textarea {
   padding: 0.45rem 0.78rem;
 }
 
+.profile-avatar {
+  align-items: center;
+  background: var(--surface-2);
+  border-radius: 50%;
+  color: var(--primary);
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-weight: 700;
+  height: 64px;
+  justify-content: center;
+  overflow: hidden;
+  width: 64px;
+}
+
+.profile-avatar.compact {
+  font-size: 0.72rem;
+  height: 28px;
+  width: 28px;
+}
+
+.profile-avatar img {
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.profile-photo-editor {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.profile-photo-editor > div {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.profile-photo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.profile-photo-action {
+  background-color: var(--surface);
+  border-color: var(--line);
+  color: var(--text);
+  font-weight: 700;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .profile-photo-action:hover:not(:disabled) {
+    background-color: var(--surface-2);
+    border-color: var(--line-strong);
+    color: var(--text-strong);
+  }
+}
+
+.profile-photo-remove {
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--line));
+  color: oklch(46% 0.13 28);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .profile-photo-remove:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--danger) 8%, var(--surface));
+    border-color: color-mix(in srgb, var(--danger) 55%, var(--line));
+    color: oklch(42% 0.14 28);
+  }
+}
+
+.profile-photo-editor input[type="file"] {
+  height: 1px;
+  opacity: 0;
+  position: absolute;
+  width: 1px;
+}
+
+.profile-photo-feedback {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
 .profile-menu-label {
   max-width: 170px;
   overflow: hidden;
@@ -413,6 +500,9 @@ textarea {
 }
 
 .profile-menu-item {
+  align-items: center;
+  display: flex;
+  gap: var(--space-2);
   min-height: 36px;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
@@ -3946,9 +4036,15 @@ button.stat {
   margin: var(--space-2) 0 0;
 }
 
+.care-view-description {
+  width: 100%;
+  margin: calc(var(--space-4) * -1) 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .care-switch,
 .care-filters,
-.care-row-actions,
 .care-editor-actions {
   display: flex;
   flex-wrap: wrap;
@@ -3989,12 +4085,81 @@ button.stat {
 
 .care-row {
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-4);
   padding: var(--space-4);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--surface-2);
+}
+
+.care-row-content {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.care-row-actions {
+  display: flex;
+  align-items: flex-start;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: var(--space-2);
+}
+
+.care-row-actions > button,
+.care-row-actions .care-row-menu-trigger {
+  height: 44px;
+  min-height: 44px;
+}
+
+.care-row-menu {
+  position: relative;
+  z-index: 3;
+}
+
+.care-row-menu-trigger {
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.care-row-menu-popover {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  width: 144px;
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: 0 16px 34px oklch(34% 0.03 255 / 0.2);
+}
+
+.care-row-menu-popover button {
+  min-height: 40px;
+  justify-content: flex-start;
+  border-color: transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.care-row-menu-popover button:hover:not(:disabled),
+.care-row-menu-popover button:focus-visible {
+  background: var(--surface-2);
+}
+
+.care-row-menu-popover .care-row-delete {
+  color: oklch(46% 0.13 28);
 }
 
 .care-row p,
@@ -4016,6 +4181,55 @@ button.stat {
   gap: var(--space-1);
   color: var(--muted);
   font-size: 0.95rem;
+}
+
+.care-fixed-field {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.care-fixed-field strong {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-3);
+  padding: 0.72rem 0.86rem;
+  color: var(--text-strong);
+}
+
+.care-reminder-field {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.care-reminder-field small,
+.care-completion-editor p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.care-reminder-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.care-reminder-presets button {
+  min-height: 34px;
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--text);
+  padding: 0.4rem 0.72rem;
+  font-size: 0.88rem;
+}
+
+.care-completion-editor h2 {
+  margin-bottom: var(--space-1);
 }
 
 @media (max-width: 900px) {

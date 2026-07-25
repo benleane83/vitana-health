@@ -4,6 +4,7 @@ import type {
   BackupInspectResponse,
   BackupRestoreResponse,
   CareItemListQuery,
+  CompleteCareItemInput,
   CreateCareItemInput,
   CreateHealthEventInput,
   DeleteObservationResponse,
@@ -61,6 +62,9 @@ import {
   pairedDevicesResponseSchema,
   pairingMutationResponseSchema,
   pendingPairingsResponseSchema,
+  profilePhotoDeleteResponseSchema,
+  profilePhotoResponseSchema,
+  profilePhotoUploadSchema,
   profileDeleteResponseSchema,
   profileIdResponseSchema,
   profileListEntrySchema,
@@ -180,6 +184,15 @@ export type DeleteHealthEventMutationResponse = DeleteHealthEventResponse;
 export const api = {
   health: sharedApi.health,
   bootstrap: sharedApi.bootstrap,
+  profilePhoto: {
+    get: () => request(profilePhotoResponseSchema, "/api/profile/photo"),
+    replace: (payload: { contentType: "image/jpeg"; contentBase64: string }) =>
+      request(profilePhotoResponseSchema, "/api/profile/photo", {
+        method: "PUT",
+        body: JSON.stringify(profilePhotoUploadSchema.parse(payload))
+      }),
+    remove: () => request(profilePhotoDeleteResponseSchema, "/api/profile/photo", { method: "DELETE" })
+  },
   analytics: sharedApi.analytics,
   biologicalAge: () => request(biologicalAgeResponseSchema, "/api/biological-age"),
   exportPdf: async () => {
@@ -239,6 +252,7 @@ export const api = {
     listCareItems: (query?: CareItemListQuery) => sharedApi.listCareItems(query),
     createCareItem: (payload: CreateCareItemInput) => sharedApi.createCareItem(payload),
     updateCareItem: (id: string, payload: CreateCareItemInput) => sharedApi.updateCareItem(id, payload),
+    completeCareItem: (id: string, payload: CompleteCareItemInput) => sharedApi.completeCareItem(id, payload),
     deleteCareItem: (id: string) => sharedApi.deleteCareItem(id)
   },
   updateObservation: (id: string, input: UpdateObservationInput) =>

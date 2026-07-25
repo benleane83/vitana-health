@@ -70,6 +70,7 @@ function companionCapabilityFor(request: express.Request): import("./pairing.js"
     case "GET /profiles":
       return "profiles:list-minimal";
     case "GET /bootstrap":
+    case "GET /profile/photo":
     case "GET /analytics":
     case "GET /summary":
       return "assigned-profile:read";
@@ -102,7 +103,7 @@ function companionCapabilityFor(request: express.Request): import("./pairing.js"
           ? "standalone:migrate"
         : /^\/care\/health-events\/[^/]+$/.test(request.path)
           ? "care:write"
-          : /^\/care\/items\/[^/]+$/.test(request.path)
+          : /^\/care\/items\/[^/]+(?:\/complete)?$/.test(request.path)
             ? "care:write"
            : /^(PATCH|DELETE) \/observations\/[^/]+$/.test(route)
              ? "observations:write"

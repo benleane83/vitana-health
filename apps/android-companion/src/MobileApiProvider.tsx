@@ -4,6 +4,7 @@ import type {
   AnalyticsSummary,
   AppBootstrap,
   CareItemListQuery,
+  CompleteCareItemInput,
   CreateCareItemInput,
   CreateHealthEventInput,
   HealthDataDetail,
@@ -53,6 +54,7 @@ interface MobileApiContextValue {
   bootstrap?: AppBootstrap;
   analytics?: AnalyticsSummary;
   summary?: HealthDataSummary;
+  profilePhotoUri?: string;
   dashboardLoading: boolean;
   trackLoading: boolean;
   error?: string;
@@ -79,6 +81,7 @@ interface MobileApiContextValue {
   listCareItems(query?: CareItemListQuery): Promise<Awaited<ReturnType<CompanionCareService["listCareItems"]>>>;
   createCareItem(payload: CreateCareItemInput): Promise<void>;
   updateCareItem(id: string, payload: CreateCareItemInput): Promise<void>;
+  completeCareItem(id: string, payload: CompleteCareItemInput): Promise<void>;
   deleteCareItem(id: string): Promise<void>;
   refreshAfterImport(): Promise<void>;
   clearTransientData(): void;
@@ -96,6 +99,7 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
   const [bootstrap, setBootstrap] = useState<AppBootstrap>();
   const [analytics, setAnalytics] = useState<AnalyticsSummary>();
   const [summary, setSummary] = useState<HealthDataSummary>();
+  const [profilePhoto, setProfilePhoto] = useState<{ revision: string; uri: string }>();
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [trackLoading, setTrackLoading] = useState(false);
   const [error, setError] = useState<string>();
@@ -120,6 +124,7 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     setBootstrap(undefined);
     setAnalytics(undefined);
     setSummary(undefined);
+    setProfilePhoto(undefined);
   }, []);
 
   const classifyError = useCallback((caught: unknown) => {
@@ -206,13 +211,28 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
       if (generation.current !== requestGeneration) return;
       setBootstrap(nextBootstrap);
       setAnalytics(nextAnalytics);
+      const revision = nextBootstrap.profilePhoto?.revision;
+      if (!demoMode && operatingMode === "connected" && connection?.token && revision) {
+        try {
+          const photo = await createCompanionApi(connection).profilePhoto.get();
+          if (generation.current !== requestGeneration) return;
+          setProfilePhoto(photo.revision === revision ? {
+            revision,
+            uri: `data:${photo.contentType};base64,${photo.contentBase64}`
+          } : undefined);
+        } catch {
+          if (generation.current === requestGeneration) setProfilePhoto(undefined);
+        }
+      } else {
+        setProfilePhoto(undefined);
+      }
       setConnectionState("online");
     } catch (caught) {
       if (generation.current === requestGeneration) classifyError(caught);
     } finally {
       if (generation.current === requestGeneration) setDashboardLoading(false);
     }
-  }, [classifyError, source]);
+  }, [classifyError, connection, demoMode, operatingMode, source]);
 
   const refreshTrack = useCallback(async () => {
     if (!source) return;
@@ -300,6 +320,10 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     await requireCareService(source).updateCareItem(id, payload);
   }, [source]);
 
+  const completeCareItem = useCallback(async (id: string, payload: CompleteCareItemInput) => {
+    await requireCareService(source).completeCareItem(id, payload);
+  }, [source]);
+
   const deleteCareItem = useCallback(async (id: string) => {
     await requireCareService(source).deleteCareItem(id);
   }, [source]);
@@ -310,6 +334,7 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
 
   const clearTransientData = useCallback(() => {
     setTransientRevision((current) => current + 1);
+    setProfilePhoto(undefined);
   }, []);
 
   const disconnect = useCallback(async () => {
@@ -362,11 +387,15 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
   }, [source]);
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") void retryPendingRevocation().catch(() => undefined);
-      else clearTransientData();
+      if (state === "active") {
+        void retryPendingRevocation().catch(() => undefined);
+        void refreshDashboard();
+      } else {
+        clearTransientData();
+      }
     });
     return () => subscription.remove();
-  }, [clearTransientData]);
+  }, [clearTransientData, refreshDashboard]);
   useEffect(() => {
     void retryPendingRevocation().catch(() => undefined);
   }, []);
@@ -380,6 +409,7 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     bootstrap,
     analytics,
     summary,
+    profilePhotoUri: bootstrap?.profilePhoto?.revision === profilePhoto?.revision ? profilePhoto?.uri : undefined,
     dashboardLoading,
     trackLoading,
     error,
@@ -406,15 +436,16 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     listCareItems,
     createCareItem,
     updateCareItem,
+    completeCareItem,
     deleteCareItem,
     refreshAfterImport,
     clearTransientData,
     disconnect
   }), [
-    analytics, bootstrap, clearTransientData, connection, connectionState, createCareItem, createHealthEvent,
+    analytics, bootstrap, clearTransientData, completeCareItem, connection, connectionState, createCareItem, createHealthEvent,
     dashboardLoading, deleteCareItem, deleteHealthEvent, deleteObservation, demoMode, disconnect, error, healthDataDetail,
   importManualObservations, listCareItems, listHealthEvents, listStandaloneDatasets, operatingMode, refreshAfterImport, refreshDashboard,
-  refreshTrack, reloadConnection, resetStandaloneData, setDemoMode, setOperatingMode, summary, trackLoading,
+  profilePhoto, refreshTrack, reloadConnection, resetStandaloneData, setDemoMode, setOperatingMode, summary, trackLoading,
   migrateStandaloneData, migrationProgress, selectStandaloneDataset, standaloneMigrationManifest, transientRevision, updateCareItem, updateHealthEvent, updateObservation
   ]);
   return <MobileApiContext.Provider value={value}>{children}</MobileApiContext.Provider>;
@@ -431,7 +462,7 @@ function requireCareService(source: CompanionDataSource | undefined): CompanionC
   if (
     !candidate?.listHealthEvents || !candidate.createHealthEvent || !candidate.updateHealthEvent ||
     !candidate.deleteHealthEvent || !candidate.listCareItems || !candidate.createCareItem ||
-    !candidate.updateCareItem || !candidate.deleteCareItem
+    !candidate.updateCareItem || !candidate.completeCareItem || !candidate.deleteCareItem
   ) {
     throw new Error("Switch to Connected mode to use Care.");
   }

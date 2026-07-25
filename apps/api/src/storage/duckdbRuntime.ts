@@ -9,7 +9,7 @@ import {
 } from "../analyticalViews.js";
 
 const markerName = ".vitana-duckdb-poc";
-const schemaVersion = 10;
+const schemaVersion = 12;
 
 export interface DuckDbOptions {
   httpfsExtensionPath?: string;
@@ -385,6 +385,30 @@ const schemaVersion8Sql = `
 `;
 
 const schemaVersion9Sql = `
+  CREATE TABLE IF NOT EXISTS profile_media (
+    media_kind VARCHAR PRIMARY KEY,
+    content_type VARCHAR NOT NULL,
+    content BLOB NOT NULL,
+    revision VARCHAR NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
+    CHECK (media_kind = 'profile-photo'),
+    CHECK (content_type = 'image/jpeg')
+  );
+  INSERT OR IGNORE INTO poc_metadata VALUES (9, CURRENT_TIMESTAMP, 'Encrypted profile media');
+`;
+
+const schemaVersion10Sql = `
+  DROP VIEW IF EXISTS v_ai_health_events;
+  DROP VIEW IF EXISTS v_ai_care_items;
+  ALTER TABLE health_events DROP COLUMN IF EXISTS occurred_end;
+  ALTER TABLE care_items DROP COLUMN IF EXISTS due_end;
+  ALTER TABLE care_items DROP COLUMN IF EXISTS originating_health_event_id;
+  ${aiHealthEventsViewSql};
+  ${aiCareItemsViewSql};
+  INSERT OR IGNORE INTO poc_metadata VALUES (10, CURRENT_TIMESTAMP, 'Simplified care dates and completion provenance');
+`;
+
+const schemaVersion11Sql = `
   CREATE TABLE IF NOT EXISTS companion_migration_sessions (
     session_id VARCHAR PRIMARY KEY, pairing_id VARCHAR NOT NULL, dataset_fingerprint VARCHAR NOT NULL,
     manifest JSON NOT NULL, status VARCHAR NOT NULL, created_at TIMESTAMP NOT NULL,
@@ -400,16 +424,16 @@ const schemaVersion9Sql = `
     session_id VARCHAR NOT NULL, entity_type VARCHAR NOT NULL, source_id VARCHAR NOT NULL,
     destination_id VARCHAR NOT NULL, PRIMARY KEY (session_id, entity_type, source_id)
   );
-  INSERT OR IGNORE INTO poc_metadata VALUES (9, CURRENT_TIMESTAMP, 'Companion standalone migration sessions and receipts');
+  INSERT OR IGNORE INTO poc_metadata VALUES (11, CURRENT_TIMESTAMP, 'Companion standalone migration sessions and receipts');
 `;
 
-const schemaVersion10Sql = `
+const schemaVersion12Sql = `
   ALTER TABLE companion_migration_batches ADD COLUMN submitted_counts JSON;
   UPDATE companion_migration_batches
   SET submitted_counts = '{"sourceImports":0,"dataSources":0,"observationGroups":0,"observations":0}'
   WHERE submitted_counts IS NULL;
   ALTER TABLE companion_migration_batches ALTER COLUMN submitted_counts SET NOT NULL;
-  INSERT OR IGNORE INTO poc_metadata VALUES (10, CURRENT_TIMESTAMP, 'Per-entity companion migration batch counts');
+  INSERT OR IGNORE INTO poc_metadata VALUES (12, CURRENT_TIMESTAMP, 'Per-entity companion migration batch counts');
 `;
 
 const schemaMigrations = [
@@ -422,5 +446,7 @@ const schemaMigrations = [
   { version: 7, sql: schemaVersion7Sql },
   { version: 8, sql: schemaVersion8Sql },
   { version: 9, sql: schemaVersion9Sql },
-  { version: 10, sql: schemaVersion10Sql }
+  { version: 10, sql: schemaVersion10Sql },
+  { version: 11, sql: schemaVersion11Sql },
+  { version: 12, sql: schemaVersion12Sql }
 ] as const;

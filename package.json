@@ -14,12 +14,14 @@
     "duckdb": {
       "node-gyp": "12.4.0"
     },
+    "electron-builder": "26.15.3",
     "minimatch@3.1.5": {
       "brace-expansion": "1.1.16"
     },
     "minimatch@5.1.9": {
       "brace-expansion": "2.1.2"
     },
+    "postcss": "8.5.18",
     "shell-quote": "1.9.0"
   },
   "workspaces": [

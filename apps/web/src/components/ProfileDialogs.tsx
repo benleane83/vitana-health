@@ -9,6 +9,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import type { Profile, ProfileListEntry } from "@vitana/shared";
+import { ProfileAvatar } from "./ProfileAvatar.js";
 
 const FOCUSABLE =
   'button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
@@ -42,16 +43,23 @@ function trapFocus(event: React.KeyboardEvent<HTMLElement>, container: HTMLEleme
 export function ProfileEditDialog({
   busy,
   profile,
+  profilePhotoRevision,
   onClose,
+  onPhotoChange,
+  onPhotoRemove,
   onSubmit
 }: {
   busy: boolean;
   profile?: Profile;
+  profilePhotoRevision?: string;
   onClose: () => void;
+  onPhotoChange: (file: File) => Promise<string | undefined>;
+  onPhotoRemove: () => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const firstFocusRef = useRef<HTMLInputElement>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const [subjectKind, setSubjectKind] = useState<NonNullable<Profile["subjectKind"]>>(profile?.subjectKind ?? "adult");
@@ -61,6 +69,7 @@ export function ProfileEditDialog({
       ? ""
       : String(units === "imperial" ? centimetersToInches(profile.heightCm) : profile.heightCm)
   );
+  const [photoFeedback, setPhotoFeedback] = useState<string>();
   const today = new Date().toISOString().slice(0, 10);
   const adultBirthDateMaximum = new Date();
   adultBirthDateMaximum.setFullYear(adultBirthDateMaximum.getFullYear() - 18);
@@ -102,10 +111,43 @@ export function ProfileEditDialog({
     >
       <div className="panel-heading-row">
         <div>
-          <p className="eyebrow">Editable local context</p>
           <h2 id="profile-dialog-title">Edit profile</h2>
         </div>
         <button type="button" onClick={onClose} aria-label="Close profile editor">Close</button>
+      </div>
+      <div className="profile-photo-editor">
+        <ProfileAvatar displayName={profile?.displayName ?? "Profile"} revision={profilePhotoRevision} />
+        <div>
+          <div className="profile-photo-actions">
+            <button
+              className="profile-photo-action"
+              type="button"
+              disabled={busy}
+              onClick={() => photoInputRef.current?.click()}
+            >
+              {profilePhotoRevision ? "Replace photo" : "Choose photo"}
+            </button>
+            {profilePhotoRevision ? (
+              <button className="profile-photo-action profile-photo-remove" type="button" disabled={busy} onClick={onPhotoRemove}>Remove photo</button>
+            ) : null}
+          </div>
+          <input
+            ref={photoInputRef}
+            id="profile-photo-input"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            disabled={busy}
+            onChange={async (event) => {
+              const file = event.currentTarget.files?.[0];
+              event.currentTarget.value = "";
+              if (!file) return;
+              setPhotoFeedback("Saving photo...");
+              const error = await onPhotoChange(file);
+              setPhotoFeedback(error ?? "Photo saved.");
+            }}
+          />
+          {photoFeedback ? <p className="profile-photo-feedback" role="status">{photoFeedback}</p> : null}
+        </div>
       </div>
       <form onSubmit={onSubmit} className="profile-form">
         <label htmlFor="profile-displayName">Name</label>
@@ -287,6 +329,11 @@ export function ProfileManagerDialog({
           const isActive = entry.id === activeProfileId;
           return (
             <div className={`profile-manager-row ${isActive ? "active" : ""}`} role="listitem" key={entry.id}>
+              <ProfileAvatar
+                compact
+                displayName={entry.displayName}
+                revision={isActive ? entry.profilePhoto?.revision : undefined}
+              />
               <div>
                 <strong>{entry.displayName}</strong>
                 <span>{isActive ? "Active profile" : "Stored locally"}</span>

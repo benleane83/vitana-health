@@ -4,6 +4,8 @@ import {
   calculateBiologicalAge,
   careItemListQuerySchema,
   careItemMutationResponseSchema,
+  completeCareItemInputSchema,
+  completeCareItemResponseSchema,
   createCareItemInputSchema,
   createHealthEventInputSchema,
   deleteCareItemResponseSchema,
@@ -26,7 +28,7 @@ import { buildClinicianReport } from "../clinicianReport.js";
 import { createClinicianReportPdf } from "../pdfReport.js";
 import type { AuthorizationPrincipal } from "../requestPrincipal.js";
 import { resolvePrincipalStore } from "../requestPrincipal.js";
-import { HealthEventDeleteConflictError, RepositoryValidationError } from "../storage/profileRepository.js";
+import { CareItemCompletionConflictError, HealthEventDeleteConflictError, RepositoryValidationError } from "../storage/profileRepository.js";
 
 const measurementCodeParamSchema = z
   .string()
@@ -265,6 +267,24 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
       }
       response.json(careItemMutationResponseSchema.parse(updated));
     } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/care/items/:id/complete", async (request, response, next) => {
+    try {
+      const id = recordIdParamSchema.parse(request.params.id);
+      const completed = await requestStore(response).completeCareItem(id, completeCareItemInputSchema.parse(request.body));
+      if (!completed) {
+        response.status(404).json({ error: "Care item not found.", code: "CARE_ITEM_NOT_FOUND" });
+        return;
+      }
+      response.json(completeCareItemResponseSchema.parse(completed));
+    } catch (error) {
+      if (error instanceof CareItemCompletionConflictError) {
+        response.status(409).json({ error: error.message, code: error.code });
+        return;
+      }
       next(error);
     }
   });

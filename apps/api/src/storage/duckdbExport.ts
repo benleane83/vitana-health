@@ -142,7 +142,7 @@ export async function snapshot(
   const medications = new Map((await all(connection, "SELECT * FROM medication_administrations;")).map((row) => [String(row.health_event_id), row]));
   const healthEvents = eventRows.map((row) => {
     const base = compact({ id: row.id, kind: row.kind, status: row.status, occurredAt: isoTimestamp(row.occurred_at),
-      occurredEnd: optionalTimestamp(row.occurred_end), source: row.source, provider: row.provider, notes: row.notes, metadata: optionalJson(row.metadata) });
+      source: row.source, provider: row.provider, notes: row.notes, metadata: optionalJson(row.metadata) });
     const immunization = immunizations.get(String(row.id));
     const medication = medications.get(String(row.id));
     if (immunization) return { ...base, kind: "immunization", immunization: compact({ vaccine: immunization.vaccine, targetDisease: immunization.target_disease, doseNumber: optionalNumber(immunization.dose_number), series: immunization.series, manufacturer: immunization.manufacturer, lotNumber: immunization.lot_number, expiresAt: immunization.expires_at ? String(immunization.expires_at).slice(0, 10) : undefined, route: immunization.route, site: immunization.site, reaction: immunization.reaction }) };
@@ -152,9 +152,9 @@ export async function snapshot(
     return { ...base, kind };
   });
   const careItems = (await orderedRows(connection, "care_items")).map((row) => compact({
-    id: row.id, kind: row.kind, code: row.code, title: row.title, dueStart: optionalTimestamp(row.due_start), dueEnd: optionalTimestamp(row.due_end),
+    id: row.id, kind: row.kind, code: row.code, title: row.title, dueStart: optionalTimestamp(row.due_start),
     reminderAt: optionalTimestamp(row.reminder_at), priority: row.priority, status: row.status, scheduleProvenance: row.schedule_provenance,
-    scheduleVersion: row.schedule_version, notes: row.notes, originatingHealthEventId: row.originating_health_event_id,
+    scheduleVersion: row.schedule_version, notes: row.notes,
     completedHealthEventId: row.completed_health_event_id, completedAt: optionalTimestamp(row.completed_at)
   }));
   const insights = (await orderedRows(connection, "insights")).map((row) => compact({
@@ -237,8 +237,8 @@ export async function insertStore(connection: duckdb.Connection, store: HealthSt
       entry.durationMinutes ?? null, entry.energyKcal ?? null, entry.distanceMeters ?? null, entry.sourceId,
       entry.sourceJson !== undefined, optionalJsonValue(entry.sourceJson)]));
   await insertHealthEventRows(connection, store.healthEvents ?? []);
-  await insertRows(connection, "INSERT INTO care_items VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
-    (store.careItems ?? []).map((entry, ordinal) => [ordinal, entry.id, entry.kind, entry.code ?? null, entry.title, entry.dueStart ?? null, entry.dueEnd ?? null, entry.reminderAt ?? null, entry.priority, entry.status, entry.scheduleProvenance ?? null, entry.scheduleVersion ?? null, entry.notes ?? null, entry.originatingHealthEventId ?? null, entry.completedHealthEventId ?? null, entry.completedAt ?? null]));
+  await insertRows(connection, "INSERT INTO care_items VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+    (store.careItems ?? []).map((entry, ordinal) => [ordinal, entry.id, entry.kind, entry.code ?? null, entry.title, entry.dueStart ?? null, entry.reminderAt ?? null, entry.priority, entry.status, entry.scheduleProvenance ?? null, entry.scheduleVersion ?? null, entry.notes ?? null, entry.completedHealthEventId ?? null, entry.completedAt ?? null]));
   await insertRows(connection, "INSERT INTO insights VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);",
     store.insights.map((entry, ordinal) => [ordinal, entry.id, entry.createdAt, entry.title, entry.body,
       json(entry.evidence), entry.confidence, entry.model, entry.safetyNotice]));
@@ -286,8 +286,8 @@ export function firstDifferencePath(expected: unknown, actual: unknown, path = "
 }
 
 async function insertHealthEventRows(connection: duckdb.Connection, events: HealthEvent[]): Promise<void> {
-  await insertRows(connection, "INSERT INTO health_events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", events.map((event, ordinal) => [
-    ordinal, event.id, event.kind, event.status, event.occurredAt, event.occurredEnd ?? null, event.source,
+  await insertRows(connection, "INSERT INTO health_events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);", events.map((event, ordinal) => [
+    ordinal, event.id, event.kind, event.status, event.occurredAt, event.source,
     event.provider ?? null, event.notes ?? null, optionalJsonValue(event.metadata)
   ]));
   await insertRows(connection, "INSERT INTO immunizations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",

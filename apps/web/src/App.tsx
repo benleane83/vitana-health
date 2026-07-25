@@ -10,6 +10,7 @@ import { ExportRoute } from "./features/export/ExportRoute.js";
 import { TrackRoute } from "./features/track/TrackRoute.js";
 import { DashboardRoute } from "./features/dashboard/DashboardRoute.js";
 import { CareRoute } from "./features/care/CareRoute.js";
+import { ProfileAvatar } from "./components/ProfileAvatar.js";
 
 const mainRoutes: AppRoute[] = ["dashboard", "import", "track", "care", "insights", "export"];
 
@@ -239,6 +240,11 @@ export function App() {
             aria-expanded={profileMenuOpen}
             onClick={() => setProfileMenuOpen((open) => !open)}
           >
+            <ProfileAvatar
+              compact
+              displayName={activeProfile?.displayName ?? "Profile"}
+              revision={bootstrap?.profilePhoto?.revision}
+            />
             <span className="profile-menu-label">{activeProfile?.displayName ?? "Profile"}</span>
             <span className="profile-menu-chevron" aria-hidden="true">▾</span>
           </button>
@@ -259,6 +265,11 @@ export function App() {
                     }
                   }}
                 >
+                  <ProfileAvatar
+                    compact
+                    displayName={entry.displayName}
+                    revision={entry.id === activeProfileId ? entry.profilePhoto?.revision : undefined}
+                  />
                   {entry.displayName}
                 </button>
               ))}

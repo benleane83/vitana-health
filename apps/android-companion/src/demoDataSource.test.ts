@@ -138,4 +138,33 @@ describe("demo data source", () => {
     expect((await source.listHealthEvents()).total).toBeGreaterThan(events.total);
     expect((await source.listCareItems()).total).toBeGreaterThanOrEqual(2);
   });
+
+  it("filters both care views by kind and completes an open item atomically", async () => {
+    const source = createDemoDataSource(new Date("2026-07-17T12:00:00.000Z"));
+
+    const monitoringItems = await source.listCareItems({ kind: "monitoring" });
+    const immunizationEvents = await source.listHealthEvents({ kind: "immunization" });
+    const openItem = (await source.listCareItems({ status: "open" })).items[0];
+
+    expect(monitoringItems.items).toHaveLength(1);
+    expect(immunizationEvents.items).toHaveLength(1);
+    expect(openItem).toBeDefined();
+
+    const completed = await source.completeCareItem(openItem!.id, {
+      occurredAt: "2026-07-18T00:00:00.000Z",
+      kind: "visit"
+    });
+
+    expect(completed.careItem).toMatchObject({
+      status: "completed",
+      completedAt: "2026-07-18T00:00:00.000Z",
+      completedHealthEventId: completed.healthEvent.id
+    });
+    expect(completed.healthEvent).toMatchObject({ kind: "visit", status: "completed" });
+    expect((await source.listHealthEvents({ kind: "visit" })).items).toContainEqual(completed.healthEvent);
+    await expect(source.completeCareItem(openItem!.id, {
+      occurredAt: "2026-07-19T00:00:00.000Z",
+      kind: "visit"
+    })).rejects.toThrow("Only open care items can be completed");
+  });
 });

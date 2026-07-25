@@ -1,6 +1,7 @@
 import {
   type CareItem,
   type CareItemListQuery,
+  type CompleteCareItemInput,
   type CreateCareItemInput,
   type CreateHealthEventInput,
   classifyValue,
@@ -162,22 +163,49 @@ export function createDemoDataSource(
       return paginateCollection(filterCareItems(careItems, query), query);
     },
     async createCareItem(payload: CreateCareItemInput) {
-      const careItem: CareItem = { id: `demo-care-${nextCareItemId++}`, completedAt: payload.status === "completed" ? now.toISOString() : undefined, ...payload };
+      if (payload.status === "completed") throw new Error("Use the completion action to complete a care item.");
+      const careItem: CareItem = { id: `demo-care-${nextCareItemId++}`, ...payload };
       careItems = [careItem, ...careItems];
       return { careItem, counts: makeBootstrap(details, now).counts };
     },
     async updateCareItem(id: string, payload: CreateCareItemInput) {
       const existing = careItems.find((entry) => entry.id === id);
       if (!existing) throw new Error("Care item not found.");
-      const completedAt = payload.status === "completed"
-        ? existing.completedAt ?? now.toISOString()
-        : undefined;
-      const completedHealthEventId = payload.status === "completed"
-        ? payload.completedHealthEventId
-        : undefined;
-      const careItem: CareItem = { ...existing, ...payload, completedAt, completedHealthEventId };
+      if (existing.status !== "completed" && payload.status === "completed") {
+        throw new Error("Use the completion action to complete a care item.");
+      }
+      const careItem: CareItem = existing.status === "completed"
+        ? { ...existing, ...payload, status: "completed", completedAt: existing.completedAt, completedHealthEventId: existing.completedHealthEventId }
+        : { ...existing, ...payload, completedAt: undefined, completedHealthEventId: undefined };
       careItems = careItems.map((entry) => entry.id === id ? careItem : entry);
       return { careItem, counts: makeBootstrap(details, now).counts };
+    },
+    async completeCareItem(id: string, payload: CompleteCareItemInput) {
+      const existing = careItems.find((entry) => entry.id === id);
+      if (!existing) throw new Error("Care item not found.");
+      if (existing.status !== "open") throw new Error("Only open care items can be completed.");
+      const healthEvent: HealthEvent = {
+        id: `demo-event-${nextHealthEventId++}`,
+        kind: payload.kind,
+        status: "completed",
+        occurredAt: payload.occurredAt,
+        source: "manual-entry",
+        notes: `Completed care item: ${existing.title}`
+      };
+      const careItem: CareItem = {
+        ...existing,
+        status: "completed",
+        completedAt: payload.occurredAt,
+        completedHealthEventId: healthEvent.id,
+        completedHealthEvent: {
+          id: healthEvent.id,
+          kind: healthEvent.kind,
+          occurredAt: healthEvent.occurredAt
+        }
+      };
+      healthEvents = [healthEvent, ...healthEvents];
+      careItems = careItems.map((entry) => entry.id === id ? careItem : entry);
+      return { careItem, healthEvent, counts: makeBootstrap(details, now).counts };
     },
     async deleteCareItem(id: string) {
       const deletedCareItem = careItems.find((entry) => entry.id === id);
@@ -371,8 +399,7 @@ function makeCareItems(now: Date, events: HealthEvent[]): CareItem[] {
     reminderAt: daysBefore(now, -3).toISOString(),
     priority: "normal",
     status: "open",
-    notes: "Bring recent notes.",
-    originatingHealthEventId: events[0]?.id
+    notes: "Bring recent notes."
   }, {
     id: "demo-care-2",
     title: "Monitor post-vaccine symptoms",
@@ -399,6 +426,7 @@ function filterHealthEvents(items: HealthEvent[], query: HealthEventListQuery): 
 
 function filterCareItems(items: CareItem[], query: CareItemListQuery): CareItem[] {
   return items.filter((item) => {
+    if (query.kind && item.kind !== query.kind) return false;
     if (query.status && item.status !== query.status) return false;
     if (query.priority && item.priority !== query.priority) return false;
     if (query.search) {

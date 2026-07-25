@@ -182,7 +182,7 @@ describe("compileQueryDSL — care_items", () => {
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.sql).toMatch(/COALESCE\(due_start, due_end\) >= TIMESTAMP/i);
+    expect(result.sql).toMatch(/due_start >= TIMESTAMP/i);
   });
 
   it("compiles chartable due-bucket counts", () => {

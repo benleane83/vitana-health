@@ -27,6 +27,30 @@ describe("persisted health store schema", () => {
     });
   });
 
+  it("migrates v6 care records by removing retired interval and origin fields", () => {
+    const result = parsePersistedHealthStore(store({
+      schemaVersion: 6,
+      healthEvents: [{
+        id: "event-1", kind: "visit", status: "completed", occurredAt: "2026-01-01T10:00:00.000Z",
+        occurredEnd: "2026-01-01T11:00:00.000Z", source: "manual-entry"
+      }],
+      careItems: [{
+        id: "care-1", kind: "follow-up", title: "Review results", dueStart: "2026-01-03T10:00:00.000Z",
+        dueEnd: "2026-01-03T11:00:00.000Z", reminderAt: "2026-01-04T10:00:00.000Z", priority: "normal",
+        status: "completed", originatingHealthEventId: "event-origin", completedHealthEventId: "event-1",
+        completedAt: "2026-01-01T10:00:00.000Z"
+      }]
+    }));
+
+    expect(result.migrated).toBe(true);
+    expect(result.data.healthEvents[0]).not.toHaveProperty("occurredEnd");
+    expect(result.data.careItems[0]).toMatchObject({
+      id: "care-1", completedHealthEventId: "event-1", reminderAt: "2026-01-04T10:00:00.000Z"
+    });
+    expect(result.data.careItems[0]).not.toHaveProperty("dueEnd");
+    expect(result.data.careItems[0]).not.toHaveProperty("originatingHealthEventId");
+  });
+
   it("validates personal range bounds", () => {
     expect(parsePersistedHealthStore(store({
       personalReferenceRanges: [{

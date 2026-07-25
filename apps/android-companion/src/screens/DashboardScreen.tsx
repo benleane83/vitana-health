@@ -3,12 +3,13 @@ import { RefreshControl, ScrollView, StyleSheet, Text, View, Pressable } from "r
 import { CompositeNavigationProp, useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { ChevronRight, Database, MonitorSmartphone, UserRound } from "lucide-react-native";
+import { ChevronRight, Database, MonitorSmartphone } from "lucide-react-native";
 import { isUtcMidnightTimestamp } from "@vitana/shared";
 import { useMobileApi } from "../MobileApiProvider";
 import type { RootStackParamList, TabParamList } from "../navigationTypes";
 import { Button, Card, Loading, Message, Screen } from "../ui/components";
 import { colors, radii, spacing, type } from "../ui/theme";
+import { ProfileAvatar } from "../ui/ProfileAvatar";
 
 type DashboardNavigation = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, "Dashboard">,
@@ -24,6 +25,7 @@ export function DashboardScreen() {
     dashboardLoading,
     demoMode,
     error,
+    profilePhotoUri,
     refreshDashboard,
     standaloneMode
   } = useMobileApi();
@@ -71,7 +73,7 @@ export function DashboardScreen() {
       >
         <View style={styles.contextPanel}>
           <View style={styles.profileRow}>
-            <View style={styles.profileIcon}><UserRound color={colors.primary} size={21} /></View>
+            <ProfileAvatar uri={profilePhotoUri} />
             <View style={styles.profileText}>
               <Text style={styles.contextLabel}>Active profile</Text>
               <Text numberOfLines={2} style={styles.title}>{bootstrap.profile.displayName}</Text>
@@ -174,7 +176,6 @@ const styles = StyleSheet.create({
   content: { gap: spacing.lg, paddingBottom: spacing.xl },
   contextPanel: { backgroundColor: colors.primaryMuted, borderRadius: radii.lg, gap: spacing.md, padding: spacing.md },
   profileRow: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
-  profileIcon: { alignItems: "center", backgroundColor: colors.surface, borderRadius: radii.pill, height: 42, justifyContent: "center", width: 42 },
   profileText: { flex: 1, minWidth: 0 },
   contextLabel: { color: colors.muted, fontSize: type.label, fontWeight: "700" },
   title: { color: colors.textStrong, fontSize: type.display, fontWeight: "800" },

@@ -6,6 +6,7 @@ import type {
   BiologicalAgeReport,
   CareItem,
   CareItemMutationResponse,
+  CompleteCareItemResponse,
   CloudAiConsent,
   DeleteCareItemResponse,
   DeleteHealthEventResponse,
@@ -18,6 +19,7 @@ import type {
   HealthEventMutationResponse,
   Insight,
   Profile,
+  ProfilePhotoResponse,
   ProfileListEntry,
   ReferenceRangeState,
   UpdateObservationResponse
@@ -204,8 +206,27 @@ export const pairedDevicesResponseSchema = z.array(pairedDeviceSchema);
 export const profileListEntrySchema: z.ZodType<ProfileListEntry> = z.object({
   id: z.string(),
   displayName: z.string(),
-  updatedAt: z.string()
+  updatedAt: z.string(),
+  profilePhoto: z.object({
+    revision: z.string().regex(/^[a-f0-9]{64}$/),
+    updatedAt: z.string().datetime({ offset: true })
+  }).strict().optional()
 }).strict();
+
+export const profilePhotoResponseSchema: z.ZodType<ProfilePhotoResponse> = z.object({
+  contentType: z.literal("image/jpeg"),
+  contentBase64: z.string().min(4).max(350_000).regex(
+    /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/,
+    "Expected canonical base64."
+  ),
+  revision: z.string().regex(/^[a-f0-9]{64}$/),
+  updatedAt: z.string().datetime({ offset: true })
+}).strict();
+export const profilePhotoUploadSchema = z.object({
+  contentType: z.literal("image/jpeg"),
+  contentBase64: z.string().min(4).max(350_000)
+}).strict();
+export const profilePhotoDeleteResponseSchema = z.object({ deleted: z.literal(true) }).strict();
 
 export const profilesResponseSchema = z.object({
   profiles: z.array(profileListEntrySchema),
@@ -304,7 +325,6 @@ export const healthEventSchema: z.ZodType<HealthEvent> = z.object({
   kind: z.enum(healthEventKindCodes),
   status: z.enum(["completed", "entered-in-error"]),
   occurredAt: isoTimestampSchema,
-  occurredEnd: isoTimestampSchema.optional(),
   source: z.enum(["health-connect", "manual-entry", "blood-test-csv", "observation-csv", "structured-upload", "blood-test-report", "body-composition-report", "derived"]),
   provider: optionalTrimmedString(160),
   notes: optionalTrimmedString(4000),
@@ -343,22 +363,14 @@ export const careItemSchema: z.ZodType<CareItem> = z.object({
   code: z.string().optional(),
   title: z.string(),
   dueStart: isoTimestampSchema.optional(),
-  dueEnd: isoTimestampSchema.optional(),
   reminderAt: isoTimestampSchema.optional(),
   priority: z.enum(["low", "normal", "high"]),
   status: z.enum(["open", "completed", "cancelled", "skipped"]),
   scheduleProvenance: z.string().optional(),
   scheduleVersion: z.string().optional(),
   notes: z.string().optional(),
-  originatingHealthEventId: z.string().optional(),
   completedHealthEventId: z.string().optional(),
   completedAt: isoTimestampSchema.optional(),
-  originatingHealthEvent: z.object({
-    id: z.string(),
-    kind: z.enum(healthEventKindCodes),
-    occurredAt: isoTimestampSchema,
-    provider: z.string().optional()
-  }).strict().optional(),
   completedHealthEvent: z.object({
     id: z.string(),
     kind: z.enum(healthEventKindCodes),
@@ -394,6 +406,7 @@ export const careItemListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   offset: z.coerce.number().int().min(0).default(0),
   search: optionalTrimmedString(120),
+  kind: z.enum(careItemKindCodes).optional(),
   status: z.enum(["open", "completed", "cancelled", "skipped"]).optional(),
   priority: z.enum(["low", "normal", "high"]).optional(),
   dueFrom: isoTimestampSchema.optional(),
@@ -410,45 +423,26 @@ export const createHealthEventInputSchema = z.object({
   kind: z.enum(healthEventKindCodes),
   status: z.enum(["completed", "entered-in-error"]),
   occurredAt: isoTimestampSchema,
-  occurredEnd: isoTimestampSchema.optional(),
   provider: optionalTrimmedString(160),
   notes: optionalTrimmedString(4000)
-}).strict().superRefine((value, context) => {
-  if (value.occurredEnd && value.occurredAt > value.occurredEnd) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["occurredEnd"], message: "Occurred end must be on or after occurred start." });
-  }
-});
+}).strict();
 export const updateHealthEventInputSchema = createHealthEventInputSchema;
 
 export const createCareItemInputSchema = z.object({
   title: z.string().trim().min(1).max(160),
   kind: z.enum(careItemKindCodes),
   dueStart: isoTimestampSchema.optional(),
-  dueEnd: isoTimestampSchema.optional(),
   reminderAt: isoTimestampSchema.optional(),
   priority: z.enum(["low", "normal", "high"]),
   status: z.enum(["open", "completed", "cancelled", "skipped"]),
-  notes: optionalTrimmedString(4000),
-  originatingHealthEventId: z.string().trim().min(1).max(160).optional(),
-  completedHealthEventId: z.string().trim().min(1).max(160).optional()
-}).strict().superRefine((value, context) => {
-  if (value.dueStart && value.dueEnd && value.dueStart > value.dueEnd) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["dueEnd"], message: "Due end must be on or after due start." });
-  }
-  if (value.reminderAt && !value.dueStart) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["reminderAt"], message: "A due start is required when setting a reminder." });
-  }
-  if (value.reminderAt && value.dueStart && value.reminderAt > value.dueStart) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["reminderAt"], message: "Reminder must be on or before the due start." });
-  }
-  if (value.originatingHealthEventId && value.completedHealthEventId && value.originatingHealthEventId === value.completedHealthEventId) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["completedHealthEventId"], message: "Originating and completion events must be different." });
-  }
-  if (value.status !== "completed" && value.completedHealthEventId) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["completedHealthEventId"], message: "A completion event can be linked only when the care item is completed." });
-  }
-});
+  notes: optionalTrimmedString(4000)
+}).strict();
 export const updateCareItemInputSchema = createCareItemInputSchema;
+
+export const completeCareItemInputSchema = z.object({
+  occurredAt: isoTimestampSchema,
+  kind: z.enum(healthEventKindCodes)
+}).strict();
 
 export const paginatedHealthEventsResponseSchema = z.object({
   items: z.array(healthEventSchema),
@@ -460,6 +454,7 @@ export const paginatedCareItemsResponseSchema = z.object({
 }).strict();
 export const healthEventMutationResponseSchema = objectResponseSchema<HealthEventMutationResponse>();
 export const careItemMutationResponseSchema = objectResponseSchema<CareItemMutationResponse>();
+export const completeCareItemResponseSchema = objectResponseSchema<CompleteCareItemResponse>();
 export const deleteHealthEventResponseSchema = objectResponseSchema<DeleteHealthEventResponse>();
 export const deleteCareItemResponseSchema = objectResponseSchema<DeleteCareItemResponse>();
 export const linkedHealthEventConflictSchema = apiErrorResponseSchema.extend({
@@ -467,6 +462,6 @@ export const linkedHealthEventConflictSchema = apiErrorResponseSchema.extend({
   linkedCareItems: z.array(z.object({
     id: z.string(),
     title: z.string(),
-    role: z.enum(["originating", "completion"])
+    role: z.literal("completion")
   }).strict())
 }).strict();

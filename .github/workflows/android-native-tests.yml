@@ -1,0 +1,38 @@
+name: Android native tests
+
+on:
+  workflow_dispatch:
+
+jobs:
+  android-native-tests:
+    name: Android native tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Set up Java
+        uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165 # v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Generate Android host
+        working-directory: apps/android-companion
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Run pinned HTTP module tests
+        working-directory: apps/android-companion/android
+        run: ./gradlew :vitana-pinned-http:testDebugUnitTest

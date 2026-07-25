@@ -8,6 +8,8 @@ import {
   type BiologicalAgeSource,
   type CareItemListQuery,
   type CareItemMutationResponse,
+  type CompleteCareItemInput,
+  type CompleteCareItemResponse,
   type CreateCareItemInput,
   type CreateHealthEventInput,
   type DeleteCareItemResponse,
@@ -53,6 +55,7 @@ import {
 } from "./duckdbExport.js";
 import {
   addInsight as addDuckDbInsight,
+  completeCareItem as completeDuckDbCareItem,
   createCareItem as createDuckDbCareItem,
   createHealthEvent as createDuckDbHealthEvent,
   deleteCareItem as deleteDuckDbCareItem,
@@ -63,9 +66,12 @@ import {
   deleteObservationRecordsByMeasurementCode as deleteDuckDbObservationRecordsByMeasurementCode,
   deleteObservationsByMeasurementCode as deleteDuckDbObservationsByMeasurementCode,
   deleteDailyAggregateStepSamples as deleteDuckDbDailyAggregateStepSamples,
+  deleteProfilePhoto as deleteDuckDbProfilePhoto,
+  getProfilePhoto as readProfilePhoto,
   getProfile as readProfile,
   insertObservationRecord as insertDuckDbObservationRecord,
   replaceProfile as replaceDuckDbProfile,
+  replaceProfilePhoto as replaceDuckDbProfilePhoto,
   updateCareItem as updateDuckDbCareItem,
   updateHealthEvent as updateDuckDbHealthEvent,
   updateObservation as updateDuckDbObservation,
@@ -244,6 +250,21 @@ export class DuckDbRepository implements ProfileRepository {
     return this.transaction(() => replaceDuckDbProfile(this.connection, profile));
   }
 
+  async getProfilePhoto() {
+    this.assertOpen();
+    return readProfilePhoto(this.connection);
+  }
+
+  async replaceProfilePhoto(contentType: "image/jpeg", bytes: Buffer) {
+    this.assertOpen();
+    return this.transaction(() => replaceDuckDbProfilePhoto(this.connection, contentType, bytes));
+  }
+
+  async deleteProfilePhoto() {
+    this.assertOpen();
+    return this.transaction(() => deleteDuckDbProfilePhoto(this.connection));
+  }
+
   async resetMeasurementTypeMetadataFromRegistry(): Promise<MeasurementRegistryResetResult> {
     this.assertOpen();
     return resetMeasurementTypeMetadataFromRegistry(this.connection, (operation) => this.transaction(operation));
@@ -324,6 +345,11 @@ export class DuckDbRepository implements ProfileRepository {
   async updateCareItem(id: string, input: UpdateCareItemInput): Promise<CareItemMutationResponse | undefined> {
     this.assertOpen();
     return this.transaction(() => updateDuckDbCareItem(this.connection, id, input));
+  }
+
+  async completeCareItem(id: string, input: CompleteCareItemInput): Promise<CompleteCareItemResponse | undefined> {
+    this.assertOpen();
+    return this.transaction(() => completeDuckDbCareItem(this.connection, id, input));
   }
 
   async deleteCareItem(id: string): Promise<DeleteCareItemResponse | undefined> {
