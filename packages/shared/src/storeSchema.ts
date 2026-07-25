@@ -3,7 +3,7 @@ import { healthEventKindCodes } from "./types.js";
 import type { HealthStoreData, InsightModel } from "./types.js";
 import { defaultMeasurementTypes } from "./registry.js";
 
-export const CURRENT_SCHEMA_VERSION = 6 as const;
+export const CURRENT_SCHEMA_VERSION = 7 as const;
 
 const sourceKind = z.enum([
   "health-connect", "manual-entry", "blood-test-csv", "observation-csv", "structured-upload",
@@ -120,7 +120,7 @@ const storeFields = {
   }).strict()),
   healthEvents: z.array(z.object({
     id: z.string(), kind: z.enum(healthEventKindCodes), status: z.enum(["completed", "entered-in-error"]),
-    occurredAt: z.string(), occurredEnd: z.string().optional(), source: sourceKind, provider: z.string().optional(),
+    occurredAt: z.string(), source: sourceKind, provider: z.string().optional(),
     notes: z.string().optional(), metadata: stringRecord.optional(),
     immunization: z.object({
       vaccine: z.string(), targetDisease: z.string().optional(), doseNumber: z.number().int().positive().optional(),
@@ -140,9 +140,9 @@ const storeFields = {
   })).default([]),
   careItems: z.array(z.object({
     id: z.string(), kind: z.string(), code: z.string().optional(), title: z.string(), dueStart: z.string().optional(),
-    dueEnd: z.string().optional(), reminderAt: z.string().optional(), priority: z.enum(["low", "normal", "high"]),
+    reminderAt: z.string().optional(), priority: z.enum(["low", "normal", "high"]),
     status: z.enum(["open", "completed", "cancelled", "skipped"]), scheduleProvenance: z.string().optional(),
-    scheduleVersion: z.string().optional(), notes: z.string().optional(), originatingHealthEventId: z.string().optional(),
+    scheduleVersion: z.string().optional(), notes: z.string().optional(),
     completedHealthEventId: z.string().optional(), completedAt: z.string().optional()
   }).strict()).default([]),
   insights: z.array(insightSchema),
@@ -225,12 +225,13 @@ function migrateV1ToV2(data: LegacyStoreData): HealthStoreData {
 
 export function parsePersistedHealthStore(data: unknown): { data: HealthStoreData; migrated: boolean } {
   const version = z.object({ schemaVersion: z.number().int() }).passthrough().parse(data).schemaVersion;
+  const normalizedData = version < CURRENT_SCHEMA_VERSION ? stripRetiredCareFields(data) : data;
   if (version === CURRENT_SCHEMA_VERSION) {
-    const current = healthStoreDataSchema.safeParse(data);
+    const current = healthStoreDataSchema.safeParse(normalizedData);
     if (current.success) {
       return { data: current.data as HealthStoreData, migrated: false };
     }
-    const retired = retiredMetabolicStoreSchema.parse(data);
+    const retired = retiredMetabolicStoreSchema.parse(normalizedData);
     const defaultsByCode = new Map(defaultMeasurementTypes.map((type) => [type.code, type]));
     const measurementTypes = retired.measurementTypes.map((type) => {
       if (type.category !== "metabolic") return type;
@@ -245,8 +246,17 @@ export function parsePersistedHealthStore(data: unknown): { data: HealthStoreDat
       migrated: true
     };
   }
+  if (version === 6) {
+    return {
+      data: healthStoreDataSchema.parse({
+        ...z.record(z.unknown()).parse(normalizedData),
+        schemaVersion: CURRENT_SCHEMA_VERSION
+      }) as HealthStoreData,
+      migrated: true
+    };
+  }
   if (version === 5) {
-    const legacy = version5StoreSchema.parse(data);
+    const legacy = version5StoreSchema.parse(normalizedData);
     const defaultsByCode = new Map(defaultMeasurementTypes.map((type) => [type.code, type]));
     return {
       data: healthStoreDataSchema.parse({
@@ -272,21 +282,42 @@ export function parsePersistedHealthStore(data: unknown): { data: HealthStoreDat
     };
   }
   if (version === 2) {
-    const legacy = version2StoreSchema.parse(data);
+    const legacy = version2StoreSchema.parse(normalizedData);
     return {
       data: healthStoreDataSchema.parse({ ...legacy, schemaVersion: CURRENT_SCHEMA_VERSION }),
       migrated: true
     };
   }
   if (version === 4) {
-    const legacy = version4StoreSchema.parse(data);
+    const legacy = version4StoreSchema.parse(normalizedData);
     return {
       data: healthStoreDataSchema.parse({ ...legacy, schemaVersion: CURRENT_SCHEMA_VERSION }),
       migrated: true
     };
   }
   if (version === 1) {
-    return { data: migrateV1ToV2(legacyStoreSchema.parse(data)), migrated: true };
+    return { data: migrateV1ToV2(legacyStoreSchema.parse(normalizedData)), migrated: true };
   }
   throw new Error(`Unsupported health store schema version ${version}.`);
+}
+
+function stripRetiredCareFields(data: unknown): unknown {
+  const store = z.record(z.unknown()).parse(data);
+  const healthEvents = Array.isArray(store.healthEvents)
+    ? store.healthEvents.map((entry) => {
+        const { occurredEnd: _occurredEnd, ...event } = z.record(z.unknown()).parse(entry);
+        return event;
+      })
+    : store.healthEvents;
+  const careItems = Array.isArray(store.careItems)
+    ? store.careItems.map((entry) => {
+        const {
+          dueEnd: _dueEnd,
+          originatingHealthEventId: _originatingHealthEventId,
+          ...careItem
+        } = z.record(z.unknown()).parse(entry);
+        return careItem;
+      })
+    : store.careItems;
+  return { ...store, healthEvents, careItems };
 }

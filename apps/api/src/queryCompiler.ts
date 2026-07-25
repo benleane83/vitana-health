@@ -35,14 +35,12 @@ const ALLOWED_COLUMNS = new Set([
   "kind",
   "status",
   "occurred_at",
-  "occurred_end",
   "source",
   "provider",
   "notes",
   "code",
   "title",
   "due_start",
-  "due_end",
   "priority",
   "completed_at"
 ]);
@@ -403,7 +401,7 @@ function buildHealthEventsSql(
     const appliedLimit = dsl.intent === "latest" ? 1 : limit;
     const appliedSort = dsl.intent === "latest" ? "DESC" : sortDir;
     return [
-      "SELECT id, kind, status, occurred_at, occurred_end, source, provider, notes",
+      "SELECT id, kind, status, occurred_at, source, provider, notes",
       "FROM v_ai_health_events",
       `WHERE ${where.join("\n  AND ")}`,
       `ORDER BY occurred_at ${appliedSort}`,
@@ -485,14 +483,14 @@ function buildCareItemsSql(
 
   const where = careItemWhere(dsl, time, dsl.intent !== "overdue" && dsl.filters?.dueWithinRange === true);
   if (dsl.intent === "overdue") {
-    where.push("status = 'open'", "COALESCE(due_start, due_end) < CURRENT_DATE");
+    where.push("status = 'open'", "due_start < CURRENT_DATE");
   }
   if (dsl.intent === "list") {
     return [
-      "SELECT id, kind, code, title, due_start, due_end, priority, status, completed_at, notes",
+      "SELECT id, kind, code, title, due_start, priority, status, completed_at, notes",
       "FROM v_ai_care_items",
       careItemWhereSql(where),
-      `ORDER BY COALESCE(due_start, due_end) ${sortDir}`,
+      `ORDER BY due_start ${sortDir}`,
       `LIMIT ${limit}`
     ].join("\n");
   }
@@ -525,7 +523,7 @@ function careItemWhere(
   time: { start: string; end: string },
   includeDueRange: boolean
 ): string[] {
-  const due = "COALESCE(due_start, due_end)";
+  const due = "due_start";
   const clauses = includeDueRange
     ? [
         `${due} >= TIMESTAMP '${time.start} 00:00:00'`,
@@ -552,9 +550,9 @@ function careItemGroup(groupBy: QueryDSL["groupBy"]): { expression: string; alia
   }
   if (groupBy === "due_bucket") {
     return {
-      expression: "CASE WHEN COALESCE(due_start, due_end) IS NULL THEN 'unscheduled' " +
-        "WHEN COALESCE(due_start, due_end) < CURRENT_DATE THEN 'overdue' " +
-        "WHEN COALESCE(due_start, due_end) <= CURRENT_DATE + INTERVAL '7 days' THEN 'next_7_days' ELSE 'later' END",
+      expression: "CASE WHEN due_start IS NULL THEN 'unscheduled' " +
+        "WHEN due_start < CURRENT_DATE THEN 'overdue' " +
+        "WHEN due_start <= CURRENT_DATE + INTERVAL '7 days' THEN 'next_7_days' ELSE 'later' END",
       alias: "due_bucket"
     };
   }

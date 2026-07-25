@@ -51,12 +51,12 @@ export const weeklyMetricsViewSql = `
 
 export const aiHealthEventsViewSql = `
   CREATE OR REPLACE VIEW v_ai_health_events AS
-  SELECT id, kind, status, occurred_at, occurred_end, source, provider, notes
+  SELECT id, kind, status, occurred_at, source, provider, notes
   FROM health_events
 `;
 
 export const aiCareItemsViewSql = `
   CREATE OR REPLACE VIEW v_ai_care_items AS
-  SELECT id, kind, code, title, due_start, due_end, priority, status, completed_at, notes
+  SELECT id, kind, code, title, due_start, priority, status, completed_at, notes
   FROM care_items
 `;

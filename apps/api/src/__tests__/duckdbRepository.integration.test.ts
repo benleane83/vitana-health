@@ -42,12 +42,12 @@ afterEach(() => {
 });
 
 describe("DuckDbRepository fidelity", () => {
-  it.skipIf(!httpfsExtensionPath)("migrates to v9 and keeps profile photos encrypted, isolated, and outside exports", async () => {
+  it.skipIf(!httpfsExtensionPath)("migrates through v10 and keeps profile photos encrypted, isolated, and outside exports", async () => {
     const legacyPath = join(root, "databases", "health-store-photo-v8.duckdb-poc");
     await createDuckDbSchema(root, legacyPath, key, { httpfsExtensionPath }, 8);
     const legacy = await openEncryptedDuckDbDatabase(root, legacyPath, key, { httpfsExtensionPath });
     try {
-      expect(await migrateDuckDbSchema(legacy)).toBe(9);
+      expect(await migrateDuckDbSchema(legacy)).toBe(10);
       expect(await all(legacy.connection, "SELECT table_name FROM information_schema.tables WHERE table_name = 'profile_media';"))
         .toHaveLength(1);
     } finally {
@@ -64,7 +64,7 @@ describe("DuckDbRepository fidelity", () => {
     const replacement = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe1]), Buffer.alloc(64 * 1024, 2), Buffer.from([0xff, 0xd9])]);
 
     try {
-      expect(await first.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+      expect(await first.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
       const created = await first.replaceProfilePhoto("image/jpeg", original);
       expect(created.revision).toBe(createHash("sha256").update(original).digest("hex"));
       expect(await second.getProfilePhoto()).toBeUndefined();
@@ -85,6 +85,38 @@ describe("DuckDbRepository fidelity", () => {
       expect(await reopened.getProfilePhoto()).toBeUndefined();
     } finally {
       await reopened.close();
+    }
+  }, 30_000);
+
+  it.skipIf(!httpfsExtensionPath)("migrates v9 care data to v10 without retired columns", async () => {
+    const databasePath = join(root, "databases", "health-store-care-v9.duckdb-poc");
+    const options = { httpfsExtensionPath };
+    await createDuckDbSchema(root, databasePath, key, options, 9);
+    const database = await openEncryptedDuckDbDatabase(root, databasePath, key, options);
+    try {
+      await execSql(database.connection, `
+        INSERT INTO health_events VALUES
+          (0, 'event-completion', 'visit', 'completed', TIMESTAMP '2026-07-20 10:00:00', TIMESTAMP '2026-07-20 11:00:00', 'manual-entry', 'Clinic', 'Completed visit', NULL);
+        INSERT INTO care_items VALUES
+          (0, 'care-completed', 'routine-checkup', NULL, 'Annual check-up', TIMESTAMP '2026-07-20 09:00:00', TIMESTAMP '2026-07-20 12:00:00', NULL, 'normal', 'completed', NULL, NULL, 'Keep this note', 'event-completion', 'event-completion', TIMESTAMP '2026-07-20 10:00:00');
+      `);
+
+      expect(await migrateDuckDbSchema(database)).toBe(10);
+      const eventColumns = await querySql(database.connection, "SELECT column_name FROM information_schema.columns WHERE table_name = 'health_events' ORDER BY column_name;");
+      const careColumns = await querySql(database.connection, "SELECT column_name FROM information_schema.columns WHERE table_name = 'care_items' ORDER BY column_name;");
+      expect(eventColumns.map((row) => row.column_name)).not.toContain("occurred_end");
+      expect(careColumns.map((row) => row.column_name)).not.toContain("due_end");
+      expect(careColumns.map((row) => row.column_name)).not.toContain("originating_health_event_id");
+      expect(await querySql(database.connection, "SELECT id, notes FROM health_events;")).toEqual([
+        { id: "event-completion", notes: "Completed visit" }
+      ]);
+      expect(await querySql(database.connection, "SELECT id, notes, completed_health_event_id FROM care_items;")).toEqual([
+        { id: "care-completed", notes: "Keep this note", completed_health_event_id: "event-completion" }
+      ]);
+      expect(await querySql(database.connection, "SELECT id, occurred_at FROM v_ai_health_events;")).toHaveLength(1);
+      expect(await querySql(database.connection, "SELECT id, due_start FROM v_ai_care_items;")).toHaveLength(1);
+    } finally {
+      await closeEncryptedDuckDbDatabase(database);
     }
   }, 30_000);
 
@@ -153,20 +185,13 @@ describe("DuckDbRepository fidelity", () => {
     const reminderAt = careItemReminderAt(dueStart, "one-week");
     if (!reminderAt) throw new Error("Expected a reminder timestamp.");
     try {
-      const event = await repository.createHealthEvent({
-        kind: "visit",
-        status: "completed",
-        occurredAt: "2026-07-18T12:00:00.000Z",
-        provider: "Family clinic"
-      });
       const created = await repository.createCareItem({
         kind: "routine-checkup",
         title: "Annual check-up",
         dueStart,
         reminderAt,
         priority: "normal",
-        status: "open",
-        originatingHealthEventId: event.healthEvent.id
+        status: "open"
       });
       expect(created.careItem).toMatchObject({
         kind: "routine-checkup",
@@ -176,15 +201,7 @@ describe("DuckDbRepository fidelity", () => {
         priority: "normal",
         status: "open"
       });
-      expect((await repository.listCareItems({})).items).toEqual([{
-        ...created.careItem,
-        originatingHealthEvent: {
-          id: event.healthEvent.id,
-          kind: "visit",
-          occurredAt: "2026-07-18T12:00:00.000Z",
-          provider: "Family clinic"
-        }
-      }]);
+      expect((await repository.listCareItems({})).items).toEqual([created.careItem]);
       snapshot = await repository.snapshot();
     } finally {
       await repository.close();
@@ -198,16 +215,148 @@ describe("DuckDbRepository fidelity", () => {
         expect.objectContaining({
           title: "Annual check-up",
           dueStart,
-          reminderAt,
-          originatingHealthEvent: expect.objectContaining({
-            kind: "visit",
-            occurredAt: "2026-07-18T12:00:00.000Z",
-            provider: "Family clinic"
-          })
+          reminderAt
         })
       ]);
     } finally {
       await rehydrated.close();
+    }
+  }, 30_000);
+
+  it.skipIf(!httpfsExtensionPath)("completes only open care items and preserves completion provenance", async () => {
+    const databasePath = join(root, "databases", "health-store-care-completion.duckdb-poc");
+    const repository = await DuckDbRepository.hydrate(
+      root,
+      databasePath,
+      key,
+      createDuckDbHealthStoreFixture(),
+      { httpfsExtensionPath }
+    );
+    try {
+      const created = await repository.createCareItem({
+        kind: "routine-checkup",
+        title: "Annual check-up",
+        dueStart: "2026-08-18T14:00:00.000Z",
+        priority: "normal",
+        status: "open"
+      });
+      const cancelled = await repository.createCareItem({
+        kind: "dental",
+        title: "Cancelled dental visit",
+        priority: "normal",
+        status: "cancelled"
+      });
+
+      expect((await repository.listCareItems({ kind: "routine-checkup" })).items).toEqual([created.careItem]);
+      await expect(repository.createCareItem({
+        kind: "other",
+        title: "Invalid completed item",
+        priority: "normal",
+        status: "completed"
+      })).rejects.toThrow("completion endpoint");
+      await expect(repository.updateCareItem(created.careItem.id, {
+        title: created.careItem.title,
+        kind: "routine-checkup",
+        dueStart: created.careItem.dueStart,
+        priority: created.careItem.priority,
+        status: "completed"
+      })).rejects.toThrow("completion endpoint");
+      expect(await repository.completeCareItem("missing-care-item", {
+        occurredAt: "2026-07-25T09:30:00.000Z",
+        kind: "visit"
+      })).toBeUndefined();
+      await expect(repository.completeCareItem(cancelled.careItem.id, {
+        occurredAt: "2026-07-25T09:30:00.000Z",
+        kind: "dental"
+      })).rejects.toThrow("Only open care items");
+
+      const completed = await repository.completeCareItem(created.careItem.id, {
+        occurredAt: "2026-07-25T09:30:00.000Z",
+        kind: "visit"
+      });
+      expect(completed).toMatchObject({
+        careItem: {
+          id: created.careItem.id,
+          status: "completed",
+          completedAt: "2026-07-25T09:30:00.000Z",
+          completedHealthEventId: expect.stringMatching(/^event_/),
+          completedHealthEvent: { kind: "visit", occurredAt: "2026-07-25T09:30:00.000Z" }
+        },
+        healthEvent: {
+          kind: "visit",
+          status: "completed",
+          occurredAt: "2026-07-25T09:30:00.000Z",
+          source: "manual-entry",
+          notes: "Completed care item: Annual check-up."
+        }
+      });
+      expect(completed?.counts.healthEvents).toBe((createDuckDbHealthStoreFixture().healthEvents ?? []).length + 1);
+      await expect(repository.completeCareItem(created.careItem.id, {
+        occurredAt: "2026-07-25T09:30:00.000Z",
+        kind: "visit"
+      })).rejects.toThrow("Only open care items");
+
+      const edited = await repository.updateCareItem(created.careItem.id, {
+        title: "Annual check-up reviewed",
+        kind: "routine-checkup",
+        priority: "high",
+        status: "open"
+      });
+      expect(edited?.careItem).toMatchObject({
+        status: "completed",
+        completedAt: completed?.careItem.completedAt,
+        completedHealthEventId: completed?.healthEvent.id
+      });
+      const snapshot = await repository.snapshot();
+      expect(snapshot.auditEvents.slice(0, 3).map((entry) => entry.eventType)).toEqual([
+        "care-item-updated",
+        "care-item-completed",
+        "health-event-created"
+      ]);
+    } finally {
+      await repository.close();
+    }
+  }, 30_000);
+
+  it.skipIf(!httpfsExtensionPath)("rolls back care completion records and audits together", async () => {
+    const databasePath = join(root, "databases", "health-store-care-completion-rollback.duckdb-poc");
+    const initial = await DuckDbRepository.hydrate(
+      root,
+      databasePath,
+      key,
+      createDuckDbHealthStoreFixture(),
+      { httpfsExtensionPath }
+    );
+    const created = await initial.createCareItem({
+      kind: "follow-up",
+      title: "Review results",
+      priority: "normal",
+      status: "open"
+    });
+    const before = await initial.snapshot();
+    await initial.close();
+
+    const failing = await DuckDbRepository.open(root, databasePath, key, {
+      httpfsExtensionPath,
+      testHooks: { beforeTransactionCommit: async () => { throw new Error("Injected commit failure"); } }
+    });
+    try {
+      await expect(failing.completeCareItem(created.careItem.id, {
+        occurredAt: "2026-07-25T10:00:00.000Z",
+        kind: "visit"
+      })).rejects.toThrow("Injected commit failure");
+    } finally {
+      await failing.close();
+    }
+
+    const reopened = await DuckDbRepository.open(root, databasePath, key, { httpfsExtensionPath });
+    try {
+      const after = await reopened.snapshot();
+      expect(after.healthEvents).toEqual(before.healthEvents);
+      expect(after.careItems).toEqual(before.careItems);
+      expect(after.auditEvents).toEqual(before.auditEvents);
+    } finally {
+      await reopened.close();
     }
   }, 30_000);
 
@@ -932,7 +1081,7 @@ describe("DuckDbRepository fidelity", () => {
 
     const upgraded = await DuckDbRepository.open(root, databasePath, key, options);
     try {
-      expect(await upgraded.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+      expect(await upgraded.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
       expect(await upgraded.dailyMetrics()).toEqual([]);
       expect(await upgraded.weeklyMetrics()).toEqual([]);
     } finally {
@@ -959,7 +1108,7 @@ describe("DuckDbRepository fidelity", () => {
 
     const reopened = await DuckDbRepository.open(root, databasePath, key, options);
     try {
-      expect(await reopened.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+      expect(await reopened.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     } finally {
       await reopened.close();
     }
@@ -1034,7 +1183,9 @@ describe("DuckDbRepository fidelity", () => {
     await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (6, CURRENT_TIMESTAMP, 'synthetic');");
     await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (7, CURRENT_TIMESTAMP, 'synthetic');");
     await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (8, CURRENT_TIMESTAMP, 'synthetic');");
-    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (9, CURRENT_TIMESTAMP, 'future');");
+    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (9, CURRENT_TIMESTAMP, 'synthetic');");
+    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (10, CURRENT_TIMESTAMP, 'synthetic');");
+    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (11, CURRENT_TIMESTAMP, 'future');");
     await execSql(futureHandle.connection, "CHECKPOINT;");
     await closeEncryptedDuckDbDatabase(futureHandle);
     const futureHash = hashFile(futurePath);

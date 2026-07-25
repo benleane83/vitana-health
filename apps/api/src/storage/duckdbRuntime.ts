@@ -9,7 +9,7 @@ import {
 } from "../analyticalViews.js";
 
 const markerName = ".vitana-duckdb-poc";
-const schemaVersion = 9;
+const schemaVersion = 10;
 
 export interface DuckDbOptions {
   httpfsExtensionPath?: string;
@@ -397,6 +397,17 @@ const schemaVersion9Sql = `
   INSERT OR IGNORE INTO poc_metadata VALUES (9, CURRENT_TIMESTAMP, 'Encrypted profile media');
 `;
 
+const schemaVersion10Sql = `
+  DROP VIEW IF EXISTS v_ai_health_events;
+  DROP VIEW IF EXISTS v_ai_care_items;
+  ALTER TABLE health_events DROP COLUMN IF EXISTS occurred_end;
+  ALTER TABLE care_items DROP COLUMN IF EXISTS due_end;
+  ALTER TABLE care_items DROP COLUMN IF EXISTS originating_health_event_id;
+  ${aiHealthEventsViewSql};
+  ${aiCareItemsViewSql};
+  INSERT OR IGNORE INTO poc_metadata VALUES (10, CURRENT_TIMESTAMP, 'Simplified care dates and completion provenance');
+`;
+
 const schemaMigrations = [
   { version: 1, sql: schemaVersion1Sql },
   { version: 2, sql: schemaVersion2Sql },
@@ -406,5 +417,6 @@ const schemaMigrations = [
   { version: 6, sql: schemaVersion6Sql },
   { version: 7, sql: schemaVersion7Sql },
   { version: 8, sql: schemaVersion8Sql },
-  { version: 9, sql: schemaVersion9Sql }
+  { version: 9, sql: schemaVersion9Sql },
+  { version: 10, sql: schemaVersion10Sql }
 ] as const;
