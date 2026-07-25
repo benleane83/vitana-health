@@ -136,6 +136,17 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     setError(userFacingError(caught, "Unable to reach the paired PC."));
   }, []);
 
+  const updateConnectionState = useCallback((currentSource: CompanionDataSource, ...results: object[]) => {
+    const connectedSource = currentSource as Partial<ConnectedReplicaMaintenance>;
+    const caught = results.map((result) => connectedSource.connectionError?.(result)).find(Boolean);
+    if (caught) {
+      classifyError(caught);
+    } else {
+      setConnectionState("online");
+      setError(undefined);
+    }
+  }, [classifyError]);
+
   const reloadConnection = useCallback(async () => {
     const next = await loadConnection();
     generation.current += 1;
@@ -216,13 +227,13 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
       setBootstrap(nextBootstrap);
       setAnalytics(nextAnalytics);
       setProfilePhoto(undefined);
-      setConnectionState("online");
+      updateConnectionState(source, nextBootstrap, nextAnalytics);
     } catch (caught) {
       if (generation.current === requestGeneration) classifyError(caught);
     } finally {
       if (generation.current === requestGeneration) setDashboardLoading(false);
     }
-  }, [classifyError, source]);
+  }, [classifyError, source, updateConnectionState]);
 
   const refreshTrack = useCallback(async () => {
     if (!source) return;
@@ -233,13 +244,13 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
       const nextSummary = await source.summary();
       if (generation.current !== requestGeneration) return;
       setSummary(nextSummary);
-      setConnectionState("online");
+      updateConnectionState(source, nextSummary);
     } catch (caught) {
       if (generation.current === requestGeneration) classifyError(caught);
     } finally {
       if (generation.current === requestGeneration) setTrackLoading(false);
     }
-  }, [classifyError, source]);
+  }, [classifyError, source, updateConnectionState]);
 
   const selectStandaloneDataset = useCallback(async (datasetId: string) => {
     const migrationSource = standaloneSource as StandaloneMigrationSource | undefined;
@@ -253,19 +264,18 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
 
   const healthDataDetail = useCallback(async (measurementCode: string, page?: DetailPage) => {
     if (!source) throw new Error("Health data is unavailable while the companion is disconnected.");
-    return source.healthDataDetail(measurementCode, page);
-  }, [source]);
+    const detail = await source.healthDataDetail(measurementCode, page);
+    updateConnectionState(source, detail);
+    return detail;
+  }, [source, updateConnectionState]);
 
   const importManualObservations = useCallback(async (payload: ManualObservationPayload) => {
     if (!source) throw new Error("Manual import is unavailable until a data source is ready.");
     const mutations = source as Partial<CompanionMutationService>;
     if (mutations.importManualObservations) return mutations.importManualObservations(payload);
-    if (operatingMode === "connected") {
-      throw new Error("Connected cached data is read-only. Add records on the paired PC.");
-    }
     if (!connection?.token) throw new Error("Pair with a PC before importing readings.");
     return createCompanionApi(connection).importManualObservations(payload);
-  }, [connection, operatingMode, source]);
+  }, [connection, source]);
 
   const updateObservation = useCallback(async (id: string, input: UpdateObservationInput) => {
     await requireObservationMutationService(source).updateObservation(id, input);

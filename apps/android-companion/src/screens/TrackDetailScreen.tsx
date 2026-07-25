@@ -22,6 +22,7 @@ type ReadingDraft = { observedAt: Date; value: string; unit: string; note: strin
 
 export function TrackDetailScreen({ route }: Props) {
   const {
+    connectionState,
     deleteObservation,
     healthDataDetail,
     importManualObservations,
@@ -233,7 +234,8 @@ export function TrackDetailScreen({ route }: Props) {
   if (!detail) return <Screen><Message title="Metric unavailable" detail={error} /></Screen>;
   const latest = detail.entries[0];
   const visibleEntries = detail.entries.filter((entry) => entry.id !== pendingDeletion?.id);
-  const hasEditableEntries = visibleEntries.some((entry) => entry.kind === "observation" && entry.canDelete);
+  const readOnly = connectionState !== "online";
+  const hasEditableEntries = !readOnly && visibleEntries.some((entry) => entry.kind === "observation" && entry.canDelete);
 
   return (
     <Screen>
@@ -243,8 +245,9 @@ export function TrackDetailScreen({ route }: Props) {
             <Text style={styles.title}>{detail.measurement.displayName}</Text>
             {detail.measurement.description ? <Text style={styles.meta}>{detail.measurement.description}</Text> : null}
           </View>
-          {!adding ? <Button disabled={actionBusy || Boolean(pendingDeletion)} onPress={beginAdd}>Add reading</Button> : null}
+          {!adding && !readOnly ? <Button disabled={actionBusy || Boolean(pendingDeletion)} onPress={beginAdd}>Add reading</Button> : null}
         </View>
+        {readOnly ? <Message title="Read-only cached data" detail="Reconnect to your paired PC to add or edit readings." /> : null}
         {latest ? (
           <Card>
             <Text style={styles.label}>Latest</Text>
@@ -296,7 +299,7 @@ export function TrackDetailScreen({ route }: Props) {
           {visibleEntries.map((entry) => {
             const selected = selectedEntryId === entry.id;
             const editingEntry = editing?.id === entry.id;
-            const canManage = entry.kind === "observation" && entry.canDelete;
+            const canManage = !readOnly && entry.kind === "observation" && entry.canDelete;
             const reading = (
               <>
                 <View style={styles.flex}>
