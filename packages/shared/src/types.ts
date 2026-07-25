@@ -102,7 +102,6 @@ export interface HealthEventBase {
   kind: HealthEventKind;
   status: HealthEventStatus;
   occurredAt: string;
-  occurredEnd?: string;
   source: SourceKind;
   provider?: string;
   notes?: string;
@@ -147,12 +146,11 @@ export const careItemKindLabels: Record<CareItemKind, string> = {
   dental: "Dental or oral care",
   other: "Other care item"
 };
-export const careItemReminderLeadCodes = ["one-day", "one-week", "one-month"] as const;
+export const careItemReminderLeadCodes = ["one-day", "one-week"] as const;
 export type CareItemReminderLead = typeof careItemReminderLeadCodes[number];
 export const careItemReminderLeadLabels: Record<CareItemReminderLead, string> = {
   "one-day": "1 day before",
-  "one-week": "1 week before",
-  "one-month": "1 month before"
+  "one-week": "1 week before"
 };
 
 export function isHealthEventKind(value: string): value is HealthEventKind {
@@ -175,17 +173,7 @@ export function careItemReminderAt(dueStart: string | undefined, lead: CareItemR
   if (!dueStart) return undefined;
   const reminder = new Date(dueStart);
   if (!Number.isFinite(reminder.getTime())) return undefined;
-  if (lead === "one-day") {
-    reminder.setDate(reminder.getDate() - 1);
-  } else if (lead === "one-week") {
-    reminder.setDate(reminder.getDate() - 7);
-  } else {
-    const day = reminder.getDate();
-    reminder.setDate(1);
-    reminder.setMonth(reminder.getMonth() - 1);
-    const lastDay = new Date(reminder.getFullYear(), reminder.getMonth() + 1, 0).getDate();
-    reminder.setDate(Math.min(day, lastDay));
-  }
+  reminder.setDate(reminder.getDate() - (lead === "one-day" ? 1 : 7));
   return reminder.toISOString();
 }
 
@@ -201,6 +189,19 @@ export function careItemReminderLead(
     return candidate ? new Date(candidate).getTime() === expectedTime : false;
   });
 }
+
+export const defaultHealthEventKindForCareItem: Record<CareItemKind, HealthEventKind> = {
+  "routine-checkup": "visit",
+  "follow-up": "visit",
+  immunization: "immunization",
+  medication: "medication-administration",
+  "test-screening": "test",
+  procedure: "procedure",
+  "treatment-therapy": "treatment",
+  monitoring: "other",
+  dental: "dental",
+  other: "other"
+};
 export interface HealthEventReference {
   id: string;
   kind: HealthEventKind;
@@ -213,17 +214,14 @@ export interface CareItem {
   code?: string;
   title: string;
   dueStart?: string;
-  dueEnd?: string;
   reminderAt?: string;
   priority: CareItemPriority;
   status: CareItemStatus;
   scheduleProvenance?: string;
   scheduleVersion?: string;
   notes?: string;
-  originatingHealthEventId?: string;
   completedHealthEventId?: string;
   completedAt?: string;
-  originatingHealthEvent?: HealthEventReference;
   completedHealthEvent?: HealthEventReference;
 }
 export interface CarePagination {
@@ -252,6 +250,7 @@ export interface CareItemListQuery {
   limit?: number;
   offset?: number;
   search?: string;
+  kind?: CareItemKind;
   status?: CareItemStatus;
   priority?: CareItemPriority;
   dueFrom?: string;
@@ -263,7 +262,6 @@ export interface CreateHealthEventInput {
   kind: HealthEventKind;
   status: HealthEventStatus;
   occurredAt: string;
-  occurredEnd?: string;
   provider?: string;
   notes?: string;
 }
@@ -274,13 +272,10 @@ export interface CreateCareItemInput {
   title: string;
   kind: CareItemKind;
   dueStart?: string;
-  dueEnd?: string;
   reminderAt?: string;
   priority: CareItemPriority;
   status: CareItemStatus;
   notes?: string;
-  originatingHealthEventId?: string;
-  completedHealthEventId?: string;
 }
 
 export type UpdateCareItemInput = CreateCareItemInput;
@@ -292,6 +287,17 @@ export interface HealthEventMutationResponse {
 
 export interface CareItemMutationResponse {
   careItem: CareItem;
+  counts: AppBootstrap["counts"];
+}
+
+export interface CompleteCareItemInput {
+  occurredAt: string;
+  kind: HealthEventKind;
+}
+
+export interface CompleteCareItemResponse {
+  careItem: CareItem;
+  healthEvent: HealthEvent;
   counts: AppBootstrap["counts"];
 }
 
@@ -307,7 +313,7 @@ export interface DeleteCareItemResponse {
   counts: AppBootstrap["counts"];
 }
 
-export type CareLinkedHealthEventRole = "originating" | "completion";
+export type CareLinkedHealthEventRole = "completion";
 
 export interface LinkedCareItemConflict {
   id: string;
@@ -529,7 +535,7 @@ export interface AuditEvent {
 }
 
 export interface HealthStoreData {
-  schemaVersion: 2 | 3 | 4 | 5 | 6;
+  schemaVersion: 2 | 3 | 4 | 5 | 6 | 7;
   profile: Profile;
   sourceImports: SourceImport[];
   dataSources: DataSource[];

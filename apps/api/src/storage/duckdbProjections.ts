@@ -703,7 +703,7 @@ export async function listHealthEvents(
     `SELECT * EXCLUDE (ordinal)
       FROM health_events
       ${whereSql}
-      ORDER BY COALESCE(occurred_end, occurred_at) DESC, id DESC
+      ORDER BY occurred_at DESC, id DESC
       LIMIT ? OFFSET ?;`,
     ...params,
     normalized.limit,
@@ -744,17 +744,14 @@ export async function listCareItems(
   const rows = await allWithParams(
     connection,
     `SELECT * EXCLUDE (ordinal),
-        (SELECT kind FROM health_events WHERE id = care_items.originating_health_event_id) AS originating_event_kind,
-        (SELECT occurred_at FROM health_events WHERE id = care_items.originating_health_event_id) AS originating_event_occurred_at,
-        (SELECT provider FROM health_events WHERE id = care_items.originating_health_event_id) AS originating_event_provider,
         (SELECT kind FROM health_events WHERE id = care_items.completed_health_event_id) AS completed_event_kind,
         (SELECT occurred_at FROM health_events WHERE id = care_items.completed_health_event_id) AS completed_event_occurred_at,
         (SELECT provider FROM health_events WHERE id = care_items.completed_health_event_id) AS completed_event_provider
       FROM care_items
       ${whereSql}
       ORDER BY
-        CASE WHEN COALESCE(due_start, due_end) IS NULL THEN 1 ELSE 0 END,
-        COALESCE(due_start, due_end) ASC,
+        CASE WHEN due_start IS NULL THEN 1 ELSE 0 END,
+        due_start ASC,
         id ASC
       LIMIT ? OFFSET ?;`,
     ...params,
@@ -771,9 +768,6 @@ export async function listCareItems(
     const includedRows = await allWithParams(
       connection,
       `SELECT * EXCLUDE (ordinal),
-        (SELECT kind FROM health_events WHERE id = care_items.originating_health_event_id) AS originating_event_kind,
-        (SELECT occurred_at FROM health_events WHERE id = care_items.originating_health_event_id) AS originating_event_occurred_at,
-        (SELECT provider FROM health_events WHERE id = care_items.originating_health_event_id) AS originating_event_provider,
         (SELECT kind FROM health_events WHERE id = care_items.completed_health_event_id) AS completed_event_kind,
         (SELECT occurred_at FROM health_events WHERE id = care_items.completed_health_event_id) AS completed_event_occurred_at,
         (SELECT provider FROM health_events WHERE id = care_items.completed_health_event_id) AS completed_event_provider
@@ -933,7 +927,6 @@ async function hydrateHealthEventRows(
       id: String(row.id),
       status: String(row.status) as HealthEvent["status"],
       occurredAt: isoTimestamp(row.occurred_at),
-      occurredEnd: optionalTimestamp(row.occurred_end),
       source: String(row.source) as HealthEvent["source"],
       provider: optionalString(row.provider),
       notes: optionalString(row.notes),
@@ -984,7 +977,6 @@ async function hydrateHealthEventRows(
 }
 
 function careItemFromRow(row: Record<string, unknown>): CareItem {
-  const originatingHealthEventId = optionalString(row.originating_health_event_id);
   const completedHealthEventId = optionalString(row.completed_health_event_id);
   return {
     id: String(row.id),
@@ -992,24 +984,21 @@ function careItemFromRow(row: Record<string, unknown>): CareItem {
     code: optionalString(row.code),
     title: String(row.title),
     dueStart: optionalTimestamp(row.due_start),
-    dueEnd: optionalTimestamp(row.due_end),
     reminderAt: optionalTimestamp(row.reminder_at),
     priority: String(row.priority) as CareItem["priority"],
     status: String(row.status) as CareItem["status"],
     scheduleProvenance: optionalString(row.schedule_provenance),
     scheduleVersion: optionalString(row.schedule_version),
     notes: optionalString(row.notes),
-    originatingHealthEventId,
     completedHealthEventId,
     completedAt: optionalTimestamp(row.completed_at),
-    originatingHealthEvent: healthEventReferenceFromCareItemRow(row, "originating_event", originatingHealthEventId),
     completedHealthEvent: healthEventReferenceFromCareItemRow(row, "completed_event", completedHealthEventId)
   };
 }
 
 function healthEventReferenceFromCareItemRow(
   row: Record<string, unknown>,
-  prefix: "originating_event" | "completed_event",
+  prefix: "completed_event",
   id: string | undefined
 ): HealthEventReference | undefined {
   const kind = optionalString(row[`${prefix}_kind`]);
@@ -1108,7 +1097,7 @@ function buildHealthEventWhere(query: NormalizedHealthEventListQuery): { whereSq
     params.push(query.occurredFrom);
   }
   if (query.occurredTo) {
-    clauses.push("COALESCE(occurred_end, occurred_at) <= ?");
+    clauses.push("occurred_at <= ?");
     params.push(query.occurredTo);
   }
   if (query.search) {
@@ -1126,6 +1115,7 @@ interface NormalizedCareItemListQuery {
   limit: number;
   offset: number;
   search?: string;
+  kind?: CareItemListQuery["kind"];
   status?: CareItemListQuery["status"];
   priority?: CareItemListQuery["priority"];
   dueFrom?: string;
@@ -1138,6 +1128,7 @@ function normalizeCareItemListQuery(query: CareItemListQuery): NormalizedCareIte
     limit: Math.min(Math.max(Number(query.limit ?? 20), 1), 100),
     offset: Math.max(Number(query.offset ?? 0), 0),
     search: query.search?.trim() || undefined,
+    kind: query.kind,
     status: query.status,
     priority: query.priority,
     dueFrom: query.dueFrom,
@@ -1149,6 +1140,10 @@ function normalizeCareItemListQuery(query: CareItemListQuery): NormalizedCareIte
 function buildCareItemWhere(query: NormalizedCareItemListQuery): { whereSql: string; params: unknown[] } {
   const clauses: string[] = [];
   const params: unknown[] = [];
+  if (query.kind) {
+    clauses.push("kind = ?");
+    params.push(query.kind);
+  }
   if (query.status) {
     clauses.push("status = ?");
     params.push(query.status);
@@ -1158,11 +1153,11 @@ function buildCareItemWhere(query: NormalizedCareItemListQuery): { whereSql: str
     params.push(query.priority);
   }
   if (query.dueFrom) {
-    clauses.push("COALESCE(due_start, due_end) >= ?");
+    clauses.push("due_start >= ?");
     params.push(query.dueFrom);
   }
   if (query.dueTo) {
-    clauses.push("COALESCE(due_end, due_start) <= ?");
+    clauses.push("due_start <= ?");
     params.push(query.dueTo);
   }
   if (query.search) {

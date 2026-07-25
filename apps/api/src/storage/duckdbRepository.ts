@@ -8,6 +8,8 @@ import {
   type BiologicalAgeSource,
   type CareItemListQuery,
   type CareItemMutationResponse,
+  type CompleteCareItemInput,
+  type CompleteCareItemResponse,
   type CreateCareItemInput,
   type CreateHealthEventInput,
   type DeleteCareItemResponse,
@@ -51,6 +53,7 @@ import {
 } from "./duckdbExport.js";
 import {
   addInsight as addDuckDbInsight,
+  completeCareItem as completeDuckDbCareItem,
   createCareItem as createDuckDbCareItem,
   createHealthEvent as createDuckDbHealthEvent,
   deleteCareItem as deleteDuckDbCareItem,
@@ -308,6 +311,11 @@ export class DuckDbRepository implements ProfileRepository {
   async updateCareItem(id: string, input: UpdateCareItemInput): Promise<CareItemMutationResponse | undefined> {
     this.assertOpen();
     return this.transaction(() => updateDuckDbCareItem(this.connection, id, input));
+  }
+
+  async completeCareItem(id: string, input: CompleteCareItemInput): Promise<CompleteCareItemResponse | undefined> {
+    this.assertOpen();
+    return this.transaction(() => completeDuckDbCareItem(this.connection, id, input));
   }
 
   async deleteCareItem(id: string): Promise<DeleteCareItemResponse | undefined> {

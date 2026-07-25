@@ -6,6 +6,8 @@ import {
   bodyCompositionDraftResponseSchema,
   careItemMutationResponseSchema,
   careItemListQuerySchema,
+  completeCareItemInputSchema,
+  completeCareItemResponseSchema,
   createCareItemInputSchema,
   createHealthEventInputSchema,
   deleteCareItemResponseSchema,
@@ -35,6 +37,7 @@ export { BRAND_NAME, FORMAL_BRAND_NAME, PAIRING_APP, PUBLIC_DOMAIN } from "@vita
 import type {
   BodyCompositionDraftCommitPayload,
   CareItemListQuery,
+  CompleteCareItemInput,
   CreateCareItemInput,
   CreateHealthEventInput,
   HealthEventListQuery,
@@ -184,6 +187,8 @@ export function createApiClient(transport: ApiTransport) {
       request(careItemMutationResponseSchema, "/api/care/items", { method: "POST", body: createCareItemInputSchema.parse(payload) }),
     updateCareItem: (id: string, payload: CreateCareItemInput) =>
       request(careItemMutationResponseSchema, `/api/care/items/${encodeURIComponent(id)}`, { method: "PATCH", body: createCareItemInputSchema.parse(payload) }),
+    completeCareItem: (id: string, payload: CompleteCareItemInput) =>
+      request(completeCareItemResponseSchema, `/api/care/items/${encodeURIComponent(id)}/complete`, { method: "POST", body: completeCareItemInputSchema.parse(payload) }),
     deleteCareItem: (id: string) =>
       request(deleteCareItemResponseSchema, `/api/care/items/${encodeURIComponent(id)}`, { method: "DELETE" })
   };

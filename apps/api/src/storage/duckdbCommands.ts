@@ -2,6 +2,7 @@ import type duckdb from "duckdb";
 import { createHash } from "node:crypto";
 import {
   careItemSchema,
+  completeCareItemInputSchema,
   createCareItemInputSchema,
   createHealthEventInputSchema,
   convertMeasurementValue,
@@ -13,6 +14,8 @@ import {
   type AppBootstrap,
   type CareItem,
   type CareItemMutationResponse,
+  type CompleteCareItemInput,
+  type CompleteCareItemResponse,
   type CreateCareItemInput,
   type CreateHealthEventInput,
   type DeleteCareItemResponse,
@@ -46,7 +49,7 @@ import {
   profileFromRow,
   run
 } from "./duckdbRows.js";
-import { HealthEventDeleteConflictError, RepositoryValidationError } from "./profileRepository.js";
+import { CareItemCompletionConflictError, HealthEventDeleteConflictError, RepositoryValidationError } from "./profileRepository.js";
 import type { StoredProfilePhoto } from "./profileRepository.js";
 
 export async function getProfile(connection: duckdb.Connection): Promise<Profile> {
@@ -371,13 +374,12 @@ export async function createHealthEvent(
   });
   await run(
     connection,
-    "INSERT INTO health_events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+    "INSERT INTO health_events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);",
     await prependOrdinal(connection, "health_events"),
     event.id,
     event.kind,
     event.status,
     event.occurredAt,
-    event.occurredEnd ?? null,
     event.source,
     event.provider ?? null,
     event.notes ?? null,
@@ -406,12 +408,11 @@ export async function updateHealthEvent(
   await run(
     connection,
     `UPDATE health_events
-      SET kind = ?, status = ?, occurred_at = ?, occurred_end = ?, provider = ?, notes = ?, metadata = ?
+      SET kind = ?, status = ?, occurred_at = ?, provider = ?, notes = ?, metadata = ?
       WHERE id = ?;`,
     event.kind,
     event.status,
     event.occurredAt,
-    event.occurredEnd ?? null,
     event.provider ?? null,
     event.notes ?? null,
     optionalJsonValue(event.metadata),
@@ -461,21 +462,19 @@ export async function createCareItem(
   });
   await run(
     connection,
-    "INSERT INTO care_items VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+    "INSERT INTO care_items VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
     await prependOrdinal(connection, "care_items"),
     careItem.id,
     careItem.kind,
     careItem.code ?? null,
     careItem.title,
     careItem.dueStart ?? null,
-    careItem.dueEnd ?? null,
     careItem.reminderAt ?? null,
     careItem.priority,
     careItem.status,
     careItem.scheduleProvenance ?? null,
     careItem.scheduleVersion ?? null,
     careItem.notes ?? null,
-    careItem.originatingHealthEventId ?? null,
     careItem.completedHealthEventId ?? null,
     careItem.completedAt ?? null
   );
@@ -492,31 +491,84 @@ export async function updateCareItem(
   if (!rows[0]) {
     return undefined;
   }
+  const current = careItemFromRow(rows[0]);
+  const validated = updateCareItemInputSchema.parse(input);
+  if (current.status !== "completed" && validated.status === "completed") {
+    throw new RepositoryValidationError("Complete care items using the completion endpoint.");
+  }
   const careItem = await validateAndPrepareCareItem(connection, {
-    ...updateCareItemInputSchema.parse(input),
-    id
+    ...validated,
+    id,
+    ...(current.status === "completed" ? {
+      status: current.status,
+      completedAt: current.completedAt,
+      completedHealthEventId: current.completedHealthEventId
+    } : {})
   });
   await run(
     connection,
     `UPDATE care_items
-      SET kind = ?, title = ?, due_start = ?, due_end = ?, reminder_at = ?, priority = ?, status = ?, notes = ?,
-          originating_health_event_id = ?, completed_health_event_id = ?, completed_at = ?
+        SET kind = ?, title = ?, due_start = ?, reminder_at = ?, priority = ?, status = ?, notes = ?,
+          completed_health_event_id = ?, completed_at = ?
       WHERE id = ?;`,
     careItem.kind,
     careItem.title,
     careItem.dueStart ?? null,
-    careItem.dueEnd ?? null,
     careItem.reminderAt ?? null,
     careItem.priority,
     careItem.status,
     careItem.notes ?? null,
-    careItem.originatingHealthEventId ?? null,
     careItem.completedHealthEventId ?? null,
     careItem.completedAt ?? null,
     id
   );
   await insertAudit(connection, "care-item-updated", `${careItem.title} care item updated.`);
   return { careItem, counts: await storageCounts(connection) };
+}
+
+export async function completeCareItem(
+  connection: duckdb.Connection,
+  id: string,
+  input: CompleteCareItemInput
+): Promise<CompleteCareItemResponse | undefined> {
+  const rows = await allWithParams(connection, "SELECT * EXCLUDE (ordinal) FROM care_items WHERE id = ?;", id);
+  if (!rows[0]) {
+    return undefined;
+  }
+  const current = careItemFromRow(rows[0]);
+  if (current.status !== "open") {
+    throw new CareItemCompletionConflictError();
+  }
+  const validated = completeCareItemInputSchema.parse(input);
+  const { healthEvent } = await createHealthEvent(connection, {
+    kind: validated.kind,
+    status: "completed",
+    occurredAt: validated.occurredAt,
+    notes: `Completed care item: ${current.title}.`
+  });
+  await run(
+    connection,
+    `UPDATE care_items
+      SET status = 'completed', completed_at = ?, completed_health_event_id = ?
+      WHERE id = ?;`,
+    validated.occurredAt,
+    healthEvent.id,
+    id
+  );
+  await insertAudit(connection, "care-item-completed", `${current.title} care item completed.`);
+  const careItem = careItemSchema.parse({
+    ...current,
+    status: "completed",
+    completedAt: validated.occurredAt,
+    completedHealthEventId: healthEvent.id,
+    completedHealthEvent: {
+      id: healthEvent.id,
+      kind: healthEvent.kind,
+      occurredAt: healthEvent.occurredAt,
+      provider: healthEvent.provider
+    }
+  });
+  return { careItem, healthEvent, counts: await storageCounts(connection) };
 }
 
 export async function deleteCareItem(
@@ -577,7 +629,6 @@ function healthEventRecord(input: CreateHealthEventInput & { id: string; source:
       kind: "immunization",
       status: input.status,
       occurredAt: input.occurredAt,
-      occurredEnd: input.occurredEnd,
       source: input.source,
       provider: input.provider,
       notes: input.notes
@@ -589,7 +640,6 @@ function healthEventRecord(input: CreateHealthEventInput & { id: string; source:
       kind: "medication-administration",
       status: input.status,
       occurredAt: input.occurredAt,
-      occurredEnd: input.occurredEnd,
       source: input.source,
       provider: input.provider,
       notes: input.notes
@@ -600,7 +650,6 @@ function healthEventRecord(input: CreateHealthEventInput & { id: string; source:
     kind: input.kind,
     status: input.status,
     occurredAt: input.occurredAt,
-    occurredEnd: input.occurredEnd,
     source: input.source,
     provider: input.provider,
     notes: input.notes
@@ -616,7 +665,6 @@ function healthEventFromRow(row: Record<string, unknown>): HealthEvent {
     id: String(row.id),
     status: String(row.status) as HealthEvent["status"],
     occurredAt: isoTimestamp(row.occurred_at),
-    occurredEnd: optionalTimestamp(row.occurred_end),
     source: String(row.source) as HealthEvent["source"],
     provider: typeof row.provider === "string" ? row.provider : undefined,
     notes: typeof row.notes === "string" ? row.notes : undefined,
@@ -638,14 +686,12 @@ function careItemFromRow(row: Record<string, unknown>): CareItem {
     code: row.code ?? undefined,
     title: row.title,
     dueStart: optionalTimestamp(row.due_start),
-    dueEnd: optionalTimestamp(row.due_end),
     reminderAt: optionalTimestamp(row.reminder_at),
     priority: row.priority,
     status: row.status,
     scheduleProvenance: row.schedule_provenance ?? undefined,
     scheduleVersion: row.schedule_version ?? undefined,
     notes: row.notes ?? undefined,
-    originatingHealthEventId: row.originating_health_event_id ?? undefined,
     completedHealthEventId: row.completed_health_event_id ?? undefined,
     completedAt: optionalTimestamp(row.completed_at)
   });
@@ -653,31 +699,25 @@ function careItemFromRow(row: Record<string, unknown>): CareItem {
 
 async function validateAndPrepareCareItem(
   connection: duckdb.Connection,
-  input: CreateCareItemInput & { id: string }
+  input: CreateCareItemInput & { id: string; completedAt?: string; completedHealthEventId?: string }
 ): Promise<CareItem> {
-  if (input.originatingHealthEventId) {
-    await assertHealthEventExists(connection, input.originatingHealthEventId);
-  }
   if (input.completedHealthEventId) {
     await assertHealthEventExists(connection, input.completedHealthEventId);
   }
-  if (input.originatingHealthEventId && input.completedHealthEventId && input.originatingHealthEventId === input.completedHealthEventId) {
-    throw new RepositoryValidationError("Originating and completion events must be different.");
+  if (input.status === "completed" && !input.completedHealthEventId) {
+    throw new RepositoryValidationError("Complete care items using the completion endpoint.");
   }
-  const completedAt = input.status === "completed" ? new Date().toISOString() : undefined;
   return careItemSchema.parse({
     id: input.id,
     kind: input.kind,
     title: input.title,
     dueStart: input.dueStart,
-    dueEnd: input.dueEnd,
     reminderAt: input.reminderAt,
     priority: input.priority,
     status: input.status,
     notes: input.notes,
-    originatingHealthEventId: input.originatingHealthEventId,
     completedHealthEventId: input.status === "completed" ? input.completedHealthEventId : undefined,
-    completedAt
+    completedAt: input.status === "completed" ? input.completedAt : undefined
   });
 }
 
@@ -690,15 +730,11 @@ async function assertHealthEventExists(connection: duckdb.Connection, id: string
 
 async function linkedCareItemConflicts(connection: duckdb.Connection, healthEventId: string): Promise<LinkedCareItemConflict[]> {
   const rows = await allWithParams(connection, `
-    SELECT id, title, 'originating' AS role
-    FROM care_items
-    WHERE originating_health_event_id = ?
-    UNION ALL
     SELECT id, title, 'completion' AS role
     FROM care_items
     WHERE completed_health_event_id = ?
     ORDER BY title, id;
-  `, healthEventId, healthEventId);
+  `, healthEventId);
   return rows.map((row) => ({
     id: String(row.id),
     title: String(row.title),

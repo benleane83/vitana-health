@@ -2,6 +2,8 @@ import type {
   AppBootstrap,
   CareItemListQuery,
   CareItemMutationResponse,
+  CompleteCareItemInput,
+  CompleteCareItemResponse,
   CreateCareItemInput,
   CreateHealthEventInput,
   DeleteCareItemResponse,
@@ -223,6 +225,10 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
 
   updateCareItem(id: string, input: UpdateCareItemInput): Promise<CareItemMutationResponse | undefined> {
     return this.enqueueMutation(async () => this.repository.updateCareItem(id, input));
+  }
+
+  completeCareItem(id: string, input: CompleteCareItemInput): Promise<CompleteCareItemResponse | undefined> {
+    return this.enqueueMutation(async () => this.repository.completeCareItem(id, input));
   }
 
   deleteCareItem(id: string): Promise<DeleteCareItemResponse | undefined> {

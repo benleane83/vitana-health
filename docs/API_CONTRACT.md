@@ -500,8 +500,8 @@ DELETE /api/care/health-events/:id
 The list accepts `limit` (1-100, default 20), `offset`, `search`, `kind`,
 `status`, `occurredFrom`, `occurredTo`, and `includeId`. Create and update use a
 strict body containing `kind`, `status`, and `occurredAt`, with optional
-`occurredEnd`, `provider`, and `notes`. Timestamps are ISO 8601 with an offset,
-and the end cannot precede the start. Create returns `201`; update returns `200`;
+`provider` and `notes`. `occurredAt` is the event's single Date timestamp.
+Timestamps are ISO 8601 with an offset. Create returns `201`; update returns `200`;
 both return `HealthEventMutationResponse`. Deleting returns
 `DeleteHealthEventResponse`, `404 HEALTH_EVENT_NOT_FOUND` when absent, or `409
 CARE_HEALTH_EVENT_LINK_CONFLICT` when linked care items prevent deletion.
@@ -512,15 +512,28 @@ CARE_HEALTH_EVENT_LINK_CONFLICT` when linked care items prevent deletion.
 GET    /api/care/items
 POST   /api/care/items
 PATCH  /api/care/items/:id
+POST   /api/care/items/:id/complete
 DELETE /api/care/items/:id
 ```
 
-The list accepts `limit` (1-100, default 20), `offset`, `search`, `status`,
+The list accepts `limit` (1-100, default 20), `offset`, `search`, `kind`, `status`,
 `priority`, `dueFrom`, `dueTo`, and `includeId`. Create and update use a strict
 body with `title`, `kind`, `priority`, and `status`; optional due/reminder
-timestamps, notes, and health-event links are supported. A reminder requires a
-due start and cannot be later than it. Create returns `201`; update returns
-`200`; both return `CareItemMutationResponse`. Delete returns
+timestamps and notes are supported. `dueStart` is the single Due Date timestamp.
+`reminderAt` is independent: it may be omitted or set before, on, or after the
+due date, and does not require a due date. Create returns `201`; update returns
+`200`; both return `CareItemMutationResponse`.
+
+Callers cannot create a completed item or transition an item to `completed`
+through the generic create/update endpoints. `POST /api/care/items/:id/complete`
+accepts the strict body `{ "occurredAt": "<ISO timestamp>", "kind": "<health event kind>" }`.
+It atomically creates a completed manual-entry Health Event, marks the open care
+item completed at the same timestamp, stores the internal completion link, and
+returns `CompleteCareItemResponse`. Completion provenance is returned as
+`completedHealthEventId` / `completedHealthEvent` but is not caller-authored.
+Edits to a completed item preserve its completed status, timestamp, and link.
+Missing items return `404 CARE_ITEM_NOT_FOUND`; completing a completed,
+cancelled, or skipped item returns `409 CARE_ITEM_NOT_OPEN`. Delete returns
 `DeleteCareItemResponse` or `404 CARE_ITEM_NOT_FOUND`.
 
 ### Delete an observation
@@ -720,6 +733,7 @@ All error responses follow this shape:
 | `OBSERVATION_NOT_FOUND` | 404 | Observation ID not found |
 | `HEALTH_EVENT_NOT_FOUND` | 404 | Health event ID not found |
 | `CARE_ITEM_NOT_FOUND` | 404 | Care item ID not found |
+| `CARE_ITEM_NOT_OPEN` | 409 | Care item completion was requested for a completed, cancelled, or skipped item |
 | `CARE_HEALTH_EVENT_LINK_CONFLICT` | 409 | Health event cannot be deleted while linked care items exist |
 | `DECRYPT_FAILED` | 400 | Backup passphrase was incorrect or the encrypted backup is corrupt |
 | `RESTORE_IN_PROGRESS` | 409 | Another backup restore currently owns the restore lock |

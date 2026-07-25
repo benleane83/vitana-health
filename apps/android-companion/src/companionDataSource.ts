@@ -4,6 +4,8 @@ import type {
   CareItem,
   CareItemMutationResponse,
   CareItemListQuery,
+  CompleteCareItemInput,
+  CompleteCareItemResponse,
   CreateCareItemInput,
   CreateHealthEventInput,
   DeleteCareItemResponse,
@@ -58,5 +60,6 @@ export interface CompanionCareService {
   listCareItems(query?: CareItemListQuery): Promise<PaginatedResult<CareItem>>;
   createCareItem(payload: CreateCareItemInput): Promise<CareItemMutationResponse>;
   updateCareItem(id: string, payload: CreateCareItemInput): Promise<CareItemMutationResponse>;
+  completeCareItem(id: string, payload: CompleteCareItemInput): Promise<CompleteCareItemResponse>;
   deleteCareItem(id: string): Promise<DeleteCareItemResponse>;
 }

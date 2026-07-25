@@ -4,6 +4,7 @@ import type {
   AnalyticsSummary,
   AppBootstrap,
   CareItemListQuery,
+  CompleteCareItemInput,
   CreateCareItemInput,
   CreateHealthEventInput,
   HealthDataDetail,
@@ -71,6 +72,7 @@ interface MobileApiContextValue {
   listCareItems(query?: CareItemListQuery): Promise<Awaited<ReturnType<CompanionCareService["listCareItems"]>>>;
   createCareItem(payload: CreateCareItemInput): Promise<void>;
   updateCareItem(id: string, payload: CreateCareItemInput): Promise<void>;
+  completeCareItem(id: string, payload: CompleteCareItemInput): Promise<void>;
   deleteCareItem(id: string): Promise<void>;
   refreshAfterImport(): Promise<void>;
   clearTransientData(): void;
@@ -257,6 +259,10 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     await requireCareService(source).updateCareItem(id, payload);
   }, [source]);
 
+  const completeCareItem = useCallback(async (id: string, payload: CompleteCareItemInput) => {
+    await requireCareService(source).completeCareItem(id, payload);
+  }, [source]);
+
   const deleteCareItem = useCallback(async (id: string) => {
     await requireCareService(source).deleteCareItem(id);
   }, [source]);
@@ -364,12 +370,13 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     listCareItems,
     createCareItem,
     updateCareItem,
+    completeCareItem,
     deleteCareItem,
     refreshAfterImport,
     clearTransientData,
     disconnect
   }), [
-    analytics, bootstrap, clearTransientData, connection, connectionState, createCareItem, createHealthEvent,
+    analytics, bootstrap, clearTransientData, completeCareItem, connection, connectionState, createCareItem, createHealthEvent,
     dashboardLoading, deleteCareItem, deleteHealthEvent, deleteObservation, demoMode, disconnect, error, healthDataDetail,
   importManualObservations, listCareItems, listHealthEvents, operatingMode, refreshAfterImport, refreshDashboard,
   profilePhoto, refreshTrack, reloadConnection, resetStandaloneData, setDemoMode, setOperatingMode, summary, trackLoading,
@@ -389,7 +396,7 @@ function requireCareService(source: CompanionDataSource | undefined): CompanionC
   if (
     !candidate?.listHealthEvents || !candidate.createHealthEvent || !candidate.updateHealthEvent ||
     !candidate.deleteHealthEvent || !candidate.listCareItems || !candidate.createCareItem ||
-    !candidate.updateCareItem || !candidate.deleteCareItem
+    !candidate.updateCareItem || !candidate.completeCareItem || !candidate.deleteCareItem
   ) {
     throw new Error("Switch to Connected mode to use Care.");
   }

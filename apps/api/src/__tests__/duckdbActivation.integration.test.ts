@@ -123,7 +123,7 @@ describe.skipIf(!httpfsExtensionPath)("ProfileStoreManager DuckDB runtime", () =
         data: fixture
       }], new RestoreJournal(tempDir, "fixture-seed"));
 
-      const event = await manager.getActiveStore().createHealthEvent({
+      await manager.getActiveStore().createHealthEvent({
         kind: "immunization",
         status: "completed",
         occurredAt: "2026-07-18T12:00:00.000Z"
@@ -133,8 +133,7 @@ describe.skipIf(!httpfsExtensionPath)("ProfileStoreManager DuckDB runtime", () =
         title: "Take medication",
         dueStart: "2026-08-18T14:00:00.000Z",
         priority: "normal",
-        status: "open",
-        originatingHealthEventId: event.healthEvent.id
+        status: "open"
       });
       const backupSnapshot = await manager.getActiveStore().exportData();
       expect(backupSnapshot.devices).not.toHaveLength(0);

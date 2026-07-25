@@ -4,6 +4,7 @@ import type {
   BackupInspectResponse,
   BackupRestoreResponse,
   CareItemListQuery,
+  CompleteCareItemInput,
   CreateCareItemInput,
   CreateHealthEventInput,
   DeleteObservationResponse,
@@ -251,6 +252,7 @@ export const api = {
     listCareItems: (query?: CareItemListQuery) => sharedApi.listCareItems(query),
     createCareItem: (payload: CreateCareItemInput) => sharedApi.createCareItem(payload),
     updateCareItem: (id: string, payload: CreateCareItemInput) => sharedApi.updateCareItem(id, payload),
+    completeCareItem: (id: string, payload: CompleteCareItemInput) => sharedApi.completeCareItem(id, payload),
     deleteCareItem: (id: string) => sharedApi.deleteCareItem(id)
   },
   updateObservation: (id: string, input: UpdateObservationInput) =>

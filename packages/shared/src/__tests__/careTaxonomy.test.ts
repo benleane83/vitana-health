@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  careItemListQuerySchema,
+  completeCareItemInputSchema,
   createCareItemInputSchema,
   createHealthEventInputSchema,
   healthEventSchema
@@ -8,6 +10,7 @@ import {
   careItemReminderAt,
   careItemReminderLead,
   careItemKindCodes,
+  defaultHealthEventKindForCareItem,
   healthEventKindCodes,
   normalizedCareItemKind
 } from "../types.js";
@@ -57,19 +60,29 @@ describe("care taxonomies", () => {
     const dueStart = new Date(2026, 2, 31, 12, 0, 0).toISOString();
     const oneDay = careItemReminderAt(dueStart, "one-day");
     const oneWeek = careItemReminderAt(dueStart, "one-week");
-    const oneMonth = careItemReminderAt(dueStart, "one-month");
 
     expect(oneDay).toBe(new Date(2026, 2, 30, 12, 0, 0).toISOString());
     expect(oneWeek).toBe(new Date(2026, 2, 24, 12, 0, 0).toISOString());
-    expect(oneMonth).toBe(new Date(2026, 1, 28, 12, 0, 0).toISOString());
     expect(careItemReminderLead(dueStart, oneWeek)).toBe("one-week");
-    expect(createCareItemInputSchema.safeParse({
+  });
+
+  it("accepts independent reminder dates and care item kind filters", () => {
+    expect(createCareItemInputSchema.parse({
       title: "Care task",
       kind: "follow-up",
-      dueEnd: dueStart,
-      reminderAt: oneWeek,
+      reminderAt: "2026-08-20T12:00:00.000Z",
       priority: "normal",
       status: "open"
-    }).success).toBe(false);
+    }).reminderAt).toBe("2026-08-20T12:00:00.000Z");
+    expect(careItemListQuerySchema.parse({ kind: "dental" }).kind).toBe("dental");
+  });
+
+  it("maps care kinds to completion event defaults and validates completion input", () => {
+    expect(defaultHealthEventKindForCareItem["routine-checkup"]).toBe("visit");
+    expect(defaultHealthEventKindForCareItem.medication).toBe("medication-administration");
+    expect(completeCareItemInputSchema.parse({
+      occurredAt: "2026-08-20T12:00:00.000Z",
+      kind: "visit"
+    })).toEqual({ occurredAt: "2026-08-20T12:00:00.000Z", kind: "visit" });
   });
 });

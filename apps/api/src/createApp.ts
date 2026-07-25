@@ -100,7 +100,7 @@ function companionCapabilityFor(request: express.Request): import("./pairing.js"
         ? "assigned-profile:read"
         : /^\/care\/health-events\/[^/]+$/.test(request.path)
           ? "care:write"
-          : /^\/care\/items\/[^/]+$/.test(request.path)
+          : /^\/care\/items\/[^/]+(?:\/complete)?$/.test(request.path)
             ? "care:write"
            : /^(PATCH|DELETE) \/observations\/[^/]+$/.test(route)
              ? "observations:write"
