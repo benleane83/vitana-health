@@ -4,10 +4,12 @@ import type {
   MobileMigrationBatch,
   MobileMigrationBatchAcknowledgement,
   MobileMigrationConflict,
+  MobileMigrationDuplicate,
   MobileMigrationManifest,
   MobileMigrationReceipt,
   MobileMigrationStartResponse
 } from "@vitana/shared";
+import { convertMeasurementValue, findMeasurementType, normalizeMeasurementUnit } from "@vitana/shared";
 import { nextOrdinal } from "./duckdbCommands.js";
 import { allWithParams, insertObservationRows, json, optionalJsonValue, run } from "./duckdbRows.js";
 
@@ -83,11 +85,16 @@ export async function applyMobileMigrationBatch(
     sessionId: batch.sessionId,
     batchId: batch.batchId,
     counts: { accepted: 0, duplicates: 0, conflicts: 0 },
+    duplicates: [],
     conflicts: []
   };
 
   for (const entry of batch.sourceImports) {
-    const byId = await allWithParams(connection, "SELECT id FROM imports WHERE id = ? LIMIT 1;", entry.id);
+    const byId = await allWithParams(connection, "SELECT * FROM imports WHERE id = ? LIMIT 1;", entry.id);
+    if (byId.length && !sameSourceImport(byId[0]!, entry)) {
+      addConflict(acknowledgement, "sourceImport", entry.id, "An existing source import has the same ID but different content.");
+      continue;
+    }
     const byIdentity = byId.length ? byId : await allWithParams(
       connection,
       "SELECT id FROM imports WHERE source_kind = ? AND file_name = ? AND checksum = ? LIMIT 1;",
@@ -96,7 +103,7 @@ export async function applyMobileMigrationBatch(
       entry.checksum
     );
     if (byIdentity.length) {
-      acknowledgement.counts.duplicates++;
+      addDuplicate(acknowledgement, "sourceImport", entry.id, byId.length ? "exact-id" : "source-import-identity");
       await saveAlias(connection, batch.sessionId, "sourceImport", entry.id, String(byIdentity[0]?.id));
       continue;
     }
@@ -111,17 +118,21 @@ export async function applyMobileMigrationBatch(
   }
 
   for (const entry of batch.dataSources) {
-    const existing = await allWithParams(connection, "SELECT id FROM sources WHERE id = ? LIMIT 1;", entry.id);
-    if (existing.length) {
-      acknowledgement.counts.duplicates++;
-      await saveAlias(connection, batch.sessionId, "dataSource", entry.id, entry.id);
-      continue;
-    }
     const importId = entry.importId
       ? await resolveAlias(connection, batch.sessionId, "sourceImport", entry.importId)
       : undefined;
     if (entry.importId && !importId) {
       addConflict(acknowledgement, "dataSource", entry.id, "Its source import has not been accepted.");
+      continue;
+    }
+    const existing = await allWithParams(connection, "SELECT * FROM sources WHERE id = ? LIMIT 1;", entry.id);
+    if (existing.length) {
+      if (!sameDataSource(existing[0]!, entry, importId)) {
+        addConflict(acknowledgement, "dataSource", entry.id, "An existing data source has the same ID but different content.");
+        continue;
+      }
+      addDuplicate(acknowledgement, "dataSource", entry.id, "exact-id");
+      await saveAlias(connection, batch.sessionId, "dataSource", entry.id, entry.id);
       continue;
     }
     await run(
@@ -134,12 +145,6 @@ export async function applyMobileMigrationBatch(
   }
 
   for (const entry of batch.observationGroups) {
-    const existing = await allWithParams(connection, "SELECT id FROM observation_groups WHERE id = ? LIMIT 1;", entry.id);
-    if (existing.length) {
-      acknowledgement.counts.duplicates++;
-      await saveAlias(connection, batch.sessionId, "observationGroup", entry.id, entry.id);
-      continue;
-    }
     const sourceId = entry.sourceId
       ? await resolveAlias(connection, batch.sessionId, "dataSource", entry.sourceId)
       : undefined;
@@ -148,6 +153,16 @@ export async function applyMobileMigrationBatch(
       : undefined;
     if ((entry.sourceId && !sourceId) || (entry.importId && !importId)) {
       addConflict(acknowledgement, "observationGroup", entry.id, "A source dependency has not been accepted.");
+      continue;
+    }
+    const existing = await allWithParams(connection, "SELECT * FROM observation_groups WHERE id = ? LIMIT 1;", entry.id);
+    if (existing.length) {
+      if (!sameObservationGroup(existing[0]!, entry, sourceId, importId)) {
+        addConflict(acknowledgement, "observationGroup", entry.id, "An existing observation group has the same ID but different content.");
+        continue;
+      }
+      addDuplicate(acknowledgement, "observationGroup", entry.id, "exact-id");
+      await saveAlias(connection, batch.sessionId, "observationGroup", entry.id, entry.id);
       continue;
     }
     await run(
@@ -162,11 +177,6 @@ export async function applyMobileMigrationBatch(
   }
 
   for (const entry of batch.observations) {
-    const existing = await allWithParams(connection, "SELECT id FROM observations WHERE id = ? LIMIT 1;", entry.id);
-    if (existing.length) {
-      acknowledgement.counts.duplicates++;
-      continue;
-    }
     const sourceId = await resolveAlias(connection, batch.sessionId, "dataSource", entry.sourceId);
     const groupId = entry.observationGroupId
       ? await resolveAlias(connection, batch.sessionId, "observationGroup", entry.observationGroupId)
@@ -175,9 +185,18 @@ export async function applyMobileMigrationBatch(
       addConflict(acknowledgement, "observation", entry.id, "A source dependency has not been accepted.");
       continue;
     }
-    const duplicate = await allWithParams(
+    const existing = await allWithParams(connection, "SELECT * FROM observations WHERE id = ? LIMIT 1;", entry.id);
+    if (existing.length) {
+      if (!sameObservation(existing[0]!, entry, sourceId, groupId)) {
+        addConflict(acknowledgement, "observation", entry.id, "An existing observation has the same ID but different content.");
+        continue;
+      }
+      addDuplicate(acknowledgement, "observation", entry.id, "exact-id");
+      continue;
+    }
+    const duplicateCandidates = await allWithParams(
       connection,
-      `SELECT o.id
+      `SELECT o.id, o.value, o.unit
        FROM observations o
        JOIN sources s ON s.id = o.source_id
        LEFT JOIN imports i ON i.id = s.import_id
@@ -186,7 +205,6 @@ export async function applyMobileMigrationBatch(
        WHERE o.measurement_code = ? AND o.observed_at = ? AND
          COALESCE(o.effective_start, TIMESTAMP '1970-01-01') = COALESCE(?, TIMESTAMP '1970-01-01') AND
          COALESCE(o.effective_end, TIMESTAMP '1970-01-01') = COALESCE(?, TIMESTAMP '1970-01-01') AND
-         o.value = ? AND lower(trim(o.unit)) = lower(trim(?)) AND
          (
            s.id = incoming_s.id OR (
              i.id IS NOT NULL AND incoming_i.id IS NOT NULL AND
@@ -194,12 +212,18 @@ export async function applyMobileMigrationBatch(
              i.file_name = incoming_i.file_name AND i.checksum = incoming_i.checksum
            )
          )
-       LIMIT 1;`,
+       ;`,
       sourceId, entry.measurementCode, entry.observedAt, entry.effectiveStart ?? null,
-      entry.effectiveEnd ?? null, entry.value, entry.unit
+      entry.effectiveEnd ?? null
     );
-    if (duplicate.length) {
-      acknowledgement.counts.duplicates++;
+    if (duplicateCandidates.some((candidate) => sameCanonicalMeasurement(
+      entry.measurementCode,
+      Number(candidate.value),
+      String(candidate.unit),
+      entry.value,
+      entry.unit
+    ))) {
+      addDuplicate(acknowledgement, "observation", entry.id, "canonical-observation");
       continue;
     }
     await insertObservationRows(connection, [{ ...entry, sourceId, observationGroupId: groupId }], await nextOrdinal(connection, "observations"));
@@ -342,6 +366,16 @@ function addConflict(
   acknowledgement.conflicts.push({ entityType, entityId, reason });
 }
 
+function addDuplicate(
+  acknowledgement: MobileMigrationBatchAcknowledgement,
+  entityType: MobileMigrationDuplicate["entityType"],
+  entityId: string,
+  classification: MobileMigrationDuplicate["classification"]
+): void {
+  acknowledgement.counts.duplicates++;
+  acknowledgement.duplicates.push({ entityType, entityId, classification });
+}
+
 function parseJson(value: unknown): unknown {
   return typeof value === "string" ? JSON.parse(value) : value;
 }
@@ -354,6 +388,101 @@ function sameManifest(left: MobileMigrationManifest, right: MobileMigrationManif
     Object.keys(right.counts).every((key) =>
       left.counts[key as keyof MobileMigrationManifest["counts"]] ===
       right.counts[key as keyof MobileMigrationManifest["counts"]]);
+}
+
+function sameSourceImport(row: Record<string, unknown>, entry: MobileMigrationBatch["sourceImports"][number]): boolean {
+  return String(row.source_kind) === entry.sourceKind &&
+    String(row.file_name) === entry.fileName &&
+    sameInstant(row.imported_at, entry.importedAt) &&
+    String(row.parser_version) === entry.parserVersion &&
+    String(row.checksum) === entry.checksum &&
+    Number(row.row_count) === entry.rowCount &&
+    String(row.status) === entry.status &&
+    sameJson(row.diagnostics, entry.diagnostics);
+}
+
+function sameDataSource(
+  row: Record<string, unknown>,
+  entry: MobileMigrationBatch["dataSources"][number],
+  importId: string | undefined
+): boolean {
+  return String(row.source_kind) === entry.sourceKind &&
+    String(row.label) === entry.label &&
+    optionalString(row.import_id) === importId &&
+    sameInstant(row.created_at, entry.createdAt);
+}
+
+function sameObservationGroup(
+  row: Record<string, unknown>,
+  entry: MobileMigrationBatch["observationGroups"][number],
+  sourceId: string | undefined,
+  importId: string | undefined
+): boolean {
+  return String(row.kind) === entry.kind &&
+    String(row.label) === entry.label &&
+    optionalString(row.source_id) === sourceId &&
+    optionalString(row.import_id) === importId &&
+    sameOptionalInstant(row.start_at, entry.startAt) &&
+    sameOptionalInstant(row.end_at, entry.endAt) &&
+    sameOptionalInstant(row.collected_at, entry.collectedAt) &&
+    sameJson(row.metadata, entry.metadata);
+}
+
+function sameObservation(
+  row: Record<string, unknown>,
+  entry: MobileMigrationBatch["observations"][number],
+  sourceId: string,
+  groupId: string | undefined
+): boolean {
+  return String(row.measurement_code) === entry.measurementCode &&
+    sameInstant(row.observed_at, entry.observedAt) &&
+    sameOptionalInstant(row.effective_start, entry.effectiveStart) &&
+    sameOptionalInstant(row.effective_end, entry.effectiveEnd) &&
+    Number(row.value) === entry.value &&
+    String(row.unit).trim().toLowerCase() === entry.unit.trim().toLowerCase() &&
+    String(row.source_id) === sourceId &&
+    optionalString(row.observation_group_id) === groupId &&
+    optionalString(row.device_id) === entry.deviceId &&
+    optionalString(row.note) === entry.note &&
+    sameJson(row.source_json, entry.sourceJson);
+}
+
+function sameInstant(left: unknown, right: string): boolean {
+  return new Date(left as string | number | Date).toISOString() === new Date(right).toISOString();
+}
+
+function sameOptionalInstant(left: unknown, right: string | undefined): boolean {
+  return left == null && right === undefined || left != null && right !== undefined && sameInstant(left, right);
+}
+
+function optionalString(value: unknown): string | undefined {
+  return value == null ? undefined : String(value);
+}
+
+function sameJson(left: unknown, right: unknown): boolean {
+  const parsed = typeof left === "string" ? JSON.parse(left) : left;
+  return JSON.stringify(parsed ?? undefined) === JSON.stringify(right ?? undefined);
+}
+
+function sameCanonicalMeasurement(
+  measurementCode: string,
+  leftValue: number,
+  leftUnit: string,
+  rightValue: number,
+  rightUnit: string
+): boolean {
+  const measurementType = findMeasurementType(measurementCode);
+  if (!measurementType) {
+    return leftUnit.trim().toLowerCase() === rightUnit.trim().toLowerCase() && leftValue === rightValue;
+  }
+  const canonicalUnit = measurementType.canonicalUnit;
+  const normalizedLeftUnit = normalizeMeasurementUnit(measurementType, leftUnit);
+  const normalizedRightUnit = normalizeMeasurementUnit(measurementType, rightUnit);
+  const canonicalLeft = convertMeasurementValue(leftValue, measurementType, normalizedLeftUnit, canonicalUnit);
+  const canonicalRight = convertMeasurementValue(rightValue, measurementType, normalizedRightUnit, canonicalUnit);
+  if (canonicalLeft === undefined || canonicalRight === undefined) return false;
+  const scale = Math.max(1, Math.abs(canonicalLeft), Math.abs(canonicalRight));
+  return Math.abs(canonicalLeft - canonicalRight) <= scale * 1e-9;
 }
 
 function requestError(status: number, message: string): Error {

@@ -119,16 +119,7 @@ export function migrationSql(currentVersion: number): string {
       dataset_id, profile_id, dataset_kind, lifecycle_state, is_selected, migration_fingerprint
     )
     SELECT id, id, 'standalone', 'active',
-      CASE WHEN id = (
-        SELECT profiles.id
-        FROM profiles
-        ORDER BY
-          (SELECT COUNT(*) FROM observations WHERE observations.profile_id = profiles.id) DESC,
-          (SELECT COUNT(*) FROM source_imports WHERE source_imports.profile_id = profiles.id) DESC,
-          profiles.updated_at ASC,
-          profiles.id ASC
-        LIMIT 1
-      ) THEN 1 ELSE 0 END,
+      CASE WHEN (SELECT COUNT(*) FROM profiles) = 1 THEN 1 ELSE 0 END,
       'standalone:' || id
     FROM profiles;
     CREATE UNIQUE INDEX datasets_selected_idx ON datasets(is_selected) WHERE is_selected = 1;

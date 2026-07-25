@@ -19,6 +19,7 @@ import {
   entityOutcome,
   type LocalObservationAggregate,
   type LocalObservationPage,
+  type LocalDatasetSummary,
   type LocalDatasetMetadata,
   type LocalStore,
   type LocalStoreCounts
@@ -104,6 +105,10 @@ export class SqliteLocalStore implements LocalStore {
       this.profileId = existing.profile_id;
       return;
     }
+    const datasets = await this.listDatasets();
+    if (datasets.length > 0) {
+      throw new Error("Choose a local dataset before using Standalone mode.");
+    }
     await this.database.withTransactionAsync(async () => {
       await this.database.runAsync(
         "INSERT INTO profiles (id, profile_json, updated_at) VALUES (?, ?, ?)",
@@ -121,6 +126,43 @@ export class SqliteLocalStore implements LocalStore {
       );
     });
     this.profileId = defaultProfile.id;
+  }
+
+  async listDatasets(): Promise<LocalDatasetSummary[]> {
+    const rows = await this.database.getAllAsync<{
+      dataset_id: string;
+      profile_id: string;
+      profile_json: string;
+      dataset_kind: LocalDatasetSummary["kind"];
+      lifecycle_state: LocalDatasetSummary["lifecycleState"];
+      is_selected: number;
+    }>(`
+      SELECT d.dataset_id, d.profile_id, p.profile_json, d.dataset_kind, d.lifecycle_state, d.is_selected
+      FROM datasets d
+      JOIN profiles p ON p.id = d.profile_id
+      ORDER BY p.updated_at DESC, d.dataset_id
+    `);
+    return rows.map((row) => ({
+      datasetId: row.dataset_id,
+      profileId: row.profile_id,
+      displayName: (JSON.parse(row.profile_json) as Profile).displayName,
+      kind: row.dataset_kind,
+      lifecycleState: row.lifecycle_state,
+      selected: row.is_selected === 1
+    }));
+  }
+
+  async selectDataset(datasetId: string): Promise<void> {
+    const dataset = await this.database.getFirstAsync<{ profile_id: string }>(
+      "SELECT profile_id FROM datasets WHERE dataset_id = ?",
+      datasetId
+    );
+    if (!dataset) throw new Error("The selected local dataset is unavailable.");
+    await this.database.withTransactionAsync(async () => {
+      await this.database.runAsync("UPDATE datasets SET is_selected = 0 WHERE is_selected = 1");
+      await this.database.runAsync("UPDATE datasets SET is_selected = 1 WHERE dataset_id = ?", datasetId);
+    });
+    this.profileId = dataset.profile_id;
   }
 
   async datasetMetadata(): Promise<LocalDatasetMetadata> {
@@ -350,7 +392,7 @@ export class SqliteLocalStore implements LocalStore {
     await this.database.runAsync(
       `UPDATE datasets SET lifecycle_state = 'archived', remote_binding_json = ?,
        migration_receipt_json = ?, archived_at = ? WHERE profile_id = ? AND lifecycle_state = 'active'`,
-      JSON.stringify({ serverUrl, profileId: receipt.destinationProfileId }),
+      JSON.stringify({ serverUrl, profileId: receipt.destinationProfileId, pairingId: receipt.pairingId }),
       JSON.stringify(receipt),
       archivedAt,
       this.requireProfileId()

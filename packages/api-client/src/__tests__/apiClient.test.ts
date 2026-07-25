@@ -169,6 +169,66 @@ describe("createApiClient", () => {
     await expect(client.assignedProfiles()).rejects.toThrow();
   });
 
+  it("uses the resumable companion migration endpoints", async () => {
+    const seen: ApiTransportRequest[] = [];
+    const transport = async (request: ApiTransportRequest) => {
+      seen.push(request);
+      if (request.path.endsWith("/batches")) {
+        return response({
+          sessionId: "session/1",
+          batchId: "batch-1",
+          counts: { accepted: 0, duplicates: 1, conflicts: 0 },
+          duplicates: [{ entityType: "observation", entityId: "observation-1", classification: "exact-id" }],
+          conflicts: []
+        });
+      }
+      if (request.path.endsWith("/complete")) {
+        return response({
+          receiptId: "receipt-1",
+          sessionId: "session/1",
+          pairingId: "pairing-1",
+          destinationProfileId: "profile-1",
+          datasetFingerprint: "standalone:dataset-1",
+          completedAt: "2026-07-25T00:00:00.000Z",
+          counts: { accepted: 0, duplicates: 1, conflicts: 0 }
+        });
+      }
+      return response({
+        sessionId: "session/1",
+        destinationProfileId: "profile-1",
+        processedBatchIds: [],
+        completed: false
+      }, 201);
+    };
+    const client = createApiClient(transport);
+    const manifest = {
+      protocolVersion: 1 as const,
+      datasetId: "dataset-1",
+      datasetFingerprint: "standalone:dataset-1",
+      sourceProfileId: "mobile-profile",
+      counts: { sourceImports: 0, dataSources: 0, observationGroups: 0, observations: 1 }
+    };
+
+    const started = await client.mobileMigration.start({ manifest });
+    const acknowledgement = await client.mobileMigration.uploadBatch({
+      protocolVersion: 1,
+      sessionId: started.sessionId,
+      batchId: "batch-1",
+      sourceImports: [],
+      dataSources: [],
+      observationGroups: [],
+      observations: []
+    });
+    await client.mobileMigration.complete({ protocolVersion: 1, sessionId: started.sessionId });
+
+    expect(acknowledgement.duplicates[0]?.classification).toBe("exact-id");
+    expect(seen.map(({ method, path }) => ({ method, path }))).toEqual([
+      { method: "POST", path: "/api/companion/migrations" },
+      { method: "POST", path: "/api/companion/migrations/session%2F1/batches" },
+      { method: "POST", path: "/api/companion/migrations/session%2F1/complete" }
+    ]);
+  });
+
   it("posts generic structured-upload preview and commit requests", async () => {
     const seen: ApiTransportRequest[] = [];
     const transport = async (request: ApiTransportRequest) => {

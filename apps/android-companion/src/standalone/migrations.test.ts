@@ -12,7 +12,8 @@ describe("standalone schema migrations", () => {
     const incrementalSql = migrationSql(1);
     expect(incrementalSql).toContain("CREATE TABLE datasets");
     expect(incrementalSql).toContain("migration_receipt_json");
-    expect(incrementalSql).toContain("COUNT(*) FROM observations");
+    expect(incrementalSql).toContain("SELECT COUNT(*) FROM profiles");
+    expect(incrementalSql).not.toContain("COUNT(*) FROM observations");
     expect(incrementalSql).toContain(`PRAGMA user_version = ${LOCAL_SCHEMA_VERSION}`);
   });
 

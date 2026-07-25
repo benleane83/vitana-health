@@ -17,10 +17,19 @@ export interface LocalDatasetMetadata {
   profileId: string;
   kind: "standalone" | "connected";
   lifecycleState: "active" | "archived";
-  remoteBinding?: { serverUrl: string; profileId: string };
+  remoteBinding?: { serverUrl: string; profileId: string; pairingId: string };
   migrationFingerprint: string;
   migrationReceipt?: MobileMigrationReceipt;
   archivedAt?: string;
+}
+
+export interface LocalDatasetSummary {
+  datasetId: string;
+  profileId: string;
+  displayName: string;
+  kind: LocalDatasetMetadata["kind"];
+  lifecycleState: LocalDatasetMetadata["lifecycleState"];
+  selected: boolean;
 }
 
 export interface LocalStoreCounts {
@@ -59,6 +68,8 @@ export interface LocalObservationPage {
 
 export interface LocalStore {
   initialize(defaultProfile: Profile): Promise<void>;
+  listDatasets(): Promise<LocalDatasetSummary[]>;
+  selectDataset(datasetId: string): Promise<void>;
   datasetMetadata(): Promise<LocalDatasetMetadata>;
   getProfile(): Promise<Profile>;
   counts(): Promise<LocalStoreCounts>;

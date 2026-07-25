@@ -38,6 +38,7 @@ import type { CompanionMutationService } from "./companionDataSource";
 import type { CompanionObservationMutationService } from "./companionDataSource";
 import { createStandaloneDataSource } from "./standalone/standaloneDataSource";
 import type { StandaloneMigrationSource } from "./standalone/standaloneDataSource";
+import type { LocalDatasetSummary } from "./standalone/localStore";
 import { userFacingError } from "./userFacingError";
 import { queueConnectionRevocation, retryPendingRevocation } from "./pendingRevocation";
 
@@ -60,6 +61,8 @@ interface MobileApiContextValue {
   reloadConnection(): Promise<void>;
   setDemoMode(enabled: boolean): Promise<void>;
   setOperatingMode(mode: CompanionOperatingMode): Promise<void>;
+  listStandaloneDatasets(): Promise<LocalDatasetSummary[]>;
+  selectStandaloneDataset(datasetId: string): Promise<void>;
   standaloneMigrationManifest(): Promise<MobileMigrationManifest>;
   migrateStandaloneData(): Promise<MobileMigrationReceipt>;
   refreshDashboard(): Promise<void>;
@@ -158,6 +161,11 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     return migrationSource.migrationManifest();
   }, [standaloneSource]);
 
+  const listStandaloneDatasets = useCallback(async () => {
+    const migrationSource = standaloneSource as StandaloneMigrationSource | undefined;
+    return migrationSource ? migrationSource.listDatasets() : [];
+  }, [standaloneSource]);
+
   const migrateStandaloneData = useCallback(async () => {
     if (!connection?.token) throw new Error("Pair with a PC before migrating local data.");
     const migrationSource = standaloneSource as StandaloneMigrationSource | undefined;
@@ -222,6 +230,16 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
       if (generation.current === requestGeneration) setTrackLoading(false);
     }
   }, [classifyError, source]);
+
+  const selectStandaloneDataset = useCallback(async (datasetId: string) => {
+    const migrationSource = standaloneSource as StandaloneMigrationSource | undefined;
+    if (!migrationSource) throw new Error("Switch to Standalone mode before selecting local data.");
+    await migrationSource.selectDataset(datasetId);
+    generation.current += 1;
+    clearHealthData();
+    setError(undefined);
+    await Promise.all([refreshDashboard(), refreshTrack()]);
+  }, [clearHealthData, refreshDashboard, refreshTrack, standaloneSource]);
 
   const healthDataDetail = useCallback(async (measurementCode: string, page?: DetailPage) => {
     if (!source) throw new Error("Health data is unavailable while the companion is disconnected.");
@@ -370,6 +388,8 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     reloadConnection,
     setDemoMode,
     setOperatingMode,
+    listStandaloneDatasets,
+    selectStandaloneDataset,
     standaloneMigrationManifest,
     migrateStandaloneData,
     refreshDashboard,
@@ -393,9 +413,9 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
   }), [
     analytics, bootstrap, clearTransientData, connection, connectionState, createCareItem, createHealthEvent,
     dashboardLoading, deleteCareItem, deleteHealthEvent, deleteObservation, demoMode, disconnect, error, healthDataDetail,
-  importManualObservations, listCareItems, listHealthEvents, operatingMode, refreshAfterImport, refreshDashboard,
+  importManualObservations, listCareItems, listHealthEvents, listStandaloneDatasets, operatingMode, refreshAfterImport, refreshDashboard,
   refreshTrack, reloadConnection, resetStandaloneData, setDemoMode, setOperatingMode, summary, trackLoading,
-  migrateStandaloneData, migrationProgress, standaloneMigrationManifest, transientRevision, updateCareItem, updateHealthEvent, updateObservation
+  migrateStandaloneData, migrationProgress, selectStandaloneDataset, standaloneMigrationManifest, transientRevision, updateCareItem, updateHealthEvent, updateObservation
   ]);
   return <MobileApiContext.Provider value={value}>{children}</MobileApiContext.Provider>;
 }

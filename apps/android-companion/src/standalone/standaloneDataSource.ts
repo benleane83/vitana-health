@@ -16,8 +16,11 @@ import {
   resetStandaloneStorage
 } from "./createStandaloneRepository";
 import type { LocalProfileRepository } from "./localRepository";
+import type { LocalDatasetSummary } from "./localStore";
 
 export interface StandaloneMigrationSource {
+  listDatasets(): Promise<LocalDatasetSummary[]>;
+  selectDataset(datasetId: string): Promise<void>;
   migrationManifest(): ReturnType<LocalProfileRepository["migrationManifest"]>;
   exportMigrationBatches(sessionId: string): ReturnType<LocalProfileRepository["exportMigrationBatches"]>;
   archiveAfterMigration(receipt: MobileMigrationReceipt, serverUrl: string): Promise<void>;
@@ -44,6 +47,8 @@ export function createStandaloneDataSource(): CompanionDataSource & CompanionMut
     },
     importManualObservations: async (payload: ManualObservationPayload) =>
       (await getRepository()).importManualObservations(payload),
+    listDatasets: async () => (await repository).listDatasets(),
+    selectDataset: async (datasetId) => (await repository).selectDataset(datasetId),
     migrationManifest: async () => (await repository).migrationManifest(),
     exportMigrationBatches: async (sessionId) => (await repository).exportMigrationBatches(sessionId),
     archiveAfterMigration: async (receipt, serverUrl) =>

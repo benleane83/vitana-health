@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -17,6 +18,7 @@ import { TrackScreen } from "./src/screens/TrackScreen";
 import { CareScreen } from "./src/screens/CareScreen";
 import { Button, Card, Message, Screen } from "./src/ui/components";
 import { colors, radii, spacing, type } from "./src/ui/theme";
+import type { LocalDatasetSummary } from "./src/standalone/localStore";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tabs = createBottomTabNavigator<TabParamList>();
@@ -104,18 +106,40 @@ function ConnectionScreen({ navigation }: NativeStackScreenProps<RootStackParamL
     demoMode,
     disconnect,
     error,
+    listStandaloneDatasets,
     migrateStandaloneData,
     migrationProgress,
     operatingMode,
     resetStandaloneData,
+    selectStandaloneDataset,
     setDemoMode,
     setOperatingMode,
     standaloneMigrationManifest,
     standaloneMode
   } = useMobileApi();
   const connectedAvailable = Boolean(connection?.token);
+  const migrationActive = migrationProgress !== undefined;
+  const [localDatasets, setLocalDatasets] = useState<LocalDatasetSummary[]>([]);
+
+  useEffect(() => {
+    if (!standaloneMode || demoMode) {
+      setLocalDatasets([]);
+      return;
+    }
+    void listStandaloneDatasets().then(setLocalDatasets).catch(() => setLocalDatasets([]));
+  }, [demoMode, listStandaloneDatasets, standaloneMode]);
+
+  async function chooseDataset(datasetId: string) {
+    try {
+      await selectStandaloneDataset(datasetId);
+      setLocalDatasets(await listStandaloneDatasets());
+    } catch (caught) {
+      Alert.alert("Unable to select local data", caught instanceof Error ? caught.message : "Try again.");
+    }
+  }
 
   function confirmOperatingMode(nextMode: "standalone" | "connected") {
+    if (migrationActive) return;
     if (nextMode === operatingMode) return;
     if (nextMode === "connected") {
       void standaloneMigrationManifest().then((manifest) => {
@@ -179,6 +203,22 @@ function ConnectionScreen({ navigation }: NativeStackScreenProps<RootStackParamL
           <Text style={styles.meta}>Uploading migration batch {migrationProgress.uploaded} of {migrationProgress.total}…</Text>
         ) : null}
       </Card>
+      {localDatasets.length > 1 ? (
+        <Card>
+          <Text style={styles.settingTitle}>Local dataset</Text>
+          <Text style={styles.meta}>Choose which Standalone profile to use on this phone.</Text>
+          {localDatasets.map((dataset) => (
+            <Button
+              disabled={migrationActive || dataset.selected}
+              key={dataset.datasetId}
+              onPress={() => { void chooseDataset(dataset.datasetId); }}
+              secondary={!dataset.selected}
+            >
+              {dataset.displayName}{dataset.selected ? " (selected)" : ""}
+            </Button>
+          ))}
+        </Card>
+      ) : null}
       <View style={styles.modeSetting}>
         <View style={styles.settingText}>
           <Text style={styles.settingTitle}>Operating mode</Text>
@@ -187,7 +227,7 @@ function ConnectionScreen({ navigation }: NativeStackScreenProps<RootStackParamL
         <View accessibilityRole="radiogroup" style={styles.modeControl}>
           {(["standalone", "connected"] as const).map((mode) => {
             const selected = operatingMode === mode;
-            const disabled = demoMode || (mode === "connected" && !connectedAvailable);
+            const disabled = migrationActive || demoMode || (mode === "connected" && !connectedAvailable);
             return (
               <Pressable
                 accessibilityRole="radio"
@@ -218,18 +258,19 @@ function ConnectionScreen({ navigation }: NativeStackScreenProps<RootStackParamL
         </View>
         <Switch
           accessibilityLabel="Demo mode"
+          disabled={migrationActive}
           value={demoMode}
           onValueChange={(enabled) => { void setDemoMode(enabled); }}
         />
       </View>
-      {!demoMode ? <Button onPress={() => navigation.navigate("Pair")}>{connection ? "Re-pair with PC" : "Pair with PC"}</Button> : null}
+      {!demoMode ? <Button disabled={migrationActive} onPress={() => navigation.navigate("Pair")}>{connection ? "Re-pair with PC" : "Pair with PC"}</Button> : null}
       {connection && !demoMode ? (
-        <Button secondary onPress={() => {
+        <Button disabled={migrationActive} secondary onPress={() => {
           void disconnect().then(() => navigation.goBack()).catch(() => undefined);
         }}>Unpair</Button>
       ) : null}
       {standaloneMode && !demoMode ? (
-        <Button secondary onPress={() => Alert.alert(
+        <Button disabled={migrationActive} secondary onPress={() => Alert.alert(
           "Reset standalone data?",
           "This permanently deletes the local profile and all readings stored by this test app.",
           [

@@ -73,12 +73,26 @@ export const mobileMigrationConflictSchema = z.object({
   reason: z.string()
 }).strict();
 
+export const mobileMigrationDuplicateSchema = z.object({
+  entityType: z.enum(["sourceImport", "dataSource", "observationGroup", "observation"]),
+  entityId: z.string(),
+  classification: z.enum(["exact-id", "source-import-identity", "canonical-observation"])
+}).strict();
+
 export const mobileMigrationBatchAcknowledgementSchema = z.object({
   sessionId: z.string(),
   batchId: z.string(),
   counts: mobileMigrationEntityCountsSchema,
+  duplicates: z.array(mobileMigrationDuplicateSchema),
   conflicts: z.array(mobileMigrationConflictSchema)
-}).strict();
+}).strict().superRefine((value, context) => {
+  if (value.duplicates.length !== value.counts.duplicates) {
+    context.addIssue({ code: "custom", path: ["duplicates"], message: "Duplicate details must match the duplicate count." });
+  }
+  if (value.conflicts.length !== value.counts.conflicts) {
+    context.addIssue({ code: "custom", path: ["conflicts"], message: "Conflict details must match the conflict count." });
+  }
+});
 
 export const mobileMigrationCompletionRequestSchema = z.object({
   protocolVersion: z.literal(MOBILE_MIGRATION_PROTOCOL_VERSION),
@@ -101,6 +115,7 @@ export type MobileMigrationStartRequest = z.infer<typeof mobileMigrationStartReq
 export type MobileMigrationStartResponse = z.infer<typeof mobileMigrationStartResponseSchema>;
 export type MobileMigrationBatch = z.infer<typeof mobileMigrationBatchSchema>;
 export type MobileMigrationConflict = z.infer<typeof mobileMigrationConflictSchema>;
+export type MobileMigrationDuplicate = z.infer<typeof mobileMigrationDuplicateSchema>;
 export type MobileMigrationBatchAcknowledgement = z.infer<typeof mobileMigrationBatchAcknowledgementSchema>;
 export type MobileMigrationCompletionRequest = z.infer<typeof mobileMigrationCompletionRequestSchema>;
 export type MobileMigrationReceipt = z.infer<typeof mobileMigrationReceiptSchema>;

@@ -56,6 +56,22 @@ export class MemoryLocalStore implements LocalStore {
     }
   }
 
+  async listDatasets() {
+    return [...this.state.profiles.values()].map((profile) => ({
+      datasetId: profile.id,
+      profileId: profile.id,
+      displayName: profile.displayName,
+      kind: "standalone" as const,
+      lifecycleState: this.archivedReceipt && this.profileId === profile.id ? "archived" as const : "active" as const,
+      selected: this.profileId === profile.id
+    }));
+  }
+
+  async selectDataset(datasetId: string): Promise<void> {
+    if (!this.state.profiles.has(datasetId)) throw new Error("The selected local dataset is unavailable.");
+    this.profileId = datasetId;
+  }
+
   async getProfile(): Promise<Profile> {
     const profile = this.profileId ? this.state.profiles.get(this.profileId) : undefined;
     if (!profile) throw new Error("The local profile has not been initialized.");

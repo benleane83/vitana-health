@@ -50,7 +50,7 @@ describe("DuckDbRepository fidelity", () => {
       datasetId: "mobile-dataset",
       datasetFingerprint: "standalone:mobile-dataset",
       sourceProfileId: "mobile-profile",
-      counts: { sourceImports: 1, dataSources: 2, observationGroups: 0, observations: 2 }
+      counts: { sourceImports: 1, dataSources: 2, observationGroups: 0, observations: 3 }
     };
 
     try {
@@ -81,17 +81,34 @@ describe("DuckDbRepository fidelity", () => {
           ...fixture.observations[0]!,
           id: "mobile-semantic-duplicate",
           sourceId: "mobile-source-same",
-          deviceId: undefined
+          observationGroupId: undefined,
+          deviceId: undefined,
+          value: fixture.observations[0]!.value * 2.2046226218487757,
+          unit: "lb"
         }, {
           ...fixture.observations[0]!,
           id: "mobile-cross-source-lookalike",
           sourceId: "mobile-source-other",
+          observationGroupId: undefined,
+          deviceId: undefined
+        }, {
+          ...fixture.observations[0]!,
+          value: fixture.observations[0]!.value + 1,
+          sourceId: "mobile-source-same",
+          observationGroupId: undefined,
           deviceId: undefined
         }]
       };
 
       const acknowledgement = await repository.applyMobileMigrationBatch("pairing-1", batch);
-      expect(acknowledgement.counts).toEqual({ accepted: 3, duplicates: 2, conflicts: 0 });
+      expect(acknowledgement.counts).toEqual({ accepted: 3, duplicates: 2, conflicts: 1 });
+      expect(acknowledgement.duplicates).toEqual([
+        expect.objectContaining({ entityType: "sourceImport", classification: "source-import-identity" }),
+        expect.objectContaining({ entityType: "observation", classification: "canonical-observation" })
+      ]);
+      expect(acknowledgement.conflicts).toEqual([
+        expect.objectContaining({ entityType: "observation", entityId: fixture.observations[0]!.id })
+      ]);
       expect(await repository.applyMobileMigrationBatch("pairing-1", batch)).toEqual(acknowledgement);
       const receipt = await repository.completeMobileMigration("pairing-1", started.sessionId);
       expect(receipt.counts).toEqual(acknowledgement.counts);
@@ -102,6 +119,92 @@ describe("DuckDbRepository fidelity", () => {
       await repository.close();
     }
   });
+
+  it.skipIf(!httpfsExtensionPath)("rolls back failed batches and resumes processed batches after reopen", async () => {
+    const databasePath = join(root, "databases", "mobile-migration-resume.duckdb-poc");
+    const fixture = createDuckDbHealthStoreFixture();
+    const options = { httpfsExtensionPath };
+    const manifest = {
+      protocolVersion: 1 as const,
+      datasetId: "resume-dataset",
+      datasetFingerprint: "standalone:resume-dataset",
+      sourceProfileId: "resume-profile",
+      counts: { sourceImports: 1, dataSources: 1, observationGroups: 0, observations: 1 }
+    };
+    const sourceImport = {
+      ...fixture.sourceImports[0]!,
+      id: "resume-import",
+      checksum: "resume-checksum",
+      fileName: "resume.json",
+      rawContent: undefined
+    };
+    const dataSource = {
+      id: "resume-source",
+      sourceKind: "manual-entry" as const,
+      label: "Resume source",
+      importId: sourceImport.id,
+      createdAt: "2026-07-25T00:00:00.000Z"
+    };
+
+    const first = await DuckDbRepository.hydrate(root, databasePath, key, fixture, options);
+    let sessionId: string;
+    try {
+      const started = await first.startMobileMigration("pairing-resume", manifest);
+      sessionId = started.sessionId;
+      await expect(first.applyMobileMigrationBatch("pairing-resume", {
+        protocolVersion: 1,
+        sessionId,
+        batchId: "failed-source",
+        sourceImports: [sourceImport],
+        dataSources: [{ ...dataSource, createdAt: "not-a-timestamp" }],
+        observationGroups: [],
+        observations: []
+      })).rejects.toThrow();
+      expect((await first.snapshot()).sourceImports.some((entry) => entry.id === sourceImport.id)).toBe(false);
+
+      await first.applyMobileMigrationBatch("pairing-resume", {
+        protocolVersion: 1,
+        sessionId,
+        batchId: "source-graph",
+        sourceImports: [sourceImport],
+        dataSources: [dataSource],
+        observationGroups: [],
+        observations: []
+      });
+    } finally {
+      await first.close();
+    }
+
+    const reopened = await DuckDbRepository.open(root, databasePath, key, options);
+    try {
+      const resumed = await reopened.startMobileMigration("pairing-resume", manifest);
+      expect(resumed).toMatchObject({
+        sessionId: sessionId!,
+        processedBatchIds: ["source-graph"],
+        completed: false
+      });
+      await reopened.applyMobileMigrationBatch("pairing-resume", {
+        protocolVersion: 1,
+        sessionId: sessionId!,
+        batchId: "observations",
+        sourceImports: [],
+        dataSources: [],
+        observationGroups: [],
+        observations: [{
+          ...fixture.observations[0]!,
+          id: "resume-observation",
+          sourceId: dataSource.id,
+          observationGroupId: undefined,
+          deviceId: undefined
+        }]
+      });
+      await expect(reopened.completeMobileMigration("pairing-resume", sessionId!)).resolves.toMatchObject({
+        counts: { accepted: 3, duplicates: 0, conflicts: 0 }
+      });
+    } finally {
+      await reopened.close();
+    }
+  }, 30_000);
 
   it.skipIf(!httpfsExtensionPath)("resets registry measurement metadata without changing observations", async () => {
     const databasePath = join(root, "databases", "health-store-registry-reset.duckdb-poc");
@@ -947,7 +1050,7 @@ describe("DuckDbRepository fidelity", () => {
 
     const upgraded = await DuckDbRepository.open(root, databasePath, key, options);
     try {
-      expect(await upgraded.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+      expect(await upgraded.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
       expect(await upgraded.dailyMetrics()).toEqual([]);
       expect(await upgraded.weeklyMetrics()).toEqual([]);
     } finally {
@@ -974,7 +1077,7 @@ describe("DuckDbRepository fidelity", () => {
 
     const reopened = await DuckDbRepository.open(root, databasePath, key, options);
     try {
-      expect(await reopened.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+      expect(await reopened.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     } finally {
       await reopened.close();
     }
@@ -1049,7 +1152,9 @@ describe("DuckDbRepository fidelity", () => {
     await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (6, CURRENT_TIMESTAMP, 'synthetic');");
     await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (7, CURRENT_TIMESTAMP, 'synthetic');");
     await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (8, CURRENT_TIMESTAMP, 'synthetic');");
-    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (9, CURRENT_TIMESTAMP, 'future');");
+    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (9, CURRENT_TIMESTAMP, 'synthetic');");
+    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (10, CURRENT_TIMESTAMP, 'synthetic');");
+    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (11, CURRENT_TIMESTAMP, 'future');");
     await execSql(futureHandle.connection, "CHECKPOINT;");
     await closeEncryptedDuckDbDatabase(futureHandle);
     const futureHash = hashFile(futurePath);

@@ -48,6 +48,15 @@ export class LocalProfileRepository implements MobileProfileRepository {
     };
   }
 
+  listDatasets() {
+    return this.store.listDatasets();
+  }
+
+  async selectDataset(datasetId: string): Promise<void> {
+    await this.store.selectDataset(datasetId);
+    this.initialized = Promise.resolve();
+  }
+
   async analytics() {
     await this.ensureInitialized();
     const [profile, counts, observations] = await Promise.all([

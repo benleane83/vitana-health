@@ -57,6 +57,7 @@ function store(profileId: string) {
       sessionId: batch.sessionId,
       batchId: batch.batchId,
       counts: { accepted: 0, duplicates: 0, conflicts: 0 },
+      duplicates: [],
       conflicts: []
     })),
     completeMobileMigration: vi.fn(async () => ({
