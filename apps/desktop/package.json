@@ -9,11 +9,11 @@
   "vitanaUpdateChannel": "production",
   "dependencies": {
     "@vitana/api": "file:../api",
-    "electron-updater": "6.6.2"
+    "electron-updater": "6.8.9"
   },
   "devDependencies": {
     "electron": "43.1.0",
-    "electron-builder": "26.13.0"
+    "electron-builder": "26.15.3"
   },
   "scripts": {
     "prepackage": "node ../../scripts/prepare-duckdb-httpfs.mjs --output build/duckdb-extensions --skip-runtime-verification",

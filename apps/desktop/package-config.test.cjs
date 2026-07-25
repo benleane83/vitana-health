@@ -49,7 +49,7 @@ test("Windows preview packages use checksummed GitHub updates without Authentico
     channel: "latest",
     releaseType: "release"
   }]);
-  assert.equal(packageJson.dependencies["electron-updater"], "6.6.2");
+  assert.equal(packageJson.dependencies["electron-updater"], "6.8.9");
 });
 
 test("Store packages use an isolated AppX target and placeholder identity", () => {
