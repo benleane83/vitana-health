@@ -116,6 +116,13 @@ import {
   all,
   exec
 } from "./duckdbRows.js";
+import {
+  createReplicaSnapshot,
+  readReplicaDeltaPage,
+  readReplicaSnapshotPage,
+  recordReplicaChanges,
+  replicaHighWaterMark
+} from "./duckdbReplicaSync.js";
 
 export { digestHealthStoreData } from "./duckdbExport.js";
 export type {
@@ -202,7 +209,7 @@ export class DuckDbRepository implements ProfileRepository {
   }
 
   private async reconcileDefaultMeasurementTypes(): Promise<void> {
-    await reconcileDefaultMeasurementTypes(this.connection, (operation) => this.transaction(operation));
+    await reconcileDefaultMeasurementTypes(this.connection, (operation) => this.transaction(operation, true));
   }
 
   async snapshot(options: { includeRaw?: boolean } = { includeRaw: true }): Promise<HealthStoreData> {
@@ -247,7 +254,7 @@ export class DuckDbRepository implements ProfileRepository {
 
   async replaceProfile(profile: HealthStoreData["profile"]): Promise<HealthStoreData["profile"]> {
     this.assertOpen();
-    return this.transaction(() => replaceDuckDbProfile(this.connection, profile));
+    return this.transaction(() => replaceDuckDbProfile(this.connection, profile), true);
   }
 
   async getProfilePhoto() {
@@ -267,12 +274,12 @@ export class DuckDbRepository implements ProfileRepository {
 
   async resetMeasurementTypeMetadataFromRegistry(): Promise<MeasurementRegistryResetResult> {
     this.assertOpen();
-    return resetMeasurementTypeMetadataFromRegistry(this.connection, (operation) => this.transaction(operation));
+    return resetMeasurementTypeMetadataFromRegistry(this.connection, (operation) => this.transaction(operation, true));
   }
 
   async mergeImport(parsed: DuckDbImport): Promise<ImportMutationResult> {
     this.assertOpen();
-    return this.transaction(() => mergeDuckDbImport(this.connection, parsed));
+    return this.transaction(() => mergeDuckDbImport(this.connection, parsed), true);
   }
 
   async startMobileMigration(pairingId: string, manifest: MobileMigrationManifest) {
@@ -290,7 +297,7 @@ export class DuckDbRepository implements ProfileRepository {
     return this.transaction(() => applyMobileMigrationBatch(this.connection, {
       pairingId,
       destinationProfileId: profile.id
-    }, batch));
+    }, batch), true);
   }
 
   async completeMobileMigration(pairingId: string, sessionId: string) {
@@ -300,6 +307,27 @@ export class DuckDbRepository implements ProfileRepository {
       pairingId,
       destinationProfileId: profile.id
     }, sessionId));
+  }
+
+  async getReplicaHighWaterMark() {
+    this.assertOpen();
+    return replicaHighWaterMark(this.connection);
+  }
+
+  async startReplicaSnapshot(pairingId: string): Promise<string> {
+    this.assertOpen();
+    return this.transaction(async () =>
+      createReplicaSnapshot(this.connection, pairingId, await snapshotDuckDb(this.connection, { includeRaw: false })));
+  }
+
+  async replicaSnapshotPage(pairingId: string, snapshotId: string, offset: number, limit: number) {
+    this.assertOpen();
+    return readReplicaSnapshotPage(this.connection, pairingId, snapshotId, offset, limit);
+  }
+
+  async replicaDeltaPage(afterSequence: number, highWaterSequence: number | undefined, limit: number) {
+    this.assertOpen();
+    return readReplicaDeltaPage(this.connection, afterSequence, highWaterSequence, limit);
   }
 
   async addInsight(insight: HealthStoreData["insights"][number]): Promise<HealthStoreData["insights"][number]> {
@@ -359,42 +387,42 @@ export class DuckDbRepository implements ProfileRepository {
 
   async insertObservationRecord(observation: Observation): Promise<boolean> {
     this.assertOpen();
-    return this.transaction(() => insertDuckDbObservationRecord(this.connection, observation));
+    return this.transaction(() => insertDuckDbObservationRecord(this.connection, observation), true);
   }
 
   async importObservationRecords(parsed: Pick<DuckDbImport, "sourceImport" | "dataSource" | "observations">): Promise<number> {
     this.assertOpen();
-    return this.transaction(() => importDuckDbObservationRecords(this.connection, parsed));
+    return this.transaction(() => importDuckDbObservationRecords(this.connection, parsed), true);
   }
 
   async deleteObservationRecord(id: string): Promise<boolean> {
     this.assertOpen();
-    return this.transaction(() => deleteDuckDbObservationRecord(this.connection, id));
+    return this.transaction(() => deleteDuckDbObservationRecord(this.connection, id), true);
   }
 
   async deleteObservationRecordsByMeasurementCode(measurementCode: string): Promise<number> {
     this.assertOpen();
-    return this.transaction(() => deleteDuckDbObservationRecordsByMeasurementCode(this.connection, measurementCode));
+    return this.transaction(() => deleteDuckDbObservationRecordsByMeasurementCode(this.connection, measurementCode), true);
   }
 
   async deleteObservation(id: string): Promise<DeleteObservationResponse | undefined> {
     this.assertOpen();
-    return this.transaction(() => deleteDuckDbObservation(this.connection, id));
+    return this.transaction(() => deleteDuckDbObservation(this.connection, id), true);
   }
 
   async updateObservation(id: string, input: UpdateObservationInput): Promise<UpdateObservationResponse | undefined> {
     this.assertOpen();
-    return this.transaction(() => updateDuckDbObservation(this.connection, id, input));
+    return this.transaction(() => updateDuckDbObservation(this.connection, id, input), true);
   }
 
   async deleteObservationsByMeasurementCode(measurementCode: string): Promise<DeleteObservationsByTypeResponse> {
     this.assertOpen();
-    return this.transaction(() => deleteDuckDbObservationsByMeasurementCode(this.connection, measurementCode));
+    return this.transaction(() => deleteDuckDbObservationsByMeasurementCode(this.connection, measurementCode), true);
   }
 
   async deleteDailyAggregateStepSamples(): Promise<DeleteObservationsByTypeResponse> {
     this.assertOpen();
-    return this.transaction(() => deleteDuckDbDailyAggregateStepSamples(this.connection));
+    return this.transaction(() => deleteDuckDbDailyAggregateStepSamples(this.connection), true);
   }
 
   async summary() {
@@ -420,7 +448,7 @@ export class DuckDbRepository implements ProfileRepository {
     return this.transaction(async () => {
       await upsertDuckDbPersonalReferenceRange(this.connection, measurementCode, input);
       return readReferenceRangeState(this.connection, measurementCode);
-    });
+    }, true);
   }
 
   async deletePersonalReferenceRange(measurementCode: string) {
@@ -428,7 +456,7 @@ export class DuckDbRepository implements ProfileRepository {
     return this.transaction(async () => {
       await deleteDuckDbPersonalReferenceRange(this.connection, measurementCode);
       return readReferenceRangeState(this.connection, measurementCode);
-    });
+    }, true);
   }
 
   async dailyMetrics(measurementCode?: string): Promise<DuckDbDailyMetric[]> {
@@ -489,10 +517,18 @@ export class DuckDbRepository implements ProfileRepository {
     }
   }
 
-  private async transaction<T>(operation: () => Promise<T>): Promise<T> {
+  private async transaction<T>(operation: () => Promise<T>, trackReplica = false): Promise<T> {
     await exec(this.connection, "BEGIN TRANSACTION;");
     try {
+      const before = trackReplica ? await snapshotDuckDb(this.connection, { includeRaw: false }) : undefined;
       const result = await operation();
+      if (before) {
+        await recordReplicaChanges(
+          this.connection,
+          before,
+          await snapshotDuckDb(this.connection, { includeRaw: false })
+        );
+      }
       await this.testHooks.beforeTransactionCommit?.();
       await exec(this.connection, "COMMIT;");
       return result;

@@ -38,6 +38,10 @@ import {
 import type { CompanionMutationService } from "./companionDataSource";
 import type { CompanionObservationMutationService } from "./companionDataSource";
 import { createStandaloneDataSource } from "./standalone/standaloneDataSource";
+import {
+  createConnectedDataSource,
+  type ConnectedReplicaMaintenance
+} from "./connected/connectedDataSource";
 import type { StandaloneMigrationSource } from "./standalone/standaloneDataSource";
 import type { LocalDatasetSummary } from "./standalone/localStore";
 import { userFacingError } from "./userFacingError";
@@ -117,7 +121,7 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     if (!preferencesLoaded) return undefined;
     if (demoMode) return demoSource;
     if (operatingMode === "standalone") return standaloneSource;
-    return connection?.token ? createCompanionApi(connection) : undefined;
+    return connection?.token ? createConnectedDataSource(connection) : undefined;
   }, [connection, demoMode, demoSource, operatingMode, preferencesLoaded, standaloneSource]);
 
   const clearHealthData = useCallback(() => {
@@ -211,28 +215,14 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
       if (generation.current !== requestGeneration) return;
       setBootstrap(nextBootstrap);
       setAnalytics(nextAnalytics);
-      const revision = nextBootstrap.profilePhoto?.revision;
-      if (!demoMode && operatingMode === "connected" && connection?.token && revision) {
-        try {
-          const photo = await createCompanionApi(connection).profilePhoto.get();
-          if (generation.current !== requestGeneration) return;
-          setProfilePhoto(photo.revision === revision ? {
-            revision,
-            uri: `data:${photo.contentType};base64,${photo.contentBase64}`
-          } : undefined);
-        } catch {
-          if (generation.current === requestGeneration) setProfilePhoto(undefined);
-        }
-      } else {
-        setProfilePhoto(undefined);
-      }
+      setProfilePhoto(undefined);
       setConnectionState("online");
     } catch (caught) {
       if (generation.current === requestGeneration) classifyError(caught);
     } finally {
       if (generation.current === requestGeneration) setDashboardLoading(false);
     }
-  }, [classifyError, connection, demoMode, operatingMode, source]);
+  }, [classifyError, source]);
 
   const refreshTrack = useCallback(async () => {
     if (!source) return;
@@ -270,9 +260,12 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     if (!source) throw new Error("Manual import is unavailable until a data source is ready.");
     const mutations = source as Partial<CompanionMutationService>;
     if (mutations.importManualObservations) return mutations.importManualObservations(payload);
+    if (operatingMode === "connected") {
+      throw new Error("Connected cached data is read-only. Add records on the paired PC.");
+    }
     if (!connection?.token) throw new Error("Pair with a PC before importing readings.");
     return createCompanionApi(connection).importManualObservations(payload);
-  }, [connection, source]);
+  }, [connection, operatingMode, source]);
 
   const updateObservation = useCallback(async (id: string, input: UpdateObservationInput) => {
     await requireObservationMutationService(source).updateObservation(id, input);
@@ -346,12 +339,13 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
       // Securely retain the credential for revocation when the paired PC is reachable again.
     }
     generation.current += 1;
+    await (source as Partial<ConnectedReplicaMaintenance> | undefined)?.deleteConnectedReplica?.();
     await Promise.all([clearConnection(), clearSelectedProfileId()]);
     setConnection(null);
     setConnectionState("unpaired");
     clearHealthData();
     clearTransientData();
-  }, [clearHealthData, clearTransientData, connection, demoMode]);
+  }, [clearHealthData, clearTransientData, connection, demoMode, source]);
 
   useEffect(() => {
     let current = true;
@@ -389,13 +383,13 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "active") {
         void retryPendingRevocation().catch(() => undefined);
-        void refreshDashboard();
+        void Promise.all([refreshDashboard(), refreshTrack()]);
       } else {
         clearTransientData();
       }
     });
     return () => subscription.remove();
-  }, [clearTransientData, refreshDashboard]);
+  }, [clearTransientData, refreshDashboard, refreshTrack]);
   useEffect(() => {
     void retryPendingRevocation().catch(() => undefined);
   }, []);

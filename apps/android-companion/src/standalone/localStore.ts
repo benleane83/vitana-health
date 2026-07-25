@@ -6,11 +6,13 @@ import type {
   Observation,
   ParsedImport,
   Profile,
+  ReplicaIdentity,
+  ReplicaPage,
   SourceKind,
   UpdateObservationInput
 } from "@vitana/shared";
 
-export const LOCAL_SCHEMA_VERSION = 2;
+export const LOCAL_SCHEMA_VERSION = 3;
 
 export interface LocalDatasetMetadata {
   datasetId: string;
@@ -84,6 +86,17 @@ export interface LocalStore {
   deleteObservation(id: string): Promise<Observation | undefined>;
   reset(): Promise<void>;
   close(): Promise<void>;
+  replicaMetadata(identity: ReplicaIdentity): Promise<LocalReplicaMetadata | undefined>;
+  applyReplicaPage(page: ReplicaPage): Promise<void>;
+  replicaEntities(identity: ReplicaIdentity): Promise<Array<{ entityType: string; payload: Record<string, unknown> }>>;
+  deleteReplica(identity: ReplicaIdentity): Promise<void>;
+}
+
+export interface LocalReplicaMetadata extends ReplicaIdentity {
+  cursorSequence: number;
+  revision: number;
+  initialSnapshotCompleted: boolean;
+  cachedAt?: string;
 }
 
 export function emptyCounts(): LocalStoreCounts {

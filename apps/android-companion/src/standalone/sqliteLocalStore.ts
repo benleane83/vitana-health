@@ -9,6 +9,8 @@ import type {
   Observation,
   ParsedImport,
   Profile,
+  ReplicaIdentity,
+  ReplicaPage,
   UpdateObservationInput
 } from "@vitana/shared";
 import { openWithDatabaseKey, type SecureKeyStore } from "./databaseKey";
@@ -564,6 +566,127 @@ export class SqliteLocalStore implements LocalStore {
     return changed ? existing : undefined;
   }
 
+  async replicaMetadata(identity: ReplicaIdentity) {
+    const row = await this.database.getFirstAsync<{
+      server_instance_id: string;
+      profile_id: string;
+      pairing_id: string;
+      cursor_sequence: number;
+      revision: number;
+      initial_snapshot_completed: number;
+      cached_at: string | null;
+    }>(
+      `SELECT server_instance_id, profile_id, pairing_id, cursor_sequence, revision,
+        initial_snapshot_completed, cached_at
+       FROM connected_replicas WHERE replica_id = ?`,
+      replicaId(identity)
+    );
+    return row ? {
+      serverInstanceId: row.server_instance_id,
+      profileId: row.profile_id,
+      pairingId: row.pairing_id,
+      cursorSequence: row.cursor_sequence,
+      revision: row.revision,
+      initialSnapshotCompleted: row.initial_snapshot_completed === 1,
+      cachedAt: row.cached_at ?? undefined
+    } : undefined;
+  }
+
+  async applyReplicaPage(page: ReplicaPage): Promise<void> {
+    const identity = replicaIdentity(page);
+    const id = replicaId(identity);
+    const serialized = page.changes.map((change) => ({
+      ...change,
+      payloadJson: change.payload === undefined ? undefined : JSON.stringify(change.payload)
+    }));
+    await this.database.withTransactionAsync(async () => {
+      await this.database.runAsync(
+        `INSERT OR IGNORE INTO connected_replicas
+         (replica_id, server_instance_id, profile_id, pairing_id)
+         VALUES (?, ?, ?, ?)`,
+        id,
+        identity.serverInstanceId,
+        identity.profileId,
+        identity.pairingId
+      );
+      const metadata = await this.replicaMetadata(identity);
+      if (!metadata) throw new Error("The connected replica identity could not be initialized.");
+      if (page.kind === "delta" && !metadata.initialSnapshotCompleted) {
+        throw new Error("Complete the first connected snapshot before applying deltas.");
+      }
+      for (const change of serialized) {
+        const existing = await this.database.getFirstAsync<{ revision: number }>(
+          `SELECT revision FROM connected_replica_entities
+           WHERE replica_id = ? AND entity_type = ? AND entity_id = ?`,
+          id,
+          change.entityType,
+          change.entityId
+        );
+        if ((existing?.revision ?? -1) > change.revision) continue;
+        if (change.operation === "tombstone") {
+          await this.database.runAsync(
+            `DELETE FROM connected_replica_entities
+             WHERE replica_id = ? AND entity_type = ? AND entity_id = ? AND revision <= ?`,
+            id,
+            change.entityType,
+            change.entityId,
+            change.revision
+          );
+        } else {
+          if (change.payloadJson === undefined) throw new Error("Replica upsert payload is missing.");
+          await this.database.runAsync(
+            `INSERT INTO connected_replica_entities
+             (replica_id, entity_type, entity_id, payload_json, revision)
+             VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT (replica_id, entity_type, entity_id) DO UPDATE SET
+               payload_json = excluded.payload_json,
+               revision = excluded.revision
+             WHERE excluded.revision >= connected_replica_entities.revision`,
+            id,
+            change.entityType,
+            change.entityId,
+            change.payloadJson,
+            change.revision
+          );
+        }
+      }
+      const cursorSequence = page.kind === "snapshot"
+        ? (page.complete ? page.highWaterMark.sequence : metadata.cursorSequence)
+        : (page.complete
+            ? page.highWaterMark.sequence
+            : Math.max(metadata.cursorSequence, ...page.changes.map((change) => change.sequence)));
+      await this.database.runAsync(
+        `UPDATE connected_replicas SET cursor_sequence = ?, revision = ?,
+         initial_snapshot_completed = ?, cached_at = ? WHERE replica_id = ?`,
+        cursorSequence,
+        Math.max(metadata.revision, page.highWaterMark.revision),
+        metadata.initialSnapshotCompleted || (page.kind === "snapshot" && page.complete) ? 1 : 0,
+        page.cachedAt,
+        id
+      );
+    });
+  }
+
+  async replicaEntities(identity: ReplicaIdentity) {
+    const metadata = await this.replicaMetadata(identity);
+    if (!metadata?.initialSnapshotCompleted) {
+      throw new Error("Connected data is unavailable offline until the first snapshot completes.");
+    }
+    const rows = await this.database.getAllAsync<{ entity_type: string; payload_json: string }>(
+      `SELECT entity_type, payload_json FROM connected_replica_entities
+       WHERE replica_id = ? ORDER BY entity_type, entity_id`,
+      replicaId(identity)
+    );
+    return rows.map((row) => ({
+      entityType: row.entity_type,
+      payload: JSON.parse(row.payload_json) as Record<string, unknown>
+    }));
+  }
+
+  async deleteReplica(identity: ReplicaIdentity): Promise<void> {
+    await this.database.runAsync("DELETE FROM connected_replicas WHERE replica_id = ?", replicaId(identity));
+  }
+
   close(): Promise<void> {
     return this.database.closeAsync();
   }
@@ -634,6 +757,18 @@ export class SqliteLocalStore implements LocalStore {
     };
   }
 
+}
+
+function replicaIdentity(page: ReplicaPage): ReplicaIdentity {
+  return {
+    serverInstanceId: page.serverInstanceId,
+    profileId: page.profileId,
+    pairingId: page.pairingId
+  };
+}
+
+function replicaId(identity: ReplicaIdentity): string {
+  return `${identity.serverInstanceId}:${identity.profileId}:${identity.pairingId}`;
 }
 
 function withUndefinedNulls<T extends Record<string, unknown>>(value: T): T {

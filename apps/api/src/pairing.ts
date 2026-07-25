@@ -1,9 +1,9 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 const pairingLifetimeMs = 5 * 60 * 1000;
-const authorizationSchemaVersion = 4;
+const authorizationSchemaVersion = 5;
 
 export type CompanionCapability =
   | "profiles:list-minimal"
@@ -16,6 +16,7 @@ export type CompanionCapability =
   | "reports:commit"
   | "health-connect:import"
   | "standalone:migrate"
+  | "replica:read"
   | "pairing:self-revoke";
 export const companionCapabilities: readonly CompanionCapability[] = [
   "profiles:list-minimal",
@@ -28,6 +29,7 @@ export const companionCapabilities: readonly CompanionCapability[] = [
   "reports:commit",
   "health-connect:import",
   "standalone:migrate",
+  "replica:read",
   "pairing:self-revoke"
 ] as const;
 
@@ -80,12 +82,24 @@ export class PairingStore {
   private records = new Map<string, InternalPairingRecord>();
   private challenges = new Map<string, PairingChallenge>();
   private readonly dataPath: string;
+  private readonly serverInstanceId: string;
   private usagePersistTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor() {
     const dataDir = resolve(process.env.VITANA_DATA_DIR ?? "data");
     this.dataPath = resolve(dataDir, "paired-devices.json");
+    const serverInstancePath = resolve(dataDir, "server-instance-id");
     mkdirSync(dataDir, { recursive: true });
+    if (existsSync(serverInstancePath)) {
+      const stored = readFileSync(serverInstancePath, "utf8").trim();
+      if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(stored)) {
+        throw new Error(`Could not read server identity at ${serverInstancePath}.`);
+      }
+      this.serverInstanceId = stored;
+    } else {
+      this.serverInstanceId = randomUUID();
+      writeFileSync(serverInstancePath, `${this.serverInstanceId}\n`, { mode: 0o600, flag: "wx" });
+    }
     if (!existsSync(this.dataPath)) return;
     try {
       const records = JSON.parse(readFileSync(this.dataPath, "utf8")) as InternalPairingRecord[];
@@ -100,10 +114,16 @@ export class PairingStore {
         ) {
           this.records.set(record.id, { ...record, pendingToken: null, tokenDelivered: true });
         }
+
       }
     } catch {
       throw new Error(`Could not read paired device registry at ${this.dataPath}.`);
     }
+
+  }
+
+  getServerInstanceId(): string {
+    return this.serverInstanceId;
   }
 
   createChallenge(): { code: string; expiresAt: string } {

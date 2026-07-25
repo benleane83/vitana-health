@@ -8,6 +8,8 @@ import type {
   ObservationGroup,
   ParsedImport,
   Profile,
+  ReplicaIdentity,
+  ReplicaPage,
   SourceImport,
   UpdateObservationInput
 } from "@vitana/shared";
@@ -43,6 +45,10 @@ export function createMemoryLocalStoreState(): MemoryLocalStoreState {
 export class MemoryLocalStore implements LocalStore {
   private profileId?: string;
   private archivedReceipt?: MobileMigrationReceipt;
+  private replicas = new Map<string, {
+    metadata: import("./localStore").LocalReplicaMetadata;
+    entities: Map<string, { entityType: string; payload: Record<string, unknown>; revision: number }>;
+  }>();
 
   constructor(private readonly state = createMemoryLocalStoreState()) {}
 
@@ -288,6 +294,72 @@ export class MemoryLocalStore implements LocalStore {
 
   async close(): Promise<void> {}
 
+  async replicaMetadata(identity: ReplicaIdentity) {
+    return this.replicas.get(replicaId(identity))?.metadata;
+  }
+
+  async applyReplicaPage(page: ReplicaPage): Promise<void> {
+    const identity = { serverInstanceId: page.serverInstanceId, profileId: page.profileId, pairingId: page.pairingId };
+    const id = replicaId(identity);
+    const existing = this.replicas.get(id);
+    const next: {
+      metadata: import("./localStore").LocalReplicaMetadata;
+      entities: Map<string, { entityType: string; payload: Record<string, unknown>; revision: number }>;
+    } = existing ? {
+      metadata: structuredClone(existing.metadata),
+      entities: new Map([...existing.entities].map(([key, value]) => [key, structuredClone(value)]))
+    } : {
+      metadata: {
+        ...identity,
+        cursorSequence: 0,
+        revision: 0,
+        initialSnapshotCompleted: false
+      },
+      entities: new Map()
+    };
+    if (page.kind === "delta" && !next.metadata.initialSnapshotCompleted) {
+      throw new Error("Complete the first connected snapshot before applying deltas.");
+    }
+    for (const change of page.changes) {
+      const key = `${change.entityType}\u0000${change.entityId}`;
+      const current = next.entities.get(key);
+      if ((current?.revision ?? -1) > change.revision) continue;
+      if (change.operation === "tombstone") next.entities.delete(key);
+      else if (change.payload) next.entities.set(key, {
+        entityType: change.entityType,
+        payload: structuredClone(change.payload),
+        revision: change.revision
+      });
+      else throw new Error("Replica upsert payload is missing.");
+    }
+    next.metadata.revision = Math.max(next.metadata.revision, page.highWaterMark.revision);
+    next.metadata.cachedAt = page.cachedAt;
+    if (page.kind === "snapshot" && page.complete) {
+      next.metadata.initialSnapshotCompleted = true;
+      next.metadata.cursorSequence = page.highWaterMark.sequence;
+    } else if (page.kind === "delta") {
+      next.metadata.cursorSequence = page.complete
+        ? page.highWaterMark.sequence
+        : Math.max(next.metadata.cursorSequence, ...page.changes.map((change) => change.sequence));
+    }
+    this.replicas.set(id, next);
+  }
+
+  async replicaEntities(identity: ReplicaIdentity) {
+    const replica = this.replicas.get(replicaId(identity));
+    if (!replica?.metadata.initialSnapshotCompleted) {
+      throw new Error("Connected data is unavailable offline until the first snapshot completes.");
+    }
+    return [...replica.entities.values()].map(({ entityType, payload }) => ({
+      entityType,
+      payload: structuredClone(payload)
+    }));
+  }
+
+  async deleteReplica(identity: ReplicaIdentity): Promise<void> {
+    this.replicas.delete(replicaId(identity));
+  }
+
   async reset(): Promise<void> {
     const profileId = this.requireProfileId();
     this.state.profiles.delete(profileId);
@@ -327,6 +399,10 @@ export class MemoryLocalStore implements LocalStore {
 
 function key(profileId: string, id: string): string {
   return `${profileId}\u0000${id}`;
+}
+
+function replicaId(identity: ReplicaIdentity): string {
+  return `${identity.serverInstanceId}:${identity.profileId}:${identity.pairingId}`;
 }
 
 function compareObservationsNewestFirst(left: Observation, right: Observation): number {

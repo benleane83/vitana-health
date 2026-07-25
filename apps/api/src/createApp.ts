@@ -28,6 +28,7 @@ import { makeDataRoutes } from "./routes/dataRoutes.js";
 import { makeSettingsRoutes } from "./routes/settingsRoutes.js";
 import { makeBackupRoutes, isInMaintenanceMode } from "./routes/backupRoutes.js";
 import { makeCompanionMigrationRoutes } from "./routes/companionMigrationRoutes.js";
+import { makeCompanionSyncRoutes } from "./routes/companionSyncRoutes.js";
 import { z } from "zod";
 import type { AuthorizationPrincipal, OwnerPrincipal } from "./requestPrincipal.js";
 import type { DesktopRuntimeSettingsResponse, DesktopRuntimeSettingsUpdate, DesktopUpdateState } from "@vitana/shared";
@@ -74,6 +75,10 @@ function companionCapabilityFor(request: express.Request): import("./pairing.js"
     case "GET /analytics":
     case "GET /summary":
       return "assigned-profile:read";
+    case "GET /companion/sync/handshake":
+    case "GET /companion/sync/snapshot":
+    case "GET /companion/sync/deltas":
+      return "replica:read";
     case "GET /care/health-events":
     case "GET /care/items":
       return "care:read";
@@ -346,6 +351,7 @@ export function createApp(
   app.use("/api/profiles", makeProfilesRoutes(storeManager, pairingStore));
   app.use("/api/import", makeImportRoutes(storeManager));
   app.use("/api/companion/migrations", makeCompanionMigrationRoutes(storeManager));
+  app.use("/api/companion/sync", makeCompanionSyncRoutes(storeManager, pairingStore));
   app.use("/api/query", makeQueryRoutes(storeManager));
   app.use("/api/llm", makeLlmRoutes());
   app.use("/api/settings", makeSettingsRoutes({
