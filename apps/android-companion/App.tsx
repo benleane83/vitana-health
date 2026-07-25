@@ -104,16 +104,56 @@ function ConnectionScreen({ navigation }: NativeStackScreenProps<RootStackParamL
     demoMode,
     disconnect,
     error,
+    migrateStandaloneData,
+    migrationProgress,
     operatingMode,
     resetStandaloneData,
     setDemoMode,
     setOperatingMode,
+    standaloneMigrationManifest,
     standaloneMode
   } = useMobileApi();
   const connectedAvailable = Boolean(connection?.token);
 
   function confirmOperatingMode(nextMode: "standalone" | "connected") {
     if (nextMode === operatingMode) return;
+    if (nextMode === "connected") {
+      void standaloneMigrationManifest().then((manifest) => {
+        const total = Object.values(manifest.counts).reduce((sum, count) => sum + count, 0);
+        if (total === 0) {
+          void setOperatingMode("connected");
+          return;
+        }
+        Alert.alert(
+          "Connect to paired PC?",
+          `This Standalone dataset contains ${manifest.counts.observations} observation(s), ` +
+            `${manifest.counts.sourceImports} import(s), ${manifest.counts.dataSources} source(s), and ` +
+            `${manifest.counts.observationGroups} group(s).`,
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Connect without merging", onPress: () => { void setOperatingMode("connected"); } },
+            {
+              text: "Merge and connect",
+              onPress: () => {
+                void migrateStandaloneData().then((receipt) => {
+                  Alert.alert(
+                    "Merge verified",
+                    `${receipt.counts.accepted} accepted, ${receipt.counts.duplicates} duplicate(s), ` +
+                      `${receipt.counts.conflicts} conflict(s). The original dataset is now a read-only archive.`,
+                    [{ text: "Continue to Connected", onPress: () => { void setOperatingMode("connected"); } }]
+                  );
+                }).catch((caught: unknown) => {
+                  Alert.alert("Merge failed", caught instanceof Error ? caught.message : "The local dataset was not changed.");
+                });
+              }
+            }
+          ]
+        );
+      }).catch((caught: unknown) => {
+        Alert.alert("Unable to inspect local data", caught instanceof Error ? caught.message : "Try again.");
+      });
+      return;
+    }
     const label = nextMode === "standalone" ? "Standalone" : "Connected";
     Alert.alert(
       `Switch to ${label}?`,
@@ -135,11 +175,14 @@ function ConnectionScreen({ navigation }: NativeStackScreenProps<RootStackParamL
         <Text style={styles.meta}>{demoMode ? "Read-only demo" : standaloneMode ? "Encrypted storage on this phone" : connection?.url ?? "No paired PC"}</Text>
         {bootstrap ? <Text style={styles.meta}>Saving to {bootstrap.profile.displayName}</Text> : null}
         {error ? <Message title="Connection issue" detail={error} tone="danger" /> : null}
+        {migrationProgress ? (
+          <Text style={styles.meta}>Uploading migration batch {migrationProgress.uploaded} of {migrationProgress.total}…</Text>
+        ) : null}
       </Card>
       <View style={styles.modeSetting}>
         <View style={styles.settingText}>
           <Text style={styles.settingTitle}>Operating mode</Text>
-          <Text style={styles.meta}>Choose which data source the app uses. Data is not copied between modes.</Text>
+          <Text style={styles.meta}>Choose which data source the app uses. Standalone data is copied only with your consent.</Text>
         </View>
         <View accessibilityRole="radiogroup" style={styles.modeControl}>
           {(["standalone", "connected"] as const).map((mode) => {

@@ -9,6 +9,7 @@ import {
   type HealthDataDetail,
   type HealthDataSummary,
   type ManualObservationPayload,
+  MobileMigrationReceipt,
   type MobileDetailPage,
   type MobileImportResult,
   type MobileProfileRepository,
@@ -195,6 +196,21 @@ export class LocalProfileRepository implements MobileProfileRepository {
       throw new Error("This standalone proof of concept currently accepts observation imports only.");
     }
     return this.store.mergeImport(imported);
+  }
+
+  async migrationManifest() {
+    await this.ensureInitialized();
+    return this.store.migrationManifest();
+  }
+
+  async exportMigrationBatches(sessionId: string) {
+    await this.ensureInitialized();
+    return this.store.exportMigrationBatches(sessionId);
+  }
+
+  async archiveAfterMigration(receipt: MobileMigrationReceipt, serverUrl: string) {
+    await this.ensureInitialized();
+    return this.store.archiveAfterMigration(receipt, serverUrl);
   }
 
   async importManualObservations(payload: ManualObservationPayload): Promise<MobileImportResult> {

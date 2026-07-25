@@ -11,6 +11,8 @@ import type {
   HealthDataChartSeriesOptions,
   HealthEventListQuery,
   HealthStoreData,
+  MobileMigrationBatch,
+  MobileMigrationManifest,
   PersonalReferenceRangeInput,
   HealthEventMutationResponse,
   UpdateCareItemInput,
@@ -147,6 +149,18 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
     return this.enqueueMutation(async () => {
       return this.repository.mergeImport(parsed);
     });
+  }
+
+  startMobileMigration(pairingId: string, manifest: MobileMigrationManifest) {
+    return this.enqueueMutation(() => this.repository.startMobileMigration(pairingId, manifest));
+  }
+
+  applyMobileMigrationBatch(pairingId: string, batch: MobileMigrationBatch) {
+    return this.enqueueMutation(() => this.repository.applyMobileMigrationBatch(pairingId, batch));
+  }
+
+  completeMobileMigration(pairingId: string, sessionId: string) {
+    return this.enqueueMutation(() => this.repository.completeMobileMigration(pairingId, sessionId));
   }
 
   addInsight(insight: HealthStoreData["insights"][number]): Promise<HealthStoreData["insights"][number]> {

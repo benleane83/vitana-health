@@ -3,6 +3,9 @@ import * as SecureStore from "expo-secure-store";
 import { deleteDatabaseAsync, openDatabaseAsync, type SQLiteDatabase } from "expo-sqlite";
 import type {
   MobileImportResult,
+  MobileMigrationBatch,
+  MobileMigrationManifest,
+  MobileMigrationReceipt,
   Observation,
   ParsedImport,
   Profile,
@@ -16,6 +19,7 @@ import {
   entityOutcome,
   type LocalObservationAggregate,
   type LocalObservationPage,
+  type LocalDatasetMetadata,
   type LocalStore,
   type LocalStoreCounts
 } from "./localStore";
@@ -93,27 +97,54 @@ export class SqliteLocalStore implements LocalStore {
   constructor(private readonly database: SQLiteDatabase) {}
 
   async initialize(defaultProfile: Profile): Promise<void> {
-    const existing = await this.database.getFirstAsync<{ id: string }>(
-      `SELECT profiles.id
-       FROM profiles
-       ORDER BY
-         (SELECT COUNT(*) FROM observations WHERE observations.profile_id = profiles.id) DESC,
-         (SELECT COUNT(*) FROM source_imports WHERE source_imports.profile_id = profiles.id) DESC,
-         profiles.updated_at ASC,
-         profiles.id ASC
-       LIMIT 1`
+    const existing = await this.database.getFirstAsync<{ profile_id: string }>(
+      "SELECT profile_id FROM datasets WHERE is_selected = 1 LIMIT 1"
     );
     if (existing) {
-      this.profileId = existing.id;
+      this.profileId = existing.profile_id;
       return;
     }
-    await this.database.runAsync(
-      "INSERT OR IGNORE INTO profiles (id, profile_json, updated_at) VALUES (?, ?, ?)",
-      defaultProfile.id,
-      JSON.stringify(defaultProfile),
-      defaultProfile.updatedAt
-    );
+    await this.database.withTransactionAsync(async () => {
+      await this.database.runAsync(
+        "INSERT INTO profiles (id, profile_json, updated_at) VALUES (?, ?, ?)",
+        defaultProfile.id,
+        JSON.stringify(defaultProfile),
+        defaultProfile.updatedAt
+      );
+      await this.database.runAsync(
+        `INSERT INTO datasets
+         (dataset_id, profile_id, dataset_kind, lifecycle_state, is_selected, migration_fingerprint)
+         VALUES (?, ?, 'standalone', 'active', 1, ?)`,
+        defaultProfile.id,
+        defaultProfile.id,
+        `standalone:${defaultProfile.id}`
+      );
+    });
     this.profileId = defaultProfile.id;
+  }
+
+  async datasetMetadata(): Promise<LocalDatasetMetadata> {
+    const row = await this.database.getFirstAsync<{
+      dataset_id: string;
+      profile_id: string;
+      dataset_kind: "standalone" | "connected";
+      lifecycle_state: "active" | "archived";
+      remote_binding_json: string | null;
+      migration_fingerprint: string;
+      migration_receipt_json: string | null;
+      archived_at: string | null;
+    }>("SELECT * FROM datasets WHERE profile_id = ?", this.requireProfileId());
+    if (!row) throw new Error("The selected local dataset is unavailable.");
+    return {
+      datasetId: row.dataset_id,
+      profileId: row.profile_id,
+      kind: row.dataset_kind,
+      lifecycleState: row.lifecycle_state,
+      remoteBinding: row.remote_binding_json ? JSON.parse(row.remote_binding_json) : undefined,
+      migrationFingerprint: row.migration_fingerprint,
+      migrationReceipt: row.migration_receipt_json ? JSON.parse(row.migration_receipt_json) : undefined,
+      archivedAt: row.archived_at ?? undefined
+    };
   }
 
   async getProfile(): Promise<Profile> {
@@ -142,6 +173,7 @@ export class SqliteLocalStore implements LocalStore {
   }
 
   async mergeImport(imported: ParsedImport): Promise<MobileImportResult> {
+    await this.assertWritable();
     const accepted = {
       sourceImports: 0,
       dataSources: 0,
@@ -196,6 +228,7 @@ export class SqliteLocalStore implements LocalStore {
           JSON.stringify(group.metadata ?? {})
         )).changes;
       }
+
       for (const observation of imported.observations) {
         accepted.observations += (await transaction.runAsync(
           `INSERT OR IGNORE INTO observations
@@ -229,6 +262,92 @@ export class SqliteLocalStore implements LocalStore {
         activitySessions: entityOutcome(imported.activitySessions.length, 0)
       }
     };
+  }
+
+  async migrationManifest(): Promise<MobileMigrationManifest> {
+    const [dataset, counts] = await Promise.all([this.datasetMetadata(), this.migrationEntityCounts()]);
+    return {
+      protocolVersion: 1,
+      datasetId: dataset.datasetId,
+      datasetFingerprint: dataset.migrationFingerprint,
+      sourceProfileId: dataset.profileId,
+      counts
+    };
+  }
+
+  async exportMigrationBatches(sessionId: string, batchSize = 250): Promise<MobileMigrationBatch[]> {
+    const size = Math.min(Math.max(Math.trunc(batchSize), 1), 500);
+    const profileId = this.requireProfileId();
+    const batches: MobileMigrationBatch[] = [];
+    const append = <T>(
+      kind: string,
+      values: T[],
+      assign: (batch: MobileMigrationBatch, chunk: T[]) => void
+    ) => {
+      for (let offset = 0; offset < values.length; offset += size) {
+        const batch: MobileMigrationBatch = {
+          protocolVersion: 1,
+          sessionId,
+          batchId: `${kind}-${String(offset / size).padStart(6, "0")}`,
+          sourceImports: [],
+          dataSources: [],
+          observationGroups: [],
+          observations: []
+        };
+        assign(batch, values.slice(offset, offset + size));
+        batches.push(batch);
+      }
+    };
+    const sourceImports = await this.database.getAllAsync<any>(
+      `SELECT id, source_kind AS sourceKind, file_name AS fileName, imported_at AS importedAt,
+        parser_version AS parserVersion, checksum, row_count AS rowCount, status, diagnostics_json AS diagnostics
+       FROM source_imports WHERE profile_id = ? ORDER BY id`,
+      profileId
+    );
+    append("source-imports", sourceImports.map((row) => ({
+      ...row,
+      diagnostics: JSON.parse(row.diagnostics)
+    })), (batch, chunk) => { batch.sourceImports = chunk; });
+    const dataSources = await this.database.getAllAsync<any>(
+      `SELECT id, source_kind AS sourceKind, label, import_id AS importId, created_at AS createdAt
+       FROM data_sources WHERE profile_id = ? ORDER BY id`,
+      profileId
+    );
+    append("data-sources", dataSources.map(withUndefinedNulls), (batch, chunk) => { batch.dataSources = chunk; });
+    const groups = await this.database.getAllAsync<any>(
+      `SELECT id, kind, label, source_id AS sourceId, import_id AS importId, start_at AS startAt,
+        end_at AS endAt, collected_at AS collectedAt, metadata_json AS metadata
+       FROM observation_groups WHERE profile_id = ? ORDER BY id`,
+      profileId
+    );
+    append("observation-groups", groups.map((row) => withUndefinedNulls({
+      ...row,
+      metadata: JSON.parse(row.metadata)
+    })), (batch, chunk) => { batch.observationGroups = chunk; });
+    const observations = await this.database.getAllAsync<any>(
+      `SELECT id, measurement_code AS measurementCode, observed_at AS observedAt,
+        effective_start AS effectiveStart, effective_end AS effectiveEnd, value, unit, source_id AS sourceId,
+        observation_group_id AS observationGroupId, device_id AS deviceId, note, source_json AS sourceJson
+       FROM observations WHERE profile_id = ? ORDER BY id`,
+      profileId
+    );
+    append("observations", observations.map((row) => withUndefinedNulls({
+      ...row,
+      sourceJson: row.sourceJson ? JSON.parse(row.sourceJson) : undefined
+    })), (batch, chunk) => { batch.observations = chunk; });
+    return batches;
+  }
+
+  async archiveAfterMigration(receipt: MobileMigrationReceipt, serverUrl: string): Promise<void> {
+    const archivedAt = new Date().toISOString();
+    await this.database.runAsync(
+      `UPDATE datasets SET lifecycle_state = 'archived', remote_binding_json = ?,
+       migration_receipt_json = ?, archived_at = ? WHERE profile_id = ? AND lifecycle_state = 'active'`,
+      JSON.stringify({ serverUrl, profileId: receipt.destinationProfileId }),
+      JSON.stringify(receipt),
+      archivedAt,
+      this.requireProfileId()
+    );
   }
 
   async latestObservationsByCode() {
@@ -348,6 +467,7 @@ export class SqliteLocalStore implements LocalStore {
   }
 
   async updateObservation(id: string, input: UpdateObservationInput): Promise<Observation | undefined> {
+    await this.assertWritable();
     const existing = await this.observationById(id);
     if (!existing) return undefined;
     const result = await this.database.runAsync(
@@ -374,6 +494,7 @@ export class SqliteLocalStore implements LocalStore {
   }
 
   async deleteObservation(id: string): Promise<Observation | undefined> {
+    await this.assertWritable();
     const existing = await this.observationById(id);
     if (!existing) return undefined;
     const result = await this.database.runAsync(
@@ -397,6 +518,23 @@ export class SqliteLocalStore implements LocalStore {
   private requireProfileId(): string {
     if (!this.profileId) throw new Error("The local profile has not been initialized.");
     return this.profileId;
+  }
+
+  private async migrationEntityCounts(): Promise<MobileMigrationManifest["counts"]> {
+    const row = await this.database.getFirstAsync<MobileMigrationManifest["counts"]>(`
+      SELECT
+        (SELECT COUNT(*) FROM source_imports WHERE profile_id = ?) AS sourceImports,
+        (SELECT COUNT(*) FROM data_sources WHERE profile_id = ?) AS dataSources,
+        (SELECT COUNT(*) FROM observation_groups WHERE profile_id = ?) AS observationGroups,
+        (SELECT COUNT(*) FROM observations WHERE profile_id = ?) AS observations
+    `, this.requireProfileId(), this.requireProfileId(), this.requireProfileId(), this.requireProfileId());
+    return row ?? { sourceImports: 0, dataSources: 0, observationGroups: 0, observations: 0 };
+  }
+
+  private async assertWritable(): Promise<void> {
+    if ((await this.datasetMetadata()).lifecycleState !== "active") {
+      throw new Error("This migrated Standalone dataset is a read-only archive.");
+    }
   }
 
   private async observationById(id: string): Promise<Observation | undefined> {
@@ -427,4 +565,9 @@ export class SqliteLocalStore implements LocalStore {
       sourceJson: row.sourceJson ? JSON.parse(row.sourceJson) : undefined
     };
   }
+
+}
+
+function withUndefinedNulls<T extends Record<string, unknown>>(value: T): T {
+  return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, entry ?? undefined])) as T;
 }

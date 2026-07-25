@@ -46,6 +46,27 @@ function store(profileId: string) {
     mergeImport: vi.fn(async () => ({
       outcome: outcome(),
       counts: { imports: 1, observations: 1, samples: 0, activities: 0 }
+    })),
+    startMobileMigration: vi.fn(async () => ({
+      sessionId: "migration-1",
+      destinationProfileId: profileId,
+      processedBatchIds: [],
+      completed: false
+    })),
+    applyMobileMigrationBatch: vi.fn(async (_pairingId: string, batch: { sessionId: string; batchId: string }) => ({
+      sessionId: batch.sessionId,
+      batchId: batch.batchId,
+      counts: { accepted: 0, duplicates: 0, conflicts: 0 },
+      conflicts: []
+    })),
+    completeMobileMigration: vi.fn(async () => ({
+      receiptId: "receipt-1",
+      sessionId: "migration-1",
+      pairingId: "pairing-1",
+      destinationProfileId: profileId,
+      datasetFingerprint: "standalone:phone",
+      completedAt: "2026-07-25T00:00:00.000Z",
+      counts: { accepted: 0, duplicates: 0, conflicts: 0 }
     }))
   };
 }
@@ -125,6 +146,26 @@ describe("companion route profile isolation", () => {
     expect(commit.status).toBe(201);
     expect(assigned.mergeImport).toHaveBeenCalledTimes(2);
     expect(active.mergeImport).not.toHaveBeenCalled();
+
+    const migration = await request(app)
+      .post("/api/companion/migrations")
+      .set(headers)
+      .send({
+        manifest: {
+          protocolVersion: 1,
+          datasetId: "phone-local",
+          datasetFingerprint: "standalone:phone",
+          sourceProfileId: "active",
+          counts: { sourceImports: 0, dataSources: 0, observationGroups: 0, observations: 0 }
+        }
+      });
+    expect(migration.status).toBe(201);
+    expect(migration.body.destinationProfileId).toBe("phone");
+    expect(assigned.startMobileMigration).toHaveBeenCalledWith(
+      pairing.record.id,
+      expect.objectContaining({ sourceProfileId: "active" })
+    );
+    expect(active.startMobileMigration).not.toHaveBeenCalled();
 
     expect((await request(app).post("/api/import/body-composition/preview").set(headers).send({})).status).toBe(400);
     expect((await request(app).post("/api/import/blood-test/preview").set(headers).send({})).status).toBe(400);

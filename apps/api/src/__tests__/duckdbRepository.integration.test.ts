@@ -41,6 +41,67 @@ afterEach(() => {
 });
 
 describe("DuckDbRepository fidelity", () => {
+  it.skipIf(!httpfsExtensionPath)("applies resumable migration batches with provenance-aware deduplication", async () => {
+    const databasePath = join(root, "databases", "mobile-migration.duckdb-poc");
+    const fixture = createDuckDbHealthStoreFixture();
+    const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
+    const manifest = {
+      protocolVersion: 1 as const,
+      datasetId: "mobile-dataset",
+      datasetFingerprint: "standalone:mobile-dataset",
+      sourceProfileId: "mobile-profile",
+      counts: { sourceImports: 1, dataSources: 2, observationGroups: 0, observations: 2 }
+    };
+
+    try {
+      const started = await repository.startMobileMigration("pairing-1", manifest);
+      const batch = {
+        protocolVersion: 1 as const,
+        sessionId: started.sessionId,
+        batchId: "batch-1",
+        sourceImports: [{
+          ...fixture.sourceImports[0]!,
+          id: "mobile-import",
+          rawContent: undefined
+        }],
+        dataSources: [{
+          id: "mobile-source-same",
+          sourceKind: "manual-entry" as const,
+          label: "Same provenance",
+          importId: "mobile-import",
+          createdAt: "2026-07-25T00:00:00.000Z"
+        }, {
+          id: "mobile-source-other",
+          sourceKind: "manual-entry" as const,
+          label: "Independent source",
+          createdAt: "2026-07-25T00:00:00.000Z"
+        }],
+        observationGroups: [],
+        observations: [{
+          ...fixture.observations[0]!,
+          id: "mobile-semantic-duplicate",
+          sourceId: "mobile-source-same",
+          deviceId: undefined
+        }, {
+          ...fixture.observations[0]!,
+          id: "mobile-cross-source-lookalike",
+          sourceId: "mobile-source-other",
+          deviceId: undefined
+        }]
+      };
+
+      const acknowledgement = await repository.applyMobileMigrationBatch("pairing-1", batch);
+      expect(acknowledgement.counts).toEqual({ accepted: 3, duplicates: 2, conflicts: 0 });
+      expect(await repository.applyMobileMigrationBatch("pairing-1", batch)).toEqual(acknowledgement);
+      const receipt = await repository.completeMobileMigration("pairing-1", started.sessionId);
+      expect(receipt.counts).toEqual(acknowledgement.counts);
+      expect((await repository.snapshot()).observations.some((entry) => entry.id === "mobile-cross-source-lookalike")).toBe(true);
+      expect((await repository.snapshot()).observations.some((entry) => entry.id === "mobile-semantic-duplicate")).toBe(false);
+    } finally {
+      await repository.close();
+    }
+  });
+
   it.skipIf(!httpfsExtensionPath)("resets registry measurement metadata without changing observations", async () => {
     const databasePath = join(root, "databases", "health-store-registry-reset.duckdb-poc");
     const fixture = createDuckDbHealthStoreFixture();

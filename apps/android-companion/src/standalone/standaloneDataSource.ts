@@ -1,5 +1,6 @@
 import type {
   ManualObservationPayload,
+  MobileMigrationReceipt,
   MobileDetailPage,
   MobileProfileRepository
 } from "@vitana/shared";
@@ -14,8 +15,15 @@ import {
   createStandaloneRepository,
   resetStandaloneStorage
 } from "./createStandaloneRepository";
+import type { LocalProfileRepository } from "./localRepository";
 
-export function createStandaloneDataSource(): CompanionDataSource & CompanionMutationService & CompanionObservationMutationService & CompanionMaintenanceService & CompanionLifecycleService {
+export interface StandaloneMigrationSource {
+  migrationManifest(): ReturnType<LocalProfileRepository["migrationManifest"]>;
+  exportMigrationBatches(sessionId: string): ReturnType<LocalProfileRepository["exportMigrationBatches"]>;
+  archiveAfterMigration(receipt: MobileMigrationReceipt, serverUrl: string): Promise<void>;
+}
+
+export function createStandaloneDataSource(): CompanionDataSource & CompanionMutationService & CompanionObservationMutationService & CompanionMaintenanceService & CompanionLifecycleService & StandaloneMigrationSource {
   let repository = createStandaloneRepository();
   const getRepository = (): Promise<MobileProfileRepository> => repository;
   return {
@@ -36,6 +44,10 @@ export function createStandaloneDataSource(): CompanionDataSource & CompanionMut
     },
     importManualObservations: async (payload: ManualObservationPayload) =>
       (await getRepository()).importManualObservations(payload),
+    migrationManifest: async () => (await repository).migrationManifest(),
+    exportMigrationBatches: async (sessionId) => (await repository).exportMigrationBatches(sessionId),
+    archiveAfterMigration: async (receipt, serverUrl) =>
+      (await repository).archiveAfterMigration(receipt, serverUrl),
     resetLocalData: async () => {
       await repository.then((current) => current.close()).catch(() => undefined);
       await resetStandaloneStorage();

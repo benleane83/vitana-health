@@ -1,6 +1,9 @@
 import type {
   DataSource,
   MobileImportResult,
+  MobileMigrationBatch,
+  MobileMigrationManifest,
+  MobileMigrationReceipt,
   Observation,
   ObservationGroup,
   ParsedImport,
@@ -37,6 +40,7 @@ export function createMemoryLocalStoreState(): MemoryLocalStoreState {
 
 export class MemoryLocalStore implements LocalStore {
   private profileId?: string;
+  private archivedReceipt?: MobileMigrationReceipt;
 
   constructor(private readonly state = createMemoryLocalStoreState()) {}
 
@@ -53,6 +57,18 @@ export class MemoryLocalStore implements LocalStore {
     return structuredClone(profile);
   }
 
+  async datasetMetadata() {
+    const profileId = this.requireProfileId();
+    return {
+      datasetId: profileId,
+      profileId,
+      kind: "standalone" as const,
+      lifecycleState: this.archivedReceipt ? "archived" as const : "active" as const,
+      migrationFingerprint: `standalone:${profileId}`,
+      migrationReceipt: this.archivedReceipt
+    };
+  }
+
   async counts(): Promise<LocalStoreCounts> {
     return {
       ...emptyCounts(),
@@ -62,6 +78,7 @@ export class MemoryLocalStore implements LocalStore {
   }
 
   async mergeImport(imported: ParsedImport): Promise<MobileImportResult> {
+    this.assertWritable();
     const profileId = this.requireProfileId();
     const sourceImports = new Map(this.state.sourceImports);
     const dataSources = new Map(this.state.dataSources);
@@ -81,6 +98,7 @@ export class MemoryLocalStore implements LocalStore {
       const groupKey = key(profileId, group.id);
       observationGroups.set(groupKey, observationGroups.get(groupKey) ?? structuredClone(group));
     }
+
     for (const observation of imported.observations) {
       const observationKey = key(profileId, observation.id);
       observations.set(observationKey, observations.get(observationKey) ?? structuredClone(observation));
@@ -100,6 +118,54 @@ export class MemoryLocalStore implements LocalStore {
         activitySessions: entityOutcome(imported.activitySessions.length, 0)
       }
     };
+  }
+
+  async migrationManifest(): Promise<MobileMigrationManifest> {
+    const metadata = await this.datasetMetadata();
+    return {
+      protocolVersion: 1,
+      datasetId: metadata.datasetId,
+      datasetFingerprint: metadata.migrationFingerprint,
+      sourceProfileId: metadata.profileId,
+      counts: {
+        sourceImports: this.profileValues(this.state.sourceImports).length,
+        dataSources: this.profileValues(this.state.dataSources).length,
+        observationGroups: this.profileValues(this.state.observationGroups).length,
+        observations: this.profileValues(this.state.observations).length
+      }
+    };
+  }
+
+  async exportMigrationBatches(sessionId: string, batchSize = 250): Promise<MobileMigrationBatch[]> {
+    const batches: MobileMigrationBatch[] = [];
+    const append = <T>(
+      kind: string,
+      values: T[],
+      assign: (batch: MobileMigrationBatch, chunk: T[]) => void
+    ) => {
+      for (let offset = 0; offset < values.length; offset += batchSize) {
+        const batch: MobileMigrationBatch = {
+          protocolVersion: 1,
+          sessionId,
+          batchId: `${kind}-${String(offset / batchSize).padStart(6, "0")}`,
+          sourceImports: [],
+          dataSources: [],
+          observationGroups: [],
+          observations: []
+        };
+        assign(batch, structuredClone(values.slice(offset, offset + batchSize)));
+        batches.push(batch);
+      }
+    };
+    append("source-imports", this.profileValues(this.state.sourceImports), (batch, values) => { batch.sourceImports = values; });
+    append("data-sources", this.profileValues(this.state.dataSources), (batch, values) => { batch.dataSources = values; });
+    append("observation-groups", this.profileValues(this.state.observationGroups), (batch, values) => { batch.observationGroups = values; });
+    append("observations", this.profileValues(this.state.observations), (batch, values) => { batch.observations = values; });
+    return batches;
+  }
+
+  async archiveAfterMigration(receipt: MobileMigrationReceipt): Promise<void> {
+    this.archivedReceipt = structuredClone(receipt);
   }
 
   async latestObservationsByCode(): Promise<Observation[]> {
@@ -161,6 +227,7 @@ export class MemoryLocalStore implements LocalStore {
   }
 
   async updateObservation(id: string, input: UpdateObservationInput): Promise<Observation | undefined> {
+    this.assertWritable();
     const observationKey = key(this.requireProfileId(), id);
     const existing = this.state.observations.get(observationKey);
     if (!existing) return undefined;
@@ -177,6 +244,7 @@ export class MemoryLocalStore implements LocalStore {
   }
 
   async deleteObservation(id: string): Promise<Observation | undefined> {
+    this.assertWritable();
     const observationKey = key(this.requireProfileId(), id);
     const existing = this.state.observations.get(observationKey);
     if (!existing) return undefined;
@@ -205,6 +273,10 @@ export class MemoryLocalStore implements LocalStore {
   private requireProfileId(): string {
     if (!this.profileId) throw new Error("The local profile has not been initialized.");
     return this.profileId;
+  }
+
+  private assertWritable(): void {
+    if (this.archivedReceipt) throw new Error("This migrated Standalone dataset is a read-only archive.");
   }
 
   private profileValues<T>(values: Map<string, T>): T[] {

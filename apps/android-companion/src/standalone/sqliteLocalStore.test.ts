@@ -31,7 +31,7 @@ describe("SQLite local store profile selection", () => {
     const persistedProfile = profile("mobile-persisted", "2026-07-20T10:00:00.000Z");
     const runAsync = vi.fn();
     const getFirstAsync = vi.fn(async (sql: string, ...parameters: unknown[]) => {
-      if (sql.startsWith("SELECT profiles.id")) return { id: persistedProfile.id };
+      if (sql.startsWith("SELECT profile_id FROM datasets")) return { profile_id: persistedProfile.id };
       if (sql.startsWith("SELECT profile_json FROM profiles")) {
         return parameters[0] === persistedProfile.id
           ? { profile_json: JSON.stringify(persistedProfile) }

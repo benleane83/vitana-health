@@ -1,5 +1,8 @@
 import type {
   MobileImportResult,
+  MobileMigrationBatch,
+  MobileMigrationManifest,
+  MobileMigrationReceipt,
   Observation,
   ParsedImport,
   Profile,
@@ -7,7 +10,18 @@ import type {
   UpdateObservationInput
 } from "@vitana/shared";
 
-export const LOCAL_SCHEMA_VERSION = 1;
+export const LOCAL_SCHEMA_VERSION = 2;
+
+export interface LocalDatasetMetadata {
+  datasetId: string;
+  profileId: string;
+  kind: "standalone" | "connected";
+  lifecycleState: "active" | "archived";
+  remoteBinding?: { serverUrl: string; profileId: string };
+  migrationFingerprint: string;
+  migrationReceipt?: MobileMigrationReceipt;
+  archivedAt?: string;
+}
 
 export interface LocalStoreCounts {
   imports: number;
@@ -45,9 +59,13 @@ export interface LocalObservationPage {
 
 export interface LocalStore {
   initialize(defaultProfile: Profile): Promise<void>;
+  datasetMetadata(): Promise<LocalDatasetMetadata>;
   getProfile(): Promise<Profile>;
   counts(): Promise<LocalStoreCounts>;
   mergeImport(imported: ParsedImport): Promise<MobileImportResult>;
+  migrationManifest(): Promise<MobileMigrationManifest>;
+  exportMigrationBatches(sessionId: string, batchSize?: number): Promise<MobileMigrationBatch[]>;
+  archiveAfterMigration(receipt: MobileMigrationReceipt, serverUrl: string): Promise<void>;
   latestObservationsByCode(): Promise<Observation[]>;
   observationAggregates(): Promise<LocalObservationAggregate[]>;
   observationsByCode(measurementCode: string, limit: number, offset: number): Promise<LocalObservationPage>;

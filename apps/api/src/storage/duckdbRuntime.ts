@@ -9,7 +9,7 @@ import {
 } from "../analyticalViews.js";
 
 const markerName = ".vitana-duckdb-poc";
-const schemaVersion = 8;
+const schemaVersion = 9;
 
 export interface DuckDbOptions {
   httpfsExtensionPath?: string;
@@ -384,6 +384,25 @@ const schemaVersion8Sql = `
   INSERT OR IGNORE INTO poc_metadata VALUES (8, CURRENT_TIMESTAMP, 'Normal and optimal personal reference range bounds');
 `;
 
+const schemaVersion9Sql = `
+  CREATE TABLE IF NOT EXISTS companion_migration_sessions (
+    session_id VARCHAR PRIMARY KEY, pairing_id VARCHAR NOT NULL, dataset_fingerprint VARCHAR NOT NULL,
+    manifest JSON NOT NULL, status VARCHAR NOT NULL, created_at TIMESTAMP NOT NULL,
+    completed_at TIMESTAMP, receipt JSON
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS companion_migration_identity_idx
+    ON companion_migration_sessions(pairing_id, dataset_fingerprint);
+  CREATE TABLE IF NOT EXISTS companion_migration_batches (
+    session_id VARCHAR NOT NULL, batch_id VARCHAR NOT NULL, acknowledgement JSON NOT NULL,
+    processed_at TIMESTAMP NOT NULL, PRIMARY KEY (session_id, batch_id)
+  );
+  CREATE TABLE IF NOT EXISTS companion_migration_aliases (
+    session_id VARCHAR NOT NULL, entity_type VARCHAR NOT NULL, source_id VARCHAR NOT NULL,
+    destination_id VARCHAR NOT NULL, PRIMARY KEY (session_id, entity_type, source_id)
+  );
+  INSERT OR IGNORE INTO poc_metadata VALUES (9, CURRENT_TIMESTAMP, 'Companion standalone migration sessions and receipts');
+`;
+
 const schemaMigrations = [
   { version: 1, sql: schemaVersion1Sql },
   { version: 2, sql: schemaVersion2Sql },
@@ -392,5 +411,6 @@ const schemaMigrations = [
   { version: 5, sql: schemaVersion5Sql },
   { version: 6, sql: schemaVersion6Sql },
   { version: 7, sql: schemaVersion7Sql },
-  { version: 8, sql: schemaVersion8Sql }
+  { version: 8, sql: schemaVersion8Sql },
+  { version: 9, sql: schemaVersion9Sql }
 ] as const;
