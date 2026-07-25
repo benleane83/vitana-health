@@ -250,6 +250,9 @@ export class SqliteLocalStore implements LocalStore {
           observation.sourceJson === undefined ? null : JSON.stringify(observation.sourceJson)
         )).changes;
       }
+      if (Object.values(accepted).some((count) => count > 0)) {
+        await this.rotateMigrationFingerprint();
+      }
     });
     return {
       importId: imported.sourceImport.id,
@@ -339,6 +342,10 @@ export class SqliteLocalStore implements LocalStore {
   }
 
   async archiveAfterMigration(receipt: MobileMigrationReceipt, serverUrl: string): Promise<void> {
+    const dataset = await this.datasetMetadata();
+    if (dataset.migrationFingerprint !== receipt.datasetFingerprint) {
+      throw new Error("Standalone data changed during migration. The updated dataset was not archived.");
+    }
     const archivedAt = new Date().toISOString();
     await this.database.runAsync(
       `UPDATE datasets SET lifecycle_state = 'archived', remote_binding_json = ?,
@@ -470,19 +477,24 @@ export class SqliteLocalStore implements LocalStore {
     await this.assertWritable();
     const existing = await this.observationById(id);
     if (!existing) return undefined;
-    const result = await this.database.runAsync(
-      `UPDATE observations
-       SET measurement_code = ?, observed_at = ?, value = ?, unit = ?, note = ?
-       WHERE profile_id = ? AND id = ?`,
-      input.measurementCode,
-      input.observedAt,
-      input.value,
-      input.unit,
-      input.note ?? null,
-      this.requireProfileId(),
-      id
-    );
-    if (result.changes !== 1) return undefined;
+    let changed = false;
+    await this.database.withTransactionAsync(async () => {
+      const result = await this.database.runAsync(
+        `UPDATE observations
+         SET measurement_code = ?, observed_at = ?, value = ?, unit = ?, note = ?
+         WHERE profile_id = ? AND id = ?`,
+        input.measurementCode,
+        input.observedAt,
+        input.value,
+        input.unit,
+        input.note ?? null,
+        this.requireProfileId(),
+        id
+      );
+      changed = result.changes === 1;
+      if (changed) await this.rotateMigrationFingerprint();
+    });
+    if (!changed) return undefined;
     return {
       ...existing,
       measurementCode: input.measurementCode,
@@ -497,12 +509,17 @@ export class SqliteLocalStore implements LocalStore {
     await this.assertWritable();
     const existing = await this.observationById(id);
     if (!existing) return undefined;
-    const result = await this.database.runAsync(
-      "DELETE FROM observations WHERE profile_id = ? AND id = ?",
-      this.requireProfileId(),
-      id
-    );
-    return result.changes === 1 ? existing : undefined;
+    let changed = false;
+    await this.database.withTransactionAsync(async () => {
+      const result = await this.database.runAsync(
+        "DELETE FROM observations WHERE profile_id = ? AND id = ?",
+        this.requireProfileId(),
+        id
+      );
+      changed = result.changes === 1;
+      if (changed) await this.rotateMigrationFingerprint();
+    });
+    return changed ? existing : undefined;
   }
 
   close(): Promise<void> {
@@ -535,6 +552,15 @@ export class SqliteLocalStore implements LocalStore {
     if ((await this.datasetMetadata()).lifecycleState !== "active") {
       throw new Error("This migrated Standalone dataset is a read-only archive.");
     }
+  }
+
+  private async rotateMigrationFingerprint(): Promise<void> {
+    await this.database.runAsync(
+      `UPDATE datasets
+       SET migration_fingerprint = 'standalone:' || lower(hex(randomblob(16)))
+       WHERE profile_id = ?`,
+      this.requireProfileId()
+    );
   }
 
   private async observationById(id: string): Promise<Observation | undefined> {

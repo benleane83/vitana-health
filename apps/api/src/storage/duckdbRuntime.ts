@@ -9,7 +9,7 @@ import {
 } from "../analyticalViews.js";
 
 const markerName = ".vitana-duckdb-poc";
-const schemaVersion = 9;
+const schemaVersion = 10;
 
 export interface DuckDbOptions {
   httpfsExtensionPath?: string;
@@ -403,6 +403,15 @@ const schemaVersion9Sql = `
   INSERT OR IGNORE INTO poc_metadata VALUES (9, CURRENT_TIMESTAMP, 'Companion standalone migration sessions and receipts');
 `;
 
+const schemaVersion10Sql = `
+  ALTER TABLE companion_migration_batches ADD COLUMN submitted_counts JSON;
+  UPDATE companion_migration_batches
+  SET submitted_counts = '{"sourceImports":0,"dataSources":0,"observationGroups":0,"observations":0}'
+  WHERE submitted_counts IS NULL;
+  ALTER TABLE companion_migration_batches ALTER COLUMN submitted_counts SET NOT NULL;
+  INSERT OR IGNORE INTO poc_metadata VALUES (10, CURRENT_TIMESTAMP, 'Per-entity companion migration batch counts');
+`;
+
 const schemaMigrations = [
   { version: 1, sql: schemaVersion1Sql },
   { version: 2, sql: schemaVersion2Sql },
@@ -412,5 +421,6 @@ const schemaMigrations = [
   { version: 6, sql: schemaVersion6Sql },
   { version: 7, sql: schemaVersion7Sql },
   { version: 8, sql: schemaVersion8Sql },
-  { version: 9, sql: schemaVersion9Sql }
+  { version: 9, sql: schemaVersion9Sql },
+  { version: 10, sql: schemaVersion10Sql }
 ] as const;

@@ -95,6 +95,7 @@ describe("DuckDbRepository fidelity", () => {
       expect(await repository.applyMobileMigrationBatch("pairing-1", batch)).toEqual(acknowledgement);
       const receipt = await repository.completeMobileMigration("pairing-1", started.sessionId);
       expect(receipt.counts).toEqual(acknowledgement.counts);
+      expect(await repository.completeMobileMigration("pairing-1", started.sessionId)).toEqual(receipt);
       expect((await repository.snapshot()).observations.some((entry) => entry.id === "mobile-cross-source-lookalike")).toBe(true);
       expect((await repository.snapshot()).observations.some((entry) => entry.id === "mobile-semantic-duplicate")).toBe(false);
     } finally {

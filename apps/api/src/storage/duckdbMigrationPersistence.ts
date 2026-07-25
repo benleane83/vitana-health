@@ -29,6 +29,16 @@ export async function startMobileMigration(
     manifest.datasetFingerprint
   );
   const sessionId = existing[0]?.session_id ? String(existing[0].session_id) : randomUUID();
+  if (existing.length) {
+    const stored = await allWithParams(
+      connection,
+      "SELECT manifest FROM companion_migration_sessions WHERE session_id = ? LIMIT 1;",
+      sessionId
+    );
+    if (!sameManifest(parseJson(stored[0]?.manifest) as MobileMigrationManifest, manifest)) {
+      throw requestError(409, "The migration manifest changed. Start again with the updated dataset.");
+    }
+  }
   if (!existing.length) {
     await run(
       connection,
@@ -177,9 +187,13 @@ export async function applyMobileMigrationBatch(
          COALESCE(o.effective_start, TIMESTAMP '1970-01-01') = COALESCE(?, TIMESTAMP '1970-01-01') AND
          COALESCE(o.effective_end, TIMESTAMP '1970-01-01') = COALESCE(?, TIMESTAMP '1970-01-01') AND
          o.value = ? AND lower(trim(o.unit)) = lower(trim(?)) AND
-         s.source_kind = incoming_s.source_kind AND
-         COALESCE(i.file_name, '') = COALESCE(incoming_i.file_name, '') AND
-         COALESCE(i.checksum, '') = COALESCE(incoming_i.checksum, '')
+         (
+           s.id = incoming_s.id OR (
+             i.id IS NOT NULL AND incoming_i.id IS NOT NULL AND
+             s.source_kind = incoming_s.source_kind AND
+             i.file_name = incoming_i.file_name AND i.checksum = incoming_i.checksum
+           )
+         )
        LIMIT 1;`,
       sourceId, entry.measurementCode, entry.observedAt, entry.effectiveStart ?? null,
       entry.effectiveEnd ?? null, entry.value, entry.unit
@@ -195,10 +209,17 @@ export async function applyMobileMigrationBatch(
   await run(
     connection,
     `INSERT INTO companion_migration_batches
-     (session_id, batch_id, acknowledgement, processed_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP);`,
+     (session_id, batch_id, acknowledgement, submitted_counts, processed_at)
+     VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP);`,
     batch.sessionId,
     batch.batchId,
-    json(acknowledgement)
+    json(acknowledgement),
+    json({
+      sourceImports: batch.sourceImports.length,
+      dataSources: batch.dataSources.length,
+      observationGroups: batch.observationGroups.length,
+      observations: batch.observations.length
+    })
   );
   return acknowledgement;
 }
@@ -213,7 +234,7 @@ export async function completeMobileMigration(
   const manifest = parseJson(session.manifest) as MobileMigrationManifest;
   const rows = await allWithParams(
     connection,
-    "SELECT acknowledgement FROM companion_migration_batches WHERE session_id = ?;",
+    "SELECT acknowledgement, submitted_counts FROM companion_migration_batches WHERE session_id = ?;",
     sessionId
   );
   const acknowledgements = rows.map((row) =>
@@ -226,6 +247,21 @@ export async function completeMobileMigration(
     }),
     { accepted: 0, duplicates: 0, conflicts: 0 }
   );
+  const submitted = rows.reduce<MobileMigrationManifest["counts"]>(
+    (total, row) => {
+      const counts = parseJson(row.submitted_counts) as MobileMigrationManifest["counts"];
+      return {
+        sourceImports: total.sourceImports + counts.sourceImports,
+        dataSources: total.dataSources + counts.dataSources,
+        observationGroups: total.observationGroups + counts.observationGroups,
+        observations: total.observations + counts.observations
+      };
+    },
+    { sourceImports: 0, dataSources: 0, observationGroups: 0, observations: 0 }
+  );
+  if (JSON.stringify(submitted) !== JSON.stringify(manifest.counts)) {
+    throw requestError(409, "Migration batches do not match the manifest.");
+  }
   const expected = Object.values(manifest.counts).reduce((sum, value) => sum + value, 0);
   if (counts.accepted + counts.duplicates + counts.conflicts !== expected) {
     throw requestError(409, "Migration batches are incomplete.");
@@ -308,6 +344,16 @@ function addConflict(
 
 function parseJson(value: unknown): unknown {
   return typeof value === "string" ? JSON.parse(value) : value;
+}
+
+function sameManifest(left: MobileMigrationManifest, right: MobileMigrationManifest): boolean {
+  return left.protocolVersion === right.protocolVersion &&
+    left.datasetId === right.datasetId &&
+    left.datasetFingerprint === right.datasetFingerprint &&
+    left.sourceProfileId === right.sourceProfileId &&
+    Object.keys(right.counts).every((key) =>
+      left.counts[key as keyof MobileMigrationManifest["counts"]] ===
+      right.counts[key as keyof MobileMigrationManifest["counts"]]);
 }
 
 function requestError(status: number, message: string): Error {

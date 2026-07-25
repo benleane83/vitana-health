@@ -26,6 +26,7 @@ export interface MemoryLocalStoreState {
   dataSources: Map<string, DataSource>;
   observationGroups: Map<string, ObservationGroup>;
   observations: Map<string, Observation>;
+  migrationFingerprints: Map<string, string>;
 }
 
 export function createMemoryLocalStoreState(): MemoryLocalStoreState {
@@ -34,7 +35,8 @@ export function createMemoryLocalStoreState(): MemoryLocalStoreState {
     sourceImports: new Map(),
     dataSources: new Map(),
     observationGroups: new Map(),
-    observations: new Map()
+    observations: new Map(),
+    migrationFingerprints: new Map()
   };
 }
 
@@ -48,6 +50,9 @@ export class MemoryLocalStore implements LocalStore {
     this.profileId = defaultProfile.id;
     if (!this.state.profiles.has(defaultProfile.id)) {
       this.state.profiles.set(defaultProfile.id, structuredClone(defaultProfile));
+    }
+    if (!this.state.migrationFingerprints.has(defaultProfile.id)) {
+      this.state.migrationFingerprints.set(defaultProfile.id, `standalone:${defaultProfile.id}`);
     }
   }
 
@@ -64,7 +69,7 @@ export class MemoryLocalStore implements LocalStore {
       profileId,
       kind: "standalone" as const,
       lifecycleState: this.archivedReceipt ? "archived" as const : "active" as const,
-      migrationFingerprint: `standalone:${profileId}`,
+      migrationFingerprint: this.state.migrationFingerprints.get(profileId) ?? `standalone:${profileId}`,
       migrationReceipt: this.archivedReceipt
     };
   }
@@ -107,6 +112,14 @@ export class MemoryLocalStore implements LocalStore {
     this.state.dataSources = dataSources;
     this.state.observationGroups = observationGroups;
     this.state.observations = observations;
+    if (
+      this.profileValues(sourceImports).length !== before.sourceImports ||
+      this.profileValues(dataSources).length !== before.dataSources ||
+      this.profileValues(observationGroups).length !== before.observationGroups ||
+      this.profileValues(observations).length !== before.observations
+    ) {
+      this.rotateMigrationFingerprint();
+    }
     return {
       importId: imported.sourceImport.id,
       outcome: {
@@ -165,6 +178,9 @@ export class MemoryLocalStore implements LocalStore {
   }
 
   async archiveAfterMigration(receipt: MobileMigrationReceipt): Promise<void> {
+    if ((await this.datasetMetadata()).migrationFingerprint !== receipt.datasetFingerprint) {
+      throw new Error("Standalone data changed during migration. The updated dataset was not archived.");
+    }
     this.archivedReceipt = structuredClone(receipt);
   }
 
@@ -240,6 +256,7 @@ export class MemoryLocalStore implements LocalStore {
       note: input.note
     };
     this.state.observations.set(observationKey, updated);
+    this.rotateMigrationFingerprint();
     return structuredClone(updated);
   }
 
@@ -249,6 +266,7 @@ export class MemoryLocalStore implements LocalStore {
     const existing = this.state.observations.get(observationKey);
     if (!existing) return undefined;
     this.state.observations.delete(observationKey);
+    this.rotateMigrationFingerprint();
     return structuredClone(existing);
   }
 
@@ -257,6 +275,7 @@ export class MemoryLocalStore implements LocalStore {
   async reset(): Promise<void> {
     const profileId = this.requireProfileId();
     this.state.profiles.delete(profileId);
+    this.state.migrationFingerprints.delete(profileId);
     for (const values of [
       this.state.sourceImports,
       this.state.dataSources,
@@ -268,6 +287,11 @@ export class MemoryLocalStore implements LocalStore {
       }
     }
     this.profileId = undefined;
+  }
+
+  private rotateMigrationFingerprint(): void {
+    const profileId = this.requireProfileId();
+    this.state.migrationFingerprints.set(profileId, `standalone:${profileId}:${globalThis.crypto.randomUUID()}`);
   }
 
   private requireProfileId(): string {
