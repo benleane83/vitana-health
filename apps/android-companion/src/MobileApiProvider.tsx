@@ -11,6 +11,8 @@ import type {
   HealthDataSummary,
   HealthEventListQuery,
   ManualObservationPayload,
+  MobileMigrationManifest,
+  MobileMigrationReceipt,
   UpdateObservationInput
 } from "@vitana/shared";
 import { clearConnection, clearSelectedProfileId, loadConnection } from "./endpointStore";
@@ -36,6 +38,8 @@ import {
 import type { CompanionMutationService } from "./companionDataSource";
 import type { CompanionObservationMutationService } from "./companionDataSource";
 import { createStandaloneDataSource } from "./standalone/standaloneDataSource";
+import type { StandaloneMigrationSource } from "./standalone/standaloneDataSource";
+import type { LocalDatasetSummary } from "./standalone/localStore";
 import { userFacingError } from "./userFacingError";
 import { queueConnectionRevocation, retryPendingRevocation } from "./pendingRevocation";
 
@@ -55,9 +59,14 @@ interface MobileApiContextValue {
   trackLoading: boolean;
   error?: string;
   transientRevision: number;
+  migrationProgress?: { uploaded: number; total: number };
   reloadConnection(): Promise<void>;
   setDemoMode(enabled: boolean): Promise<void>;
   setOperatingMode(mode: CompanionOperatingMode): Promise<void>;
+  listStandaloneDatasets(): Promise<LocalDatasetSummary[]>;
+  selectStandaloneDataset(datasetId: string): Promise<void>;
+  standaloneMigrationManifest(): Promise<MobileMigrationManifest>;
+  migrateStandaloneData(): Promise<MobileMigrationReceipt>;
   refreshDashboard(): Promise<void>;
   refreshTrack(): Promise<void>;
   healthDataDetail(measurementCode: string, page?: DetailPage): Promise<HealthDataDetail>;
@@ -95,6 +104,7 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
   const [trackLoading, setTrackLoading] = useState(false);
   const [error, setError] = useState<string>();
   const [transientRevision, setTransientRevision] = useState(0);
+  const [migrationProgress, setMigrationProgress] = useState<{ uploaded: number; total: number }>();
   const generation = useRef(0);
   const demoSource = useMemo(() => createDemoDataSource(), []);
   const standaloneSource = useMemo(
@@ -150,6 +160,47 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     setConnectionState(mode === "standalone" ? "online" : "connecting");
   }, [clearHealthData, connection]);
 
+  const standaloneMigrationManifest = useCallback(async () => {
+    const migrationSource = standaloneSource as StandaloneMigrationSource | undefined;
+    if (!migrationSource) throw new Error("Switch to Standalone mode before migrating local data.");
+    return migrationSource.migrationManifest();
+  }, [standaloneSource]);
+
+  const listStandaloneDatasets = useCallback(async () => {
+    const migrationSource = standaloneSource as StandaloneMigrationSource | undefined;
+    return migrationSource ? migrationSource.listDatasets() : [];
+  }, [standaloneSource]);
+
+  const migrateStandaloneData = useCallback(async () => {
+    if (!connection?.token) throw new Error("Pair with a PC before migrating local data.");
+    const migrationSource = standaloneSource as StandaloneMigrationSource | undefined;
+    if (!migrationSource) throw new Error("Switch to Standalone mode before migrating local data.");
+    const api = createCompanionApi(connection);
+    const manifest = await migrationSource.migrationManifest();
+    const started = await api.mobileMigration.start({ manifest });
+    const batches = await migrationSource.exportMigrationBatches(started.sessionId);
+    const processed = new Set(started.processedBatchIds);
+    const pending = batches.filter((batch) => !processed.has(batch.batchId));
+    setMigrationProgress({ uploaded: batches.length - pending.length, total: batches.length });
+    try {
+      for (const batch of pending) {
+        await api.mobileMigration.uploadBatch(batch);
+        setMigrationProgress((current) => ({
+          uploaded: (current?.uploaded ?? 0) + 1,
+          total: batches.length
+        }));
+      }
+      const receipt = await api.mobileMigration.complete({
+        protocolVersion: 1,
+        sessionId: started.sessionId
+      });
+      await migrationSource.archiveAfterMigration(receipt, connection.url);
+      return receipt;
+    } finally {
+      setMigrationProgress(undefined);
+    }
+  }, [connection, standaloneSource]);
+
   const refreshDashboard = useCallback(async () => {
     if (!source) return;
     const requestGeneration = generation.current;
@@ -199,6 +250,16 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
       if (generation.current === requestGeneration) setTrackLoading(false);
     }
   }, [classifyError, source]);
+
+  const selectStandaloneDataset = useCallback(async (datasetId: string) => {
+    const migrationSource = standaloneSource as StandaloneMigrationSource | undefined;
+    if (!migrationSource) throw new Error("Switch to Standalone mode before selecting local data.");
+    await migrationSource.selectDataset(datasetId);
+    generation.current += 1;
+    clearHealthData();
+    setError(undefined);
+    await Promise.all([refreshDashboard(), refreshTrack()]);
+  }, [clearHealthData, refreshDashboard, refreshTrack, standaloneSource]);
 
   const healthDataDetail = useCallback(async (measurementCode: string, page?: DetailPage) => {
     if (!source) throw new Error("Health data is unavailable while the companion is disconnected.");
@@ -353,9 +414,14 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     trackLoading,
     error,
     transientRevision,
+    migrationProgress,
     reloadConnection,
     setDemoMode,
     setOperatingMode,
+    listStandaloneDatasets,
+    selectStandaloneDataset,
+    standaloneMigrationManifest,
+    migrateStandaloneData,
     refreshDashboard,
     refreshTrack,
     healthDataDetail,
@@ -378,9 +444,9 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
   }), [
     analytics, bootstrap, clearTransientData, completeCareItem, connection, connectionState, createCareItem, createHealthEvent,
     dashboardLoading, deleteCareItem, deleteHealthEvent, deleteObservation, demoMode, disconnect, error, healthDataDetail,
-  importManualObservations, listCareItems, listHealthEvents, operatingMode, refreshAfterImport, refreshDashboard,
+  importManualObservations, listCareItems, listHealthEvents, listStandaloneDatasets, operatingMode, refreshAfterImport, refreshDashboard,
   profilePhoto, refreshTrack, reloadConnection, resetStandaloneData, setDemoMode, setOperatingMode, summary, trackLoading,
-  transientRevision, updateCareItem, updateHealthEvent, updateObservation
+  migrateStandaloneData, migrationProgress, selectStandaloneDataset, standaloneMigrationManifest, transientRevision, updateCareItem, updateHealthEvent, updateObservation
   ]);
   return <MobileApiContext.Provider value={value}>{children}</MobileApiContext.Provider>;
 }

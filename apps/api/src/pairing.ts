@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { dirname, resolve } from "node:path";
 
 const pairingLifetimeMs = 5 * 60 * 1000;
-const authorizationSchemaVersion = 3;
+const authorizationSchemaVersion = 4;
 
 export type CompanionCapability =
   | "profiles:list-minimal"
@@ -15,6 +15,7 @@ export type CompanionCapability =
   | "reports:preview"
   | "reports:commit"
   | "health-connect:import"
+  | "standalone:migrate"
   | "pairing:self-revoke";
 export const companionCapabilities: readonly CompanionCapability[] = [
   "profiles:list-minimal",
@@ -26,6 +27,7 @@ export const companionCapabilities: readonly CompanionCapability[] = [
   "reports:preview",
   "reports:commit",
   "health-connect:import",
+  "standalone:migrate",
   "pairing:self-revoke"
 ] as const;
 

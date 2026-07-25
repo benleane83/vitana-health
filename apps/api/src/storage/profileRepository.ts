@@ -22,6 +22,11 @@ import type {
   HealthEventMutationResponse,
   HealthStoreData,
   LinkedCareItemConflict,
+  MobileMigrationBatch,
+  MobileMigrationBatchAcknowledgement,
+  MobileMigrationManifest,
+  MobileMigrationReceipt,
+  MobileMigrationStartResponse,
   PaginatedResult,
   PersonalReferenceRangeInput,
   CareItem,
@@ -118,6 +123,9 @@ export interface ProfileRepository {
   deleteProfilePhoto(): Promise<boolean>;
   resetMeasurementTypeMetadataFromRegistry(): Promise<MeasurementRegistryResetResult>;
   mergeImport(imported: ProfileImport): Promise<ImportMutationResult>;
+  startMobileMigration(pairingId: string, manifest: MobileMigrationManifest): Promise<MobileMigrationStartResponse>;
+  applyMobileMigrationBatch(pairingId: string, batch: MobileMigrationBatch): Promise<MobileMigrationBatchAcknowledgement>;
+  completeMobileMigration(pairingId: string, sessionId: string): Promise<MobileMigrationReceipt>;
   addInsight(insight: HealthStoreData["insights"][number]): Promise<HealthStoreData["insights"][number]>;
   exportData(): Promise<HealthStoreData>;
   listHealthEvents(query: HealthEventListQuery): Promise<PaginatedResult<HealthEvent>>;

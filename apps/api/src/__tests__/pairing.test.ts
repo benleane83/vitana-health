@@ -46,6 +46,7 @@ describe("PairingStore authorization grants", () => {
         "reports:preview",
         "reports:commit",
         "health-connect:import",
+        "standalone:migrate",
         "pairing:self-revoke"
       ]
     });

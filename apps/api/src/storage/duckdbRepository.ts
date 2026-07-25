@@ -20,6 +20,8 @@ import {
   type HealthEventListQuery,
   type HealthEventMutationResponse,
   type HealthStoreData,
+  type MobileMigrationBatch,
+  type MobileMigrationManifest,
   type Observation,
   type PersonalReferenceRangeInput,
   type Profile,
@@ -79,6 +81,11 @@ import {
   importObservationRecords as importDuckDbObservationRecords,
   mergeImport as mergeDuckDbImport
 } from "./duckdbImportPersistence.js";
+import {
+  applyMobileMigrationBatch,
+  completeMobileMigration,
+  startMobileMigration
+} from "./duckdbMigrationPersistence.js";
 import {
   analyticsSummary as readAnalyticsSummary,
   appBootstrap as readAppBootstrap,
@@ -266,6 +273,33 @@ export class DuckDbRepository implements ProfileRepository {
   async mergeImport(parsed: DuckDbImport): Promise<ImportMutationResult> {
     this.assertOpen();
     return this.transaction(() => mergeDuckDbImport(this.connection, parsed));
+  }
+
+  async startMobileMigration(pairingId: string, manifest: MobileMigrationManifest) {
+    this.assertOpen();
+    const profile = await this.getProfile();
+    return this.transaction(() => startMobileMigration(this.connection, {
+      pairingId,
+      destinationProfileId: profile.id
+    }, manifest));
+  }
+
+  async applyMobileMigrationBatch(pairingId: string, batch: MobileMigrationBatch) {
+    this.assertOpen();
+    const profile = await this.getProfile();
+    return this.transaction(() => applyMobileMigrationBatch(this.connection, {
+      pairingId,
+      destinationProfileId: profile.id
+    }, batch));
+  }
+
+  async completeMobileMigration(pairingId: string, sessionId: string) {
+    this.assertOpen();
+    const profile = await this.getProfile();
+    return this.transaction(() => completeMobileMigration(this.connection, {
+      pairingId,
+      destinationProfileId: profile.id
+    }, sessionId));
   }
 
   async addInsight(insight: HealthStoreData["insights"][number]): Promise<HealthStoreData["insights"][number]> {

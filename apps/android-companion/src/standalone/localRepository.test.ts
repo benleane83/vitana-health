@@ -90,6 +90,62 @@ describe("local profile repository", () => {
     expect((await bailey.bootstrap()).counts.observations).toBe(1);
   });
 
+  it("exports dependency-ordered batches and makes a migrated dataset read-only", async () => {
+    const repository = new LocalProfileRepository(new MemoryLocalStore(), profile("profile-a"));
+    await repository.importManualObservations(reading);
+    const manifest = await repository.migrationManifest();
+    const batches = await repository.exportMigrationBatches("session-1");
+
+    expect(manifest.counts).toEqual({
+      sourceImports: 1,
+      dataSources: 1,
+      observationGroups: 1,
+      observations: 1
+    });
+    expect(batches.map((batch) => batch.batchId.split("-000000")[0])).toEqual([
+      "source-imports",
+      "data-sources",
+      "observation-groups",
+      "observations"
+    ]);
+
+    await repository.archiveAfterMigration({
+      receiptId: "receipt-1",
+      sessionId: "session-1",
+      pairingId: "pairing-1",
+      destinationProfileId: "pc-profile",
+      datasetFingerprint: manifest.datasetFingerprint,
+      completedAt: "2026-07-25T00:00:00.000Z",
+      counts: { accepted: 4, duplicates: 0, conflicts: 0 }
+    }, "https://pc.local");
+    await expect(repository.importManualObservations(reading)).rejects.toThrow("read-only archive");
+  });
+
+  it("does not archive records changed after a migration snapshot was started", async () => {
+    const repository = new LocalProfileRepository(new MemoryLocalStore(), profile("profile-a"));
+    await repository.importManualObservations(reading);
+    const started = await repository.migrationManifest();
+    await repository.updateObservation(
+      (await repository.healthDataDetail("weight")).entries[0]!.id,
+      { measurementCode: "weight", observedAt: reading.observedAt, value: 71, unit: "kg" }
+    );
+
+    await expect(repository.archiveAfterMigration({
+      receiptId: "stale-receipt",
+      sessionId: "session-1",
+      pairingId: "pairing-1",
+      destinationProfileId: "pc-profile",
+      datasetFingerprint: started.datasetFingerprint,
+      completedAt: "2026-07-25T00:00:00.000Z",
+      counts: { accepted: 4, duplicates: 0, conflicts: 0 }
+    }, "https://pc.local")).rejects.toThrow("changed during migration");
+
+    await expect(repository.importManualObservations({
+      ...reading,
+      observedAt: "2026-07-19T06:00:00.000Z"
+    })).resolves.toBeDefined();
+  });
+
   it("updates and deletes an observation without affecting another profile", async () => {
     const state = createMemoryLocalStoreState();
     const alex = new LocalProfileRepository(new MemoryLocalStore(state), profile("profile-a"));

@@ -42,12 +42,177 @@ afterEach(() => {
 });
 
 describe("DuckDbRepository fidelity", () => {
-  it.skipIf(!httpfsExtensionPath)("migrates through v10 and keeps profile photos encrypted, isolated, and outside exports", async () => {
+  it.skipIf(!httpfsExtensionPath)("applies resumable migration batches with provenance-aware deduplication", async () => {
+    const databasePath = join(root, "databases", "mobile-migration.duckdb-poc");
+    const fixture = createDuckDbHealthStoreFixture();
+    const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
+    const manifest = {
+      protocolVersion: 1 as const,
+      datasetId: "mobile-dataset",
+      datasetFingerprint: "standalone:mobile-dataset",
+      sourceProfileId: "mobile-profile",
+      counts: { sourceImports: 1, dataSources: 2, observationGroups: 0, observations: 3 }
+    };
+
+    try {
+      const started = await repository.startMobileMigration("pairing-1", manifest);
+      const batch = {
+        protocolVersion: 1 as const,
+        sessionId: started.sessionId,
+        batchId: "batch-1",
+        sourceImports: [{
+          ...fixture.sourceImports[0]!,
+          id: "mobile-import",
+          rawContent: undefined
+        }],
+        dataSources: [{
+          id: "mobile-source-same",
+          sourceKind: "manual-entry" as const,
+          label: "Same provenance",
+          importId: "mobile-import",
+          createdAt: "2026-07-25T00:00:00.000Z"
+        }, {
+          id: "mobile-source-other",
+          sourceKind: "manual-entry" as const,
+          label: "Independent source",
+          createdAt: "2026-07-25T00:00:00.000Z"
+        }],
+        observationGroups: [],
+        observations: [{
+          ...fixture.observations[0]!,
+          id: "mobile-semantic-duplicate",
+          sourceId: "mobile-source-same",
+          observationGroupId: undefined,
+          deviceId: undefined,
+          value: fixture.observations[0]!.value * 2.2046226218487757,
+          unit: "lb"
+        }, {
+          ...fixture.observations[0]!,
+          id: "mobile-cross-source-lookalike",
+          sourceId: "mobile-source-other",
+          observationGroupId: undefined,
+          deviceId: undefined
+        }, {
+          ...fixture.observations[0]!,
+          value: fixture.observations[0]!.value + 1,
+          sourceId: "mobile-source-same",
+          observationGroupId: undefined,
+          deviceId: undefined
+        }]
+      };
+
+      const acknowledgement = await repository.applyMobileMigrationBatch("pairing-1", batch);
+      expect(acknowledgement.counts).toEqual({ accepted: 3, duplicates: 2, conflicts: 1 });
+      expect(acknowledgement.duplicates).toEqual([
+        expect.objectContaining({ entityType: "sourceImport", classification: "source-import-identity" }),
+        expect.objectContaining({ entityType: "observation", classification: "canonical-observation" })
+      ]);
+      expect(acknowledgement.conflicts).toEqual([
+        expect.objectContaining({ entityType: "observation", entityId: fixture.observations[0]!.id })
+      ]);
+      expect(await repository.applyMobileMigrationBatch("pairing-1", batch)).toEqual(acknowledgement);
+      const receipt = await repository.completeMobileMigration("pairing-1", started.sessionId);
+      expect(receipt.counts).toEqual(acknowledgement.counts);
+      expect(await repository.completeMobileMigration("pairing-1", started.sessionId)).toEqual(receipt);
+      expect((await repository.snapshot()).observations.some((entry) => entry.id === "mobile-cross-source-lookalike")).toBe(true);
+      expect((await repository.snapshot()).observations.some((entry) => entry.id === "mobile-semantic-duplicate")).toBe(false);
+    } finally {
+      await repository.close();
+    }
+  });
+
+  it.skipIf(!httpfsExtensionPath)("rolls back failed batches and resumes processed batches after reopen", async () => {
+    const databasePath = join(root, "databases", "mobile-migration-resume.duckdb-poc");
+    const fixture = createDuckDbHealthStoreFixture();
+    const options = { httpfsExtensionPath };
+    const manifest = {
+      protocolVersion: 1 as const,
+      datasetId: "resume-dataset",
+      datasetFingerprint: "standalone:resume-dataset",
+      sourceProfileId: "resume-profile",
+      counts: { sourceImports: 1, dataSources: 1, observationGroups: 0, observations: 1 }
+    };
+    const sourceImport = {
+      ...fixture.sourceImports[0]!,
+      id: "resume-import",
+      checksum: "resume-checksum",
+      fileName: "resume.json",
+      rawContent: undefined
+    };
+    const dataSource = {
+      id: "resume-source",
+      sourceKind: "manual-entry" as const,
+      label: "Resume source",
+      importId: sourceImport.id,
+      createdAt: "2026-07-25T00:00:00.000Z"
+    };
+
+    const first = await DuckDbRepository.hydrate(root, databasePath, key, fixture, options);
+    let sessionId: string;
+    try {
+      const started = await first.startMobileMigration("pairing-resume", manifest);
+      sessionId = started.sessionId;
+      await expect(first.applyMobileMigrationBatch("pairing-resume", {
+        protocolVersion: 1,
+        sessionId,
+        batchId: "failed-source",
+        sourceImports: [sourceImport],
+        dataSources: [{ ...dataSource, createdAt: "not-a-timestamp" }],
+        observationGroups: [],
+        observations: []
+      })).rejects.toThrow();
+      expect((await first.snapshot()).sourceImports.some((entry) => entry.id === sourceImport.id)).toBe(false);
+
+      await first.applyMobileMigrationBatch("pairing-resume", {
+        protocolVersion: 1,
+        sessionId,
+        batchId: "source-graph",
+        sourceImports: [sourceImport],
+        dataSources: [dataSource],
+        observationGroups: [],
+        observations: []
+      });
+    } finally {
+      await first.close();
+    }
+
+    const reopened = await DuckDbRepository.open(root, databasePath, key, options);
+    try {
+      const resumed = await reopened.startMobileMigration("pairing-resume", manifest);
+      expect(resumed).toMatchObject({
+        sessionId: sessionId!,
+        processedBatchIds: ["source-graph"],
+        completed: false
+      });
+      await reopened.applyMobileMigrationBatch("pairing-resume", {
+        protocolVersion: 1,
+        sessionId: sessionId!,
+        batchId: "observations",
+        sourceImports: [],
+        dataSources: [],
+        observationGroups: [],
+        observations: [{
+          ...fixture.observations[0]!,
+          id: "resume-observation",
+          sourceId: dataSource.id,
+          observationGroupId: undefined,
+          deviceId: undefined
+        }]
+      });
+      await expect(reopened.completeMobileMigration("pairing-resume", sessionId!)).resolves.toMatchObject({
+        counts: { accepted: 3, duplicates: 0, conflicts: 0 }
+      });
+    } finally {
+      await reopened.close();
+    }
+  }, 30_000);
+
+  it.skipIf(!httpfsExtensionPath)("migrates through v12 and keeps profile photos encrypted, isolated, and outside exports", async () => {
     const legacyPath = join(root, "databases", "health-store-photo-v8.duckdb-poc");
     await createDuckDbSchema(root, legacyPath, key, { httpfsExtensionPath }, 8);
     const legacy = await openEncryptedDuckDbDatabase(root, legacyPath, key, { httpfsExtensionPath });
     try {
-      expect(await migrateDuckDbSchema(legacy)).toBe(10);
+      expect(await migrateDuckDbSchema(legacy)).toBe(12);
       expect(await all(legacy.connection, "SELECT table_name FROM information_schema.tables WHERE table_name = 'profile_media';"))
         .toHaveLength(1);
     } finally {
@@ -64,7 +229,7 @@ describe("DuckDbRepository fidelity", () => {
     const replacement = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe1]), Buffer.alloc(64 * 1024, 2), Buffer.from([0xff, 0xd9])]);
 
     try {
-      expect(await first.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+      expect(await first.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
       const created = await first.replaceProfilePhoto("image/jpeg", original);
       expect(created.revision).toBe(createHash("sha256").update(original).digest("hex"));
       expect(await second.getProfilePhoto()).toBeUndefined();
@@ -88,7 +253,7 @@ describe("DuckDbRepository fidelity", () => {
     }
   }, 30_000);
 
-  it.skipIf(!httpfsExtensionPath)("migrates v9 care data to v10 without retired columns", async () => {
+  it.skipIf(!httpfsExtensionPath)("migrates v9 care data through v12 without retired columns", async () => {
     const databasePath = join(root, "databases", "health-store-care-v9.duckdb-poc");
     const options = { httpfsExtensionPath };
     await createDuckDbSchema(root, databasePath, key, options, 9);
@@ -101,7 +266,7 @@ describe("DuckDbRepository fidelity", () => {
           (0, 'care-completed', 'routine-checkup', NULL, 'Annual check-up', TIMESTAMP '2026-07-20 09:00:00', TIMESTAMP '2026-07-20 12:00:00', NULL, 'normal', 'completed', NULL, NULL, 'Keep this note', 'event-completion', 'event-completion', TIMESTAMP '2026-07-20 10:00:00');
       `);
 
-      expect(await migrateDuckDbSchema(database)).toBe(10);
+      expect(await migrateDuckDbSchema(database)).toBe(12);
       const eventColumns = await querySql(database.connection, "SELECT column_name FROM information_schema.columns WHERE table_name = 'health_events' ORDER BY column_name;");
       const careColumns = await querySql(database.connection, "SELECT column_name FROM information_schema.columns WHERE table_name = 'care_items' ORDER BY column_name;");
       expect(eventColumns.map((row) => row.column_name)).not.toContain("occurred_end");
@@ -1081,7 +1246,7 @@ describe("DuckDbRepository fidelity", () => {
 
     const upgraded = await DuckDbRepository.open(root, databasePath, key, options);
     try {
-      expect(await upgraded.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+      expect(await upgraded.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
       expect(await upgraded.dailyMetrics()).toEqual([]);
       expect(await upgraded.weeklyMetrics()).toEqual([]);
     } finally {
@@ -1108,7 +1273,7 @@ describe("DuckDbRepository fidelity", () => {
 
     const reopened = await DuckDbRepository.open(root, databasePath, key, options);
     try {
-      expect(await reopened.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+      expect(await reopened.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
     } finally {
       await reopened.close();
     }
@@ -1185,7 +1350,9 @@ describe("DuckDbRepository fidelity", () => {
     await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (8, CURRENT_TIMESTAMP, 'synthetic');");
     await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (9, CURRENT_TIMESTAMP, 'synthetic');");
     await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (10, CURRENT_TIMESTAMP, 'synthetic');");
-    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (11, CURRENT_TIMESTAMP, 'future');");
+    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (11, CURRENT_TIMESTAMP, 'synthetic');");
+    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (12, CURRENT_TIMESTAMP, 'synthetic');");
+    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (13, CURRENT_TIMESTAMP, 'future');");
     await execSql(futureHandle.connection, "CHECKPOINT;");
     await closeEncryptedDuckDbDatabase(futureHandle);
     const futureHash = hashFile(futurePath);

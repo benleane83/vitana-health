@@ -27,6 +27,7 @@ import { makeQueryRoutes, makeLlmRoutes } from "./routes/queryRoutes.js";
 import { makeDataRoutes } from "./routes/dataRoutes.js";
 import { makeSettingsRoutes } from "./routes/settingsRoutes.js";
 import { makeBackupRoutes, isInMaintenanceMode } from "./routes/backupRoutes.js";
+import { makeCompanionMigrationRoutes } from "./routes/companionMigrationRoutes.js";
 import { z } from "zod";
 import type { AuthorizationPrincipal, OwnerPrincipal } from "./requestPrincipal.js";
 import type { DesktopRuntimeSettingsResponse, DesktopRuntimeSettingsUpdate, DesktopUpdateState } from "@vitana/shared";
@@ -98,6 +99,8 @@ function companionCapabilityFor(request: express.Request): import("./pairing.js"
     default:
       return request.method === "GET" && /^\/summary\/[^/]+$/.test(request.path)
         ? "assigned-profile:read"
+        : request.method === "POST" && /^\/companion\/migrations(?:\/[^/]+\/(?:batches|complete))?$/.test(request.path)
+          ? "standalone:migrate"
         : /^\/care\/health-events\/[^/]+$/.test(request.path)
           ? "care:write"
           : /^\/care\/items\/[^/]+(?:\/complete)?$/.test(request.path)
@@ -120,6 +123,7 @@ export function createApp(
   // Body limits — larger limits only on routes that require them
   app.use(["/api/import/body-composition/preview", "/api/import/blood-test/preview"], express.json({ limit: "20mb" }));
   app.use("/api/import/health-connect", express.json({ limit: "10mb" }));
+  app.use("/api/companion/migrations", express.json({ limit: "2mb" }));
   app.use("/api/import/upload/preview", express.json({ limit: "4mb" }));
   app.use(express.json({ limit: "1mb" }));
 
@@ -341,6 +345,7 @@ export function createApp(
   app.use("/api/profile", makeProfileRoutes(storeManager));
   app.use("/api/profiles", makeProfilesRoutes(storeManager, pairingStore));
   app.use("/api/import", makeImportRoutes(storeManager));
+  app.use("/api/companion/migrations", makeCompanionMigrationRoutes(storeManager));
   app.use("/api/query", makeQueryRoutes(storeManager));
   app.use("/api/llm", makeLlmRoutes());
   app.use("/api/settings", makeSettingsRoutes({

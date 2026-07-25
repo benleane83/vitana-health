@@ -22,6 +22,12 @@ import {
   healthResponseSchema,
   importMutationResponseSchema,
   linkedHealthEventConflictSchema,
+  mobileMigrationBatchAcknowledgementSchema,
+  mobileMigrationBatchSchema,
+  mobileMigrationCompletionRequestSchema,
+  mobileMigrationReceiptSchema,
+  mobileMigrationStartRequestSchema,
+  mobileMigrationStartResponseSchema,
   paginatedCareItemsResponseSchema,
   paginatedHealthEventsResponseSchema,
   personalReferenceRangeInputSchema,
@@ -44,6 +50,9 @@ import type {
   ManualObservationPayload,
   PersonalReferenceRangeInput,
   UpdateObservationInput,
+  MobileMigrationBatch,
+  MobileMigrationCompletionRequest,
+  MobileMigrationStartRequest,
   UploadImportCommitPayload,
   UploadImportPreviewPayload
 } from "@vitana/shared";
@@ -173,6 +182,25 @@ export function createApiClient(transport: ApiTransport) {
       request(importMutationResponseSchema, "/api/import/upload/commit", { method: "POST", body: payload }),
     importHealthConnect: (payload: Record<string, unknown>) =>
       request(importMutationResponseSchema, "/api/import/health-connect", { method: "POST", body: payload }),
+    mobileMigration: {
+      start: (payload: MobileMigrationStartRequest) =>
+        request(mobileMigrationStartResponseSchema, "/api/companion/migrations", {
+          method: "POST",
+          body: mobileMigrationStartRequestSchema.parse(payload)
+        }),
+      uploadBatch: (payload: MobileMigrationBatch) =>
+        request(
+          mobileMigrationBatchAcknowledgementSchema,
+          `/api/companion/migrations/${encodeURIComponent(payload.sessionId)}/batches`,
+          { method: "POST", body: mobileMigrationBatchSchema.parse(payload) }
+        ),
+      complete: (payload: MobileMigrationCompletionRequest) =>
+        request(
+          mobileMigrationReceiptSchema,
+          `/api/companion/migrations/${encodeURIComponent(payload.sessionId)}/complete`,
+          { method: "POST", body: mobileMigrationCompletionRequestSchema.parse(payload) }
+        )
+    },
     listHealthEvents: (query: HealthEventListQuery = {}) =>
       request(paginatedHealthEventsResponseSchema, `/api/care/health-events${careQuery(healthEventListQuerySchema.parse(query), query)}`),
     createHealthEvent: (payload: CreateHealthEventInput) =>

@@ -12,3 +12,4 @@ export * from "./apiContract.js";
 export * from "./backup.js";
 export * from "./mobileRepository.js";
 export * from "./brand.js";
+export * from "./mobileMigration.js";

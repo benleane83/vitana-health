@@ -31,7 +31,7 @@ describe("SQLite local store profile selection", () => {
     const persistedProfile = profile("mobile-persisted", "2026-07-20T10:00:00.000Z");
     const runAsync = vi.fn();
     const getFirstAsync = vi.fn(async (sql: string, ...parameters: unknown[]) => {
-      if (sql.startsWith("SELECT profiles.id")) return { id: persistedProfile.id };
+      if (sql.startsWith("SELECT profile_id FROM datasets")) return { profile_id: persistedProfile.id };
       if (sql.startsWith("SELECT profile_json FROM profiles")) {
         return parameters[0] === persistedProfile.id
           ? { profile_json: JSON.stringify(persistedProfile) }
@@ -56,5 +56,43 @@ describe("SQLite local store profile selection", () => {
       counts: { imports: 1, observations: 3 }
     });
     expect(runAsync).not.toHaveBeenCalled();
+  });
+
+  it("requires an explicit choice when multiple migrated datasets are unselected", async () => {
+    const profiles = [
+      profile("profile-a", "2026-07-20T10:00:00.000Z"),
+      profile("profile-b", "2026-07-21T10:00:00.000Z")
+    ];
+    const runAsync = vi.fn().mockResolvedValue({ changes: 1 });
+    const database = {
+      getFirstAsync: vi.fn(async (sql: string, datasetId?: string) => {
+        if (sql.startsWith("SELECT profile_id FROM datasets WHERE is_selected")) return null;
+        if (sql.startsWith("SELECT profile_id FROM datasets WHERE dataset_id")) {
+          return datasetId === "profile-b" ? { profile_id: "profile-b" } : null;
+        }
+        return null;
+      }),
+      getAllAsync: vi.fn(async () => profiles.map((entry) => ({
+        dataset_id: entry.id,
+        profile_id: entry.id,
+        profile_json: JSON.stringify(entry),
+        dataset_kind: "standalone",
+        lifecycle_state: "active",
+        is_selected: 0
+      }))),
+      runAsync,
+      withTransactionAsync: vi.fn(async (task: () => Promise<void>) => task())
+    };
+    const store = new SqliteLocalStore(database as never);
+
+    await expect(store.initialize(profile("new-profile", "2026-07-22T10:00:00.000Z")))
+      .rejects.toThrow("Choose a local dataset");
+    expect(await store.listDatasets()).toEqual([
+      expect.objectContaining({ datasetId: "profile-a", displayName: "My profile", selected: false }),
+      expect.objectContaining({ datasetId: "profile-b", displayName: "My profile", selected: false })
+    ]);
+
+    await store.selectDataset("profile-b");
+    expect(runAsync).toHaveBeenCalledWith("UPDATE datasets SET is_selected = 1 WHERE dataset_id = ?", "profile-b");
   });
 });
