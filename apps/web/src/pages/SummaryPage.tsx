@@ -1,5 +1,11 @@
-import { useState } from "react";
-import { compareSummaryRows, convertMeasurementValue } from "@vitana/shared";
+import { useEffect, useState } from "react";
+import {
+  calendarDateToUtcMidnight,
+  compareSummaryRows,
+  convertMeasurementValue,
+  localCalendarDate,
+  usesDateOnlyObservation
+} from "@vitana/shared";
 import type {
   HealthDataChartMode,
   HealthDataChartRange,
@@ -121,6 +127,11 @@ function primaryCountTile(counts: { observations: number; samples: number; activ
   if (counts.samples > 0) return { label: "Samples", value: counts.samples };
   if (counts.activities > 0) return { label: "Activities", value: counts.activities };
   return { label: "Entries", value: counts.total };
+}
+
+function toLocalDateTimeInput(date: Date): string {
+  const offsetMilliseconds = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offsetMilliseconds).toISOString().slice(0, 16);
 }
 
 export function SummaryPage({
@@ -295,7 +306,11 @@ export function ObservationTypeDetailPage({
   measurementType?: MeasurementType;
   defaultUnit: string;
 }) {
-  const [manualObservedAt, setManualObservedAt] = useState(() => new Date().toISOString().slice(0, 10));
+  const dateOnlyObservation = usesDateOnlyObservation(measurementType?.aggregation);
+  const [manualObservedAt, setManualObservedAt] = useState(() => {
+    const now = new Date();
+    return dateOnlyObservation ? localCalendarDate(now) : toLocalDateTimeInput(now);
+  });
   const [manualValue, setManualValue] = useState("");
   const [manualUnit, setManualUnit] = useState("");
   const [manualNote, setManualNote] = useState("");
@@ -317,6 +332,14 @@ export function ObservationTypeDetailPage({
     detail?.referenceRange.effective?.unit,
     latestEntry?.unit
   ].filter((unit): unit is string => Boolean(unit)))];
+
+  useEffect(() => {
+    setManualObservedAt((current) => {
+      if (dateOnlyObservation) return current.slice(0, 10);
+      if (current.includes("T")) return current;
+      return `${current}T${toLocalDateTimeInput(new Date()).slice(11)}`;
+    });
+  }, [dateOnlyObservation]);
 
   function beginRangeEdit() {
     const range = detail?.referenceRange.personal ?? detail?.referenceRange.effective;
@@ -384,9 +407,12 @@ export function ObservationTypeDetailPage({
   function submitManualObservation(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const value = Number.parseFloat(manualValue);
-    if (!Number.isFinite(value)) return;
+    const observedAt = dateOnlyObservation
+      ? calendarDateToUtcMidnight(manualObservedAt)
+      : new Date(manualObservedAt).toISOString();
+    if (!Number.isFinite(value) || !observedAt) return;
     void onAddManualObservation({
-      observedAt: manualObservedAt,
+      observedAt,
       value,
       unit: manualUnit.trim() || defaultUnit,
       note: manualNote.trim()
@@ -635,10 +661,10 @@ export function ObservationTypeDetailPage({
               <p>Record a new {detail.measurement.displayName.toLocaleLowerCase()} reading.</p>
             </div>
             <label>
-              Date
+              {dateOnlyObservation ? "Date" : "Date and time"}
               <input
-                type="date"
-                aria-label="New measurement date"
+                type={dateOnlyObservation ? "date" : "datetime-local"}
+                aria-label={dateOnlyObservation ? "New measurement date" : "New measurement date and time"}
                 value={manualObservedAt}
                 onChange={(event) => setManualObservedAt(event.target.value)}
                 required

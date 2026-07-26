@@ -274,6 +274,7 @@ export function summarizeMeasurementEntries(
     displayName: type?.display ?? entries[0]?.displayName ?? humanizeCode(measurementCode),
     description: type?.description,
     category: type?.category ?? "uncategorized",
+    aggregation: type?.aggregation,
     counts,
     lastMeasuredAt: latestTimestamp
   };
@@ -328,6 +329,7 @@ function ensureRow(
     displayName: type?.display ?? humanizeCode(measurementCode),
     description: type?.description,
     category: type?.category ?? "uncategorized",
+    aggregation: type?.aggregation,
     counts: {
       observations: 0,
       samples: 0,

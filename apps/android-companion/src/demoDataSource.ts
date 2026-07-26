@@ -320,6 +320,7 @@ function makeDetail(metric: DemoMetric, now: Date): HealthDataDetail {
     displayName: measurementType.display,
     description: measurementType.description,
     category: measurementType.category,
+    aggregation: measurementType.aggregation,
     counts: { ...counts, total: entries.length },
     lastMeasuredAt: entries[0].timestamp
   };

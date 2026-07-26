@@ -36,5 +36,6 @@ describe("summarizeMeasurementEntries", () => {
     }, []);
 
     expect(detail.measurement.description).toBe("The number of steps you have taken.");
+    expect(detail.measurement.aggregation).toBe("sum");
   });
 });

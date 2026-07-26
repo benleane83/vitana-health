@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   defaultMeasurementTypes,
   filterManualGroupTemplates,
@@ -18,11 +18,13 @@ import type { ManualMarkerRow } from "../../types.js";
 import { todayIsoDate } from "../../utils.js";
 
 export function ManualImportFeature({
+  activeProfileId,
   bootstrap,
   units,
   onImported,
   onNotice
 }: {
+  activeProfileId?: string;
   bootstrap?: AppBootstrap;
   units: UnitSystem;
   onImported: () => Promise<void>;
@@ -32,19 +34,32 @@ export function ManualImportFeature({
   const requestedMeasurement = requestedMarker
     ? findKnownMeasurement(requestedMarker, defaultMeasurementTypes)
     : undefined;
+  const initialObservationGroup = requestedMeasurement
+    ? "Lab"
+    : readStoredObservationGroup(activeProfileId) ?? "Activity";
   const [busy, setBusy] = useState(false);
   const [collectedAt, setCollectedAt] = useState(todayIsoDate());
-  const [observationGroup, setObservationGroup] = useState(requestedMeasurement ? "Lab" : "Activity");
+  const [observationGroup, setObservationGroup] = useState(initialObservationGroup);
   const [labName, setLabName] = useState("");
-  const [rows, setRows] = useState<ManualMarkerRow[]>(() => [requestedMeasurement
-    ? createEmptyRow(
-      requestedMeasurement.display,
-      requestedMeasurement.code,
-      "",
-      getPreferredUnit(requestedMeasurement, units)
-    )
-    : createEmptyRow("Steps", "steps", "", "count")]);
+  const [rows, setRows] = useState<ManualMarkerRow[]>(() => {
+    if (requestedMeasurement) {
+      return [createEmptyRow(
+        requestedMeasurement.display,
+        requestedMeasurement.code,
+        "",
+        getPreferredUnit(requestedMeasurement, units)
+      )];
+    }
+    return createRowsForGroup(
+      initialObservationGroup,
+      bootstrap?.measurementTypes?.length ? bootstrap.measurementTypes : defaultMeasurementTypes,
+      filterManualGroupTemplates(bootstrap?.manualObservationGroupTemplates ?? []),
+      units
+    );
+  });
   const [saveDialog, setSaveDialog] = useState<{ groupName: string } | null>(null);
+  const previousProfileId = useRef(activeProfileId);
+  const pendingStoredGroup = useRef(bootstrap ? undefined : initialObservationGroup);
 
   const measurementTypes = useMemo(() => {
     const types = bootstrap?.measurementTypes?.length ? bootstrap.measurementTypes : defaultMeasurementTypes;
@@ -72,24 +87,35 @@ export function ManualImportFeature({
     return measurementTypes;
   }, [measurementTypes, selectedDefault, selectedTemplate]);
 
-  function selectObservationGroup(label: string) {
-    setObservationGroup(label);
-    const defaultGroup = manualGroupDefaults.find((group) => group.label === label);
-    if (defaultGroup) {
-      const measurement = measurementTypes.find((type) => type.code === defaultGroup.measurementCode);
-      setRows([createEmptyRow(
-        measurement?.display ?? defaultGroup.measurementCode,
-        defaultGroup.measurementCode,
-        "",
-        measurement ? getPreferredUnit(measurement, units) : ""
-      )]);
+  useEffect(() => {
+    if (previousProfileId.current !== activeProfileId) {
+      previousProfileId.current = activeProfileId;
+      pendingStoredGroup.current = undefined;
+      if (requestedMeasurement) return;
+      const restoredGroup = readStoredObservationGroup(activeProfileId) ?? "Activity";
+      setObservationGroup(restoredGroup);
+      setRows(createRowsForGroup(restoredGroup, measurementTypes, groupTemplates, units));
       return;
     }
-    const template = groupTemplates.find((group) => group.normalizedLabel === normalizeGroupLabel(label));
-    setRows(template?.measurements.length
-      ? template.measurements.map((measurement) =>
-        createEmptyRow(measurement.marker, measurement.measurementCode, "", measurement.unit))
-      : [createEmptyRow()]);
+    if (!bootstrap || !pendingStoredGroup.current) return;
+    const restoredGroup = pendingStoredGroup.current;
+    pendingStoredGroup.current = undefined;
+    if (observationGroup === restoredGroup) {
+      setRows(createRowsForGroup(restoredGroup, measurementTypes, groupTemplates, units));
+    }
+  }, [activeProfileId, bootstrap, groupTemplates, measurementTypes, observationGroup, requestedMeasurement, units]);
+
+  function selectObservationGroup(label: string) {
+    pendingStoredGroup.current = undefined;
+    setObservationGroup(label);
+    writeStoredObservationGroup(activeProfileId, label);
+    setRows(createRowsForGroup(label, measurementTypes, groupTemplates, units));
+  }
+
+  function updateCustomObservationGroup(label: string) {
+    pendingStoredGroup.current = undefined;
+    setObservationGroup(label);
+    writeStoredObservationGroup(activeProfileId, label);
   }
 
   function updateRow(id: string, patch: Partial<ManualMarkerRow>) {
@@ -121,7 +147,7 @@ export function ManualImportFeature({
       const payload = toManualPayload({ collectedAt, observationGroup: groupName, labName, rows, measurementTypes });
       await api.importManualObservations(payload);
       await onImported();
-      resetForm();
+      resetForm(groupName);
       onNotice("Manual observations imported.");
     } catch (error) {
       onNotice(error instanceof Error ? error.message : "Unexpected local error.");
@@ -130,17 +156,13 @@ export function ManualImportFeature({
     }
   }
 
-  function resetForm() {
+  function resetForm(groupName: string) {
+    pendingStoredGroup.current = undefined;
     setCollectedAt(todayIsoDate());
-    setObservationGroup("Activity");
+    setObservationGroup(groupName);
+    writeStoredObservationGroup(activeProfileId, groupName);
     setLabName("");
-    const steps = measurementTypes.find((type) => type.code === "steps");
-    setRows([createEmptyRow(
-      steps?.display ?? "Steps",
-      "steps",
-      "",
-      steps ? getPreferredUnit(steps, units) : "count"
-    )]);
+    setRows(createRowsForGroup(groupName, measurementTypes, groupTemplates, units, rows));
   }
 
   return (
@@ -154,11 +176,14 @@ export function ManualImportFeature({
         rows={rows}
         measurementTypes={allowedMeasurementTypes}
         onObservationGroupChange={selectObservationGroup}
-        onCustomObservationGroupChange={setObservationGroup}
+        onCustomObservationGroupChange={updateCustomObservationGroup}
         onLabNameChange={setLabName}
         onCollectedAtChange={setCollectedAt}
         onRowChange={updateRow}
-        onAddRow={() => setRows((current) => [...current, createEmptyRow()])}
+        onAddRow={() => setRows((current) => [
+          ...current,
+          createNextMeasurementRow(current, allowedMeasurementTypes, units)
+        ])}
         onRemoveRow={(id) => setRows((current) => current.length <= 1 ? current : current.filter((row) => row.id !== id))}
         units={units}
         onSubmit={submit}
@@ -184,6 +209,84 @@ export function ManualImportFeature({
         />
       ) : null}
     </>
+  );
+}
+
+const observationGroupStoragePrefix = "vitana.manualImport.lastObservationGroup.v1.";
+const maximumObservationGroupLength = 160;
+
+function observationGroupStorageKey(profileId?: string) {
+  return profileId ? `${observationGroupStoragePrefix}${profileId}` : undefined;
+}
+
+function readStoredObservationGroup(profileId?: string) {
+  const key = observationGroupStorageKey(profileId);
+  if (!key) return undefined;
+  try {
+    const value = window.localStorage.getItem(key)?.trim();
+    return value ? value.slice(0, maximumObservationGroupLength) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeStoredObservationGroup(profileId: string | undefined, label: string) {
+  const key = observationGroupStorageKey(profileId);
+  const value = label.trim().slice(0, maximumObservationGroupLength);
+  if (!key || !value) return;
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Storage is optional; the import workflow remains usable when it is unavailable.
+  }
+}
+
+function createRowsForGroup(
+  label: string,
+  measurementTypes: MeasurementType[],
+  groupTemplates: AppBootstrap["manualObservationGroupTemplates"],
+  units: UnitSystem,
+  fallbackRows?: ManualMarkerRow[]
+) {
+  const defaultGroup = manualGroupDefaults.find((group) => group.label === label);
+  if (defaultGroup) {
+    const measurement = measurementTypes.find((type) => type.code === defaultGroup.measurementCode);
+    return [createEmptyRow(
+      measurement?.display ?? defaultGroup.measurementCode,
+      defaultGroup.measurementCode,
+      "",
+      measurement ? getPreferredUnit(measurement, units) : ""
+    )];
+  }
+  const template = groupTemplates.find(
+    (group) => group.normalizedLabel === normalizeGroupLabel(label)
+  );
+  if (template?.measurements.length) {
+    return template.measurements.map((measurement) =>
+      createEmptyRow(measurement.marker, measurement.measurementCode, "", measurement.unit));
+  }
+  return fallbackRows?.length
+    ? fallbackRows.map((row) => createEmptyRow(row.marker, row.measurementCode, "", row.unit))
+    : [createEmptyRow()];
+}
+
+function createNextMeasurementRow(
+  rows: ManualMarkerRow[],
+  measurementTypes: MeasurementType[],
+  units: UnitSystem
+) {
+  if (!measurementTypes.length) return createEmptyRow();
+  const usedCodes = new Set(rows.map((row) => row.measurementCode).filter(Boolean));
+  const previousCode = rows.at(-1)?.measurementCode;
+  const previousIndex = measurementTypes.findIndex((type) => type.code === previousCode);
+  const orderedCandidates = measurementTypes.map((_, offset) =>
+    measurementTypes[(previousIndex + offset + 1) % measurementTypes.length]);
+  const nextMeasurement = orderedCandidates.find((type) => !usedCodes.has(type.code)) ?? orderedCandidates[0];
+  return createEmptyRow(
+    nextMeasurement.display,
+    nextMeasurement.code,
+    "",
+    getPreferredUnit(nextMeasurement, units)
   );
 }
 
