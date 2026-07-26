@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { initializeDuckDbRoot } from "../storage/duckdbRuntime.js";
 import { createDuckDbHealthStoreFixture } from "./support/duckdbFixture.js";
 import { DuckDbHealthStore } from "../storage/duckdbHealthStore.js";
+import { createTestProfileFixture } from "../dev/testProfileFixture.js";
 
 const httpfsExtensionPath = findPreparedExtension();
 let root: string;
@@ -65,6 +66,50 @@ describe("DuckDbHealthStore lifecycle", () => {
     try {
       expect((await reopened.appBootstrap()).latestInsight?.id).toBe("adapter-insight");
       expect((await reopened.storageCounts()).observations).toBe(2);
+    } finally {
+      await reopened.close();
+    }
+  });
+
+  it.skipIf(!httpfsExtensionPath)("hydrates and reopens the comprehensive synthetic profile", async () => {
+    const fixture = createTestProfileFixture();
+    const databasePath = join(root, "databases", "health-store-vitana-test-profile.duckdb");
+    const options = {
+      root,
+      databasePath,
+      profileId: fixture.profile.id,
+      passphrase: "test-profile-passphrase",
+      securityMode: "generated-local-key" as const,
+      duckdb: { httpfsExtensionPath }
+    };
+    const expectedCounts = {
+      observations: fixture.observations.length,
+      samples: fixture.timeSeriesSamples.length,
+      activities: fixture.activitySessions.length,
+      healthEvents: fixture.healthEvents?.length,
+      careItems: fixture.careItems?.length
+    };
+
+    const hydrated = await DuckDbHealthStore.hydrate(options, fixture);
+    try {
+      expect(await hydrated.storageCounts()).toMatchObject(expectedCounts);
+      const exported = await hydrated.exportData();
+      expect({
+        ...exported,
+        auditEvents: exported.auditEvents.filter((event) => event.eventType !== "export-created")
+      }).toEqual(fixture);
+    } finally {
+      await hydrated.close();
+    }
+
+    const reopened = await DuckDbHealthStore.open(options);
+    try {
+      expect(await reopened.storageCounts()).toMatchObject(expectedCounts);
+      expect((await reopened.measurementDetail("heart_rate", { offset: 0, limit: 10 })).entries).toHaveLength(10);
+      expect((await reopened.measurementChartSeries("steps", { range: "3m" })).points.length).toBeGreaterThan(80);
+      expect((await reopened.listCareItems({ limit: 20 })).items).toHaveLength(10);
+      expect((await reopened.listHealthEvents({ limit: 20 })).items).toHaveLength(12);
+      expect((await reopened.summary()).totals.types).toBe(fixture.measurementTypes.length);
     } finally {
       await reopened.close();
     }

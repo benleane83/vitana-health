@@ -290,7 +290,7 @@ async function insertHealthEventRows(connection: duckdb.Connection, events: Heal
     ordinal, event.id, event.kind, event.status, event.occurredAt, event.source,
     event.provider ?? null, event.notes ?? null, optionalJsonValue(event.metadata)
   ]));
-  await insertRows(connection, "INSERT INTO immunizations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+  await insertRows(connection, "INSERT INTO immunizations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
     events.filter((event): event is Extract<HealthEvent, { kind: "immunization" }> & { immunization: NonNullable<Extract<HealthEvent, { kind: "immunization" }>["immunization"]> } => event.kind === "immunization" && !!event.immunization).map((event) => [
       event.id, event.immunization.vaccine, event.immunization.targetDisease ?? null, event.immunization.doseNumber ?? null,
       event.immunization.series ?? null, event.immunization.manufacturer ?? null, event.immunization.lotNumber ?? null,
