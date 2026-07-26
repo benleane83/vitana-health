@@ -56,9 +56,11 @@ describe("ImportDraftReview", () => {
   it("shows display names without measurement codes in the known-measurement selector", () => {
     render(<ReviewHarness initialRows={initialRows} />);
 
-    const select = screen.getByRole("combobox", { name: "Row 1 known measurement" });
-    expect(within(select).getByRole("option", { name: "Weight" })).toHaveValue("weight");
-    expect(within(select).queryByRole("option", { name: "Weight (weight)" })).not.toBeInTheDocument();
+    const combobox = screen.getByRole("combobox", { name: "Row 1 known measurement" });
+    expect(combobox).toHaveValue("Weight");
+    fireEvent.click(screen.getAllByRole("button", { name: "Open measurement choices" })[0]!);
+    expect(screen.getByRole("option", { name: /Weight Body/ })).toBeInTheDocument();
+    expect(screen.queryByText(/Weight \(weight\)/)).not.toBeInTheDocument();
   });
 });
 

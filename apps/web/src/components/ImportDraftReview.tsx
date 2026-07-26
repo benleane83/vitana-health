@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { getPreferredUnit, type MeasurementType, type UnitSystem } from "@vitana/shared";
 import type { UploadEditableRow } from "../types.js";
-import { groupMeasurementTypes, measurementCategoryLabels } from "../utils.js";
+import { MeasurementCombobox } from "./MeasurementCombobox.js";
 
 /**
  * Generic review table for a structured-upload draft. Renders the parsed rows
@@ -41,7 +41,6 @@ export function ImportDraftReview({
   onCommit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
   const includedCount = rows.filter((row) => row.included).length;
-  const measurementGroups = groupMeasurementTypes(measurementTypes);
   const [customMeasurementRows, setCustomMeasurementRows] = useState<Record<string, true>>({});
   const indexedRows = rows.map((row, originalIndex) => ({ row, originalIndex }));
   const selectedRows = indexedRows.filter(({ row }) => row.included);
@@ -83,23 +82,22 @@ export function ImportDraftReview({
           <label htmlFor={`upload-measurement-select-${row.id}`} className="sr-only">
             Row {rowNumber} select known measurement
           </label>
-          <select
+          <MeasurementCombobox
             id={`upload-measurement-select-${row.id}`}
-            value={selectedMeasurementCode}
-            onChange={(event) => {
-              const selectedCode = event.target.value;
-              if (!selectedCode) {
-                setCustomMeasurementRows((current) => ({ ...current, [row.id]: true }));
-                return;
-              }
+            ariaLabel={`Row ${rowNumber} known measurement`}
+            measurementTypes={measurementTypes}
+            selectedCode={selectedMeasurementCode}
+            customLabel="Use a custom measurement"
+            onSelectCustom={() => {
+              setCustomMeasurementRows((current) => ({ ...current, [row.id]: true }));
+            }}
+            onSelect={(selectedMeasurement) => {
               setCustomMeasurementRows((current) => {
                 if (!(row.id in current)) return current;
                 const next = { ...current };
                 delete next[row.id];
                 return next;
               });
-              const selectedMeasurement = measurementTypes.find((type) => type.code === selectedCode);
-              if (!selectedMeasurement) return;
               onRowChange(row.id, {
                 displayName: selectedMeasurement.display,
                 measurementCode: selectedMeasurement.code,
@@ -109,21 +107,7 @@ export function ImportDraftReview({
                 included: true
               });
             }}
-            aria-label={`Row ${rowNumber} known measurement`}
-          >
-            <option value="">Custom / unrecognized</option>
-            {measurementGroups.length > 1
-              ? measurementGroups.map(([category, types]) => (
-                <optgroup key={category} label={measurementCategoryLabels[category]}>
-                  {types.map((type) => (
-                    <option key={type.code} value={type.code}>{type.display}</option>
-                  ))}
-                </optgroup>
-              ))
-              : measurementTypes.map((type) => (
-                <option key={type.code} value={type.code}>{type.display}</option>
-              ))}
-          </select>
+          />
           {showCustomFields ? (
             <>
               <input

@@ -381,7 +381,8 @@ describe("App — import tab", () => {
     const measurement = screen.getByRole("combobox", { name: /row 2 known measurement/i });
     expect(measurement).toHaveValue("");
     fireEvent.change(measurement, { target: { value: "iron" } });
-    expect(screen.getByRole("combobox", { name: /row 2 known measurement/i })).toHaveValue("iron");
+    fireEvent.click(screen.getByRole("option", { name: /Iron Lab/i }));
+    expect(screen.getByRole("combobox", { name: /row 2 known measurement/i })).toHaveValue("Iron");
     expect(screen.getByRole("textbox", { name: /row 2 unit/i })).toHaveValue("µmol/L");
   });
 
@@ -413,30 +414,26 @@ describe("App — import tab", () => {
       .toEqual(["Activity", "Body", "Lab", "Custom group"]);
 
     let measurement = screen.getByRole("combobox", { name: /row 1: select known measurement/i });
-    expect(measurement).toHaveValue("steps");
-    expect(measurement.querySelector('option[value="weight"]')).toBeNull();
-    expect(measurement.querySelector('option[value="glucose"]')).toBeNull();
+    expect(measurement).toHaveValue("Steps");
+    fireEvent.change(measurement, { target: { value: "weight" } });
+    expect(screen.queryByRole("option", { name: /Weight Body/i })).not.toBeInTheDocument();
 
     fireEvent.change(observationGroup, { target: { value: "Body" } });
-    await waitFor(() => expect(screen.getByRole("combobox", { name: /row 1: select known measurement/i })).toHaveValue("weight"));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /row 1: select known measurement/i })).toHaveValue("Weight"));
     measurement = screen.getByRole("combobox", { name: /row 1: select known measurement/i });
-    expect(measurement).toHaveValue("weight");
-    expect(measurement.querySelector('option[value="steps"]')).toBeNull();
-    expect(measurement.querySelector('option[value="glucose"]')).toBeNull();
+    fireEvent.change(measurement, { target: { value: "glucose" } });
+    expect(screen.queryByRole("option", { name: /Glucose Lab/i })).not.toBeInTheDocument();
 
     fireEvent.change(observationGroup, { target: { value: "Lab" } });
-    await waitFor(() => expect(screen.getByRole("combobox", { name: /row 1: select known measurement/i })).toHaveValue("glucose"));
-    measurement = screen.getByRole("combobox", { name: /row 1: select known measurement/i });
-    expect(measurement).toHaveValue("glucose");
-    expect(measurement.querySelector('option[value="weight"]')).toBeNull();
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /row 1: select known measurement/i })).toHaveValue("Glucose"));
 
     fireEvent.change(observationGroup, { target: { value: "__custom__" } });
-    const customObservationGroup = screen.getByRole("textbox", { name: /custom observation group/i });
-    fireEvent.change(customObservationGroup, { target: { value: "Post-workout check-in" } });
-    expect(customObservationGroup).toHaveValue("Post-workout check-in");
+    expect(screen.queryByRole("textbox", { name: /custom observation group/i })).not.toBeInTheDocument();
     measurement = screen.getByRole("combobox", { name: /row 1: select known measurement/i });
-    expect([...measurement.querySelectorAll("optgroup")].map((group) => group.getAttribute("label")))
-      .toEqual(["Activity", "Body", "Cardio", "Derived", "Lab", "Sleep"]);
+    expect(measurement).toHaveValue("Active energy burned");
+    expect(screen.queryByRole("textbox", { name: /row 1 measurement name/i })).not.toBeInTheDocument();
+    fireEvent.change(measurement, { target: { value: "weight" } });
+    expect(screen.getByRole("option", { name: /Weight Body/i })).toBeInTheDocument();
   });
 
   it("shows pet fields only when the Pet profile type is selected", async () => {
@@ -596,10 +593,11 @@ describe("App — import tab", () => {
     fireEvent.change(observationGroup, { target: { value: "Lab" } });
 
     const measurement = screen.getByRole("combobox", { name: /row 1: select known measurement/i });
-    await waitFor(() => expect(measurement).toHaveValue("glucose"));
+    await waitFor(() => expect(measurement).toHaveValue("Glucose"));
     expect(screen.getByRole("textbox", { name: /row 1 unit/i })).toHaveValue("mg/dL");
 
     fireEvent.change(measurement, { target: { value: "iron" } });
+    fireEvent.click(screen.getByRole("option", { name: /Iron Lab/i }));
     expect(screen.getByRole("textbox", { name: /row 1 unit/i })).toHaveValue("µmol/L");
   });
 
@@ -632,15 +630,17 @@ describe("App — import tab", () => {
     fireEvent.change(observationGroup, { target: { value: "Morning metrics" } });
     const measurements = screen.getAllByRole("combobox", { name: /select known measurement/i });
     expect(measurements).toHaveLength(3);
-    expect(measurements.map((measurement) => (measurement as HTMLSelectElement).value))
-      .toEqual(["body_fat_pct", "", "weight"]);
+    expect(measurements.map((measurement) => (measurement as HTMLInputElement).value))
+      .toEqual(["Body fat percentage", "", "Weight"]);
     expect(screen.getByRole("textbox", { name: /row 2 measurement name/i })).toHaveValue("custom_score");
     expect(screen.getByRole("textbox", { name: /row 2 measurement code/i })).toHaveValue("custom_score");
     expect(screen.getByRole("textbox", { name: /row 1 value/i })).toHaveValue("");
     expect(screen.getByRole("textbox", { name: /row 3 value/i })).toHaveValue("");
     expect(screen.getByRole("textbox", { name: /row 2 unit/i })).toHaveValue("points");
-    expect(measurements[0]?.querySelector('option[value="weight"]')).not.toBeNull();
-    expect(measurements[0]?.querySelector('option[value="glucose"]')).toBeNull();
+    fireEvent.change(measurements[0]!, { target: { value: "weight" } });
+    expect(screen.getByRole("option", { name: /Weight Body/i })).toBeInTheDocument();
+    fireEvent.change(measurements[0]!, { target: { value: "glucose" } });
+    expect(screen.queryByRole("option", { name: /Glucose Lab/i })).not.toBeInTheDocument();
   });
 
   it("offers to save additional default-group rows as a custom group before importing", async () => {

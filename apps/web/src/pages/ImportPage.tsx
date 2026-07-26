@@ -2,8 +2,8 @@ import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent } from "r
 import { defaultMeasurementTypes, getPreferredUnit, type AppBootstrap, type MeasurementType, type ProfileListEntry, type UnitSystem } from "@vitana/shared";
 import { api } from "../api.js";
 import type { PairedDevice, PendingPairing } from "../api.js";
+import { MeasurementCombobox } from "../components/MeasurementCombobox.js";
 import type { ImportMode, ManualMarkerRow } from "../types.js";
-import { groupMeasurementTypes, measurementCategoryLabels } from "../utils.js";
 import { ManualImportFeature } from "../features/import/ManualImportFeature.js";
 import { UploadImportFeature } from "../features/import/UploadImportFeature.js";
 
@@ -152,7 +152,6 @@ export function ManualEntryForm({
   measurementTypes,
   rows,
   onObservationGroupChange,
-  onCustomObservationGroupChange,
   onLabNameChange,
   onCollectedAtChange,
   onRowChange,
@@ -169,7 +168,6 @@ export function ManualEntryForm({
   measurementTypes: MeasurementType[];
   rows: ManualMarkerRow[];
   onObservationGroupChange: (value: string) => void;
-  onCustomObservationGroupChange: (value: string) => void;
   onLabNameChange: (value: string) => void;
   onCollectedAtChange: (value: string) => void;
   onRowChange: (id: string, patch: Partial<ManualMarkerRow>) => void;
@@ -217,24 +215,13 @@ export function ManualEntryForm({
           <select
             id="manual-observation-group"
             value={selectedObservationGroup}
-            onChange={(event) => onObservationGroupChange(
-              event.target.value === customObservationGroupValue ? "" : event.target.value
-            )}
+            onChange={(event) => onObservationGroupChange(event.target.value)}
           >
             {observationGroupOptions.map((option) => (
               <option key={option} value={option}>{option}</option>
             ))}
             <option value={customObservationGroupValue}>Custom group</option>
           </select>
-          {selectedObservationGroup === customObservationGroupValue ? (
-            <input
-              id="manual-custom-observation-group"
-              value={observationGroup}
-              onChange={(event) => onCustomObservationGroupChange(event.target.value)}
-              placeholder="Enter a custom group"
-              aria-label="Custom observation group"
-            />
-          ) : null}
         </div>
         <div className="labs-manual-field">
           <label htmlFor="manual-lab-name">Lab name (optional)</label>
@@ -317,7 +304,6 @@ function ManualMeasurementRow({
   const unitInputId = `lab-unit-${row.id}`;
   const selectedMeasurementCode = customMeasurement ? "" : resolveKnownMeasurementSelectionForManual(row, measurementTypes);
   const showCustomFields = selectedMeasurementCode === "";
-  const measurementGroups = groupMeasurementTypes(measurementTypes);
 
   return (
     <div className="summary-row labs-row" role="row">
@@ -325,40 +311,21 @@ function ManualMeasurementRow({
         <label htmlFor={measurementSelectId} className="sr-only">
           Row {rowIndex}: select known measurement
         </label>
-        <select
+        <MeasurementCombobox
           id={measurementSelectId}
-          value={selectedMeasurementCode}
-          onChange={(event) => {
-            const selectedCode = event.target.value;
-            if (!selectedCode) {
-              onSetCustomMeasurement(true);
-              return;
-            }
+          ariaLabel={`Row ${rowIndex}: select known measurement`}
+          measurementTypes={measurementTypes}
+          selectedCode={selectedMeasurementCode}
+          onSelectCustom={() => onSetCustomMeasurement(true)}
+          onSelect={(selectedMeasurement) => {
             onSetCustomMeasurement(false);
-            const selectedMeasurement = measurementTypes.find((type) => type.code === selectedCode);
-            if (!selectedMeasurement) {
-              return;
-            }
             onChange(row.id, {
               marker: selectedMeasurement.display,
               measurementCode: selectedMeasurement.code,
               unit: getPreferredUnit(selectedMeasurement, units)
             });
           }}
-        >
-          <option value="">Custom / free text</option>
-          {measurementGroups.length > 1
-            ? measurementGroups.map(([category, types]) => (
-              <optgroup key={category} label={measurementCategoryLabels[category]}>
-                {types.map((type) => (
-                  <option value={type.code} key={type.code}>{type.display}</option>
-                ))}
-              </optgroup>
-            ))
-            : measurementTypes.map((type) => (
-              <option value={type.code} key={type.code}>{type.display}</option>
-            ))}
-        </select>
+        />
         {showCustomFields ? (
           <>
             <label htmlFor={markerInputId} className="sr-only">
