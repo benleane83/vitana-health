@@ -24,6 +24,8 @@ import {
   type LocalStore,
   type LocalStoreCounts
 } from "./localStore";
+import type { HealthDataChartSeries, HealthDataChartSeriesOptions } from "@vitana/shared";
+import { chartRangeCutoff } from "../chartSeries";
 import { migrate } from "./migrations";
 
 const DATABASE_NAME = "standalone-health.db";
@@ -512,6 +514,75 @@ export class SqliteLocalStore implements LocalStore {
           collectedAt: row.groupCollectedAt ?? undefined
         } : undefined
       }))
+    };
+  }
+
+  async observationChartSeries(
+    measurementCode: string,
+    aggregation: HealthDataChartSeries["aggregation"],
+    options: HealthDataChartSeriesOptions
+  ): Promise<HealthDataChartSeries> {
+    const profileId = this.requireProfileId();
+    const cutoff = chartRangeCutoff(options.range);
+    const rangeSql = cutoff ? " AND observed_at >= ?" : "";
+    const parameters = cutoff ? [profileId, measurementCode, cutoff] : [profileId, measurementCode];
+    if (options.mode === "raw" || (aggregation !== "sum" && aggregation !== "average")) {
+      const totalRow = await this.database.getFirstAsync<{ total: number }>(
+        `SELECT COUNT(*) AS total FROM observations
+         WHERE profile_id = ? AND measurement_code = ?${rangeSql}`,
+        ...parameters
+      );
+      const rows = await this.database.getAllAsync<{
+        timestamp: string;
+        value: number;
+        unit: string;
+      }>(
+        `SELECT observed_at AS timestamp, value, unit FROM observations
+         WHERE profile_id = ? AND measurement_code = ?${rangeSql}
+         ORDER BY observed_at DESC, id DESC LIMIT 501`,
+        ...parameters
+      );
+      const totalPoints = totalRow?.total ?? 0;
+      return {
+        generatedAt: new Date().toISOString(),
+        measurementCode,
+        range: options.range,
+        requestedMode: options.mode,
+        granularity: "raw",
+        aggregation,
+        points: rows.slice(0, 500).reverse().map((point) => ({ ...point, count: 1 })),
+        totalPoints,
+        truncated: totalPoints > 500
+      };
+    }
+
+    const aggregate = aggregation === "sum" ? "SUM(value)" : "AVG(value)";
+    const loadBuckets = (bucket: "daily" | "weekly") => {
+      const timestamp = bucket === "daily"
+        ? "strftime('%Y-%m-%dT00:00:00.000Z', observed_at)"
+        : "strftime('%Y-%m-%dT00:00:00.000Z', date(observed_at, '-' || ((CAST(strftime('%w', observed_at) AS INTEGER) + 6) % 7) || ' days'))";
+      return this.database.getAllAsync<HealthDataChartSeries["points"][number]>(
+        `SELECT ${timestamp} AS timestamp, ${aggregate} AS value, MIN(unit) AS unit,
+           COUNT(*) AS count, MIN(value) AS minValue, MAX(value) AS maxValue
+         FROM observations
+         WHERE profile_id = ? AND measurement_code = ?${rangeSql}
+         GROUP BY ${timestamp} ORDER BY timestamp`,
+        ...parameters
+      );
+    };
+    const dailyPoints = await loadBuckets("daily");
+    const granularity = options.range === "all" && dailyPoints.length > 366 ? "weekly" : "daily";
+    const points = granularity === "weekly" ? await loadBuckets("weekly") : dailyPoints;
+    return {
+      generatedAt: new Date().toISOString(),
+      measurementCode,
+      range: options.range,
+      requestedMode: options.mode,
+      granularity,
+      aggregation,
+      points,
+      totalPoints: points.length,
+      truncated: false
     };
   }
 

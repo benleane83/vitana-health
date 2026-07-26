@@ -1,6 +1,7 @@
 import type {
   HealthDataChartSeries,
   HealthDataChartSeriesOptions,
+  HealthDataDetailChartPoint,
   HealthDataDetail
 } from "@vitana/shared";
 
@@ -12,18 +13,27 @@ export function chartSeriesFromDetail(
   options: HealthDataChartSeriesOptions,
   now = new Date()
 ): HealthDataChartSeries {
+  return chartSeriesFromPoints(detail.measurement.code, detail.measurement.aggregation ?? "none", detail.chartPoints, options, now);
+}
+
+export function chartSeriesFromPoints(
+  measurementCode: string,
+  aggregation: HealthDataChartSeries["aggregation"],
+  points: readonly HealthDataDetailChartPoint[],
+  options: HealthDataChartSeriesOptions,
+  now = new Date()
+): HealthDataChartSeries {
   const cutoff = chartRangeCutoff(options.range, now);
-  const rawPoints = detail.chartPoints
+  const rawPoints = points
     .filter((point) => !cutoff || point.timestamp >= cutoff)
     .map((point) => ({ ...point, count: 1 }))
     .sort((left, right) => left.timestamp.localeCompare(right.timestamp));
-  const aggregation = detail.measurement.aggregation ?? "none";
 
   if (options.mode === "raw" || (aggregation !== "sum" && aggregation !== "average")) {
     const truncated = rawPoints.length > maxRawChartPoints;
     return {
       generatedAt: new Date().toISOString(),
-      measurementCode: detail.measurement.code,
+      measurementCode,
       range: options.range,
       requestedMode: options.mode,
       granularity: "raw",
@@ -36,21 +46,21 @@ export function chartSeriesFromDetail(
 
   const dailyPoints = aggregatePoints(rawPoints, aggregation, "daily");
   const granularity = options.range === "all" && dailyPoints.length > maxDailyChartBuckets ? "weekly" : "daily";
-  const points = granularity === "weekly" ? aggregatePoints(rawPoints, aggregation, "weekly") : dailyPoints;
+  const aggregatedPoints = granularity === "weekly" ? aggregatePoints(rawPoints, aggregation, "weekly") : dailyPoints;
   return {
     generatedAt: new Date().toISOString(),
-    measurementCode: detail.measurement.code,
+    measurementCode,
     range: options.range,
     requestedMode: options.mode,
     granularity,
     aggregation,
-    points,
-    totalPoints: points.length,
+    points: aggregatedPoints,
+    totalPoints: aggregatedPoints.length,
     truncated: false
   };
 }
 
-function chartRangeCutoff(range: HealthDataChartSeriesOptions["range"], now: Date): string | undefined {
+export function chartRangeCutoff(range: HealthDataChartSeriesOptions["range"], now = new Date()): string | undefined {
   if (range === "all") return undefined;
   const cutoff = new Date(now);
   if (range === "1y") cutoff.setUTCFullYear(cutoff.getUTCFullYear() - 1);

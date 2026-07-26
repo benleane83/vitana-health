@@ -77,6 +77,7 @@ export function TrackDetailScreen({ route }: Props) {
 
   useEffect(() => {
     let current = true;
+    setChartSeries(undefined);
     setChartLoading(true);
     setChartError(undefined);
     void healthDataChartSeries(route.params.measurementCode, { range: chartRange, mode: chartMode }).then((value) => {
@@ -200,7 +201,10 @@ export function TrackDetailScreen({ route }: Props) {
             note: draft.note.trim() || undefined
           }]
         });
-        const next = await healthDataDetail(route.params.measurementCode);
+        const [next, nextChartSeries] = await Promise.all([
+          healthDataDetail(route.params.measurementCode),
+          healthDataChartSeries(route.params.measurementCode, { range: chartRange, mode: chartMode })
+        ]);
         const addedEntry = next.entries.find((entry) =>
           entry.kind === "observation" &&
           entry.timestamp === observedAt &&
@@ -208,6 +212,7 @@ export function TrackDetailScreen({ route }: Props) {
           entry.unit === unit
         );
         setDetail(next);
+        setChartSeries(nextChartSeries);
         setAdding(false);
         setSelectedEntryId(addedEntry?.id);
         setActionFeedback({
