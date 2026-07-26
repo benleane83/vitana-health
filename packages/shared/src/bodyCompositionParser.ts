@@ -218,6 +218,7 @@ function parseBodyCompositionLine(line: string): BodyCompositionLineCandidate[] 
     if (best) candidates.push({ label, ...best, confidence: "high" });
   }
   if (candidates.length > 0) return candidates;
+  if (normalizedLine.length > 256) return [];
   const generic = normalizedLine.match(/^([A-Za-z][A-Za-z /()%.-]{2,80}?)\s*[:\-]?\s*(-?\d+(?:[.,]\s*\d+)?)\s*([A-Za-z%/]+)?\b/);
   if (!generic) return [];
   const label = generic[1]?.trim();
