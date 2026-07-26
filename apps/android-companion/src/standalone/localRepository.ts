@@ -88,6 +88,7 @@ export class LocalProfileRepository implements MobileProfileRepository {
         displayName: measurement?.display ?? aggregate.measurementCode,
         description: measurement?.description,
         category,
+        aggregation: measurement?.aggregation,
         counts: { observations: aggregate.count, samples: 0, activities: 0, total: aggregate.count },
         lastMeasuredAt: aggregate.lastMeasuredAt
       });
@@ -153,6 +154,7 @@ export class LocalProfileRepository implements MobileProfileRepository {
         displayName,
         description: measurement?.description,
         category: measurement?.category ?? "uncategorized",
+        aggregation: measurement?.aggregation,
         counts: { observations: result.total, samples: 0, activities: 0, total: result.total },
         lastMeasuredAt: entries[0]?.timestamp
       },

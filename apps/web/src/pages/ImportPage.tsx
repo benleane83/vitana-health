@@ -109,6 +109,7 @@ export function ImportPage({
         {mode === "manual" ? (
           <div id={manualPanelId} role="tabpanel" aria-labelledby={manualTabId}>
             <ManualImportFeature
+              activeProfileId={activeProfileId}
               bootstrap={bootstrap}
               units={units}
               onImported={onDataChanged}
@@ -251,6 +252,9 @@ export function ManualEntryForm({
           <span role="columnheader">Measurement</span>
           <span role="columnheader">Value</span>
           <span role="columnheader">Unit</span>
+          <span role="columnheader" className="labs-row-action-heading">
+            <span className="sr-only">Actions</span>
+          </span>
         </div>
         {rows.map((row, index) => (
           <ManualMeasurementRow
@@ -404,10 +408,15 @@ function ManualMeasurementRow({
       <span role="cell" className="labs-row-actions">
         <button
           type="button"
+          className="summary-row-delete manual-row-remove"
           onClick={() => onRemove(row.id)}
           aria-label={`Remove row ${rowIndex}`}
+          title={`Remove row ${rowIndex}`}
         >
-          Remove
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M9 3h6l1 2h4v2H4V5h4l1-2Z" />
+            <path d="M6 9h12l-1 12H7L6 9Zm4 2v8h2v-8h-2Zm4 0v8h2v-8h-2Z" />
+          </svg>
         </button>
       </span>
     </div>

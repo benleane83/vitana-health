@@ -5,9 +5,14 @@ import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { ChevronRight, CalendarDays, Clock3 } from "lucide-react-native";
 import {
+  calendarDateToUtcMidnight,
   calculateChartDomain,
   isUtcMidnightTimestamp,
+  localCalendarDate,
+  localDateFromCalendarDate,
   mergeHealthDataDetail,
+  observationCalendarDate,
+  usesDateOnlyObservation,
   type HealthDataDetail,
   type HealthDataDetailEntry
 } from "@vitana/shared";
@@ -85,8 +90,11 @@ export function TrackDetailScreen({ route }: Props) {
   function beginEdit(entry: HealthDataDetailEntry) {
       setAdding(false);
       setEditing(entry);
+      const dateOnly = usesDateOnlyObservation(detail?.measurement.aggregation);
       setDraft({
-        observedAt: new Date(entry.timestamp),
+        observedAt: dateOnly
+          ? localDateFromCalendarDate(observationCalendarDate(entry.timestamp)) ?? new Date(entry.timestamp)
+          : new Date(entry.timestamp),
         value: String(entry.value),
         unit: entry.unit,
         note: entry.note ?? ""
@@ -112,8 +120,9 @@ export function TrackDetailScreen({ route }: Props) {
   async function saveEdit() {
       if (!editing) return;
       const value = Number(draft.value);
+      const dateOnly = usesDateOnlyObservation(detail?.measurement.aggregation);
       if (!Number.isFinite(value) || !draft.unit.trim() || !Number.isFinite(draft.observedAt.getTime())) {
-        setActionFeedback({ entryId: editing.id, detail: "Choose a date and time, then enter a numeric value and unit.", title: "Invalid reading", tone: "danger" });
+        setActionFeedback({ entryId: editing.id, detail: `${dateOnly ? "Choose a date" : "Choose a date and time"}, then enter a numeric value and unit.`, title: "Invalid reading", tone: "danger" });
         return;
       }
       setActionBusy(true);
@@ -121,7 +130,7 @@ export function TrackDetailScreen({ route }: Props) {
       try {
         await updateObservation(editing.id, {
           measurementCode: editing.measurementCode,
-          observedAt: draft.observedAt.toISOString(),
+          observedAt: serializeObservedAt(draft.observedAt, dateOnly),
           value,
           unit: draft.unit.trim(),
           note: draft.note.trim() || undefined
@@ -144,11 +153,12 @@ export function TrackDetailScreen({ route }: Props) {
       if (!detail) return;
       const value = Number(draft.value);
       const unit = draft.unit.trim();
-      const observedAt = draft.observedAt.toISOString();
+      const dateOnly = usesDateOnlyObservation(detail.measurement.aggregation);
       if (!Number.isFinite(value) || !unit || !Number.isFinite(draft.observedAt.getTime())) {
-        setActionFeedback({ detail: "Choose a date and time, then enter a numeric value and unit.", title: "Invalid reading", tone: "danger" });
+        setActionFeedback({ detail: `${dateOnly ? "Choose a date" : "Choose a date and time"}, then enter a numeric value and unit.`, title: "Invalid reading", tone: "danger" });
         return;
       }
+      const observedAt = serializeObservedAt(draft.observedAt, dateOnly);
       setActionBusy(true);
       setActionFeedback(undefined);
       try {
@@ -262,6 +272,7 @@ export function TrackDetailScreen({ route }: Props) {
             <ReadingEditor
               busy={actionBusy}
               cancelLabel="Cancel"
+              dateOnly={usesDateOnlyObservation(detail.measurement.aggregation)}
               draft={draft}
               onCancel={() => setAdding(false)}
               onChangeDraft={setDraft}
@@ -338,6 +349,7 @@ export function TrackDetailScreen({ route }: Props) {
                   <ReadingEditor
                     busy={actionBusy}
                     cancelLabel="Keep editing later"
+                    dateOnly={usesDateOnlyObservation(detail.measurement.aggregation)}
                     draft={draft}
                     onCancel={() => setEditing(undefined)}
                     onChangeDraft={setDraft}
@@ -365,6 +377,7 @@ export function TrackDetailScreen({ route }: Props) {
 function ReadingEditor({
   busy,
   cancelLabel,
+  dateOnly,
   draft,
   onCancel,
   onChangeDraft,
@@ -373,6 +386,7 @@ function ReadingEditor({
 }: {
   busy: boolean;
   cancelLabel: string;
+  dateOnly: boolean;
   draft: ReadingDraft;
   onCancel: () => void;
   onChangeDraft: Dispatch<SetStateAction<ReadingDraft>>;
@@ -381,6 +395,10 @@ function ReadingEditor({
 }) {
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [timePickerOpen, setTimePickerOpen] = useState(false);
+
+  useEffect(() => {
+    if (dateOnly) setTimePickerOpen(false);
+  }, [dateOnly]);
 
   function updateDate(value: Date) {
     onChangeDraft((current) => ({ ...current, observedAt: combineDateAndTime(value, current.observedAt) }));
@@ -407,20 +425,22 @@ function ReadingEditor({
           </View>
           <CalendarDays color={colors.primary} size={21} />
         </Pressable>
-        <Pressable
-          accessibilityHint="Opens the observed time picker"
-          accessibilityLabel={`Observed time: ${formatObservedTime(draft.observedAt)}`}
-          accessibilityRole="button"
-          disabled={busy}
-          onPress={() => setTimePickerOpen(true)}
-          style={({ pressed }) => [styles.dateField, pressed && styles.dateFieldPressed, busy && styles.dateFieldDisabled]}
-        >
-          <View style={styles.flex}>
-            <Text style={styles.label}>Observed time</Text>
-            <Text style={styles.dateValue}>{formatObservedTime(draft.observedAt)}</Text>
-          </View>
-          <Clock3 color={colors.primary} size={21} />
-        </Pressable>
+        {!dateOnly ? (
+          <Pressable
+            accessibilityHint="Opens the observed time picker"
+            accessibilityLabel={`Observed time: ${formatObservedTime(draft.observedAt)}`}
+            accessibilityRole="button"
+            disabled={busy}
+            onPress={() => setTimePickerOpen(true)}
+            style={({ pressed }) => [styles.dateField, pressed && styles.dateFieldPressed, busy && styles.dateFieldDisabled]}
+          >
+            <View style={styles.flex}>
+              <Text style={styles.label}>Observed time</Text>
+              <Text style={styles.dateValue}>{formatObservedTime(draft.observedAt)}</Text>
+            </View>
+            <Clock3 color={colors.primary} size={21} />
+          </Pressable>
+        ) : null}
       </View>
       {datePickerOpen ? (
         <View style={styles.pickerSurface}>
@@ -435,7 +455,7 @@ function ReadingEditor({
           {Platform.OS === "ios" ? <Button secondary onPress={() => setDatePickerOpen(false)}>Done</Button> : null}
         </View>
       ) : null}
-      {timePickerOpen ? (
+      {!dateOnly && timePickerOpen ? (
         <View style={styles.pickerSurface}>
           <DateTimePicker
             mode="time"
@@ -517,6 +537,13 @@ function combineDateAndTime(date: Date, time: Date): Date {
   const next = new Date(date);
   next.setHours(time.getHours(), time.getMinutes(), time.getSeconds(), time.getMilliseconds());
   return next;
+}
+
+function serializeObservedAt(value: Date, dateOnly: boolean): string {
+  if (!dateOnly) return value.toISOString();
+  const observedAt = calendarDateToUtcMidnight(localCalendarDate(value));
+  if (!observedAt) throw new Error("Choose a valid date.");
+  return observedAt;
 }
 
 function formatChartValue(value: number): string {

@@ -27,26 +27,20 @@ function InsightCard({ insight }: { insight?: Insight }) {
 }
 
 export function DashboardPage({
-  importCount,
   analytics,
   busy,
   latestInsight,
   profile,
-  activeProfile,
   onEditProfile,
-  onManageProfiles,
   onNavigateSummary,
   onNavigateMeasurement,
   onGenerateInsight
 }: {
-  importCount: number;
   analytics?: AnalyticsSummary;
   busy: boolean;
   latestInsight?: Insight;
   profile?: Profile;
-  activeProfile?: { displayName?: string };
   onEditProfile: () => void;
-  onManageProfiles: () => void;
   onNavigateSummary: () => void;
   onNavigateMeasurement: (measurementCode: string) => void;
   onGenerateInsight: () => void;
@@ -57,45 +51,12 @@ export function DashboardPage({
 
   return (
     <>
-      <section className="dashboard-hero">
-        <div className="dashboard-hero-copy">
-          <div className="vitana-lockup">
-            <div className="vitana-mark" aria-hidden="true">
-              <span className="vitana-petal vitana-petal-top" />
-              <span className="vitana-petal vitana-petal-left" />
-              <span className="vitana-petal vitana-petal-right" />
-              <span className="vitana-stem" />
-              <span className="vitana-core" />
-            </div>
-            <p className="vitana-wordmark">Vitana</p>
-            <p className="vitana-tagline">All Your Health. In One Place.</p>
-            <div className="vitana-rule" aria-hidden="true"><span>♥</span></div>
-            <h1 className="vitana-promise"><span>Track.</span> <span>Understand.</span> <span>Thrive.</span></h1>
-          </div>
-        </div>
-        <aside className="dashboard-trust-strip" aria-label="Data privacy and freshness">
-          <div className="dashboard-trust-status">
-            <span className="dashboard-trust-indicator" aria-hidden="true" />
-            <div>
-              <strong>Private on this device</strong>
-              <span>Encrypted and offline by default</span>
-            </div>
-          </div>
-          <dl className="dashboard-trust-facts">
-            <div><dt>Active profile</dt><dd>{activeProfile?.displayName ?? profile?.displayName ?? "Local user"}</dd></div>
-            <div><dt>Latest data</dt><dd>{latestObservedAt ? formatShortTimestamp(latestObservedAt) : "No readings yet"}</dd></div>
-            <div><dt>Imports stored</dt><dd>{importCount}</dd></div>
-          </dl>
-        </aside>
-      </section>
-
       <section className="dashboard-workspace">
         <article className="dashboard-profile">
           <div className="panel-heading-row">
             <h2>Profile context</h2>
             <div className="profile-toolbar">
-              <button type="button" onClick={onEditProfile}>Edit</button>
-              <button type="button" className="manage-profiles-button" onClick={onManageProfiles}>Manage</button>
+              <button className="profile-edit-button" type="button" onClick={onEditProfile}>Edit</button>
             </div>
           </div>
           <dl className="profile-summary">
@@ -112,8 +73,13 @@ export function DashboardPage({
 
         <article className="dashboard-review">
           <div className="panel-heading-row">
-            <div>
-              <h2>Your latest data</h2>
+            <div className="dashboard-review-heading">
+              <div className="dashboard-review-title">
+                <h2>Your latest data</h2>
+                <span className="dashboard-latest-reading">
+                  Latest reading: {latestObservedAt ? formatShortTimestamp(latestObservedAt) : "No readings yet"}
+                </span>
+              </div>
               <p className="dashboard-section-copy">A quick review of what is stored for this profile.</p>
             </div>
             <button type="button" onClick={onNavigateSummary}>View summary</button>

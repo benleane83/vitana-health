@@ -667,6 +667,7 @@ export interface HealthDataSummaryTypeRow {
   displayName: string;
   description?: string;
   category: MeasurementType["category"] | "uncategorized";
+  aggregation?: MeasurementType["aggregation"];
   counts: HealthDataSummarySourceCounts & {
     total: number;
   };

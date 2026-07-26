@@ -158,12 +158,65 @@ textarea {
   gap: var(--space-2);
   align-items: center;
   width: 100%;
-  margin-bottom: var(--space-8);
+  margin-bottom: var(--space-4);
   border: 1px solid var(--line);
   border-radius: var(--radius-pill);
   background: oklch(99% 0.004 260 / 0.88);
   padding: var(--space-2);
   backdrop-filter: blur(8px);
+}
+
+.vitana-brand {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  color: var(--text-strong);
+}
+
+.vitana-brand-nav {
+  flex: 0 0 auto;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: 0 var(--space-8) 0 var(--space-1);
+  border-right: 1px solid var(--line);
+}
+
+.vitana-brand-rail {
+  gap: var(--space-2);
+  min-height: 36px;
+  margin-bottom: var(--space-2);
+  padding: 0 var(--space-2);
+}
+
+.vitana-brand-symbol {
+  position: relative;
+  width: 30px;
+  height: 32px;
+  flex: 0 0 30px;
+  overflow: hidden;
+}
+
+.vitana-brand-symbol .vitana-mark {
+  top: 50%;
+  left: 0;
+  margin: 0;
+  transform: translateY(-50%) scale(0.29);
+  transform-origin: left center;
+}
+
+.vitana-brand-name {
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.vitana-brand-tagline {
+  padding-left: var(--space-2);
+  border-left: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
 }
 
 .route-nav-main {
@@ -1980,8 +2033,12 @@ h3 {
   gap: var(--space-3);
 }
 
-.labs-row {
+.labs-rows .summary-row-head,
+.summary-row.labs-row {
   grid-template-columns: minmax(0, 1.45fr) minmax(100px, 0.75fr) minmax(100px, 0.75fr) auto;
+}
+
+.summary-row.labs-row {
   align-items: start;
 }
 
@@ -1995,9 +2052,8 @@ h3 {
   justify-content: flex-end;
 }
 
-.labs-row-actions button {
-  min-height: 40px;
-  padding: 0.52rem 0.82rem;
+.labs-row-actions .manual-row-remove {
+  flex: 0 0 2.75rem;
 }
 
 .labs-actions {
@@ -2335,6 +2391,21 @@ h3 {
   gap: var(--space-2);
 }
 
+.profile-edit-button {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--text);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .profile-edit-button:hover:not(:disabled) {
+    border-color: var(--line-strong);
+    background: var(--surface-2);
+    color: var(--text-strong);
+    transform: none;
+  }
+}
+
 .profile-active-label {
   color: var(--muted);
   margin: var(--space-2) 0 0;
@@ -2436,6 +2507,23 @@ h3 {
   max-width: 55ch;
   margin: var(--space-1) 0 0;
   color: var(--muted);
+}
+
+.dashboard-review-heading {
+  min-width: 0;
+}
+
+.dashboard-review-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-3);
+}
+
+.dashboard-latest-reading {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 .dashboard-counts {
@@ -3596,6 +3684,16 @@ button.stat {
   }
 }
 
+@media (max-width: 960px) {
+  .vitana-brand-nav .vitana-brand-name {
+    display: none;
+  }
+
+  .vitana-brand-nav {
+    padding-right: var(--space-1);
+  }
+}
+
 @media (max-width: 760px) {
   .dashboard-hero {
     grid-template-columns: 1fr;
@@ -3784,6 +3882,24 @@ button.stat {
     align-items: stretch;
   }
 
+  .vitana-brand-nav {
+    align-self: center;
+    min-height: 32px;
+    padding: 0;
+    border-right: 0;
+  }
+
+  .vitana-brand-rail {
+    min-height: 32px;
+    padding-inline: 0;
+  }
+
+  .vitana-brand-rail .vitana-brand-tagline {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .route-nav-main {
     padding-bottom: var(--space-1);
   }
@@ -3967,6 +4083,23 @@ button.stat {
 
   .summary-row {
     grid-template-columns: 1fr;
+  }
+
+  .labs-rows .summary-row-head {
+    grid-template-columns: minmax(0, 1.45fr) minmax(100px, 0.75fr) minmax(100px, 0.75fr) auto;
+  }
+
+  .summary-row.labs-row {
+    grid-template-columns: minmax(0, 1fr) 2.75rem;
+  }
+
+  .summary-row.labs-row > :not(.labs-row-actions) {
+    grid-column: 1;
+  }
+
+  .summary-row.labs-row .labs-row-actions {
+    grid-column: 2;
+    grid-row: 1;
   }
 
   .labs-header,
