@@ -11,6 +11,8 @@ import type {
   DeleteCareItemResponse,
   DeleteHealthEventResponse,
   DeleteObservationResponse,
+  HealthDataChartSeries,
+  HealthDataChartSeriesOptions,
   HealthDataDetail,
   HealthDataSummary,
   ManualObservationPayload,
@@ -33,6 +35,7 @@ export interface CompanionDataSource {
   analytics(): Promise<AnalyticsSummary>;
   summary(): Promise<HealthDataSummary>;
   healthDataDetail(measurementCode: string, page?: DetailPage): Promise<HealthDataDetail>;
+  healthDataChartSeries?(measurementCode: string, options: HealthDataChartSeriesOptions): Promise<HealthDataChartSeries>;
 }
 
 export interface CompanionMutationService {

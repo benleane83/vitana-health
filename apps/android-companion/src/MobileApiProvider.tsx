@@ -7,6 +7,8 @@ import type {
   CompleteCareItemInput,
   CreateCareItemInput,
   CreateHealthEventInput,
+  HealthDataChartSeries,
+  HealthDataChartSeriesOptions,
   HealthDataDetail,
   HealthDataSummary,
   HealthEventListQuery,
@@ -15,6 +17,7 @@ import type {
   MobileMigrationReceipt,
   UpdateObservationInput
 } from "@vitana/shared";
+import { mergeHealthDataDetail } from "@vitana/shared";
 import { clearConnection, clearSelectedProfileId, loadConnection } from "./endpointStore";
 import type { ConnectionDetails } from "./endpointStore";
 import { createCompanionApi } from "./api";
@@ -42,6 +45,7 @@ import type { StandaloneMigrationSource } from "./standalone/standaloneDataSourc
 import type { LocalDatasetSummary } from "./standalone/localStore";
 import { userFacingError } from "./userFacingError";
 import { queueConnectionRevocation, retryPendingRevocation } from "./pendingRevocation";
+import { chartSeriesFromDetail } from "./chartSeries";
 
 export type { ConnectionState } from "./connectionState";
 
@@ -70,6 +74,7 @@ interface MobileApiContextValue {
   refreshDashboard(): Promise<void>;
   refreshTrack(): Promise<void>;
   healthDataDetail(measurementCode: string, page?: DetailPage): Promise<HealthDataDetail>;
+  healthDataChartSeries(measurementCode: string, options: HealthDataChartSeriesOptions): Promise<HealthDataChartSeries>;
   importManualObservations(payload: ManualObservationPayload): Promise<unknown>;
   updateObservation(id: string, input: UpdateObservationInput): Promise<void>;
   deleteObservation(id: string): Promise<void>;
@@ -266,6 +271,23 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     return source.healthDataDetail(measurementCode, page);
   }, [source]);
 
+  const healthDataChartSeries = useCallback(async (
+    measurementCode: string,
+    options: HealthDataChartSeriesOptions
+  ) => {
+    if (!source) throw new Error("Health data is unavailable while the companion is disconnected.");
+    if (source.healthDataChartSeries) return source.healthDataChartSeries(measurementCode, options);
+    let detail = await source.healthDataDetail(measurementCode, { limit: 100 });
+    while (detail.pagination.hasMore) {
+      const next = await source.healthDataDetail(measurementCode, {
+        limit: detail.pagination.limit,
+        offset: detail.pagination.loaded
+      });
+      detail = mergeHealthDataDetail(detail, next);
+    }
+    return chartSeriesFromDetail(detail, options);
+  }, [source]);
+
   const importManualObservations = useCallback(async (payload: ManualObservationPayload) => {
     if (!source) throw new Error("Manual import is unavailable until a data source is ready.");
     const mutations = source as Partial<CompanionMutationService>;
@@ -425,6 +447,7 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     refreshDashboard,
     refreshTrack,
     healthDataDetail,
+    healthDataChartSeries,
     importManualObservations,
     updateObservation,
     deleteObservation,
@@ -443,7 +466,7 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     disconnect
   }), [
     analytics, bootstrap, clearTransientData, completeCareItem, connection, connectionState, createCareItem, createHealthEvent,
-    dashboardLoading, deleteCareItem, deleteHealthEvent, deleteObservation, demoMode, disconnect, error, healthDataDetail,
+    dashboardLoading, deleteCareItem, deleteHealthEvent, deleteObservation, demoMode, disconnect, error, healthDataChartSeries, healthDataDetail,
   importManualObservations, listCareItems, listHealthEvents, listStandaloneDatasets, operatingMode, refreshAfterImport, refreshDashboard,
   profilePhoto, refreshTrack, reloadConnection, resetStandaloneData, setDemoMode, setOperatingMode, summary, trackLoading,
   migrateStandaloneData, migrationProgress, selectStandaloneDataset, standaloneMigrationManifest, transientRevision, updateCareItem, updateHealthEvent, updateObservation
