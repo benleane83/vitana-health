@@ -106,7 +106,7 @@ describe("DuckDbHealthStore lifecycle", () => {
     try {
       expect(await reopened.storageCounts()).toMatchObject(expectedCounts);
       expect((await reopened.measurementDetail("heart_rate", { offset: 0, limit: 10 })).entries).toHaveLength(10);
-      expect((await reopened.measurementChartSeries("steps", { range: "3m" })).points.length).toBeGreaterThan(80);
+      expect((await reopened.measurementChartSeries("steps", { range: "3m", mode: "auto" })).points.length).toBeGreaterThan(80);
       expect((await reopened.listCareItems({ limit: 20 })).items).toHaveLength(10);
       expect((await reopened.listHealthEvents({ limit: 20 })).items).toHaveLength(12);
       expect((await reopened.summary()).totals.types).toBe(fixture.measurementTypes.length);
