@@ -1,4 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  calendarDateToUtcMidnight,
+  isUtcMidnightTimestamp,
+  observationCalendarDate,
+  usesDateOnlyObservation
+} from "@vitana/shared";
 import type {
   HealthDataDetailEntry,
   MeasurementType,
@@ -29,6 +35,17 @@ export function ObservationEditDialog({
   const onCloseRef = useRef(onClose);
   const [measurementCode, setMeasurementCode] = useState(entry.measurementCode);
   const [unit, setUnit] = useState(entry.unit);
+  const initialLocalDateTime = toLocalDateTime(entry.timestamp);
+  const initialDateOnly = usesDateOnlyObservation(
+    measurementTypes.find((type) => type.code === entry.measurementCode)?.aggregation
+  );
+  const [observedAt, setObservedAt] = useState(() => initialDateOnly
+    ? observationCalendarDate(entry.timestamp)
+    : initialLocalDateTime
+  );
+  const [preservedTime, setPreservedTime] = useState(() =>
+    isUtcMidnightTimestamp(entry.timestamp) ? "00:00" : initialLocalDateTime.slice(11)
+  );
 
   onCloseRef.current = onClose;
 
@@ -50,6 +67,9 @@ export function ObservationEditDialog({
   }, []);
 
   const currentMeasurementIsCustom = !measurementTypes.some((type) => type.code === entry.measurementCode);
+  const dateOnlyObservation = usesDateOnlyObservation(
+    measurementTypes.find((type) => type.code === measurementCode)?.aggregation
+  );
 
   return (
     <dialog ref={dialogRef} className="observation-edit-dialog" aria-labelledby="observation-edit-title">
@@ -65,9 +85,13 @@ export function ObservationEditDialog({
         onSubmit={(event) => {
           event.preventDefault();
           const data = new FormData(event.currentTarget);
+          const serializedObservedAt = dateOnlyObservation
+            ? calendarDateToUtcMidnight(observedAt)
+            : new Date(observedAt).toISOString();
+          if (!serializedObservedAt) return;
           void onSave({
             measurementCode,
-            observedAt: new Date(String(data.get("observedAt"))).toISOString(),
+            observedAt: serializedObservedAt,
             value: Number(data.get("value")),
             unit: String(data.get("unit")).trim(),
             note: String(data.get("note")).trim() || undefined
@@ -83,6 +107,15 @@ export function ObservationEditDialog({
             disabled={busy}
             onChange={(event) => {
               const nextCode = event.target.value;
+              const nextDateOnly = usesDateOnlyObservation(
+                measurementTypes.find((type) => type.code === nextCode)?.aggregation
+              );
+              if (nextDateOnly && !dateOnlyObservation) {
+                setPreservedTime(observedAt.slice(11) || preservedTime);
+                setObservedAt(observedAt.slice(0, 10));
+              } else if (!nextDateOnly && dateOnlyObservation) {
+                setObservedAt(`${observedAt.slice(0, 10)}T${preservedTime}`);
+              }
               setMeasurementCode(nextCode);
             }}
           >
@@ -92,8 +125,16 @@ export function ObservationEditDialog({
         </label>
 
         <label htmlFor="observation-edit-timestamp">
-          Date and time
-          <input id="observation-edit-timestamp" name="observedAt" type="datetime-local" defaultValue={toLocalDateTime(entry.timestamp)} required disabled={busy} />
+          {dateOnlyObservation ? "Date" : "Date and time"}
+          <input
+            id="observation-edit-timestamp"
+            name="observedAt"
+            type={dateOnlyObservation ? "date" : "datetime-local"}
+            value={observedAt}
+            onChange={(event) => setObservedAt(event.target.value)}
+            required
+            disabled={busy}
+          />
         </label>
 
         <label htmlFor="observation-edit-value">

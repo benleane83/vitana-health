@@ -96,6 +96,7 @@ function mockFetch(urlResponses: Record<string, unknown>) {
 
 beforeEach(() => {
   globalThis.history.replaceState({}, "", "/");
+  window.localStorage.clear();
   HTMLDialogElement.prototype.showModal = function showModal() {
     this.setAttribute("open", "");
   };
@@ -787,14 +788,14 @@ describe("App — measurement detail", () => {
     fireEvent.change(screen.getByLabelText(/new measurement date/i), { target: { value: "2026-07-16" } });
     fireEvent.change(screen.getByLabelText(/new measurement value/i), { target: { value: "5.6" } });
     fireEvent.change(screen.getByLabelText(/new measurement note/i), { target: { value: "After breakfast" } });
-    fireEvent.click(screen.getByRole("button", { name: /^add measurement$/i }));
+    fireEvent.submit(screen.getByRole("button", { name: /^add measurement$/i }).closest("form")!);
 
     await waitFor(() => {
       const request = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([url, init]) =>
         String(url).includes("/api/import/observations/manual") && init?.method === "POST"
       );
       expect(JSON.parse(String(request?.[1]?.body))).toMatchObject({
-        observedAt: "2026-07-16",
+        observedAt: "2026-07-16T00:00:00.000Z",
         observations: [{ measurementCode: "glucose", value: 5.6, unit: "mmol/L", note: "After breakfast" }]
       });
     });
@@ -841,8 +842,15 @@ describe("App — measurement detail", () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: /edit glucose observation/i }));
 
-    expect(await screen.findByRole("dialog", { name: /edit observation/i })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: /^measurement$/i })).toHaveValue("glucose");
+    const editDialog = await screen.findByRole("dialog", { name: /edit observation/i });
+    expect(editDialog).toBeInTheDocument();
+    const measurementSelect = within(editDialog).getByRole("combobox", { name: /^measurement$/i });
+    expect(measurementSelect).toHaveValue("glucose");
+    expect(within(editDialog).getByLabelText(/^date$/i)).toHaveAttribute("type", "date");
+    fireEvent.change(measurementSelect, { target: { value: "heart_rate" } });
+    expect(within(editDialog).getByLabelText(/^date and time$/i)).toHaveAttribute("type", "datetime-local");
+    fireEvent.change(measurementSelect, { target: { value: "glucose" } });
+    expect(within(editDialog).getByLabelText(/^date$/i)).toHaveAttribute("type", "date");
     expect(screen.getByRole("spinbutton", { name: /^value$/i })).toHaveValue(5.2);
     expect(screen.getByRole("textbox", { name: /^unit$/i })).toHaveValue("mmol/L");
     expect(screen.getByRole("textbox", { name: /^note$/i })).toHaveValue("Fasting");
@@ -857,6 +865,7 @@ describe("App — measurement detail", () => {
       );
       expect(JSON.parse(String(request?.[1]?.body))).toMatchObject({
         measurementCode: "glucose",
+        observedAt: "2026-07-14T00:00:00.000Z",
         value: 5.6,
         unit: "mmol/L",
         note: "Corrected fasting result"

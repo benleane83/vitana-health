@@ -11,10 +11,12 @@ import { TrackRoute } from "./features/track/TrackRoute.js";
 import { DashboardRoute } from "./features/dashboard/DashboardRoute.js";
 import { CareRoute } from "./features/care/CareRoute.js";
 import { ProfileAvatar } from "./components/ProfileAvatar.js";
+import { VitanaBrand } from "./components/VitanaBrand.js";
 
 const mainRoutes: AppRoute[] = ["dashboard", "import", "track", "care", "insights", "export"];
 
 export function App() {
+  const dashboardHeaderVariant = new URLSearchParams(window.location.search).get("header") === "rail" ? "rail" : "nav";
   const [message, setMessage] = useState<string>();
   const [route, setRoute] = useState<AppRoute>(() => routeFromPathname(window.location.pathname));
   const [insightsTab, setInsightsTab] = useState<InsightsTab>(() => insightsTabFromPathname(window.location.pathname));
@@ -184,8 +186,10 @@ export function App() {
 
   return (
     <main className="shell">
+      {dashboardHeaderVariant === "rail" ? <VitanaBrand variant="rail" /> : null}
       {/* Navigation tablist */}
-      <nav className="route-nav" aria-label="Page navigation">
+      <nav className={`route-nav route-nav-${dashboardHeaderVariant}`} aria-label="Page navigation">
+        {dashboardHeaderVariant === "nav" ? <VitanaBrand variant="nav" /> : null}
         <div className="route-nav-main" role="tablist" aria-label="App sections">
           {mainRoutes.map((r) => {
             const labels: Record<AppRoute, string> = {
@@ -321,9 +325,7 @@ export function App() {
             bootstrap={bootstrap}
             analytics={analytics}
             profile={profile}
-            activeProfile={activeProfile}
             onEditProfile={profileLifecycle.openEditor}
-            onManageProfiles={profileLifecycle.openManager}
             onNavigateSummary={() => navigate("track")}
             onNavigateMeasurement={navigateSummaryDetail}
             onDataChanged={profileLifecycle.refresh}
