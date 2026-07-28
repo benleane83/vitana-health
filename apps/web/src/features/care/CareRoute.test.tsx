@@ -55,7 +55,8 @@ describe("CareRoute", () => {
     fireEvent.click(screen.getByRole("button", { name: "Complete" }));
     expect(screen.getByRole("heading", { name: "Complete Annual check-up" })).toBeInTheDocument();
     expect(screen.getByLabelText("Kind")).toHaveValue("visit");
-    expect((screen.getByLabelText("Date") as HTMLInputElement).value).not.toBe("");
+    expect(screen.getByLabelText("Date")).toHaveAttribute("type", "date");
+    expect((screen.getByLabelText("Date") as HTMLInputElement).value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 
     fireEvent.submit(screen.getByRole("button", { name: "Complete care item" }).closest("form")!);
     await waitFor(() => expect(complete).toHaveBeenCalledWith("care-1", expect.objectContaining({ kind: "visit" })));
@@ -84,13 +85,24 @@ describe("CareRoute", () => {
     expect(oneDay).toBeDisabled();
     expect(screen.queryByText(/use reminder presets/i)).not.toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Due date"), { target: { value: "2026-08-18T15:00" } });
+    expect(screen.getByLabelText("Due date")).toHaveAttribute("type", "date");
+    expect(screen.getByLabelText("Reminder date")).toHaveAttribute("type", "date");
+    fireEvent.change(screen.getByLabelText("Due date"), { target: { value: "2026-08-18" } });
     expect(oneDay).toBeEnabled();
     fireEvent.click(oneDay);
-    expect(screen.getByLabelText("Reminder date")).toHaveValue("2026-08-17T15:00");
+    expect(screen.getByLabelText("Reminder date")).toHaveValue("2026-08-17");
 
-    fireEvent.change(screen.getByLabelText("Reminder date"), { target: { value: "2026-08-20T09:00" } });
-    expect(screen.getByLabelText("Reminder date")).toHaveValue("2026-08-20T09:00");
+    fireEvent.change(screen.getByLabelText("Reminder date"), { target: { value: "2026-08-20" } });
+    expect(screen.getByLabelText("Reminder date")).toHaveValue("2026-08-20");
+  });
+
+  it("uses a date-only control for health events", async () => {
+    render(<CareRoute view="health-events" activeProfileId="self" onViewChange={vi.fn()} onDataChanged={vi.fn().mockResolvedValue(undefined)} onNotice={vi.fn()} confirm={vi.fn()} />);
+    await screen.findByText("Record care, symptoms, tests, treatments, and other health moments that have already happened.");
+    fireEvent.click(screen.getByRole("button", { name: "Add health event" }));
+
+    expect(screen.getByLabelText("Date")).toHaveAttribute("type", "date");
+    expect((screen.getByLabelText("Date") as HTMLInputElement).value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
   it("supports keyboard navigation between Care tabs", async () => {

@@ -25,6 +25,7 @@ import {
   type Observation,
   type PersonalReferenceRangeInput,
   type Profile,
+  type ReplicaEntityType,
   type UpdateCareItemInput,
   type UpdateHealthEventInput,
   type UpdateObservationInput,
@@ -114,6 +115,7 @@ import {
 } from "./duckdbProjections.js";
 import {
   all,
+  allWithParams,
   exec
 } from "./duckdbRows.js";
 import {
@@ -121,6 +123,8 @@ import {
   readReplicaDeltaPage,
   readReplicaSnapshotPage,
   recordReplicaChanges,
+  recordReplicaEntityChanges,
+  type ReplicaChangeInput,
   replicaHighWaterMark
 } from "./duckdbReplicaSync.js";
 
@@ -347,17 +351,30 @@ export class DuckDbRepository implements ProfileRepository {
 
   async createHealthEvent(input: CreateHealthEventInput): Promise<HealthEventMutationResponse> {
     this.assertOpen();
-    return this.transaction(() => createDuckDbHealthEvent(this.connection, input));
+    return this.transaction(
+      () => createDuckDbHealthEvent(this.connection, input),
+      (result) => [replicaUpsert("health-event", result.healthEvent.id, result.healthEvent)]
+    );
   }
 
   async updateHealthEvent(id: string, input: UpdateHealthEventInput): Promise<HealthEventMutationResponse | undefined> {
     this.assertOpen();
-    return this.transaction(() => updateDuckDbHealthEvent(this.connection, id, input));
+    return this.transaction(
+      () => updateDuckDbHealthEvent(this.connection, id, input),
+      (result) => result
+        ? [replicaUpsert("health-event", result.healthEvent.id, result.healthEvent)]
+        : []
+    );
   }
 
   async deleteHealthEvent(id: string): Promise<DeleteHealthEventResponse | undefined> {
     this.assertOpen();
-    return this.transaction(() => deleteDuckDbHealthEvent(this.connection, id));
+    return this.transaction(
+      () => deleteDuckDbHealthEvent(this.connection, id),
+      (result) => result?.deletedHealthEvent
+        ? [replicaTombstone("health-event", result.deletedHealthEvent.id)]
+        : []
+    );
   }
 
   async listCareItems(query: CareItemListQuery) {
@@ -367,37 +384,80 @@ export class DuckDbRepository implements ProfileRepository {
 
   async createCareItem(input: CreateCareItemInput): Promise<CareItemMutationResponse> {
     this.assertOpen();
-    return this.transaction(() => createDuckDbCareItem(this.connection, input));
+    return this.transaction(
+      () => createDuckDbCareItem(this.connection, input),
+      (result) => [replicaUpsert("care-item", result.careItem.id, result.careItem)]
+    );
   }
 
   async updateCareItem(id: string, input: UpdateCareItemInput): Promise<CareItemMutationResponse | undefined> {
     this.assertOpen();
-    return this.transaction(() => updateDuckDbCareItem(this.connection, id, input));
+    return this.transaction(
+      () => updateDuckDbCareItem(this.connection, id, input),
+      (result) => result
+        ? [replicaUpsert("care-item", result.careItem.id, result.careItem)]
+        : []
+    );
   }
 
   async completeCareItem(id: string, input: CompleteCareItemInput): Promise<CompleteCareItemResponse | undefined> {
     this.assertOpen();
-    return this.transaction(() => completeDuckDbCareItem(this.connection, id, input));
+    return this.transaction(
+      () => completeDuckDbCareItem(this.connection, id, input),
+      (result) => result ? [
+        replicaUpsert("care-item", result.careItem.id, replicaCareItem(result.careItem)),
+        replicaUpsert("health-event", result.healthEvent.id, result.healthEvent)
+      ] : []
+    );
   }
 
   async deleteCareItem(id: string): Promise<DeleteCareItemResponse | undefined> {
     this.assertOpen();
-    return this.transaction(() => deleteDuckDbCareItem(this.connection, id));
+    return this.transaction(
+      () => deleteDuckDbCareItem(this.connection, id),
+      (result) => result?.deletedCareItem
+        ? [replicaTombstone("care-item", result.deletedCareItem.id)]
+        : []
+    );
   }
 
   async insertObservationRecord(observation: Observation): Promise<boolean> {
     this.assertOpen();
-    return this.transaction(() => insertDuckDbObservationRecord(this.connection, observation), true);
+    return this.transaction(
+      () => insertDuckDbObservationRecord(this.connection, observation),
+      (inserted) => inserted ? replicaObservationUpsert(observation) : []
+    );
   }
 
   async importObservationRecords(parsed: Pick<DuckDbImport, "sourceImport" | "dataSource" | "observations">): Promise<number> {
     this.assertOpen();
-    return this.transaction(() => importDuckDbObservationRecords(this.connection, parsed), true);
+    const result = await this.transaction(
+      () => importDuckDbObservationRecords(this.connection, parsed),
+      (imported) => [
+        ...(imported.sourceImport
+          ? [replicaUpsert("source-import", imported.sourceImport.id, replicaSourceImport(imported.sourceImport))]
+          : []),
+        ...(imported.dataSource
+          ? [replicaUpsert("data-source", imported.dataSource.id, imported.dataSource)]
+          : []),
+        ...imported.observations.flatMap(replicaObservationUpsert)
+      ]
+    );
+    return result.count;
   }
 
   async deleteObservationRecord(id: string): Promise<boolean> {
     this.assertOpen();
-    return this.transaction(() => deleteDuckDbObservationRecord(this.connection, id), true);
+    let replicated = false;
+    return this.transaction(async () => {
+      const rows = await allWithParams(
+        this.connection,
+        "SELECT measurement_code FROM observations WHERE id = ? LIMIT 1;",
+        id
+      );
+      replicated = rows[0]?.measurement_code !== "heart_rate";
+      return deleteDuckDbObservationRecord(this.connection, id);
+    }, (deleted) => deleted && replicated ? [replicaTombstone("observation", id)] : []);
   }
 
   async deleteObservationRecordsByMeasurementCode(measurementCode: string): Promise<number> {
@@ -407,12 +467,33 @@ export class DuckDbRepository implements ProfileRepository {
 
   async deleteObservation(id: string): Promise<DeleteObservationResponse | undefined> {
     this.assertOpen();
-    return this.transaction(() => deleteDuckDbObservation(this.connection, id), true);
+    return this.transaction(
+      () => deleteDuckDbObservation(this.connection, id),
+      (result) => result?.deletedObservation?.measurementCode !== "heart_rate" && result?.deletedObservation
+        ? [replicaTombstone("observation", result.deletedObservation.id)]
+        : []
+    );
   }
 
   async updateObservation(id: string, input: UpdateObservationInput): Promise<UpdateObservationResponse | undefined> {
     this.assertOpen();
-    return this.transaction(() => updateDuckDbObservation(this.connection, id, input), true);
+    let previouslyReplicated = false;
+    return this.transaction(async () => {
+      const rows = await allWithParams(
+        this.connection,
+        "SELECT measurement_code FROM observations WHERE id = ? LIMIT 1;",
+        id
+      );
+      previouslyReplicated = rows[0]?.measurement_code !== "heart_rate";
+      return updateDuckDbObservation(this.connection, id, input);
+    }, (result) => {
+      if (!result) return [];
+      const changes = replicaObservationUpsert(result.updatedObservation);
+      if (changes.length === 0 && previouslyReplicated) {
+        return [replicaTombstone("observation", id)];
+      }
+      return changes;
+    });
   }
 
   async deleteObservationsByMeasurementCode(measurementCode: string): Promise<DeleteObservationsByTypeResponse> {
@@ -517,16 +598,21 @@ export class DuckDbRepository implements ProfileRepository {
     }
   }
 
-  private async transaction<T>(operation: () => Promise<T>, trackReplica = false): Promise<T> {
+  private async transaction<T>(
+    operation: () => Promise<T>,
+    trackReplica: boolean | ((result: T) => ReplicaChangeInput[]) = false
+  ): Promise<T> {
     await exec(this.connection, "BEGIN TRANSACTION;");
     try {
-      const before = trackReplica ? await snapshotDuckDb(this.connection, { includeRaw: false }) : undefined;
+      const before = trackReplica === true ? await this.replicaSnapshot() : undefined;
       const result = await operation();
-      if (before) {
+      if (typeof trackReplica === "function") {
+        await recordReplicaEntityChanges(this.connection, trackReplica(result));
+      } else if (before) {
         await recordReplicaChanges(
           this.connection,
           before,
-          await snapshotDuckDb(this.connection, { includeRaw: false })
+          await this.replicaSnapshot()
         );
       }
       await this.testHooks.beforeTransactionCommit?.();
@@ -538,6 +624,44 @@ export class DuckDbRepository implements ProfileRepository {
     }
   }
 
+  private async replicaSnapshot(): Promise<HealthStoreData> {
+    await this.testHooks.beforeReplicaSnapshot?.();
+    return snapshotDuckDb(this.connection, { includeRaw: false });
+  }
+
+}
+
+function replicaUpsert(
+  entityType: ReplicaEntityType,
+  entityId: string,
+  payload: object
+): ReplicaChangeInput {
+  return {
+    entityType,
+    entityId,
+    operation: "upsert",
+    payload: payload as Record<string, unknown>
+  };
+}
+
+function replicaTombstone(entityType: ReplicaEntityType, entityId: string): ReplicaChangeInput {
+  return { entityType, entityId, operation: "tombstone" };
+}
+
+function replicaObservationUpsert(observation: Observation): ReplicaChangeInput[] {
+  return observation.measurementCode === "heart_rate"
+    ? []
+    : [replicaUpsert("observation", observation.id, observation)];
+}
+
+function replicaSourceImport(sourceImport: DuckDbImport["sourceImport"]): object {
+  const { rawContent: _rawContent, ...replicaImport } = sourceImport;
+  return replicaImport;
+}
+
+function replicaCareItem(careItem: CompleteCareItemResponse["careItem"]): Record<string, unknown> {
+  const { completedHealthEvent: _completedHealthEvent, ...payload } = careItem;
+  return payload;
 }
 
 export type DuckDbImport = ProfileImport;

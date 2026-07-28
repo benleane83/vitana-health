@@ -21,6 +21,8 @@ export interface StoredReplicaPage {
   nextOffset?: number;
 }
 
+export type ReplicaChangeInput = Omit<ReplicaChange, "revision" | "sequence">;
+
 const collections: Array<{
   entityType: ReplicaEntityType;
   key: keyof HealthStoreData;
@@ -72,7 +74,7 @@ export async function recordReplicaChanges(
 ): Promise<void> {
   const beforeByKey = new Map(replicaEntities(before).map((entity) => [entityKey(entity), entity]));
   const afterByKey = new Map(replicaEntities(after).map((entity) => [entityKey(entity), entity]));
-  const changes: Array<Omit<ReplicaChange, "revision" | "sequence">> = [];
+  const changes: ReplicaChangeInput[] = [];
   for (const [key, entity] of afterByKey) {
     const previous = beforeByKey.get(key);
     if (!previous || JSON.stringify(previous.payload) !== JSON.stringify(entity.payload)) {
@@ -88,6 +90,13 @@ export async function recordReplicaChanges(
       });
     }
   }
+  await recordReplicaEntityChanges(connection, changes);
+}
+
+export async function recordReplicaEntityChanges(
+  connection: duckdb.Connection,
+  changes: ReplicaChangeInput[]
+): Promise<void> {
   if (changes.length === 0) return;
 
   const state = await readState(connection);

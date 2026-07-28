@@ -684,7 +684,7 @@ function TrendChart({
           <ChartToggle key={option.value} label={option.label} onPress={() => onRangeChange(option.value)} selected={range === option.value} />
         ))}
       </View>
-      {series?.aggregation !== "latest" ? (
+      {detail.measurement.aggregation !== "latest" ? (
         <View accessibilityLabel="Trend chart display" accessibilityRole="radiogroup" style={styles.chartControls}>
           <ChartToggle label="Adaptive" onPress={() => onModeChange("auto")} selected={mode === "auto"} />
           <ChartToggle label="Readings" onPress={() => onModeChange("raw")} selected={mode === "raw"} />
