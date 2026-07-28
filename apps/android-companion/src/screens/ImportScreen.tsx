@@ -50,15 +50,16 @@ type ImportSource = "sync" | "scan" | "manual";
 type ScanKind = "body-composition" | "blood-test";
 
 export function ImportScreen() {
-  const { demoMode, standaloneMode } = useMobileApi();
+  const { connectionState, demoMode, standaloneMode } = useMobileApi();
   const entitlement = useEntitlement();
   const navigation = useNavigation<BottomTabNavigationProp<TabParamList, "Import">>();
   const [source, setSource] = useState<ImportSource>();
+  const connectedOffline = !standaloneMode && connectionState !== "online";
   useEffect(() => {
-    if (demoMode || (standaloneMode && source !== "manual")) setSource(undefined);
-  }, [demoMode, standaloneMode]);
+    if (demoMode || connectedOffline || (standaloneMode && source !== "manual")) setSource(undefined);
+  }, [connectedOffline, demoMode, source, standaloneMode]);
 
-  if (!source || demoMode) return <ImportSourceChooser demoMode={demoMode} standaloneMode={standaloneMode} unlocked={entitlement.state.status === "owned"} onSelect={setSource} onConnect={() => {
+  if (!source || demoMode) return <ImportSourceChooser connectedOffline={connectedOffline} demoMode={demoMode} standaloneMode={standaloneMode} unlocked={entitlement.state.status === "owned"} onSelect={setSource} onConnect={() => {
     navigation.getParent<NativeStackNavigationProp<RootStackParamList>>()?.navigate("Connection");
   }} />;
 
@@ -87,12 +88,14 @@ export function ImportScreen() {
 }
 
 function ImportSourceChooser({
+  connectedOffline,
   demoMode,
   standaloneMode,
   unlocked,
   onConnect,
   onSelect
 }: {
+  connectedOffline: boolean;
   demoMode: boolean;
   standaloneMode: boolean;
   unlocked: boolean;
@@ -149,14 +152,22 @@ function ImportSourceChooser({
             tone="info"
           />
         ) : null}
+        {connectedOffline ? (
+          <Message
+            title="Imports unavailable offline"
+            detail="Reconnect to your paired PC to import health data."
+            tone="warning"
+          />
+        ) : null}
         <View style={styles.sourceList}>
           {sources.map(({ source, title, detail, icon: Icon, color, background }) => {
             const locked = source !== "manual" && !unlocked;
             const unavailableInStandalone = standaloneMode && source !== "manual";
-            const disabled = demoMode || unavailableInStandalone;
+            const disabled = demoMode || connectedOffline || unavailableInStandalone;
+            const unavailableReason = demoMode ? "in Demo mode" : connectedOffline ? "while offline" : "until this phone is paired";
             return (
               <Pressable
-                accessibilityHint={disabled ? `Unavailable in ${demoMode ? "Demo" : "Standalone"} mode` : locked ? "Opens purchase options" : `Opens the ${title} flow`}
+                accessibilityHint={disabled ? `Unavailable ${unavailableReason}` : locked ? "Opens purchase options" : `Opens the ${title} flow`}
                 accessibilityRole="button"
                 accessibilityState={{ disabled }}
                 disabled={disabled}
@@ -174,7 +185,7 @@ function ImportSourceChooser({
                     {locked ? <View style={styles.lockedBadge}><LockKeyhole color={colors.muted} size={13} /><Text style={styles.lockedText}>Locked</Text></View> : null}
                   </View>
                   <Text style={styles.sourceDetail}>{detail}</Text>
-                  {disabled ? <Text style={styles.demoUnavailable}>Unavailable in {demoMode ? "Demo" : "Standalone"} mode</Text> : null}
+                  {disabled ? <Text style={styles.demoUnavailable}>Unavailable {unavailableReason}</Text> : null}
                 </View>
                 {!disabled ? <ChevronRight color={colors.muted} size={20} /> : null}
               </Pressable>
@@ -185,7 +196,7 @@ function ImportSourceChooser({
         <Text style={styles.localNote}>
           {standaloneMode
             ? "Readings are stored only in this phone's encrypted local database."
-            : "Data travels only between this phone and your paired PC over your local connection."}
+            : "Data travels only between this phone and your paired PC over your local network."}
         </Text>
       </ScrollView>
     </Screen>

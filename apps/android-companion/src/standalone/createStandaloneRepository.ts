@@ -4,15 +4,19 @@ import { MemoryLocalStore } from "./memoryLocalStore";
 let store = new MemoryLocalStore();
 
 export async function createStandaloneRepository() {
+  return new LocalProfileRepository(store, createStandaloneProfile());
+}
+
+export function createStandaloneProfile() {
   const id = globalThis.crypto?.randomUUID?.() ??
     `web-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-  return new LocalProfileRepository(store, {
+  return {
     id: `mobile-${id}`,
     displayName: "My profile",
-    subjectKind: "adult",
-    units: "metric",
+    subjectKind: "adult" as const,
+    units: "metric" as const,
     updatedAt: new Date().toISOString()
-  });
+  };
 }
 
 export async function resetStandaloneStorage(): Promise<void> {

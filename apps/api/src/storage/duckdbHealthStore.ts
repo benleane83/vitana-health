@@ -177,6 +177,22 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
     return this.enqueueMutation(() => this.repository.completeMobileMigration(pairingId, sessionId));
   }
 
+  getReplicaHighWaterMark() {
+    return this.repository.getReplicaHighWaterMark();
+  }
+
+  startReplicaSnapshot(pairingId: string) {
+    return this.enqueueMutation(() => this.repository.startReplicaSnapshot(pairingId));
+  }
+
+  replicaSnapshotPage(pairingId: string, snapshotId: string, offset: number, limit: number) {
+    return this.repository.replicaSnapshotPage(pairingId, snapshotId, offset, limit);
+  }
+
+  replicaDeltaPage(afterSequence: number, highWaterSequence: number | undefined, limit: number) {
+    return this.repository.replicaDeltaPage(afterSequence, highWaterSequence, limit);
+  }
+
   addInsight(insight: HealthStoreData["insights"][number]): Promise<HealthStoreData["insights"][number]> {
     return this.enqueueMutation(async () => {
       return this.repository.addInsight(insight);

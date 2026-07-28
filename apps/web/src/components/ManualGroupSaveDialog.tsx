@@ -5,6 +5,7 @@ interface ManualGroupSaveDialogProps {
   defaultGroup: string;
   rowCount: number;
   groupName: string;
+  namingRequired?: boolean;
   onGroupNameChange: (value: string) => void;
   onSave: () => void;
   onSkip: () => void;
@@ -16,6 +17,7 @@ export function ManualGroupSaveDialog({
   defaultGroup,
   rowCount,
   groupName,
+  namingRequired = false,
   onGroupNameChange,
   onSave,
   onSkip,
@@ -60,9 +62,12 @@ export function ManualGroupSaveDialog({
           if (groupName.trim()) onSave();
         }}
       >
-        <h2 id="manual-group-save-title">Save this measurement set?</h2>
-        <p>
-          You added {rowCount - 1} row{rowCount === 2 ? "" : "s"} to {defaultGroup}. Save it as a custom group to preload these measurements next time.
+        <h2 id="manual-group-save-title">
+          {namingRequired ? "Name this custom group" : "Save this measurement set?"}
+        </h2>
+        <p>{namingRequired
+          ? "Enter a name for this group before importing its measurements."
+          : `You added ${rowCount - 1} row${rowCount === 2 ? "" : "s"} to ${defaultGroup}. Save it as a custom group to preload these measurements next time.`}
         </p>
         <div className="manual-group-save-field">
           <label htmlFor="manual-group-save-name">Custom group name</label>
@@ -76,8 +81,12 @@ export function ManualGroupSaveDialog({
         </div>
         <div className="confirm-dialog-actions">
           <button type="button" className="confirm-dialog-cancel" onClick={onCancel}>Cancel</button>
-          <button type="button" className="confirm-dialog-cancel" onClick={onSkip}>Import without saving</button>
-          <button type="submit" className="confirm-dialog-confirm" disabled={!groupName.trim()}>Save as custom group</button>
+          {!namingRequired ? (
+            <button type="button" className="confirm-dialog-cancel" onClick={onSkip}>Import without saving</button>
+          ) : null}
+          <button type="submit" className="confirm-dialog-confirm" disabled={!groupName.trim()}>
+            {namingRequired ? "Import observations" : "Save as custom group"}
+          </button>
         </div>
       </form>
     </dialog>

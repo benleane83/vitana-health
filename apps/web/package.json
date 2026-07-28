@@ -13,6 +13,7 @@
     "@vitana/api-client": "0.1.0",
     "@vitana/shared": "file:../../packages/shared",
     "@vitejs/plugin-react": "^4.3.4",
+    "downshift": "^9.4.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "vite": "^6.2.1"

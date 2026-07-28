@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { filterAndSortSummary, type SummarySort } from "@vitana/shared";
 import { useMobileApi } from "../MobileApiProvider";
@@ -13,7 +13,6 @@ export function TrackScreen() {
   const { connectionState, summary, trackLoading, error, refreshTrack } = useMobileApi();
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SummarySort>("recency");
-  useFocusEffect(useCallback(() => { void refreshTrack(); }, [refreshTrack]));
   const visible = useMemo(
     () => summary ? filterAndSortSummary(summary, search, sort) : undefined,
     [search, sort, summary]
@@ -23,7 +22,7 @@ export function TrackScreen() {
   if (!visible) return (
     <Screen>
       <Message title="Track unavailable" detail={error ?? "Reconnect to your paired PC and try again."} tone="warning" />
-      <Button disabled={trackLoading} onPress={() => { void refreshTrack(); }}>{trackLoading ? "Retrying…" : "Retry"}</Button>
+      <Button disabled={trackLoading} onPress={() => { void refreshTrack({ synchronize: true }); }}>{trackLoading ? "Retrying…" : "Retry"}</Button>
     </Screen>
   );
 
@@ -31,7 +30,7 @@ export function TrackScreen() {
     <Screen>
       <ScrollView
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={trackLoading} onRefresh={() => { void refreshTrack(); }} />}
+        refreshControl={<RefreshControl refreshing={trackLoading} onRefresh={() => { void refreshTrack({ synchronize: true }); }} />}
       >
         {connectionState !== "online" ? (
           <Message title={connectionState.replaceAll("-", " ")} detail={error ?? "Reconnect to refresh Track data."} />

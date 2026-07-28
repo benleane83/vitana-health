@@ -125,5 +125,37 @@ export function migrationSql(currentVersion: number): string {
     CREATE UNIQUE INDEX datasets_selected_idx ON datasets(is_selected) WHERE is_selected = 1;
     PRAGMA user_version = 2;
   `;
+  if (currentVersion === 2) return `
+    CREATE TABLE connected_replicas (
+      replica_id TEXT PRIMARY KEY NOT NULL,
+      server_instance_id TEXT NOT NULL,
+      profile_id TEXT NOT NULL,
+      pairing_id TEXT NOT NULL,
+      cursor_sequence INTEGER NOT NULL DEFAULT 0,
+      revision INTEGER NOT NULL DEFAULT 0,
+      initial_snapshot_completed INTEGER NOT NULL DEFAULT 0 CHECK (initial_snapshot_completed IN (0, 1)),
+      cached_at TEXT,
+      UNIQUE (server_instance_id, profile_id, pairing_id)
+    );
+    CREATE TABLE connected_replica_entities (
+      replica_id TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      entity_id TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      revision INTEGER NOT NULL,
+      PRIMARY KEY (replica_id, entity_type, entity_id),
+      FOREIGN KEY (replica_id) REFERENCES connected_replicas(replica_id) ON DELETE CASCADE
+    );
+    CREATE INDEX connected_replica_entities_type_idx
+      ON connected_replica_entities(replica_id, entity_type);
+    PRAGMA user_version = 3;
+  `;
+  if (currentVersion === 3) return `
+    ALTER TABLE connected_replicas ADD COLUMN applied_at TEXT;
+    ALTER TABLE connected_replicas ADD COLUMN snapshot_cursor TEXT;
+    UPDATE connected_replicas SET applied_at = cached_at WHERE applied_at IS NULL;
+    DROP INDEX IF EXISTS connected_replica_entities_type_idx;
+    PRAGMA user_version = 4;
+  `;
   throw new Error(`No migration path exists from schema ${currentVersion}.`);
 }

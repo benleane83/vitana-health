@@ -6,11 +6,13 @@ import type {
   Observation,
   ParsedImport,
   Profile,
+  ReplicaIdentity,
+  ReplicaPage,
   SourceKind,
   UpdateObservationInput
 } from "@vitana/shared";
 
-export const LOCAL_SCHEMA_VERSION = 2;
+export const LOCAL_SCHEMA_VERSION = 4;
 
 export interface LocalDatasetMetadata {
   datasetId: string;
@@ -68,6 +70,8 @@ export interface LocalObservationPage {
 
 export interface LocalStore {
   initialize(defaultProfile: Profile): Promise<void>;
+  createDataset(profile: Profile): Promise<void>;
+  deleteSelectedDataset(): Promise<void>;
   listDatasets(): Promise<LocalDatasetSummary[]>;
   selectDataset(datasetId: string): Promise<void>;
   datasetMetadata(): Promise<LocalDatasetMetadata>;
@@ -84,6 +88,22 @@ export interface LocalStore {
   deleteObservation(id: string): Promise<Observation | undefined>;
   reset(): Promise<void>;
   close(): Promise<void>;
+  replicaMetadata(identity: ReplicaIdentity): Promise<LocalReplicaMetadata | undefined>;
+  applyReplicaPage(page: ReplicaPage): Promise<void>;
+  replicaEntities(identity: ReplicaIdentity): Promise<Array<{ entityType: string; payload: Record<string, unknown> }>>;
+  deleteReplica(identity: ReplicaIdentity): Promise<void>;
+}
+
+export interface LocalReplicaMetadata extends ReplicaIdentity {
+  cursorSequence: number;
+  revision: number;
+  initialSnapshotCompleted: boolean;
+  /** Server-generated timestamp for the page. Display only - it uses the paired PC's clock. */
+  cachedAt?: string;
+  /** Device-local timestamp recorded when the page was applied. Use this for staleness checks. */
+  appliedAt?: string;
+  /** Resume point for an interrupted first snapshot. Undefined once the snapshot completes. */
+  snapshotCursor?: string;
 }
 
 export function emptyCounts(): LocalStoreCounts {

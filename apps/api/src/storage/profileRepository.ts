@@ -34,6 +34,7 @@ import type {
   Profile,
   ProfilePhotoMetadata,
   ReferenceRangeState,
+  ReplicaHighWaterMark,
   SourceImport,
   UpdateCareItemInput,
   UpdateHealthEventInput,
@@ -42,6 +43,7 @@ import type {
 } from "@vitana/shared";
 import type { MeasurementDetailPage } from "../summary.js";
 import type { ClinicianReportSourceImport } from "../clinicianReport.js";
+import type { StoredReplicaPage } from "./duckdbReplicaSync.js";
 
 export interface ProfileImport {
   sourceImport: SourceImport;
@@ -126,6 +128,10 @@ export interface ProfileRepository {
   startMobileMigration(pairingId: string, manifest: MobileMigrationManifest): Promise<MobileMigrationStartResponse>;
   applyMobileMigrationBatch(pairingId: string, batch: MobileMigrationBatch): Promise<MobileMigrationBatchAcknowledgement>;
   completeMobileMigration(pairingId: string, sessionId: string): Promise<MobileMigrationReceipt>;
+  getReplicaHighWaterMark(): Promise<ReplicaHighWaterMark>;
+  startReplicaSnapshot(pairingId: string): Promise<string>;
+  replicaSnapshotPage(pairingId: string, snapshotId: string, offset: number, limit: number): Promise<StoredReplicaPage | undefined>;
+  replicaDeltaPage(afterSequence: number, highWaterSequence: number | undefined, limit: number): Promise<StoredReplicaPage>;
   addInsight(insight: HealthStoreData["insights"][number]): Promise<HealthStoreData["insights"][number]>;
   exportData(): Promise<HealthStoreData>;
   listHealthEvents(query: HealthEventListQuery): Promise<PaginatedResult<HealthEvent>>;

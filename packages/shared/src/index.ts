@@ -13,3 +13,4 @@ export * from "./backup.js";
 export * from "./mobileRepository.js";
 export * from "./brand.js";
 export * from "./mobileMigration.js";
+export * from "./replicaSync.js";

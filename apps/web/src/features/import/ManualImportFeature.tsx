@@ -17,6 +17,8 @@ import { ManualEntryForm } from "../../pages/ImportPage.js";
 import type { ManualMarkerRow } from "../../types.js";
 import { todayIsoDate } from "../../utils.js";
 
+const customObservationGroupValue = "__custom__";
+
 export function ManualImportFeature({
   activeProfileId,
   bootstrap,
@@ -108,14 +110,10 @@ export function ManualImportFeature({
   function selectObservationGroup(label: string) {
     pendingStoredGroup.current = undefined;
     setObservationGroup(label);
-    writeStoredObservationGroup(activeProfileId, label);
+    if (label !== customObservationGroupValue) {
+      writeStoredObservationGroup(activeProfileId, label);
+    }
     setRows(createRowsForGroup(label, measurementTypes, groupTemplates, units));
-  }
-
-  function updateCustomObservationGroup(label: string) {
-    pendingStoredGroup.current = undefined;
-    setObservationGroup(label);
-    writeStoredObservationGroup(activeProfileId, label);
   }
 
   function updateRow(id: string, patch: Partial<ManualMarkerRow>) {
@@ -134,7 +132,7 @@ export function ManualImportFeature({
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const isDefaultGroup = manualGroupDefaults.some((group) => group.label === observationGroup);
-    if (isDefaultGroup && rows.length > 1) {
+    if (observationGroup === customObservationGroupValue || (isDefaultGroup && rows.length > 1)) {
       setSaveDialog({ groupName: "" });
       return;
     }
@@ -176,7 +174,6 @@ export function ManualImportFeature({
         rows={rows}
         measurementTypes={allowedMeasurementTypes}
         onObservationGroupChange={selectObservationGroup}
-        onCustomObservationGroupChange={updateCustomObservationGroup}
         onLabNameChange={setLabName}
         onCollectedAtChange={setCollectedAt}
         onRowChange={updateRow}
@@ -194,6 +191,7 @@ export function ManualImportFeature({
           defaultGroup={observationGroup}
           rowCount={rows.length}
           groupName={saveDialog.groupName}
+          namingRequired={observationGroup === customObservationGroupValue}
           onGroupNameChange={(groupName) => setSaveDialog({ groupName })}
           onSave={() => {
             const groupName = saveDialog.groupName.trim();
@@ -248,6 +246,15 @@ function createRowsForGroup(
   units: UnitSystem,
   fallbackRows?: ManualMarkerRow[]
 ) {
+  if (label === customObservationGroupValue && measurementTypes.length) {
+    const measurement = measurementTypes[0];
+    return [createEmptyRow(
+      measurement.display,
+      measurement.code,
+      "",
+      getPreferredUnit(measurement, units)
+    )];
+  }
   const defaultGroup = manualGroupDefaults.find((group) => group.label === label);
   if (defaultGroup) {
     const measurement = measurementTypes.find((type) => type.code === defaultGroup.measurementCode);

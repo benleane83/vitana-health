@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { defaultMeasurementTypes, type AppBootstrap } from "@vitana/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../api.js";
@@ -25,7 +25,7 @@ describe("ManualImportFeature", () => {
     );
 
     expect(screen.getByLabelText("Observation group")).toHaveValue("Body");
-    expect(screen.getByLabelText("Row 1: select known measurement")).toHaveValue("weight");
+    expect(screen.getByLabelText("Row 1: select known measurement")).toHaveValue("Weight");
   });
 
   it("prefills a lab marker from a Biological Age add-result link", () => {
@@ -42,7 +42,7 @@ describe("ManualImportFeature", () => {
     );
 
     expect(screen.getByLabelText("Observation group")).toHaveValue("Lab");
-    expect(screen.getByLabelText("Row 1: select known measurement")).toHaveValue("albumin");
+    expect(screen.getByLabelText("Row 1: select known measurement")).toHaveValue("Albumin");
   });
 
   it("keeps observation-group preferences isolated when the active profile changes", () => {
@@ -58,7 +58,7 @@ describe("ManualImportFeature", () => {
     rerender(<ManualImportFeature activeProfileId="family" {...props} />);
 
     expect(screen.getByLabelText("Observation group")).toHaveValue("Lab");
-    expect(screen.getByLabelText("Row 1: select known measurement")).toHaveValue("glucose");
+    expect(screen.getByLabelText("Row 1: select known measurement")).toHaveValue("Glucose");
     expect(window.localStorage.getItem("vitana.manualImport.lastObservationGroup.v1.self")).toBe("Body");
   });
 
@@ -88,11 +88,12 @@ describe("ManualImportFeature", () => {
     rerender(<ManualImportFeature {...props} bootstrap={bootstrap} />);
 
     expect(screen.getByLabelText("Observation group")).toHaveValue("Morning metrics");
-    expect(screen.getByLabelText("Row 1: select known measurement")).toHaveValue("weight");
+    expect(screen.getByLabelText("Row 1: select known measurement")).toHaveValue("Weight");
   });
 
-  it("persists a typed custom observation group without storing its empty transition", () => {
+  it("defers custom group naming to import and starts with a known measurement", async () => {
     window.localStorage.setItem("vitana.manualImport.lastObservationGroup.v1.self", "Lab");
+    vi.spyOn(api, "importManualObservations").mockResolvedValue(undefined as never);
     render(
       <ManualImportFeature
         activeProfileId="self"
@@ -103,13 +104,42 @@ describe("ManualImportFeature", () => {
     );
 
     fireEvent.change(screen.getByLabelText("Observation group"), { target: { value: "__custom__" } });
+    expect(screen.queryByLabelText("Custom observation group")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Row 1: select known measurement")).toHaveValue("Active energy burned");
+    expect(screen.queryByLabelText("Row 1 measurement name")).not.toBeInTheDocument();
     expect(window.localStorage.getItem("vitana.manualImport.lastObservationGroup.v1.self")).toBe("Lab");
-    fireEvent.change(screen.getByLabelText("Custom observation group"), {
-      target: { value: "Post-workout check-in" }
-    });
+    fireEvent.change(screen.getByLabelText("Row 1 value"), { target: { value: "100" } });
+    fireEvent.click(screen.getByRole("button", { name: "Import observations" }));
 
-    expect(window.localStorage.getItem("vitana.manualImport.lastObservationGroup.v1.self"))
-      .toBe("Post-workout check-in");
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("heading", { name: "Name this custom group" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Custom group name"), { target: { value: "Post-workout check-in" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Import observations" }));
+
+    await waitFor(() => expect(api.importManualObservations).toHaveBeenCalledWith(expect.objectContaining({
+      label: "Post-workout check-in"
+    })));
+  });
+
+  it("reveals custom measurement fields only after selecting the custom action", () => {
+    render(
+      <ManualImportFeature
+        activeProfileId="self"
+        units="metric"
+        onImported={vi.fn().mockResolvedValue(undefined)}
+        onNotice={vi.fn()}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("Observation group"), { target: { value: "__custom__" } });
+    expect(screen.queryByLabelText("Row 1 measurement name")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Row 1 measurement code")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open measurement choices" }));
+    fireEvent.click(screen.getByRole("option", { name: "Use a custom measurement" }));
+
+    expect(screen.getByLabelText("Row 1 measurement name")).toBeInTheDocument();
+    expect(screen.getByLabelText("Row 1 measurement code")).toBeInTheDocument();
   });
 
   it("uses compact accessible controls to remove manual rows", () => {
@@ -138,14 +168,9 @@ describe("ManualImportFeature", () => {
         onNotice={vi.fn()}
       />
     );
-    const firstMeasurement = screen.getByLabelText("Row 1: select known measurement") as HTMLSelectElement;
-    const knownOptions = [...firstMeasurement.options].filter((option) => option.value);
-    const currentIndex = knownOptions.findIndex((option) => option.value === firstMeasurement.value);
-    const expectedNextMeasurement = knownOptions[(currentIndex + 1) % knownOptions.length]?.value;
-
     fireEvent.click(screen.getByRole("button", { name: "Add row" }));
 
-    expect(screen.getByLabelText("Row 2: select known measurement")).toHaveValue(expectedNextMeasurement);
+    expect(screen.getByLabelText("Row 2: select known measurement")).toHaveValue("Total calories burned");
     expect(screen.queryByLabelText("Row 2 measurement name")).not.toBeInTheDocument();
   });
 
@@ -167,7 +192,7 @@ describe("ManualImportFeature", () => {
     await waitFor(() => expect(api.importManualObservations).toHaveBeenCalledOnce());
     expect(screen.getByLabelText("Observation group")).toHaveValue("Body");
     expect(screen.getByLabelText("Row 1 value")).toHaveValue("");
-    expect(screen.getByLabelText("Row 1: select known measurement")).toHaveValue("weight");
+    expect(screen.getByLabelText("Row 1: select known measurement")).toHaveValue("Weight");
   });
 
   it("falls back cleanly when localStorage is unavailable", () => {

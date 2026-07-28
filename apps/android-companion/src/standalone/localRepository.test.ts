@@ -121,6 +121,71 @@ describe("local profile repository", () => {
     await expect(repository.importManualObservations(reading)).rejects.toThrow("read-only archive");
   });
 
+  it("creates a fresh writable dataset without reactivating a migrated archive", async () => {
+    const store = new MemoryLocalStore();
+    const repository = new LocalProfileRepository(store, profile("profile-a"));
+    await repository.importManualObservations(reading);
+    const manifest = await repository.migrationManifest();
+    await repository.archiveAfterMigration({
+      receiptId: "receipt-1",
+      sessionId: "session-1",
+      pairingId: "pairing-1",
+      destinationProfileId: "pc-profile",
+      datasetFingerprint: manifest.datasetFingerprint,
+      completedAt: "2026-07-25T00:00:00.000Z",
+      counts: { accepted: 4, duplicates: 0, conflicts: 0 }
+    }, "https://pc.local");
+
+    await repository.createFreshDataset(profile("profile-b"));
+    expect(await repository.listDatasets()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ datasetId: "profile-a", lifecycleState: "archived", selected: false }),
+      expect.objectContaining({ datasetId: "profile-b", lifecycleState: "active", selected: true })
+    ]));
+    await expect(repository.importManualObservations(reading)).resolves.toBeDefined();
+
+    await repository.selectDataset("profile-a");
+    await expect(repository.importManualObservations(reading)).rejects.toThrow("read-only archive");
+  });
+
+  it("deletes only the selected writable dataset", async () => {
+    const store = new MemoryLocalStore();
+    const repository = new LocalProfileRepository(store, profile("profile-a"));
+    await repository.importManualObservations(reading);
+    await repository.createFreshDataset(profile("profile-b"));
+    await repository.importManualObservations({ ...reading, observedAt: "2026-07-19T06:00:00.000Z" });
+
+    await repository.deleteSelectedDataset();
+    expect(await repository.listDatasets()).toEqual([
+      expect.objectContaining({ datasetId: "profile-a", selected: false })
+    ]);
+    await repository.selectDataset("profile-a");
+    expect((await repository.bootstrap()).counts.observations).toBe(1);
+  });
+
+  it("deletes a selected read-only archive without affecting another dataset", async () => {
+    const store = new MemoryLocalStore();
+    const repository = new LocalProfileRepository(store, profile("profile-a"));
+    await repository.importManualObservations(reading);
+    const manifest = await repository.migrationManifest();
+    await repository.archiveAfterMigration({
+      receiptId: "receipt-1",
+      sessionId: "session-1",
+      pairingId: "pairing-1",
+      destinationProfileId: "pc-profile",
+      datasetFingerprint: manifest.datasetFingerprint,
+      completedAt: "2026-07-25T00:00:00.000Z",
+      counts: { accepted: 4, duplicates: 0, conflicts: 0 }
+    }, "https://pc.local");
+    await repository.createFreshDataset(profile("profile-b"));
+    await repository.selectDataset("profile-a");
+
+    await repository.deleteSelectedDataset();
+
+    expect(await repository.listDatasets()).toEqual([
+      expect.objectContaining({ datasetId: "profile-b", lifecycleState: "active", selected: false })
+    ]);
+  });
+
   it("does not archive records changed after a migration snapshot was started", async () => {
     const repository = new LocalProfileRepository(new MemoryLocalStore(), profile("profile-a"));
     await repository.importManualObservations(reading);

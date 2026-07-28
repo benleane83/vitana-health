@@ -50,7 +50,7 @@ It supports:
 - Camera/gallery report capture with OCR, editable row review, and approved-row commit
 - Manual "Sync now" for Health Connect, with category selection and 30-365 day initial sync window (30 days by default)
 
-Dashboard and Track data are fetched on demand and are not cached on the phone. Report images and OCR drafts remain in memory only and are cleared after commit, cancellation, disconnect, or app backgrounding. OCR, parsing, analytics, and encrypted health-data storage remain on the paired PC.
+Dashboard, Track, and Care data are retained in an encrypted read-only phone replica for immediate and offline viewing. The phone refreshes that replica from the paired PC in the background and when the user pulls to refresh. Unpairing removes the downloaded replica. Report images and OCR drafts remain in memory only and are cleared after commit, cancellation, disconnect, or app backgrounding. OCR, parsing, and the authoritative Connected health-data store remain on the paired PC.
 
 See the [Android privacy policy](docs/PRIVACY_POLICY.md), [Health Connect data inventory](docs/HEALTH_CONNECT_DATA_INVENTORY.md), and release declaration instructions in [Android release](docs/ANDROID_RELEASE.md).
 
