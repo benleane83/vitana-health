@@ -52,6 +52,17 @@ export class LocalProfileRepository implements MobileProfileRepository {
     return this.store.listDatasets();
   }
 
+  async createFreshDataset(profile: Profile): Promise<void> {
+    await this.store.createDataset(profile);
+    this.initialized = Promise.resolve();
+  }
+
+  async deleteSelectedDataset(): Promise<void> {
+    await this.ensureInitialized();
+    await this.store.deleteSelectedDataset();
+    this.initialized = undefined;
+  }
+
   async selectDataset(datasetId: string): Promise<void> {
     await this.store.selectDataset(datasetId);
     this.initialized = Promise.resolve();

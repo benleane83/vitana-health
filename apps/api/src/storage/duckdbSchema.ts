@@ -54,6 +54,11 @@ export async function reconcileDefaultMeasurementTypes(
   if (missingTypes.length === 0 && updatedTypes.size === 0) {
     return;
   }
+  // The retired "metabolic" category no longer validates, so heal it before the tracked transaction below:
+  // that transaction snapshots and parses the whole store to capture companion replica changes.
+  for (const type of retiredTypes) {
+    await run(connection, "UPDATE measurement_types SET category = ? WHERE code = ?;", type.category, type.code);
+  }
   await runInTransaction(async () => {
     const ordinalRows = await all(connection, "SELECT COALESCE(MAX(ordinal), -1) + 1 AS ordinal FROM measurement_types;");
     let ordinal = Number(ordinalRows[0]?.ordinal ?? 0);

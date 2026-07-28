@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Picker } from "@react-native-picker/picker";
@@ -19,7 +19,6 @@ import {
   type HealthEvent,
   type HealthEventKind
 } from "@vitana/shared";
-import { useFocusEffect } from "@react-navigation/native";
 import { CalendarDays } from "lucide-react-native";
 import { useMobileApi } from "../MobileApiProvider";
 import { Button, Card, Message, Screen } from "../ui/components";
@@ -53,6 +52,8 @@ export function CareScreen() {
     standaloneMode,
     listCareItems,
     listHealthEvents,
+    synchronizeConnectedData,
+    syncing,
     createCareItem,
     updateCareItem,
     completeCareItem,
@@ -75,7 +76,7 @@ export function CareScreen() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (synchronize = false) => {
     if (standaloneMode) {
       setItems([]);
       setEvents([]);
@@ -85,6 +86,7 @@ export function CareScreen() {
     }
     setLoading(true);
     try {
+      if (synchronize) await synchronizeConnectedData(true);
       const [nextItems, nextEvents] = await Promise.all([
         listCareItems({ limit: 30, kind: careItemKindFilter || undefined }),
         listHealthEvents({ limit: 30, kind: healthEventKindFilter || undefined })
@@ -96,9 +98,15 @@ export function CareScreen() {
     } finally {
       setLoading(false);
     }
-  }, [careItemKindFilter, healthEventKindFilter, listCareItems, listHealthEvents, standaloneMode]);
+  }, [careItemKindFilter, healthEventKindFilter, listCareItems, listHealthEvents, standaloneMode, synchronizeConnectedData]);
 
-  useFocusEffect(useCallback(() => { void load(); }, [load]));
+  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (connectionState !== "online") {
+      setEditorMode("closed");
+      setEditingId(undefined);
+    }
+  }, [connectionState]);
 
   async function save() {
     setBusy(true);
@@ -190,12 +198,14 @@ export function CareScreen() {
     setEditingId(undefined);
   }
 
+  const canWrite = !demoMode && connectionState === "online";
+
   if (standaloneMode) {
     return (
       <Screen>
         <Message
-          title="Care requires Connected mode"
-          detail="Switch to Connected mode to view and manage Care records on your paired PC. Standalone health data remains separate and unchanged."
+          title="Care requires a paired PC"
+          detail="Pair with your PC to view and manage Care records. Health data already on this phone remains separate until you choose to merge or delete it during setup."
         />
       </Screen>
     );
@@ -203,7 +213,7 @@ export function CareScreen() {
 
   return (
     <Screen>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={loading} onRefresh={() => { void load(); }} />}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={loading || syncing} onRefresh={() => { void load(true); }} />}>
         <View style={styles.headerRow}>
           <View style={styles.segmented}>
             {(["items", "health-events"] as const).map((value) => (
@@ -218,10 +228,10 @@ export function CareScreen() {
               </Pressable>
             ))}
           </View>
-          {!demoMode ? <Button disabled={busy} onPress={startCreate}>{view === "items" ? "Add care item" : "Add health event"}</Button> : null}
+          {canWrite ? <Button disabled={busy} onPress={startCreate}>{view === "items" ? "Add care item" : "Add health event"}</Button> : null}
         </View>
         {demoMode ? <Message title="Demo mode is read-only" detail="Connect to your paired PC to create, edit, or delete care records." /> : null}
-        {connectionState !== "online" ? <Message title={connectionState.replaceAll("-", " ")} detail={error ?? "Reconnect to refresh Care data."} tone="warning" /> : null}
+        {connectionState !== "online" ? <Message title={connectionState.replaceAll("-", " ")} detail={error ?? "Showing read-only synced Care data. Reconnect or pull to refresh."} tone="warning" /> : null}
         {message ? <Message title="Care" detail={message} /> : null}
         {view === "items" ? (
           <FormField label="Kind filter">
@@ -257,14 +267,14 @@ export function CareScreen() {
             <Text style={styles.title}>{healthEventKindLabels[entry.kind]}</Text>
             <Text style={styles.meta}>{formatDate(entry.occurredAt)}{entry.provider ? ` • ${entry.provider}` : ""}</Text>
             <Text style={styles.meta}>{entry.status}{entry.notes ? ` • ${entry.notes}` : ""}</Text>
-            {!demoMode ? <View style={styles.actions}><Button disabled={busy} secondary onPress={() => startEditHealthEvent(entry)}>Edit</Button><Button disabled={busy} secondary onPress={() => { void remove(entry.id); }}>Delete</Button></View> : null}
+            {canWrite ? <View style={styles.actions}><Button disabled={busy} secondary onPress={() => startEditHealthEvent(entry)}>Edit</Button><Button disabled={busy} secondary onPress={() => { void remove(entry.id); }}>Delete</Button></View> : null}
           </Card>
         )) : items.map((entry) => (
           <Card key={entry.id}>
             <Text style={styles.title}>{entry.title}</Text>
             <Text style={styles.meta}>{entry.status} • {careItemKindLabel(entry.kind)}</Text>
             <Text style={styles.meta}>{entry.dueStart ? `Due ${formatDate(entry.dueStart)}` : "No due date"}</Text>
-            {!demoMode ? (
+            {canWrite ? (
               <View style={styles.actions}>
                 {entry.status === "open" ? <Button disabled={busy} onPress={() => startCompleteCareItem(entry)}>Complete</Button> : null}
                 <Button disabled={busy} secondary onPress={() => startEditCareItem(entry)}>Edit</Button>
@@ -294,7 +304,7 @@ export function CareScreen() {
                   </View>
                 </FormField>
                 <View style={styles.actions}>
-                  <Button disabled={busy} onPress={() => { void confirmCompletion(); }}>{busy ? "Completing…" : "Confirm completion"}</Button>
+                  <Button disabled={busy || !canWrite} onPress={() => { void confirmCompletion(); }}>{busy ? "Completing…" : "Confirm completion"}</Button>
                   <Button disabled={busy} secondary onPress={() => setEditorMode("closed")}>Cancel</Button>
                 </View>
               </>
@@ -404,7 +414,7 @@ export function CareScreen() {
                 </FormField>
               </>
             )}
-            {editorMode !== "complete" ? <View style={styles.actions}><Button disabled={busy} onPress={() => { void save(); }}>{busy ? "Saving…" : "Save"}</Button><Button disabled={busy} secondary onPress={() => setEditorMode("closed")}>Cancel</Button></View> : null}
+            {editorMode !== "complete" ? <View style={styles.actions}><Button disabled={busy || !canWrite} onPress={() => { void save(); }}>{busy ? "Saving…" : "Save"}</Button><Button disabled={busy} secondary onPress={() => setEditorMode("closed")}>Cancel</Button></View> : null}
           </Card>
         ) : null}
       </ScrollView>

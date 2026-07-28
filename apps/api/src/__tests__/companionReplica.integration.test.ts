@@ -42,6 +42,13 @@ describe("encrypted DuckDB companion replica", () => {
         unit: original.unit,
         note: "Updated during snapshot"
       });
+      const createdCareItem = await repository.createCareItem({
+        title: "Book follow-up",
+        kind: "follow-up",
+        dueStart: "2026-08-01",
+        priority: "normal",
+        status: "open"
+      });
 
       const snapshotChanges = [...(firstPage?.changes ?? [])];
       let offset = firstPage?.nextOffset;
@@ -65,19 +72,32 @@ describe("encrypted DuckDB companion replica", () => {
           entityId: original.id,
           operation: "upsert",
           payload: expect.objectContaining({ value: original.value + 5 })
+        }),
+        expect.objectContaining({
+          entityType: "care-item",
+          entityId: createdCareItem.careItem.id,
+          operation: "upsert",
+          payload: expect.objectContaining({ title: "Book follow-up" })
         })
       ]));
 
       await repository.deleteObservation(original.id);
+      await repository.deleteCareItem(createdCareItem.careItem.id);
       const deletePage = await repository.replicaDeltaPage(updatePage.highWaterMark.sequence, undefined, 100);
       expect(deletePage.changes).toEqual(expect.arrayContaining([
         expect.objectContaining({
           entityType: "observation",
           entityId: original.id,
           operation: "tombstone"
+        }),
+        expect.objectContaining({
+          entityType: "care-item",
+          entityId: createdCareItem.careItem.id,
+          operation: "tombstone"
         })
       ]));
       expect(deletePage.changes.find((change) => change.entityId === original.id)?.payload).toBeUndefined();
+      expect(deletePage.changes.find((change) => change.entityId === createdCareItem.careItem.id)?.payload).toBeUndefined();
     } finally {
       await repository.close();
     }

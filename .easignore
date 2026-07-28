@@ -1,12 +1,20 @@
 node_modules/
 dist/
+.expo/
+.expo-web-preview/
+web-build/
 apps/android-companion/android/.gradle/
 apps/android-companion/android/build/
 apps/android-companion/android/app/build/
+apps/desktop/build/duckdb-extensions/
+apps/desktop/dist-poc/
+apps/desktop/dist-store*/
+desktop-store-evidence/
 .env
 .env.local
 data/
 *.log
+*.tsbuildinfo
 .DS_Store
 .playwright-mcp/
 

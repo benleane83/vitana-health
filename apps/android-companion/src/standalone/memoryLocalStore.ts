@@ -44,7 +44,7 @@ export function createMemoryLocalStoreState(): MemoryLocalStoreState {
 
 export class MemoryLocalStore implements LocalStore {
   private profileId?: string;
-  private archivedReceipt?: MobileMigrationReceipt;
+  private archivedReceipts = new Map<string, MobileMigrationReceipt>();
   private replicas = new Map<string, {
     metadata: import("./localStore").LocalReplicaMetadata;
     entities: Map<string, { entityType: string; payload: Record<string, unknown>; revision: number }>;
@@ -62,13 +62,24 @@ export class MemoryLocalStore implements LocalStore {
     }
   }
 
+  async createDataset(profile: Profile): Promise<void> {
+    if (this.state.profiles.has(profile.id)) throw new Error("The local dataset already exists.");
+    this.state.profiles.set(profile.id, structuredClone(profile));
+    this.state.migrationFingerprints.set(profile.id, `standalone:${profile.id}`);
+    this.profileId = profile.id;
+  }
+
+  async deleteSelectedDataset(): Promise<void> {
+    await this.reset();
+  }
+
   async listDatasets() {
     return [...this.state.profiles.values()].map((profile) => ({
       datasetId: profile.id,
       profileId: profile.id,
       displayName: profile.displayName,
       kind: "standalone" as const,
-      lifecycleState: this.archivedReceipt && this.profileId === profile.id ? "archived" as const : "active" as const,
+      lifecycleState: this.archivedReceipts.has(profile.id) ? "archived" as const : "active" as const,
       selected: this.profileId === profile.id
     }));
   }
@@ -86,13 +97,14 @@ export class MemoryLocalStore implements LocalStore {
 
   async datasetMetadata() {
     const profileId = this.requireProfileId();
+    const archivedReceipt = this.archivedReceipts.get(profileId);
     return {
       datasetId: profileId,
       profileId,
       kind: "standalone" as const,
-      lifecycleState: this.archivedReceipt ? "archived" as const : "active" as const,
+      lifecycleState: archivedReceipt ? "archived" as const : "active" as const,
       migrationFingerprint: this.state.migrationFingerprints.get(profileId) ?? `standalone:${profileId}`,
-      migrationReceipt: this.archivedReceipt
+      migrationReceipt: archivedReceipt
     };
   }
 
@@ -203,7 +215,7 @@ export class MemoryLocalStore implements LocalStore {
     if ((await this.datasetMetadata()).migrationFingerprint !== receipt.datasetFingerprint) {
       throw new Error("Standalone data changed during migration. The updated dataset was not archived.");
     }
-    this.archivedReceipt = structuredClone(receipt);
+    this.archivedReceipts.set(this.requireProfileId(), structuredClone(receipt));
   }
 
   async latestObservationsByCode(): Promise<Observation[]> {
@@ -334,6 +346,7 @@ export class MemoryLocalStore implements LocalStore {
     }
     next.metadata.revision = Math.max(next.metadata.revision, page.highWaterMark.revision);
     next.metadata.cachedAt = page.cachedAt;
+    next.metadata.appliedAt = new Date().toISOString();
     if (page.kind === "snapshot" && page.complete) {
       next.metadata.initialSnapshotCompleted = true;
       next.metadata.cursorSequence = page.highWaterMark.sequence;
@@ -342,6 +355,9 @@ export class MemoryLocalStore implements LocalStore {
         ? page.highWaterMark.sequence
         : Math.max(next.metadata.cursorSequence, ...page.changes.map((change) => change.sequence));
     }
+    next.metadata.snapshotCursor = next.metadata.initialSnapshotCompleted
+      ? undefined
+      : (page.kind === "snapshot" ? page.nextCursor : next.metadata.snapshotCursor);
     this.replicas.set(id, next);
   }
 
@@ -364,6 +380,7 @@ export class MemoryLocalStore implements LocalStore {
     const profileId = this.requireProfileId();
     this.state.profiles.delete(profileId);
     this.state.migrationFingerprints.delete(profileId);
+    this.archivedReceipts.delete(profileId);
     for (const values of [
       this.state.sourceImports,
       this.state.dataSources,
@@ -388,7 +405,9 @@ export class MemoryLocalStore implements LocalStore {
   }
 
   private assertWritable(): void {
-    if (this.archivedReceipt) throw new Error("This migrated Standalone dataset is a read-only archive.");
+    if (this.archivedReceipts.has(this.requireProfileId())) {
+      throw new Error("This migrated Standalone dataset is a read-only archive.");
+    }
   }
 
   private profileValues<T>(values: Map<string, T>): T[] {

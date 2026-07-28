@@ -1,6 +1,6 @@
 {
   "name": "@vitana/android-companion",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "license": "Elastic-2.0",
   "main": "index.ts",
   "dependencies": {
@@ -13,6 +13,7 @@
     "@react-navigation/native-stack": "^7.17.10",
     "@vitana/api-client": "^0.1.0",
     "expo": "~57.0.7",
+    "expo-application": "~57.0.2",
     "expo-camera": "~57.0.1",
     "expo-crypto": "~57.0.0",
     "expo-health-connect": "^0.1.1",

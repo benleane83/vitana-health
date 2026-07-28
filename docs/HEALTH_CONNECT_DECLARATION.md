@@ -14,4 +14,4 @@ For each type, the sole purpose is the corresponding local wellness, activity, s
 
 ## Data handling
 
-In Standalone mode, selected records are stored in a SQLCipher-encrypted database on the phone. In Connected mode, selected records are sent only to the user-paired local desktop API through a pinned HTTPS connection in production and stored in the selected profile's encrypted desktop database. Standalone users can delete observations or reset local data. Connected users can delete observations or profiles, disconnect the companion, or revoke its token. See the public [Privacy Policy](PRIVACY_POLICY.md).
+Before pairing, selected records are stored in a SQLCipher-encrypted database on the phone. Once paired and activated, selected records are sent only to the user's local desktop API through a pinned HTTPS connection in production and stored in the selected profile's encrypted desktop database. Local-only users can delete observations or reset local data. Paired users can delete observations or profiles, unpair the companion, or revoke its token. See the public [Privacy Policy](PRIVACY_POLICY.md).

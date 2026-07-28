@@ -17,7 +17,8 @@ export function resolveOperatingMode(
   stored: CompanionOperatingMode | null,
   hasPairedConnection: boolean
 ): CompanionOperatingMode {
-  return stored ?? (hasPairedConnection ? "connected" : "standalone");
+  if (!hasPairedConnection) return "standalone";
+  return stored ?? "connected";
 }
 
 export function shouldCreateStandaloneSource(

@@ -1,7 +1,7 @@
 export type RootStackParamList = {
   Main: undefined;
   Pair: undefined;
-  Connection: undefined;
+  Connection: { activatePairing?: boolean } | undefined;
   License: undefined;
   TrackDetail: { measurementCode: string; displayName: string };
 };

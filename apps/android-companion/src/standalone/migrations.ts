@@ -150,5 +150,12 @@ export function migrationSql(currentVersion: number): string {
       ON connected_replica_entities(replica_id, entity_type);
     PRAGMA user_version = 3;
   `;
+  if (currentVersion === 3) return `
+    ALTER TABLE connected_replicas ADD COLUMN applied_at TEXT;
+    ALTER TABLE connected_replicas ADD COLUMN snapshot_cursor TEXT;
+    UPDATE connected_replicas SET applied_at = cached_at WHERE applied_at IS NULL;
+    DROP INDEX IF EXISTS connected_replica_entities_type_idx;
+    PRAGMA user_version = 4;
+  `;
   throw new Error(`No migration path exists from schema ${currentVersion}.`);
 }

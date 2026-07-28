@@ -7,7 +7,7 @@ import {
   type ReplicaEntityType,
   type ReplicaHighWaterMark
 } from "@vitana/shared";
-import { all, allWithParams, json, run } from "./duckdbRows.js";
+import { all, allWithParams, insertRows, json, run } from "./duckdbRows.js";
 
 export interface ReplicaEntity {
   entityType: ReplicaEntityType;
@@ -34,7 +34,9 @@ const collections: Array<{
   { entityType: "observation-group", key: "observationGroups", id: (value) => value.id },
   { entityType: "observation", key: "observations", id: (value) => value.id },
   { entityType: "time-series-sample", key: "timeSeriesSamples", id: (value) => value.id },
-  { entityType: "activity-session", key: "activitySessions", id: (value) => value.id }
+  { entityType: "activity-session", key: "activitySessions", id: (value) => value.id },
+  { entityType: "health-event", key: "healthEvents", id: (value) => value.id },
+  { entityType: "care-item", key: "careItems", id: (value) => value.id }
 ];
 
 export function replicaEntities(data: HealthStoreData): ReplicaEntity[] {
@@ -44,8 +46,9 @@ export function replicaEntities(data: HealthStoreData): ReplicaEntity[] {
     payload: data.profile as unknown as Record<string, unknown>
   }];
   for (const collection of collections) {
-    const values = data[collection.key] as unknown[];
+    const values = (data[collection.key] ?? []) as unknown[];
     for (const value of values) {
+      if (!includeInReplica(collection.entityType, value)) continue;
       entities.push({
         entityType: collection.entityType,
         entityId: collection.id(value),
@@ -55,6 +58,11 @@ export function replicaEntities(data: HealthStoreData): ReplicaEntity[] {
   }
   return entities.sort((left, right) =>
     left.entityType.localeCompare(right.entityType) || left.entityId.localeCompare(right.entityId));
+}
+
+function includeInReplica(entityType: ReplicaEntityType, value: unknown): boolean {
+  if (entityType !== "observation" && entityType !== "time-series-sample") return true;
+  return (value as { measurementCode?: unknown }).measurementCode !== "heart_rate";
 }
 
 export async function recordReplicaChanges(
@@ -84,30 +92,29 @@ export async function recordReplicaChanges(
 
   const state = await readState(connection);
   const revision = state.revision + 1;
-  let sequence = state.nextSequence;
   const changedAt = new Date().toISOString();
-  for (const change of changes.sort((left, right) =>
-    left.entityType.localeCompare(right.entityType) || left.entityId.localeCompare(right.entityId))) {
-    await run(
-      connection,
-      `INSERT INTO companion_sync_changes
-       (sequence, revision, entity_type, entity_id, operation, payload, changed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      sequence,
+  const ordered = changes.sort((left, right) =>
+    left.entityType.localeCompare(right.entityType) || left.entityId.localeCompare(right.entityId));
+  await insertRows(
+    connection,
+    `INSERT INTO companion_sync_changes
+     (sequence, revision, entity_type, entity_id, operation, payload, changed_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?);`,
+    ordered.map((change, index) => [
+      state.nextSequence + index,
       revision,
       change.entityType,
       change.entityId,
       change.operation,
       change.payload ? json(change.payload) : null,
       changedAt
-    );
-    sequence += 1;
-  }
+    ])
+  );
   await run(
     connection,
     "UPDATE companion_sync_state SET revision = ?, next_sequence = ? WHERE singleton = TRUE",
     revision,
-    sequence
+    state.nextSequence + ordered.length
   );
 }
 
@@ -123,6 +130,16 @@ export async function createReplicaSnapshot(
 ): Promise<string> {
   const snapshotId = randomUUID();
   const highWater = await replicaHighWaterMark(connection);
+  // Each snapshot is a full copy of the store and one is minted whenever a device restarts its first
+  // sync from scratch. Superseded snapshots for this pairing are dropped so an interrupted first
+  // sync cannot leave permanent copies of the health data behind in the encrypted database.
+  await run(
+    connection,
+    `DELETE FROM companion_sync_snapshot_entries WHERE snapshot_id IN
+     (SELECT snapshot_id FROM companion_sync_snapshots WHERE pairing_id = ?)`,
+    pairingId
+  );
+  await run(connection, "DELETE FROM companion_sync_snapshots WHERE pairing_id = ?", pairingId);
   await run(
     connection,
     `INSERT INTO companion_sync_snapshots
@@ -133,20 +150,18 @@ export async function createReplicaSnapshot(
     highWater.sequence,
     new Date().toISOString()
   );
-  let entryIndex = 0;
-  for (const entity of replicaEntities(data)) {
-    await run(
-      connection,
-      `INSERT INTO companion_sync_snapshot_entries
-       (snapshot_id, entry_index, entity_type, entity_id, payload) VALUES (?, ?, ?, ?, ?)`,
+  await insertRows(
+    connection,
+    `INSERT INTO companion_sync_snapshot_entries
+     (snapshot_id, entry_index, entity_type, entity_id, payload) VALUES (?, ?, ?, ?, ?);`,
+    replicaEntities(data).map((entity, entryIndex) => [
       snapshotId,
       entryIndex,
       entity.entityType,
       entity.entityId,
       json(entity.payload)
-    );
-    entryIndex += 1;
-  }
+    ])
+  );
   return snapshotId;
 }
 

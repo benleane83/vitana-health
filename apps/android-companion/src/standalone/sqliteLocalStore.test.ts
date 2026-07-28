@@ -1,5 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Profile } from "@vitana/shared";
+import * as SecureStore from "expo-secure-store";
+import { openDatabaseAsync } from "expo-sqlite";
 
 vi.mock("expo-crypto", () => ({ getRandomBytesAsync: vi.fn() }));
 vi.mock("expo-secure-store", () => ({
@@ -12,9 +14,10 @@ vi.mock("expo-sqlite", () => ({
   deleteDatabaseAsync: vi.fn(),
   openDatabaseAsync: vi.fn()
 }));
+vi.mock("./migrations", () => ({ migrate: vi.fn() }));
 
 import { LocalProfileRepository } from "./localRepository";
-import { SqliteLocalStore } from "./sqliteLocalStore";
+import { openSqliteLocalStore, SqliteLocalStore } from "./sqliteLocalStore";
 
 function profile(id: string, updatedAt: string): Profile {
   return {
@@ -94,5 +97,34 @@ describe("SQLite local store profile selection", () => {
 
     await store.selectDataset("profile-b");
     expect(runAsync).toHaveBeenCalledWith("UPDATE datasets SET is_selected = 1 WHERE dataset_id = ?", "profile-b");
+  });
+});
+
+describe("SQLite local store connection ownership", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("shares one database connection until the final store lease closes", async () => {
+    const closeAsync = vi.fn();
+    const database = {
+      closeAsync,
+      execAsync: vi.fn(),
+      getFirstAsync: vi.fn(async (sql: string) =>
+        sql === "PRAGMA cipher_version" ? { cipher_version: "4.6.1" } : null)
+    };
+    vi.mocked(SecureStore.getItemAsync).mockResolvedValue("a".repeat(64));
+    vi.mocked(openDatabaseAsync).mockResolvedValue(database as never);
+
+    const standaloneStore = await openSqliteLocalStore();
+    const connectedStore = await openSqliteLocalStore();
+
+    expect(openDatabaseAsync).toHaveBeenCalledTimes(1);
+    await standaloneStore.close();
+    await standaloneStore.close();
+    expect(closeAsync).not.toHaveBeenCalled();
+
+    await connectedStore.close();
+    expect(closeAsync).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const COMPANION_REPLICA_PROTOCOL_VERSION = 1 as const;
+export const COMPANION_REPLICA_PAGE_SIZE = 1_000;
 export const replicaEntityTypes = [
   "profile",
   "measurement-type",
@@ -11,7 +12,9 @@ export const replicaEntityTypes = [
   "observation-group",
   "observation",
   "time-series-sample",
-  "activity-session"
+  "activity-session",
+  "health-event",
+  "care-item"
 ] as const;
 
 export type ReplicaEntityType = typeof replicaEntityTypes[number];
@@ -88,7 +91,7 @@ export const replicaPageSchema: z.ZodType<ReplicaPage> = z.object({
   protocolVersion: z.literal(COMPANION_REPLICA_PROTOCOL_VERSION),
   ...identityShape,
   kind: z.enum(["snapshot", "delta"]),
-  changes: z.array(replicaChangeSchema).max(500),
+  changes: z.array(replicaChangeSchema).max(COMPANION_REPLICA_PAGE_SIZE),
   highWaterMark: replicaHighWaterMarkSchema,
   nextCursor: z.string().min(1).max(500).optional(),
   complete: z.boolean(),

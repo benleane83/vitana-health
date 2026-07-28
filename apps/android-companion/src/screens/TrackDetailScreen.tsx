@@ -71,6 +71,13 @@ export function TrackDetailScreen({ route }: Props) {
     if (deletionTimer.current) clearTimeout(deletionTimer.current);
   }, []);
 
+  useEffect(() => {
+    if (connectionState === "online") return;
+    setAdding(false);
+    setEditing(undefined);
+    setSelectedEntryId(undefined);
+  }, [connectionState]);
+
   async function loadMore() {
     if (loadingMore || !detail?.pagination.hasMore) return;
     setError(undefined);

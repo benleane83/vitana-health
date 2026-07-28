@@ -4,13 +4,17 @@ import { openSqliteLocalStore, resetSqliteLocalStorage } from "./sqliteLocalStor
 
 export async function createStandaloneRepository() {
   const store = await openSqliteLocalStore();
-  return new LocalProfileRepository(store, {
+  return new LocalProfileRepository(store, createStandaloneProfile());
+}
+
+export function createStandaloneProfile() {
+  return {
     id: `mobile-${Crypto.randomUUID()}`,
     displayName: "My profile",
-    subjectKind: "adult",
-    units: "metric",
+    subjectKind: "adult" as const,
+    units: "metric" as const,
     updatedAt: new Date().toISOString()
-  });
+  };
 }
 
 export const resetStandaloneStorage = resetSqliteLocalStorage;

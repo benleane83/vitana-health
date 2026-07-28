@@ -264,7 +264,7 @@ describe("companion route profile isolation", () => {
 
     const deltas = await request(app).get("/api/companion/sync/deltas?afterSequence=4").set(headers);
     expect(deltas.status).toBe(200);
-    expect(assigned.replicaDeltaPage).toHaveBeenCalledWith(4, undefined, 250);
+    expect(assigned.replicaDeltaPage).toHaveBeenCalledWith(4, undefined, 1_000);
   });
 
   it("leaves owner reads on the active store", async () => {

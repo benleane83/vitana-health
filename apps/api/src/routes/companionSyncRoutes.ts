@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import {
+  COMPANION_REPLICA_PAGE_SIZE,
   COMPANION_REPLICA_PROTOCOL_VERSION,
   type ReplicaPage
 } from "@vitana/shared";
@@ -12,7 +13,7 @@ import type { ProfileStoreManager } from "../storage/profileStoreManager.js";
 const pageQuerySchema = z.object({
   cursor: z.string().max(500).optional(),
   afterSequence: z.coerce.number().int().nonnegative().optional(),
-  pageSize: z.coerce.number().int().min(1).max(500).default(250)
+  pageSize: z.coerce.number().int().min(1).max(COMPANION_REPLICA_PAGE_SIZE).default(COMPANION_REPLICA_PAGE_SIZE)
 }).strict();
 
 type SnapshotCursor = {

@@ -1,6 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError } from "@vitana/api-client";
-
 const mocks = vi.hoisted(() => ({
   live: {
     bootstrap: vi.fn(),
@@ -10,19 +8,33 @@ const mocks = vi.hoisted(() => ({
     importManualObservations: vi.fn(),
     updateObservation: vi.fn(),
     deleteObservation: vi.fn(),
-    listHealthEvents: vi.fn()
+    listHealthEvents: vi.fn(),
+    listCareItems: vi.fn(),
+    createHealthEvent: vi.fn(),
+    updateHealthEvent: vi.fn(),
+    deleteHealthEvent: vi.fn(),
+    createCareItem: vi.fn(),
+    updateCareItem: vi.fn(),
+    completeCareItem: vi.fn(),
+    deleteCareItem: vi.fn()
   },
   cached: {
     bootstrap: vi.fn(),
     analytics: vi.fn(),
     summary: vi.fn(),
-    healthDataDetail: vi.fn()
+    healthDataDetail: vi.fn(),
+    listHealthEvents: vi.fn(),
+    listCareItems: vi.fn(),
+    metadata: vi.fn()
   },
-  synchronize: vi.fn()
+  synchronize: vi.fn(),
+  saveConnection: vi.fn(),
+  createReplicaNetwork: vi.fn()
 }));
 
 vi.mock("../api", () => ({ createCompanionApi: () => mocks.live }));
-vi.mock("../endpointStore", () => ({ saveConnection: vi.fn() }));
+vi.mock("../endpointStore", () => ({ saveConnection: mocks.saveConnection }));
+vi.mock("../pinnedFetch", () => ({ LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS: 60_000 }));
 vi.mock("./createConnectedStore", () => ({ createConnectedStore: () => Promise.resolve({ close: vi.fn() }) }));
 vi.mock("./connectedRepository", () => ({
   ConnectedReplicaRepository: class {
@@ -30,10 +42,18 @@ vi.mock("./connectedRepository", () => ({
     analytics = mocks.cached.analytics;
     summary = mocks.cached.summary;
     healthDataDetail = mocks.cached.healthDataDetail;
+    listHealthEvents = mocks.cached.listHealthEvents;
+    listCareItems = mocks.cached.listCareItems;
+    metadata = mocks.cached.metadata;
+    identity = {
+      serverInstanceId: "server-1",
+      profileId: "profile-1",
+      pairingId: "pairing-1"
+    };
   }
 }));
 vi.mock("./replicaClient", () => ({
-  createReplicaNetwork: vi.fn(),
+  createReplicaNetwork: mocks.createReplicaNetwork,
   ReplicaClient: class {}
 }));
 vi.mock("./syncCoordinator", () => ({
@@ -65,17 +85,45 @@ const connection = {
 describe("connected data source", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.saveConnection.mockImplementation(async (updated) => updated);
     mocks.synchronize.mockResolvedValue({
       identity: {
         serverInstanceId: "server-1",
         profileId: "profile-1",
         pairingId: "pairing-1"
-      }
+      },
+      cachedAt: "2026-07-25T14:00:00.000Z"
     });
+    mocks.cached.metadata.mockResolvedValue({ appliedAt: "2099-07-25T14:00:00.000Z" });
   });
 
-  it("uses live reads and preserves live Connected mutations while reachable", async () => {
-    mocks.live.summary.mockResolvedValue({ categories: [] });
+  it("completes the first snapshot and persists its identity before activation", async () => {
+    const uninitializedConnection = {
+      ...connection,
+      serverInstanceId: null,
+      profileId: null,
+      pairingId: null
+    };
+    const source = createConnectedDataSource(uninitializedConnection);
+
+    const prepared = await source.prepareConnectedReplica();
+
+    expect(mocks.createReplicaNetwork).toHaveBeenCalledWith(uninitializedConnection, 60_000);
+    expect(mocks.synchronize).toHaveBeenCalledOnce();
+    expect(mocks.saveConnection).toHaveBeenCalledWith(expect.objectContaining({
+      serverInstanceId: "server-1",
+      profileId: "profile-1",
+      pairingId: "pairing-1"
+    }));
+    expect(prepared).toEqual(expect.objectContaining({
+      serverInstanceId: "server-1",
+      profileId: "profile-1",
+      pairingId: "pairing-1"
+    }));
+  });
+
+  it("uses replica reads immediately and keeps Connected mutations live", async () => {
+    mocks.cached.summary.mockResolvedValue({ categories: [] });
     mocks.live.updateObservation.mockResolvedValue({ updatedCount: 1 });
     const source = createConnectedDataSource(connection);
 
@@ -88,32 +136,52 @@ describe("connected data source", () => {
       unit: "kg"
     });
 
-    expect(mocks.live.summary).toHaveBeenCalledOnce();
-    expect(mocks.cached.summary).not.toHaveBeenCalled();
+    expect(mocks.cached.summary).toHaveBeenCalledOnce();
+    expect(mocks.live.summary).not.toHaveBeenCalled();
     expect(mocks.live.updateObservation).toHaveBeenCalledOnce();
+    expect(mocks.synchronize).toHaveBeenCalledOnce();
     expect(source.connectionError(summary)).toBeUndefined();
   });
 
-  it("falls back to the replica for network read failures without redirecting mutations", async () => {
-    const networkError = new Error("Network request failed");
-    mocks.live.healthDataDetail.mockRejectedValue(networkError);
+  it("reports a mutation refresh failure instead of leaving the replica silently stale", async () => {
+    const refreshError = new Error("Replica refresh failed");
+    mocks.live.createCareItem.mockResolvedValue({ id: "care-1" });
+    mocks.synchronize.mockRejectedValue(refreshError);
+    const source = createConnectedDataSource(connection);
+
+    await expect(source.createCareItem({
+      kind: "follow-up",
+      title: "Book follow-up",
+      priority: "normal",
+      status: "open"
+    })).rejects.toBe(refreshError);
+
+    expect(mocks.live.createCareItem).toHaveBeenCalledOnce();
+    expect(mocks.synchronize).toHaveBeenCalledOnce();
+  });
+
+  it("reads metric detail and Care without making a live request", async () => {
     mocks.cached.healthDataDetail.mockResolvedValue({ entries: [] });
-    mocks.live.deleteObservation.mockRejectedValue(networkError);
+    mocks.cached.listCareItems.mockResolvedValue({ items: [], total: 0 });
     const source = createConnectedDataSource(connection);
 
     const detail = await source.healthDataDetail("weight");
+    const care = await source.listCareItems({ status: "open" });
     expect(detail).toEqual({ entries: [] });
-    await expect(source.deleteObservation("observation-1")).rejects.toThrow("Network request failed");
+    expect(care).toEqual({ items: [], total: 0 });
 
     expect(mocks.cached.healthDataDetail).toHaveBeenCalledOnce();
-    expect(source.connectionError(detail)).toBe(networkError);
+    expect(mocks.cached.listCareItems).toHaveBeenCalledOnce();
+    expect(mocks.live.healthDataDetail).not.toHaveBeenCalled();
+    expect(mocks.live.listCareItems).not.toHaveBeenCalled();
   });
 
-  it("does not hide errors returned by a reachable PC", async () => {
-    mocks.live.summary.mockRejectedValue(new ApiError("Maintenance", 503, "maintenance"));
+  it("skips fresh background synchronization but honors an explicit refresh", async () => {
     const source = createConnectedDataSource(connection);
 
-    await expect(source.summary()).rejects.toThrow("Maintenance");
-    expect(mocks.cached.summary).not.toHaveBeenCalled();
+    await expect(source.synchronizeConnectedReplica()).resolves.toBe(false);
+    expect(mocks.synchronize).not.toHaveBeenCalled();
+    await expect(source.synchronizeConnectedReplica({ force: true })).resolves.toBe(true);
+    expect(mocks.synchronize).toHaveBeenCalledOnce();
   });
 });

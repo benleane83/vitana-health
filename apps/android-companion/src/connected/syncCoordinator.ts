@@ -1,5 +1,5 @@
 import type { ReplicaHandshake, ReplicaIdentity } from "@vitana/shared";
-import type { LocalStore } from "../standalone/localStore";
+import type { LocalReplicaMetadata, LocalStore } from "../standalone/localStore";
 import type { ReplicaClient } from "./replicaClient";
 
 export interface ReplicaSyncResult {
@@ -25,8 +25,9 @@ export class ReplicaSyncCoordinator {
     return this.active;
   }
 
-  dispose(): void {
+  async dispose(): Promise<void> {
     this.disposed = true;
+    await this.active?.catch(() => undefined);
   }
 
   private async perform(): Promise<ReplicaSyncResult> {
@@ -34,8 +35,15 @@ export class ReplicaSyncCoordinator {
     assertExpectedIdentity(handshake, this.expectedIdentity);
     const identity = replicaIdentity(handshake);
     let metadata = await this.store.replicaMetadata(identity);
+    if (metadata && hasRewound(handshake, metadata)) {
+      // The PC store was restored or rebuilt, so its sequence counter restarted below our cursor.
+      // Nothing would ever match a delta request again, leaving the phone frozen on stale data.
+      await this.store.deleteReplica(identity);
+      metadata = undefined;
+    }
     if (!metadata?.initialSnapshotCompleted) {
-      let cursor: string | undefined;
+      // Resume an interrupted first snapshot rather than making the PC mint a fresh one.
+      let cursor = metadata?.snapshotCursor;
       do {
         const page = await this.client.snapshot(cursor);
         assertPageIdentity(pageIdentity(page), identity);
@@ -58,6 +66,15 @@ export class ReplicaSyncCoordinator {
     metadata = await this.store.replicaMetadata(identity);
     return { identity, cachedAt: metadata?.cachedAt };
   }
+}
+
+/**
+ * True when the paired PC reports less history than we already hold. `serverInstanceId` only catches
+ * a *different* PC; this catches the same PC whose replica log was reset underneath us.
+ */
+function hasRewound(handshake: ReplicaHandshake, metadata: LocalReplicaMetadata): boolean {
+  return handshake.highWaterMark.sequence < metadata.cursorSequence ||
+    handshake.highWaterMark.revision < metadata.revision;
 }
 
 function replicaIdentity(handshake: ReplicaHandshake): ReplicaIdentity {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -7,6 +7,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-cont
 import { StatusBar } from "expo-status-bar";
 import { ChartNoAxesColumnIncreasing, HeartPulse, Home, MonitorSmartphone, Plus } from "lucide-react-native";
 import { MobileApiProvider, useMobileApi } from "./src/MobileApiProvider";
+import { appBuildLabel } from "./src/appBuildInfo";
 import { EntitlementProvider } from "./src/EntitlementProvider";
 import { ELASTIC_LICENSE_2_0_DISPLAY_TEXT, SOFTWARE_COPYRIGHT } from "./src/legal";
 import { PairScreen } from "./src/PairScreen";
@@ -16,9 +17,8 @@ import { ImportScreen } from "./src/screens/ImportScreen";
 import { TrackDetailScreen } from "./src/screens/TrackDetailScreen";
 import { TrackScreen } from "./src/screens/TrackScreen";
 import { CareScreen } from "./src/screens/CareScreen";
-import { Button, Card, Message, Screen } from "./src/ui/components";
+import { Button, Card, Loading, Message, Screen } from "./src/ui/components";
 import { colors, radii, spacing, type } from "./src/ui/theme";
-import type { LocalDatasetSummary } from "./src/standalone/localStore";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tabs = createBottomTabNavigator<TabParamList>();
@@ -91,71 +91,90 @@ function PairRoute({ navigation }: NativeStackScreenProps<RootStackParamList, "P
   return (
     <PairScreen
       onComplete={() => {
-        void reloadConnection().then(() => navigation.goBack());
+        void reloadConnection().then(() => navigation.replace("Connection", { activatePairing: true }));
       }}
       onCancel={() => navigation.goBack()}
     />
   );
 }
 
-function ConnectionScreen({ navigation }: NativeStackScreenProps<RootStackParamList, "Connection">) {
+function ConnectionScreen({ navigation, route }: NativeStackScreenProps<RootStackParamList, "Connection">) {
   const {
     bootstrap,
+    cancelPendingConnection,
     connection,
     connectionState,
     demoMode,
+    discardStandaloneDataAndConnect,
     disconnect,
     error,
-    listStandaloneDatasets,
     migrateStandaloneData,
     migrationProgress,
-    operatingMode,
     resetStandaloneData,
-    selectStandaloneDataset,
     setDemoMode,
     setOperatingMode,
     standaloneMigrationManifest,
     standaloneMode
   } = useMobileApi();
-  const connectedAvailable = Boolean(connection?.token);
   const migrationActive = migrationProgress !== undefined;
-  const [localDatasets, setLocalDatasets] = useState<LocalDatasetSummary[]>([]);
+  const [activationActive, setActivationActive] = useState(false);
+  const connectionBusy = migrationActive || activationActive;
+  const activationPromptHandled = useRef(false);
 
-  useEffect(() => {
-    if (!standaloneMode || demoMode) {
-      setLocalDatasets([]);
-      return;
-    }
-    void listStandaloneDatasets().then(setLocalDatasets).catch(() => setLocalDatasets([]));
-  }, [demoMode, listStandaloneDatasets, standaloneMode]);
-
-  async function chooseDataset(datasetId: string) {
+  async function activateConnected(task: () => Promise<unknown>) {
+    setActivationActive(true);
     try {
-      await selectStandaloneDataset(datasetId);
-      setLocalDatasets(await listStandaloneDatasets());
-    } catch (caught) {
-      Alert.alert("Unable to select local data", caught instanceof Error ? caught.message : "Try again.");
+      await task();
+    } finally {
+      setActivationActive(false);
     }
   }
 
-  function confirmOperatingMode(nextMode: "standalone" | "connected") {
-    if (migrationActive) return;
-    if (nextMode === operatingMode) return;
-    if (nextMode === "connected") {
-      void standaloneMigrationManifest().then((manifest) => {
-        const total = Object.values(manifest.counts).reduce((sum, count) => sum + count, 0);
-        if (total === 0) {
-          void setOperatingMode("connected");
-          return;
-        }
-        Alert.alert(
+  function beginConnectedActivation() {
+    if (connectionBusy) return;
+    void standaloneMigrationManifest().then((manifest) => {
+      const total = Object.values(manifest.counts).reduce((sum, count) => sum + count, 0);
+      if (total === 0) {
+        void activateConnected(() => setOperatingMode("connected")).catch((caught: unknown) => {
+          Alert.alert("Unable to connect", caught instanceof Error ? caught.message : "The initial offline copy could not be prepared.");
+        });
+        return;
+      }
+      Alert.alert(
           "Connect to paired PC?",
           `This Standalone dataset contains ${manifest.counts.observations} observation(s), ` +
             `${manifest.counts.sourceImports} import(s), ${manifest.counts.dataSources} source(s), and ` +
             `${manifest.counts.observationGroups} group(s).`,
           [
-            { text: "Cancel", style: "cancel" },
-            { text: "Connect without merging", onPress: () => { void setOperatingMode("connected"); } },
+            {
+              text: "Cancel pairing",
+              style: "cancel",
+              onPress: () => {
+                void cancelPendingConnection().catch((caught: unknown) => {
+                  Alert.alert("Unable to cancel pairing", caught instanceof Error ? caught.message : "Try again.");
+                });
+              }
+            },
+            {
+              text: "Delete phone data",
+              style: "destructive",
+              onPress: () => Alert.alert(
+                "Delete phone data and connect?",
+                "This permanently deletes the current local profile and its readings from this phone. Data already on your PC will not change.",
+                [
+                  { text: "Cancel", style: "cancel" },
+                  {
+                    text: "Delete and connect",
+                    style: "destructive",
+                    onPress: () => {
+                      void activateConnected(discardStandaloneDataAndConnect).catch((caught: unknown) => {
+                        Alert.alert("Unable to connect", caught instanceof Error ? caught.message : "The local dataset was not changed.");
+                      });
+                    }
+                  }
+                ]
+              )
+            },
             {
               text: "Merge and connect",
               onPress: () => {
@@ -164,7 +183,14 @@ function ConnectionScreen({ navigation }: NativeStackScreenProps<RootStackParamL
                     "Merge verified",
                     `${receipt.counts.accepted} accepted, ${receipt.counts.duplicates} duplicate(s), ` +
                       `${receipt.counts.conflicts} conflict(s). The original dataset is now a read-only archive.`,
-                    [{ text: "Continue to Connected", onPress: () => { void setOperatingMode("connected"); } }]
+                    [{
+                      text: "Continue",
+                      onPress: () => {
+                        void activateConnected(() => setOperatingMode("connected")).catch((caught: unknown) => {
+                          Alert.alert("Unable to connect", caught instanceof Error ? caught.message : "The initial offline copy could not be prepared.");
+                        });
+                      }
+                    }]
                   );
                 }).catch((caught: unknown) => {
                   Alert.alert("Merge failed", caught instanceof Error ? caught.message : "The local dataset was not changed.");
@@ -172,101 +198,79 @@ function ConnectionScreen({ navigation }: NativeStackScreenProps<RootStackParamL
               }
             }
           ]
-        );
-      }).catch((caught: unknown) => {
-        Alert.alert("Unable to inspect local data", caught instanceof Error ? caught.message : "Try again.");
-      });
-      return;
-    }
-    const label = nextMode === "standalone" ? "Standalone" : "Connected";
-    Alert.alert(
-      `Switch to ${label}?`,
-      nextMode === "standalone"
-        ? "The app will use encrypted data stored on this phone. Your PC pairing and PC data will remain unchanged."
-        : "The app will use data from your paired PC. Local data on this phone will remain separate and unchanged.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: `Use ${label}`, onPress: () => { void setOperatingMode(nextMode); } }
-      ]
-    );
+      );
+    }).catch((caught: unknown) => {
+      Alert.alert("Unable to inspect local data", caught instanceof Error ? caught.message : "Try again.");
+    });
   }
+
+  useEffect(() => {
+    if (
+      route.params?.activatePairing &&
+      connection?.token &&
+      standaloneMode &&
+      !migrationActive &&
+      !activationPromptHandled.current
+    ) {
+      activationPromptHandled.current = true;
+      beginConnectedActivation();
+    }
+  }, [connection?.token, migrationActive, route.params?.activatePairing, standaloneMode]);
 
   return (
     <Screen>
       <Card>
         <Text style={styles.label}>Status</Text>
-        <Text style={styles.heading}>{demoMode ? "Sample data" : standaloneMode ? "Standalone" : connectionState.replaceAll("-", " ")}</Text>
+        <Text style={styles.heading}>{demoMode ? "Sample data" : standaloneMode ? connection ? "Setup incomplete" : "On this phone" : connectionState.replaceAll("-", " ")}</Text>
         <Text style={styles.meta}>{demoMode ? "Read-only demo" : standaloneMode ? "Encrypted storage on this phone" : connection?.url ?? "No paired PC"}</Text>
         {bootstrap ? <Text style={styles.meta}>Saving to {bootstrap.profile.displayName}</Text> : null}
         {error ? <Message title="Connection issue" detail={error} tone="danger" /> : null}
         {migrationProgress ? (
           <Text style={styles.meta}>Uploading migration batch {migrationProgress.uploaded} of {migrationProgress.total}…</Text>
         ) : null}
+        {activationActive ? <Loading label="Preparing encrypted offline copy…" /> : null}
       </Card>
-      {localDatasets.length > 1 ? (
-        <Card>
-          <Text style={styles.settingTitle}>Local dataset</Text>
-          <Text style={styles.meta}>Choose which Standalone profile to use on this phone.</Text>
-          {localDatasets.map((dataset) => (
-            <Button
-              disabled={migrationActive || dataset.selected}
-              key={dataset.datasetId}
-              onPress={() => { void chooseDataset(dataset.datasetId); }}
-              secondary={!dataset.selected}
-            >
-              {dataset.displayName}{dataset.selected ? " (selected)" : ""}
-            </Button>
-          ))}
-        </Card>
-      ) : null}
-      <View style={styles.modeSetting}>
-        <View style={styles.settingText}>
-          <Text style={styles.settingTitle}>Operating mode</Text>
-          <Text style={styles.meta}>Choose which data source the app uses. Standalone data is copied only with your consent.</Text>
-        </View>
-        <View accessibilityRole="radiogroup" style={styles.modeControl}>
-          {(["standalone", "connected"] as const).map((mode) => {
-            const selected = operatingMode === mode;
-            const disabled = migrationActive || demoMode || (mode === "connected" && !connectedAvailable);
-            return (
-              <Pressable
-                accessibilityRole="radio"
-                accessibilityState={{ checked: selected, disabled }}
-                disabled={disabled}
-                key={mode}
-                onPress={() => confirmOperatingMode(mode)}
-                style={({ pressed }) => [
-                  styles.modeOption,
-                  selected && styles.modeOptionSelected,
-                  pressed && !disabled && styles.modeOptionPressed,
-                  disabled && styles.modeOptionDisabled
-                ]}
-              >
-                <Text style={[styles.modeOptionText, selected && styles.modeOptionTextSelected]}>
-                  {mode === "standalone" ? "Standalone" : "Connected"}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-        {!connectedAvailable ? <Text style={styles.modeHint}>Pair with a PC to enable Connected mode.</Text> : null}
-      </View>
       <View style={styles.settingRow}>
         <View style={styles.settingText}>
           <Text style={styles.settingTitle}>Demo mode</Text>
-          <Text style={styles.meta}>Explore read-only sample health data without a PC.</Text>
+          <Text style={styles.meta}>Explore read-only sample data without a PC.</Text>
         </View>
         <Switch
           accessibilityLabel="Demo mode"
-          disabled={migrationActive}
+          disabled={connectionBusy}
           value={demoMode}
           onValueChange={(enabled) => { void setDemoMode(enabled); }}
         />
       </View>
-      {!demoMode ? <Button disabled={migrationActive} onPress={() => navigation.navigate("Pair")}>{connection ? "Re-pair with PC" : "Pair with PC"}</Button> : null}
-      {connection && !demoMode ? (
-        <Button disabled={migrationActive} secondary onPress={() => {
-          void disconnect().then(() => navigation.goBack()).catch(() => undefined);
+      {!demoMode && !connection ? <Button disabled={connectionBusy} onPress={() => navigation.navigate("Pair")}>Pair with PC</Button> : null}
+      {!demoMode && connection && standaloneMode ? <Button disabled={connectionBusy} onPress={beginConnectedActivation}>{activationActive ? "Preparing offline copy…" : "Finish connecting"}</Button> : null}
+      {!demoMode && connection && standaloneMode ? (
+        <Button disabled={connectionBusy} secondary onPress={() => {
+          void cancelPendingConnection().catch((caught: unknown) => {
+            Alert.alert("Unable to cancel pairing", caught instanceof Error ? caught.message : "Try again.");
+          });
+        }}>Cancel pairing</Button>
+      ) : null}
+      {connection && !demoMode && !standaloneMode ? (
+        <Button disabled={connectionBusy} secondary onPress={() => {
+          Alert.alert(
+            "Unpair this phone?",
+            "The downloaded copy of your PC data will be removed from this phone. Your PC data will not change, and a new empty local profile will be created.",
+            [
+              { text: "Cancel", style: "cancel" },
+              {
+                text: "Unpair and remove copy",
+                style: "destructive",
+                onPress: () => {
+                  void disconnect()
+                    .then(() => navigation.goBack())
+                    .catch((caught: unknown) => {
+                      Alert.alert("Unable to unpair", caught instanceof Error ? caught.message : "Try again.");
+                    });
+                }
+              }
+            ]
+          );
         }}>Unpair</Button>
       ) : null}
       {standaloneMode && !demoMode ? (
@@ -286,12 +290,13 @@ function ConnectionScreen({ navigation }: NativeStackScreenProps<RootStackParamL
       <Message
         title={demoMode ? "Your connection is unchanged" : "Local-first connection"}
         detail={demoMode
-          ? "Turn off Demo mode to return to your selected operating mode. Sample data is stored separately from your health records."
+          ? "Turn off Demo mode to return to your health data. Sample data is stored separately from your health records."
           : standaloneMode
-            ? "Health data is kept in a SQLCipher database protected by a device-backed key. Pairing with a PC does not upload it."
-            : "Health data is fetched only while your paired PC is reachable and is not cached on this phone."}
+            ? "Health data is kept in a encrypted database on your phone. Pairing with a PC does not upload it."
+            : "Vitana keeps an encrypted read-only copy of data for offline viewing. Unpairing removes that data from this phone."}
       />
       <Button secondary onPress={() => navigation.navigate("License")}>Software license</Button>
+      <Text accessibilityLabel={appBuildLabel} style={styles.buildLabel}>{appBuildLabel}</Text>
     </Screen>
   );
 }
@@ -320,15 +325,7 @@ const styles = StyleSheet.create({
   settingRow: { alignItems: "center", flexDirection: "row", gap: spacing.md, justifyContent: "space-between", paddingVertical: spacing.sm },
   settingText: { flex: 1, gap: spacing.xs },
   settingTitle: { color: colors.text, fontSize: type.title, fontWeight: "700" },
-  modeSetting: { gap: spacing.sm, paddingVertical: spacing.sm },
-  modeControl: { backgroundColor: colors.surfaceMuted, borderRadius: radii.sm, flexDirection: "row", padding: spacing.xs },
-  modeOption: { alignItems: "center", borderRadius: radii.sm, flex: 1, justifyContent: "center", minHeight: 44, paddingHorizontal: spacing.sm },
-  modeOptionSelected: { backgroundColor: colors.surface },
-  modeOptionPressed: { opacity: 0.78 },
-  modeOptionDisabled: { opacity: 0.5 },
-  modeOptionText: { color: colors.muted, fontSize: type.label, fontWeight: "700" },
-  modeOptionTextSelected: { color: colors.primary },
-  modeHint: { color: colors.muted, fontSize: type.label, lineHeight: 18 },
+  buildLabel: { color: colors.muted, fontSize: type.label, lineHeight: 18, paddingTop: spacing.sm, textAlign: "center" },
   licenseContent: { gap: spacing.sm, paddingBottom: spacing.xl },
   licenseCopyright: { color: colors.textStrong, fontSize: type.title, fontWeight: "700" },
   licenseText: { color: colors.text, fontSize: type.body, lineHeight: 22 }
