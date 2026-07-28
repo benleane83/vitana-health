@@ -477,7 +477,7 @@ function SyncImportPanel({
         <h2>Sync your Android phone</h2>
       </div>
       <p className="empty">
-        Bring recent health and activity data from your Android phone into your local vault, including
+        Bring recent health and activity data from your phone into your local vault, including
         steps, heart rate, sleep, and oxygen saturation.
       </p>
 
@@ -486,8 +486,7 @@ function SyncImportPanel({
           <h3>Connect your phone</h3>
         </div>
         <p className="empty">
-          In the companion app, choose <strong>Set Up Connection</strong>, then scan this code. Your
-          phone will find this server automatically.
+          In the companion app, choose <strong>Set Up Connection</strong>, then scan this code.
         </p>
         <PairingQr />
       </div>

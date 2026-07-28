@@ -128,8 +128,8 @@ export function ExportPage({
           <section className="panel export-tool-panel" id={reportPanelId} role="tabpanel" aria-labelledby={reportTabId}>
             <h2>Export PDF</h2>
             <p>
-              Download a clinician-oriented report containing your profile details, health-data totals, latest measurements,
-              flagged laboratory results, trends, and imported-source provenance.
+              Download a report containing your profile details, latest health measurements,
+              flagged laboratory results and trends.
             </p>
             <p className="summary-detail-hint">{safetyNotice}</p>
             <div aria-live="polite" aria-atomic="true">
@@ -175,7 +175,7 @@ export function ExportPage({
 
             <section className="panel export-tool-panel">
               <h2>Restore profiles</h2>
-              <p>Inspect a backup before restoring it. Creating a copy is the default action.</p>
+              <p>Inspect a backup before restoring it. Create a copy or override an existing profile.</p>
               <label>
                 Backup file
                 <input type="file" accept=".vitana-backup,application/octet-stream" onChange={(event) => onRestoreFileChange(event.target.files?.[0])} />

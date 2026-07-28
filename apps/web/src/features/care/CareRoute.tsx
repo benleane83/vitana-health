@@ -465,7 +465,7 @@ function CareItemEditor({ draft, busy, onChange, onCancel, onSave }: { draft: Ca
 function CareItemCompletionEditor({ item, draft, busy, onChange, onCancel, onComplete }: { item: CareItem; draft: CompletionDraft; busy: boolean; onChange: (next: CompletionDraft) => void; onCancel: () => void; onComplete: () => void; }) {
   return (
     <form className="care-editor care-completion-editor" onSubmit={(event) => { event.preventDefault(); onComplete(); }}>
-      <div><h2>Complete {item.title}</h2><p>Review the Health event that will be created.</p></div>
+      <div><h2>Complete {item.title}</h2><p>Review the health event that will be created.</p></div>
       <label>Date<input type="datetime-local" value={toDateTimeLocal(draft.occurredAt)} onChange={(event) => onChange({ ...draft, occurredAt: fromDateTimeLocal(event.target.value) || draft.occurredAt })} /></label>
       <label>Kind<select value={draft.kind} onChange={(event) => onChange({ ...draft, kind: event.target.value as CompletionDraft["kind"] })}>{healthEventKindCodes.map((kind) => <option key={kind} value={kind}>{healthEventKindLabels[kind]}</option>)}</select></label>
       <div className="care-editor-actions"><button type="submit" disabled={busy}>{busy ? "Completing…" : "Complete care item"}</button><button type="button" onClick={onCancel} disabled={busy}>Cancel</button></div>

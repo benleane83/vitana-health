@@ -322,14 +322,11 @@ export function App() {
       >
         {route === "dashboard" ? (
           <DashboardRoute
-            bootstrap={bootstrap}
             analytics={analytics}
             profile={profile}
             onEditProfile={profileLifecycle.openEditor}
             onNavigateSummary={() => navigate("track")}
             onNavigateMeasurement={navigateSummaryDetail}
-            onDataChanged={profileLifecycle.refresh}
-            onNotice={setMessage}
           />
         ) : null}
       </div>
@@ -456,6 +453,7 @@ function settingsPath(view: SettingsView): string {
 
 function insightsTabFromPathname(pathname: string): InsightsTab {
   if (pathname === "/insights/ai-query") return "ai-query";
+  if (pathname === "/insights/ai-review") return "ai-review";
   return "biological-age";
 }
 

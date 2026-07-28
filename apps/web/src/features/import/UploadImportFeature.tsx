@@ -396,7 +396,7 @@ function UploadEntryIntro({ fileDescription }: { fileDescription: string }) {
   return (
     <div className="upload-entry-intro">
       <h2>Check before you save</h2>
-      <p>Choose {fileDescription}, review the readings we find, then save only what you want to keep. Your file is parsed locally.</p>
+      <p>Choose {fileDescription}, review the readings we find, then save only what you want to keep.</p>
     </div>
   );
 }

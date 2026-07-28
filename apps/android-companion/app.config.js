@@ -59,7 +59,7 @@ module.exports = {
         android: {
           minSdkVersion: 26,
           compileSdkVersion: 36,
-          targetSdkVersion: 35
+          targetSdkVersion: 36
         }
       }]
     ],

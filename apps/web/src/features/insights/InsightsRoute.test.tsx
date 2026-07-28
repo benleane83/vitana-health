@@ -1,15 +1,16 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AnalyticsSummary, AppBootstrap, Profile } from "@vitana/shared";
+import type { AppBootstrap, Profile } from "@vitana/shared";
 import { api } from "../../api.js";
-import { DashboardRoute } from "./DashboardRoute.js";
+import { InsightsRoute } from "./InsightsRoute.js";
 
 vi.mock("../../api.js", () => ({
   api: {
     llm: { config: vi.fn() },
     cloudAiConsent: { set: vi.fn() },
     generateInsight: vi.fn()
-  }
+  },
+  ApiError: class ApiError extends Error {}
 }));
 
 const profile: Profile = {
@@ -19,25 +20,14 @@ const profile: Profile = {
   updatedAt: "2026-01-01T00:00:00.000Z"
 };
 
-const analytics: AnalyticsSummary = {
-  counts: { imports: 0, observations: 0, samples: 0, activities: 0, insights: 0, healthEvents: 0, careItems: 0 },
-  latestMetrics: [],
-  trendCards: [],
-  labAlerts: [],
-  evidenceDigest: []
-};
-
 function renderRoute(bootstrapProfile: Profile = profile) {
   const onDataChanged = vi.fn().mockResolvedValue(undefined);
   const onNotice = vi.fn();
   render(
-    <DashboardRoute
+    <InsightsRoute
+      tab="ai-review"
       bootstrap={{ profile: bootstrapProfile } as AppBootstrap}
-      analytics={analytics}
-      profile={bootstrapProfile}
-      onEditProfile={vi.fn()}
-      onNavigateSummary={vi.fn()}
-      onNavigateMeasurement={vi.fn()}
+      onTabChange={vi.fn()}
       onDataChanged={onDataChanged}
       onNotice={onNotice}
     />
@@ -55,7 +45,7 @@ beforeEach(() => {
   };
 });
 
-describe("DashboardRoute AI insights", () => {
+describe("InsightsRoute AI review", () => {
   it("asks for cloud consent and generates after consent is accepted", async () => {
     vi.mocked(api.llm.config).mockResolvedValue({
       provider: "openai",
