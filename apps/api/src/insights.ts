@@ -37,7 +37,7 @@ export async function generateInsight({ profile, analytics }: InsightGenerationI
   const body = [
     "Local model runtime was not available, so this deterministic summary was generated instead.",
     analytics.labAlerts.length > 0
-      ? `Review ${analytics.labAlerts.length} lab marker(s) outside supplied reference ranges and consider discussing them with a clinician.`
+      ? `Review ${analytics.labAlerts.length} lab marker(s) outside supplied reference ranges and consider discussing them with a doctor.`
       : "No lab markers are currently outside supplied reference ranges.",
     analytics.trendCards.length > 0
       ? `Visible trends: ${analytics.trendCards.slice(0, 3).map((card) => `${card.label} ${card.direction}`).join(", ")}.`

@@ -42,7 +42,7 @@ export function QueryPage({
     <section className="panel query-panel">
       <div>
         <p className="eyebrow">AI-powered natural language query</p>
-        <h2>Ask your health data</h2>
+        <h2>Ask about your health data</h2>
       </div>
       <p className="safety">{safetyNotice}</p>
 

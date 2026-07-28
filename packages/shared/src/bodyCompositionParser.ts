@@ -52,9 +52,9 @@ export function parseBodyCompositionText(fileName: string, sourceText: string, i
       const key = `${measurementCode}:${candidate.value}:${unit}`;
       if (rows.has(key)) continue;
       const generatedCode = !measurementType;
-      if (generatedCode) diagnostics.push(`Used generated body-composition code for "${candidate.label}".`);
+      if (generatedCode) diagnostics.push(`Unknown measurement found: "${candidate.label}".`);
       const included = !generatedCode && isPlausibleBodyCompositionValue(measurementCode, candidate.value, unit);
-      if (!included && !generatedCode) diagnostics.push(`Review unusual body-composition value for "${displayName}": ${candidate.value} ${unit}.`);
+      if (!included && !generatedCode) diagnostics.push(`Review unusual measurement value for "${displayName}": ${candidate.value} ${unit}.`);
       rows.set(key, {
         id: stableId("draft", [sourceChecksum, measurementCode, String(candidate.value), unit]),
         label: candidate.label,

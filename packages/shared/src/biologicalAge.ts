@@ -43,7 +43,7 @@ const phenoAgeCitation =
   "Liu Z et al. A new aging measure captures morbidity and mortality risk across diverse subpopulations. PLOS Medicine. 2018;15(12):e1002718.";
 
 const disclaimer =
-  "This is an informational wellness estimate, not medical advice, a diagnosis, a prognosis, or a prediction of lifespan. Results depend on complete, accurate lab data and can be affected by temporary health factors, laboratory methods, and collection dates. Discuss any concerns with a qualified clinician.";
+  "This is an informational wellness estimate, not medical advice, a diagnosis, a prognosis, or a prediction of lifespan. Results depend on complete, accurate lab data and can be affected by temporary health factors, laboratory methods, and collection dates. Discuss any concerns with a qualified doctor.";
 
 export function calculateBiologicalAge(store: BiologicalAgeSource, generatedAt = new Date().toISOString()): BiologicalAgeReport {
   if (store.profile.subjectKind && store.profile.subjectKind !== "adult") {

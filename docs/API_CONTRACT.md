@@ -590,7 +590,7 @@ Successful import commits return `201` with safe import metadata and transaction
 
 `accepted` and `duplicates` describe committed database effects, including duplicates within the submitted batch and records already stored. `evicted` is always `0`: imports never remove older records. Raw source content is retained locally but omitted from API responses. Some commit endpoints also include `analyticsStorage` aggregate counts.
 
-### Import blood test PDF
+### Import lab test PDF
 ```
 POST /api/import/blood-test
 ```

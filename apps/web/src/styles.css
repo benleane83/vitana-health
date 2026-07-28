@@ -289,18 +289,16 @@ textarea {
 .insights-tabs {
   display: grid;
   gap: var(--space-1);
-  padding: var(--space-1);
+  padding: var(--space-2);
   border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--surface-2);
 }
 
 .insights-tabs button {
-  min-height: 38px;
   border-color: transparent;
   background: transparent;
   color: var(--muted);
-  padding: 0.45rem 0.72rem;
   text-align: left;
   justify-content: flex-start;
 }
@@ -2586,21 +2584,36 @@ h3 {
 .dashboard-workspace {
   display: grid;
   grid-template-columns: minmax(280px, 0.72fr) minmax(0, 1.45fr);
+  grid-template-areas:
+    "profile review"
+    "summary review";
+  grid-template-rows: auto auto;
   border-block: 1px solid var(--line);
   margin-bottom: var(--space-6);
 }
 
 .dashboard-profile,
+.dashboard-profile-summary,
 .dashboard-review {
   min-width: 0;
   padding-block: var(--space-6);
 }
 
 .dashboard-profile {
+  grid-area: profile;
+  padding-right: var(--space-6);
+}
+
+.dashboard-profile-summary {
+  grid-area: summary;
+  border-top: 1px solid var(--line);
   padding-right: var(--space-6);
 }
 
 .dashboard-review {
+  display: flex;
+  grid-area: review;
+  flex-direction: column;
   border-left: 1px solid var(--line);
   padding-left: var(--space-6);
 }
@@ -2630,26 +2643,46 @@ h3 {
 
 .dashboard-counts {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-2);
+  margin-top: var(--space-3);
 }
 
-.dashboard-counts .stat {
+.dashboard-profile-summary .stat {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  gap: var(--space-4);
   border: 0;
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
 }
 
-.dashboard-counts .stat {
-  background: var(--primary-soft);
+.dashboard-profile-summary .stat:last-child {
+  border-bottom: 0;
 }
 
-.dashboard-counts .stat strong {
-  color: var(--primary-strong);
+.dashboard-profile-summary .stat strong {
+  font-size: 0.95rem;
+  line-height: 1.25;
+  order: 2;
 }
 
 .dashboard-review .metric-list-scroll {
-  max-height: 340px;
+  max-height: 508px;
+}
+
+@media (min-width: 1051px) {
+  .dashboard-review {
+    contain: size;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .dashboard-review .metric-list-scroll {
+    max-height: none;
+  }
 }
 
 .dashboard-deeper-review {
@@ -2708,19 +2741,18 @@ h3 {
   padding-right: var(--space-6);
 }
 
-.dashboard-ai-review {
-  grid-column: 1 / -1;
-  border-top: 1px solid var(--line);
+.ai-review {
+  min-width: 0;
 }
 
-.dashboard-ai-actions {
+.ai-review-actions {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
 }
 
-.dashboard-generated {
+.ai-review-generated {
   color: var(--muted);
   font-size: 0.9rem;
   margin: 0;
@@ -3681,6 +3713,11 @@ button.stat {
   .grid,
   .dashboard-workspace {
     grid-template-columns: 1fr;
+    grid-template-areas:
+      "profile"
+      "summary"
+      "review";
+    grid-template-rows: auto;
   }
 
   .dashboard-hero {
@@ -3688,7 +3725,8 @@ button.stat {
     gap: var(--space-4);
   }
 
-  .dashboard-profile {
+  .dashboard-profile,
+  .dashboard-profile-summary {
     padding-right: 0;
   }
 

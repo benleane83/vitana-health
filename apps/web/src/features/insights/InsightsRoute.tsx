@@ -1,6 +1,8 @@
 import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { aiQueryErrorResponseSchema, type AppBootstrap, type BiologicalAgeReport, type CloudAiConsent } from "@vitana/shared";
 import { api, ApiError, type AiQueryResult, type LlmConfig } from "../../api.js";
+import { ConfirmDialog } from "../../components/ConfirmDialog.js";
+import { AiReviewPage } from "../../pages/AiReviewPage.js";
 import { BiologicalAgePage } from "../../pages/BiologicalAgePage.js";
 import { QueryPage, type QueryFailure } from "../../pages/QueryPage.js";
 import type { InsightsTab } from "../../types.js";
@@ -10,6 +12,8 @@ type RemoteState<T, TError = string> = {
   busy: boolean;
   error?: TError;
 };
+
+const insightTabs: InsightsTab[] = ["biological-age", "ai-query", "ai-review"];
 
 export function InsightsRoute({
   tab,
@@ -27,12 +31,12 @@ export function InsightsRoute({
   function handleTabKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, currentTab: InsightsTab) {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
-    const nextTab: InsightsTab = event.key === "End" || event.key === "ArrowRight"
-      ? "ai-query"
-      : "biological-age";
-    const resolvedTab = event.key.startsWith("Arrow") && nextTab === currentTab
-      ? currentTab === "biological-age" ? "ai-query" : "biological-age"
-      : nextTab;
+    const currentIndex = insightTabs.indexOf(currentTab);
+    const resolvedTab = event.key === "Home"
+      ? insightTabs[0]
+      : event.key === "End"
+        ? insightTabs[insightTabs.length - 1]
+        : insightTabs[(currentIndex + (event.key === "ArrowRight" ? 1 : -1) + insightTabs.length) % insightTabs.length];
     onTabChange(resolvedTab);
     document.getElementById(`insight-tab-${resolvedTab}`)?.focus();
   }
@@ -41,6 +45,8 @@ export function InsightsRoute({
   const [question, setQuestion] = useState("");
   const [llmConfig, setLlmConfig] = useState<LlmConfig>();
   const [consentBusy, setConsentBusy] = useState(false);
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [consentDialogOpen, setConsentDialogOpen] = useState(false);
 
   useEffect(() => {
     void api.llm.config().then(setLlmConfig).catch(() => setLlmConfig(undefined));
@@ -113,6 +119,46 @@ export function InsightsRoute({
     }
   }
 
+  async function generateInsight() {
+    setReviewBusy(true);
+    try {
+      const config = llmConfig ?? await api.llm.config();
+      const consent = bootstrap?.profile.cloudAiConsent;
+      const cloudEnabled = consent?.enabled === true && consent.providerScopeAccepted === true;
+      if (config.provider === "openai" && !cloudEnabled) {
+        setConsentDialogOpen(true);
+        return;
+      }
+      await api.generateInsight();
+      await onDataChanged();
+      onNotice("Insight generated from local data.");
+    } catch (error) {
+      onNotice(error instanceof Error ? error.message : "Unexpected local error.");
+    } finally {
+      setReviewBusy(false);
+    }
+  }
+
+  async function acceptCloudConsent() {
+    setConsentDialogOpen(false);
+    setReviewBusy(true);
+    try {
+      const consent: CloudAiConsent = {
+        enabled: true,
+        providerScopeAccepted: true,
+        consentVersion: "v1"
+      };
+      await api.cloudAiConsent.set(consent);
+      await api.generateInsight();
+      await onDataChanged();
+      onNotice("Insight generated using the configured AI model.");
+    } catch (error) {
+      onNotice(error instanceof Error ? error.message : "Could not enable cloud AI insights.");
+    } finally {
+      setReviewBusy(false);
+    }
+  }
+
   return (
     <section className="insights-shell">
       <div className="insights-header">
@@ -148,12 +194,25 @@ export function InsightsRoute({
           >
             AI Query
           </button>
+          <button
+            id="insight-tab-ai-review"
+            type="button"
+            role="tab"
+            aria-controls="insight-panel-ai-review"
+            aria-selected={tab === "ai-review"}
+            className={tab === "ai-review" ? "active" : ""}
+            tabIndex={tab === "ai-review" ? 0 : -1}
+            onKeyDown={(event) => handleTabKeyDown(event, "ai-review")}
+            onClick={() => onTabChange("ai-review")}
+          >
+            AI Review
+          </button>
         </div>
         {tab === "biological-age" ? (
           <div id="insight-panel-biological-age" role="tabpanel" aria-labelledby="insight-tab-biological-age">
             <BiologicalAgePage report={biologicalAge.data} loading={biologicalAge.busy} error={biologicalAge.error} />
           </div>
-        ) : (
+        ) : tab === "ai-query" ? (
           <div id="insight-panel-ai-query" role="tabpanel" aria-labelledby="insight-tab-ai-query">
             <QueryPage
               question={question}
@@ -168,8 +227,25 @@ export function InsightsRoute({
               error={query.error}
             />
           </div>
+        ) : (
+          <div id="insight-panel-ai-review" role="tabpanel" aria-labelledby="insight-tab-ai-review">
+            <AiReviewPage
+              busy={reviewBusy}
+              latestInsight={bootstrap?.latestInsight}
+              onGenerateInsight={() => { void generateInsight(); }}
+            />
+          </div>
         )}
       </div>
+      <ConfirmDialog
+        open={consentDialogOpen}
+        title="Allow cloud AI insights?"
+        description="Vitana will send the anonymized health data needed for this review to your configured cloud AI provider. You can disable cloud prompts later in Insights."
+        cancelLabel="Not now"
+        confirmLabel="Allow and generate"
+        onConfirm={() => { void acceptCloudConsent(); }}
+        onCancel={() => setConsentDialogOpen(false)}
+      />
     </section>
   );
 }

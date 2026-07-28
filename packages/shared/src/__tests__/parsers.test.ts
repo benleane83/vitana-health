@@ -64,7 +64,7 @@ describe("parseBloodTestCsv — happy path", () => {
   it("creates one lab group and canonical observations without legacy markers", () => {
     const result = parseBloodTestCsv("labs.csv", bloodTestCsv);
     expect(result.observationGroups).toEqual([
-      expect.objectContaining({ kind: "lab_panel", label: "Blood test panel" })
+      expect.objectContaining({ kind: "lab_panel", label: "Lab test panel" })
     ]);
     expect(result.observations).toHaveLength(3);
     expect(result.observations.every((item) => item.observationGroupId === result.observationGroups[0].id)).toBe(true);

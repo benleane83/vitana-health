@@ -1,5 +1,6 @@
 import type { ReplicaIdentity } from "@vitana/shared";
 import { createCompanionApi } from "../api";
+import { chartSeriesFromDetail } from "../chartSeries";
 import type { CompanionLifecycleService, DetailPage } from "../companionDataSource";
 import { saveConnection, type ConnectionDetails } from "../endpointStore";
 import { LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS } from "../pinnedFetch";
@@ -36,7 +37,7 @@ export async function retainConnectedStore(): Promise<() => Promise<void>> {
 export function createConnectedDataSource(
   connection: ConnectionDetails
 ): ReturnType<typeof createCompanionApi> & CompanionLifecycleService & ConnectedReplicaMaintenance {
-  const live = createCompanionApi(connection);
+  const live = createCompanionApi(connection, LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS);
   const storePromise = createConnectedStore();
   let repository: ConnectedReplicaRepository | undefined;
   let coordinator: ReplicaSyncCoordinator | undefined;
@@ -113,6 +114,11 @@ export function createConnectedDataSource(
     summary: () => cachedRead((current) => current.summary()),
     healthDataDetail: (measurementCode: string, page?: DetailPage) =>
       cachedRead((current) => current.healthDataDetail(measurementCode, page)),
+    healthDataChartSeries: (measurementCode, options) =>
+      cachedRead(async (current) => chartSeriesFromDetail(
+        await current.healthDataDetail(measurementCode),
+        { range: options?.range ?? "all", mode: options?.mode ?? "auto" }
+      )),
     listHealthEvents: (query) => cachedRead((current) => current.listHealthEvents(query)),
     listCareItems: (query) => cachedRead((current) => current.listCareItems(query)),
     importManualObservations: (payload) => liveMutation(() => live.importManualObservations(payload)),

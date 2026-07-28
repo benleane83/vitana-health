@@ -16,6 +16,7 @@ export interface DuckDbOptions {
   memoryLimit?: "64MB" | "256MB";
   testHooks?: {
     beforeHydrationPromotion?: () => Promise<void>;
+    beforeReplicaSnapshot?: () => Promise<void>;
     beforeTransactionCommit?: () => Promise<void>;
   };
 }

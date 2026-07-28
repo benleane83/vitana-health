@@ -390,14 +390,22 @@ describe("DuckDbRepository fidelity", () => {
 
   it.skipIf(!httpfsExtensionPath)("completes only open care items and preserves completion provenance", async () => {
     const databasePath = join(root, "databases", "health-store-care-completion.duckdb-poc");
+    let replicaSnapshotCount = 0;
     const repository = await DuckDbRepository.hydrate(
       root,
       databasePath,
       key,
       createDuckDbHealthStoreFixture(),
-      { httpfsExtensionPath }
+      {
+        httpfsExtensionPath,
+        testHooks: {
+          beforeReplicaSnapshot: async () => { replicaSnapshotCount += 1; }
+        }
+      }
     );
     try {
+      replicaSnapshotCount = 0;
+      const initialReplicaMark = await repository.getReplicaHighWaterMark();
       const created = await repository.createCareItem({
         kind: "routine-checkup",
         title: "Annual check-up",
@@ -411,6 +419,7 @@ describe("DuckDbRepository fidelity", () => {
         priority: "normal",
         status: "cancelled"
       });
+      expect((await repository.getReplicaHighWaterMark()).sequence).toBeGreaterThan(initialReplicaMark.sequence);
 
       expect((await repository.listCareItems({ kind: "routine-checkup" })).items).toEqual([created.careItem]);
       await expect(repository.createCareItem({
@@ -456,6 +465,19 @@ describe("DuckDbRepository fidelity", () => {
         }
       });
       expect(completed?.counts.healthEvents).toBe((createDuckDbHealthStoreFixture().healthEvents ?? []).length + 1);
+      const completionMark = await repository.getReplicaHighWaterMark();
+      const completionDeltas = await repository.replicaDeltaPage(
+        initialReplicaMark.sequence,
+        completionMark.sequence,
+        100
+      );
+      const completedCareDelta = completionDeltas.changes.find((change) =>
+        change.entityType === "care-item"
+        && change.entityId === created.careItem.id
+        && change.payload?.status === "completed");
+      const snapshotCareItem = (await repository.snapshot()).careItems?.find((item) => item.id === created.careItem.id);
+      expect(completedCareDelta?.payload).toEqual(snapshotCareItem);
+      expect(completedCareDelta?.payload).not.toHaveProperty("completedHealthEvent");
       await expect(repository.completeCareItem(created.careItem.id, {
         occurredAt: "2026-07-25T09:30:00.000Z",
         kind: "visit"
@@ -478,6 +500,7 @@ describe("DuckDbRepository fidelity", () => {
         "care-item-completed",
         "health-event-created"
       ]);
+      expect(replicaSnapshotCount).toBe(0);
     } finally {
       await repository.close();
     }
@@ -878,15 +901,24 @@ describe("DuckDbRepository fidelity", () => {
   it.skipIf(!httpfsExtensionPath)("provides slim transactional observation mutation primitives without snapshot responses", async () => {
     const databasePath = join(root, "databases", "health-store-slim-mutations.duckdb-poc");
     const fixture = createDuckDbHealthStoreFixture();
-    const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
+    let replicaSnapshotCount = 0;
+    const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, {
+      httpfsExtensionPath,
+      testHooks: {
+        beforeReplicaSnapshot: async () => { replicaSnapshotCount += 1; }
+      }
+    });
     const inserted = { ...fixture.observations[0], id: "slim-insert", value: 77 };
     try {
+      replicaSnapshotCount = 0;
       expect(await repository.insertObservationRecord(inserted)).toBe(true);
       expect(await repository.insertObservationRecord(inserted)).toBe(false);
       expect(await repository.deleteObservationRecord("slim-insert")).toBe(true);
       expect(await repository.deleteObservationRecord("slim-insert")).toBe(false);
+      expect(replicaSnapshotCount).toBe(0);
       expect(await repository.deleteObservationRecordsByMeasurementCode("weight")).toBe(2);
       expect(await repository.deleteObservationRecordsByMeasurementCode("weight")).toBe(0);
+      expect(replicaSnapshotCount).toBeGreaterThan(0);
       expect((await repository.snapshot()).observations).toEqual([]);
 
       const bulkImport = {
@@ -913,8 +945,10 @@ describe("DuckDbRepository fidelity", () => {
           { ...fixture.observations[1], id: "bulk-b", sourceId: "slim-source" }
         ]
       };
+      replicaSnapshotCount = 0;
       expect(await repository.importObservationRecords(bulkImport)).toBe(2);
       expect(await repository.importObservationRecords(bulkImport)).toBe(0);
+      expect(replicaSnapshotCount).toBe(0);
       expect((await repository.snapshot()).observations.map((entry) => entry.id)).toEqual(["bulk-a", "bulk-b"]);
     } finally {
       await repository.close();

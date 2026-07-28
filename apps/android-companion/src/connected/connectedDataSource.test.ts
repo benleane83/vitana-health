@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
     analytics: vi.fn(),
     summary: vi.fn(),
     healthDataDetail: vi.fn(),
+    healthDataChartSeries: vi.fn(),
     importManualObservations: vi.fn(),
     updateObservation: vi.fn(),
     deleteObservation: vi.fn(),
@@ -29,10 +30,11 @@ const mocks = vi.hoisted(() => ({
   },
   synchronize: vi.fn(),
   saveConnection: vi.fn(),
-  createReplicaNetwork: vi.fn()
+  createReplicaNetwork: vi.fn(),
+  createCompanionApi: vi.fn()
 }));
 
-vi.mock("../api", () => ({ createCompanionApi: () => mocks.live }));
+vi.mock("../api", () => ({ createCompanionApi: mocks.createCompanionApi }));
 vi.mock("../endpointStore", () => ({ saveConnection: mocks.saveConnection }));
 vi.mock("../pinnedFetch", () => ({ LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS: 60_000 }));
 vi.mock("./createConnectedStore", () => ({ createConnectedStore: () => Promise.resolve({ close: vi.fn() }) }));
@@ -85,6 +87,7 @@ const connection = {
 describe("connected data source", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.createCompanionApi.mockReturnValue(mocks.live);
     mocks.saveConnection.mockImplementation(async (updated) => updated);
     mocks.synchronize.mockResolvedValue({
       identity: {
@@ -140,6 +143,7 @@ describe("connected data source", () => {
     expect(mocks.live.summary).not.toHaveBeenCalled();
     expect(mocks.live.updateObservation).toHaveBeenCalledOnce();
     expect(mocks.synchronize).toHaveBeenCalledOnce();
+    expect(mocks.createCompanionApi).toHaveBeenCalledWith(connection, 60_000);
     expect(source.connectionError(summary)).toBeUndefined();
   });
 
@@ -161,18 +165,37 @@ describe("connected data source", () => {
   });
 
   it("reads metric detail and Care without making a live request", async () => {
-    mocks.cached.healthDataDetail.mockResolvedValue({ entries: [] });
+    mocks.cached.healthDataDetail.mockResolvedValue({
+      generatedAt: "2026-07-25T14:00:00.000Z",
+      measurement: {
+        code: "weight",
+        displayName: "Weight",
+        category: "body",
+        aggregation: "latest",
+        counts: { observations: 1, samples: 0, activities: 0, total: 1 },
+        lastMeasuredAt: "2026-07-25T14:00:00.000Z"
+      },
+      referenceRange: { source: "none" },
+      entries: [],
+      chartPoints: [{ kind: "observation", timestamp: "2026-07-25T14:00:00.000Z", value: 70, unit: "kg" }],
+      counts: { observations: 1, samples: 0, activities: 0, total: 1 },
+      deletion: { observationEntries: 1, deletableEntries: 1 },
+      pagination: { limit: 50, loaded: 0, total: 0, hasMore: false }
+    });
     mocks.cached.listCareItems.mockResolvedValue({ items: [], total: 0 });
     const source = createConnectedDataSource(connection);
 
     const detail = await source.healthDataDetail("weight");
+    const chart = await source.healthDataChartSeries("weight", { range: "all", mode: "auto" });
     const care = await source.listCareItems({ status: "open" });
-    expect(detail).toEqual({ entries: [] });
+    expect(detail.measurement.code).toBe("weight");
+    expect(chart).toMatchObject({ aggregation: "latest", points: [{ value: 70, unit: "kg" }] });
     expect(care).toEqual({ items: [], total: 0 });
 
-    expect(mocks.cached.healthDataDetail).toHaveBeenCalledOnce();
+    expect(mocks.cached.healthDataDetail).toHaveBeenCalledTimes(2);
     expect(mocks.cached.listCareItems).toHaveBeenCalledOnce();
     expect(mocks.live.healthDataDetail).not.toHaveBeenCalled();
+    expect(mocks.live.healthDataChartSeries).not.toHaveBeenCalled();
     expect(mocks.live.listCareItems).not.toHaveBeenCalled();
   });
 

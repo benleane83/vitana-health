@@ -1,5 +1,5 @@
 import type duckdb from "duckdb";
-import type { SourceImport } from "@vitana/shared";
+import type { DataSource, Observation, SourceImport } from "@vitana/shared";
 import { insertAudit, nextOrdinal } from "./duckdbCommands.js";
 import { storageCounts } from "./duckdbProjections.js";
 import type {
@@ -24,7 +24,7 @@ export async function mergeImport(
 ): Promise<ImportMutationResult> {
   const sourceImport = parsed.sourceImport;
   const sourceImportOutcome = await measureInsert(connection, "imports", 1, () =>
-    insertImportIfNew(connection, sourceImport));
+    insertImportIfNew(connection, sourceImport).then(() => undefined));
 
   const dataSourceOutcome = await measureInsert(connection, "sources", 1, async () =>
     insertRows(connection, "INSERT OR IGNORE INTO sources VALUES (?, ?, ?, ?, ?, ?);", [[
@@ -120,15 +120,23 @@ export async function mergeImport(
   return { counts: await storageCounts(connection), outcome, auditEvent };
 }
 
+export interface ObservationImportPersistenceResult {
+  count: number;
+  observations: Observation[];
+  sourceImport?: SourceImport;
+  dataSource?: DataSource;
+}
+
 export async function importObservationRecords(
   connection: duckdb.Connection,
   parsed: Pick<ProfileImport, "sourceImport" | "dataSource" | "observations">
-): Promise<number> {
+): Promise<ObservationImportPersistenceResult> {
   const sourceImport = parsed.sourceImport;
-  await insertImportIfNew(connection, sourceImport);
+  const sourceImportInserted = await insertImportIfNew(connection, sourceImport);
 
   const existingSources = await allWithParams(connection, "SELECT 1 AS found FROM sources WHERE id = ? LIMIT 1;", parsed.dataSource.id);
-  if (existingSources.length === 0) {
+  const dataSourceInserted = existingSources.length === 0;
+  if (dataSourceInserted) {
     await run(
       connection,
       "INSERT INTO sources VALUES (?, ?, ?, ?, ?, ?);",
@@ -142,10 +150,15 @@ export async function importObservationRecords(
   const incomingById = new Map(parsed.observations.map((entry) => [entry.id, entry]));
   const additions = [...incomingById.values()].filter((entry) => !currentIds.has(entry.id));
   await insertObservationRows(connection, additions, await nextOrdinal(connection, "observations"));
-  return additions.length;
+  return {
+    count: additions.length,
+    observations: additions,
+    ...(sourceImportInserted ? { sourceImport } : {}),
+    ...(dataSourceInserted ? { dataSource: parsed.dataSource } : {})
+  };
 }
 
-async function insertImportIfNew(connection: duckdb.Connection, sourceImport: SourceImport): Promise<void> {
+async function insertImportIfNew(connection: duckdb.Connection, sourceImport: SourceImport): Promise<boolean> {
   const duplicateImports = await allWithParams(
     connection,
     "SELECT 1 AS found FROM imports WHERE source_kind = ? AND checksum = ? AND file_name = ? LIMIT 1;",
@@ -154,7 +167,7 @@ async function insertImportIfNew(connection: duckdb.Connection, sourceImport: So
     sourceImport.fileName
   );
   if (duplicateImports.length > 0) {
-    return;
+    return false;
   }
   await run(
     connection,
@@ -171,6 +184,7 @@ async function insertImportIfNew(connection: duckdb.Connection, sourceImport: So
     json(sourceImport.diagnostics),
     sourceImport.rawContent ?? null
   );
+  return true;
 }
 
 async function measureInsert(

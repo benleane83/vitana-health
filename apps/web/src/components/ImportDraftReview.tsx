@@ -229,7 +229,7 @@ export function ImportDraftReview({
         <button disabled={busy} type="button" onClick={onAddRow}>Add row</button>
         <span className="empty">Only selected rows will be saved as observations.</span>
         <button disabled={busy || includedCount === 0 || Boolean(staleMappingWarning)} type="submit">
-          Save approved observations
+          Save approved rows
         </button>
       </div>
     </form>

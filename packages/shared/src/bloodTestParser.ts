@@ -68,7 +68,7 @@ export function parseBloodTestScanText(
     const key = `${measurementCode}:${value}:${unit}`;
     if (rows.has(key)) continue;
     const generatedCode = !measurementType;
-    if (generatedCode) diagnostics.push(`Used generated code for "${label}".`);
+    if (generatedCode) diagnostics.push(`Unknown measurement found: "${label}".`);
     rows.set(key, {
       id: stableId("draft", [sourceChecksum, measurementCode, String(value), unit]),
       label,
@@ -85,7 +85,7 @@ export function parseBloodTestScanText(
   }
   if (!normalizedText) diagnostics.push("No text was extracted from the report.");
   if (!reportDate) diagnostics.push("No report date was detected; confirm the date before saving.");
-  if (rows.size === 0 && normalizedText) diagnostics.push("No blood-test measurements were detected in the extracted text.");
+  if (rows.size === 0 && normalizedText) diagnostics.push("No lab measurements were detected in the extracted text.");
   return {
     fileName,
     reportDate,

@@ -256,7 +256,7 @@ function AppSettingsPanel({ confirm }: { confirm: ConfirmAction }) {
             {metadataResetBusy ? "Resetting…" : "Reset metadata"}
           </button>
         </div>
-        <p className="empty">Reset the active profile's built-in measurement metadata from the current registry. Health records and custom measurement types are preserved.</p>
+        <p className="empty">Reset the active profile's built-in measurement metadata to app defaults. Your health records and custom measurement types are preserved.</p>
         {metadataResetMessage ? <p className="settings-feedback" role="status" aria-live="polite">{metadataResetMessage}</p> : null}
       </section>
     </section>
@@ -361,7 +361,7 @@ function AiSettingsPanel() {
   return (
     <section className="panel settings-panel">
       <h2>AI setup</h2>
-      <p className="empty">Configure the model connection used for AI queries and insights. Your API key is stored by the local application server and is never displayed.</p>
+      <p className="empty">Configure the model connection used for AI queries and insights. Your API key is stored by the local PC and is never displayed.</p>
       <form className="settings-form" onSubmit={save}>
         <label htmlFor="ai-provider">Provider</label>
         <select id="ai-provider" value={settings.provider} disabled={busy} onChange={(event) => setSettings({ ...settings, provider: event.target.value as AiSettings["provider"] })}>
@@ -382,7 +382,7 @@ function AiSettingsPanel() {
       </form>
       <div className="settings-openrouter">
         <h3>OpenRouter</h3>
-        <p>Connect your OpenRouter account to configure a compatible endpoint automatically.</p>
+        <p>Connect your OpenRouter account to configure an AI endpoint automatically.</p>
         <button type="button" disabled={busy} onClick={() => window.open("/api/settings/ai/openrouter/connect", "openrouter-connect", "width=560,height=700")}>Connect OpenRouter</button>
       </div>
       {message ? <p role="status" aria-live="polite">{message}</p> : null}

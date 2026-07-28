@@ -33,7 +33,7 @@ type CompletionDraft = CompleteCareItemInput;
 const defaultHealthEventDraft: HealthEventDraft = {
   kind: "other",
   status: "completed",
-  occurredAt: new Date().toISOString(),
+  occurredAt: dateOnlyIso(new Date()),
   provider: "",
   notes: ""
 };
@@ -72,7 +72,7 @@ export function CareRoute({
   const [editingCareItemId, setEditingCareItemId] = useState<string>();
   const [completingCareItem, setCompletingCareItem] = useState<CareItem>();
   const [completionDraft, setCompletionDraft] = useState<CompletionDraft>(() => ({
-    occurredAt: new Date().toISOString(),
+    occurredAt: dateOnlyIso(new Date()),
     kind: defaultHealthEventKindForCareItem[defaultCareItemDraft.kind]
   }));
   const [actionBusy, setActionBusy] = useState(false);
@@ -178,7 +178,7 @@ export function CareRoute({
     setEditingCareItemId(undefined);
     setCompletingCareItem(entry);
     setCompletionDraft({
-      occurredAt: new Date().toISOString(),
+      occurredAt: dateOnlyIso(new Date()),
       kind: defaultHealthEventKindForCareItem[normalizedCareItemKind(entry.kind)]
     });
   }
@@ -329,7 +329,7 @@ export function CareRoute({
                     <strong>{entry.title}</strong>
                     <p>{entry.status} • {careItemKindLabel(entry.kind)}</p>
                     <p>
-                      {entry.dueStart ? `Due ${formatWhen(entry.dueStart)}` : "No due time"}
+                      {entry.dueStart ? `Due ${formatWhen(entry.dueStart)}` : "No due date"}
                       {entry.completedHealthEventId
                         ? ` • Completion: ${entry.completedHealthEvent ? formatEventReference(entry.completedHealthEvent) : "Linked event unavailable"}`
                         : ""}
@@ -439,7 +439,7 @@ function CareItemFilters({ filters, onChange, onApply }: { filters: CareItemList
 }
 
 function HealthEventEditor({ draft, busy, onChange, onCancel, onSave }: { draft: HealthEventDraft; busy: boolean; onChange: (next: HealthEventDraft) => void; onCancel: () => void; onSave: () => void; }) {
-  return <form className="care-editor" onSubmit={(event) => { event.preventDefault(); onSave(); }}><h2>{healthEventKindLabels[draft.kind]}</h2><label>Kind<select value={draft.kind} onChange={(event) => onChange({ ...draft, kind: event.target.value as HealthEventDraft["kind"] })}>{healthEventKindCodes.map((kind) => <option key={kind} value={kind}>{healthEventKindLabels[kind]}</option>)}</select></label><label>Status<select value={draft.status} onChange={(event) => onChange({ ...draft, status: event.target.value as HealthEventDraft["status"] })}><option value="completed">Completed</option><option value="entered-in-error">Entered in error</option></select></label><label>Date<input type="datetime-local" value={toDateTimeLocal(draft.occurredAt)} onChange={(event) => onChange({ ...draft, occurredAt: fromDateTimeLocal(event.target.value) || draft.occurredAt })} /></label><label>Provider<input value={draft.provider ?? ""} maxLength={160} onChange={(event) => onChange({ ...draft, provider: event.target.value })} /></label><label>Notes<textarea value={draft.notes ?? ""} maxLength={4000} onChange={(event) => onChange({ ...draft, notes: event.target.value })} /></label><div className="care-editor-actions"><button type="submit" disabled={busy}>{busy ? "Saving…" : "Save"}</button><button type="button" onClick={onCancel}>Cancel</button></div></form>;
+  return <form className="care-editor" onSubmit={(event) => { event.preventDefault(); onSave(); }}><h2>{healthEventKindLabels[draft.kind]}</h2><label>Kind<select value={draft.kind} onChange={(event) => onChange({ ...draft, kind: event.target.value as HealthEventDraft["kind"] })}>{healthEventKindCodes.map((kind) => <option key={kind} value={kind}>{healthEventKindLabels[kind]}</option>)}</select></label><label>Status<select value={draft.status} onChange={(event) => onChange({ ...draft, status: event.target.value as HealthEventDraft["status"] })}><option value="completed">Completed</option><option value="entered-in-error">Entered in error</option></select></label><label>Date<input type="date" value={toDateOnly(draft.occurredAt)} onChange={(event) => onChange({ ...draft, occurredAt: fromDateOnly(event.target.value) || draft.occurredAt })} /></label><label>Provider<input value={draft.provider ?? ""} maxLength={160} onChange={(event) => onChange({ ...draft, provider: event.target.value })} /></label><label>Notes<textarea value={draft.notes ?? ""} maxLength={4000} onChange={(event) => onChange({ ...draft, notes: event.target.value })} /></label><div className="care-editor-actions"><button type="submit" disabled={busy}>{busy ? "Saving…" : "Save"}</button><button type="button" onClick={onCancel}>Cancel</button></div></form>;
 }
 
 function CareItemEditor({ draft, busy, onChange, onCancel, onSave }: { draft: CareItemDraft; busy: boolean; onChange: (next: CareItemDraft) => void; onCancel: () => void; onSave: () => void; }) {
@@ -449,9 +449,9 @@ function CareItemEditor({ draft, busy, onChange, onCancel, onSave }: { draft: Ca
       <label>Title<input value={draft.title} maxLength={160} onChange={(event) => onChange({ ...draft, title: event.target.value })} /></label>
       <label>Kind<select value={draft.kind} onChange={(event) => onChange({ ...draft, kind: event.target.value as CareItemDraft["kind"] })}>{careItemKindCodes.map((kind) => <option key={kind} value={kind}>{careItemKindLabels[kind]}</option>)}</select></label>
       {draft.status === "completed" ? <div className="care-fixed-field"><span>Status</span><strong>Completed</strong></div> : <label>Status<select value={draft.status} onChange={(event) => onChange({ ...draft, status: event.target.value as CareItemDraft["status"] })}><option value="open">Open</option><option value="cancelled">Cancelled</option><option value="skipped">Skipped</option></select></label>}
-      <label>Due date<input type="datetime-local" value={toDateTimeLocal(draft.dueStart)} onChange={(event) => onChange({ ...draft, dueStart: fromDateTimeLocal(event.target.value) || undefined })} /></label>
+      <label>Due date<input type="date" value={toDateOnly(draft.dueStart)} onChange={(event) => onChange({ ...draft, dueStart: fromDateOnly(event.target.value) || undefined })} /></label>
       <div className="care-reminder-field">
-        <label>Reminder date<input type="datetime-local" value={toDateTimeLocal(draft.reminderAt)} onChange={(event) => onChange({ ...draft, reminderAt: fromDateTimeLocal(event.target.value) || undefined })} /></label>
+        <label>Reminder date<input type="date" value={toDateOnly(draft.reminderAt)} onChange={(event) => onChange({ ...draft, reminderAt: fromDateOnly(event.target.value) || undefined })} /></label>
         <div className="care-reminder-presets">
           {(["one-day", "one-week"] as CareItemReminderLead[]).map((lead) => <button key={lead} type="button" disabled={!draft.dueStart} onClick={() => onChange({ ...draft, reminderAt: careItemReminderAt(draft.dueStart, lead) })}>{careItemReminderLeadLabels[lead]}</button>)}
         </div>
@@ -465,31 +465,43 @@ function CareItemEditor({ draft, busy, onChange, onCancel, onSave }: { draft: Ca
 function CareItemCompletionEditor({ item, draft, busy, onChange, onCancel, onComplete }: { item: CareItem; draft: CompletionDraft; busy: boolean; onChange: (next: CompletionDraft) => void; onCancel: () => void; onComplete: () => void; }) {
   return (
     <form className="care-editor care-completion-editor" onSubmit={(event) => { event.preventDefault(); onComplete(); }}>
-      <div><h2>Complete {item.title}</h2><p>Review the Health event that will be created.</p></div>
-      <label>Date<input type="datetime-local" value={toDateTimeLocal(draft.occurredAt)} onChange={(event) => onChange({ ...draft, occurredAt: fromDateTimeLocal(event.target.value) || draft.occurredAt })} /></label>
+      <div><h2>Complete {item.title}</h2><p>Review the health event that will be created.</p></div>
+      <label>Date<input type="date" value={toDateOnly(draft.occurredAt)} onChange={(event) => onChange({ ...draft, occurredAt: fromDateOnly(event.target.value) || draft.occurredAt })} /></label>
       <label>Kind<select value={draft.kind} onChange={(event) => onChange({ ...draft, kind: event.target.value as CompletionDraft["kind"] })}>{healthEventKindCodes.map((kind) => <option key={kind} value={kind}>{healthEventKindLabels[kind]}</option>)}</select></label>
       <div className="care-editor-actions"><button type="submit" disabled={busy}>{busy ? "Completing…" : "Complete care item"}</button><button type="button" onClick={onCancel} disabled={busy}>Cancel</button></div>
     </form>
   );
 }
 
-function toDateTimeLocal(value?: string): string {
+function toDateOnly(value?: string): string {
   if (!value) return "";
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return "";
   const pad = (segment: number) => String(segment).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-function fromDateTimeLocal(value: string): string {
+function fromDateOnly(value: string): string {
   if (!value) return "";
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return "";
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day
+    ? date.toISOString()
+    : "";
+}
+
+function dateOnlyIso(value: Date): string {
   const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? date.toISOString() : "";
+  date.setHours(0, 0, 0, 0);
+  return date.toISOString();
 }
 
 function formatWhen(value: string): string {
   const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? date.toLocaleString() : "Date unavailable";
+  return Number.isFinite(date.getTime())
+    ? date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })
+    : "Date unavailable";
 }
 
 function normalizeHealthEventDraft(draft: HealthEventDraft): CreateHealthEventInput {

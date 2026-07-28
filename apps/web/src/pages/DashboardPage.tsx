@@ -1,7 +1,5 @@
-import type { AnalyticsSummary, Insight, Profile } from "@vitana/shared";
-import { safetyNotice } from "@vitana/shared";
+import type { AnalyticsSummary, Profile } from "@vitana/shared";
 import { MiniChart } from "../components/Charts.js";
-import { MarkdownText } from "../components/MarkdownText.js";
 import { formatBloodType, formatDetailValue, formatProfileSex, formatProfileType, formatShortTimestamp } from "../utils.js";
 
 function Stat({ label, value }: { label: string; value: number }) {
@@ -13,37 +11,18 @@ function Stat({ label, value }: { label: string; value: number }) {
   );
 }
 
-function InsightCard({ insight }: { insight?: Insight }) {
-  if (!insight) {
-    return <p className="empty">Generate an insight after importing data.</p>;
-  }
-  return (
-    <div className="insight">
-      <span>{insight.model} / confidence {insight.confidence}</span>
-      <h3>{insight.title}</h3>
-      <MarkdownText>{insight.body}</MarkdownText>
-    </div>
-  );
-}
-
 export function DashboardPage({
   analytics,
-  busy,
-  latestInsight,
   profile,
   onEditProfile,
   onNavigateSummary,
-  onNavigateMeasurement,
-  onGenerateInsight
+  onNavigateMeasurement
 }: {
   analytics?: AnalyticsSummary;
-  busy: boolean;
-  latestInsight?: Insight;
   profile?: Profile;
   onEditProfile: () => void;
   onNavigateSummary: () => void;
   onNavigateMeasurement: (measurementCode: string) => void;
-  onGenerateInsight: () => void;
 }) {
   const latestObservedAt = analytics?.latestMetrics
     .map((metric) => metric.observedAt)
@@ -71,6 +50,15 @@ export function DashboardPage({
           </div>
         </article>
 
+        <article className="dashboard-profile-summary">
+          <h2>Profile summary</h2>
+          <div className="dashboard-counts" aria-label="Stored health data totals">
+            <Stat label="Observations" value={analytics?.counts.observations ?? 0} />
+            <Stat label="Samples" value={analytics?.counts.samples ?? 0} />
+            <Stat label="Activities" value={analytics?.counts.activities ?? 0} />
+          </div>
+        </article>
+
         <article className="dashboard-review">
           <div className="panel-heading-row">
             <div className="dashboard-review-heading">
@@ -82,12 +70,7 @@ export function DashboardPage({
               </div>
               <p className="dashboard-section-copy">A quick review of what is stored for this profile.</p>
             </div>
-            <button type="button" onClick={onNavigateSummary}>View summary</button>
-          </div>
-          <div className="dashboard-counts" aria-label="Stored health data totals">
-            <Stat label="Observations" value={analytics?.counts.observations ?? 0} />
-            <Stat label="Samples" value={analytics?.counts.samples ?? 0} />
-            <Stat label="Activities" value={analytics?.counts.activities ?? 0} />
+            <button type="button" onClick={onNavigateSummary}>View all</button>
           </div>
           <div className="metric-list-scroll" aria-label="Latest metrics">
             <div className="metric-list">
@@ -111,8 +94,8 @@ export function DashboardPage({
         </article>
       </section>
 
-      <details className="dashboard-deeper-review">
-        <summary>Explore trends, lab ranges, and AI review</summary>
+      <details className="dashboard-deeper-review" open>
+        <summary>Explore trends and lab ranges</summary>
         <div className="dashboard-deeper-grid">
           <section className="dashboard-deeper-section">
             <h2>Trend traces</h2>
@@ -154,17 +137,6 @@ export function DashboardPage({
               : <p className="empty">No out-of-range lab markers yet.</p>}
           </section>
 
-          <section className="dashboard-deeper-section dashboard-ai-review">
-            <h2>AI review</h2>
-            <p className="safety">{safetyNotice}</p>
-            <div className="dashboard-ai-actions">
-              <button disabled={busy} onClick={onGenerateInsight}>Generate insights</button>
-              <p className="dashboard-generated" aria-label={latestInsight?.createdAt ? `Last generated ${formatShortTimestamp(latestInsight.createdAt)}` : "Last generated not available"}>
-                Last generated: {latestInsight?.createdAt ? formatShortTimestamp(latestInsight.createdAt) : "Not generated yet"}
-              </p>
-            </div>
-            <InsightCard insight={latestInsight} />
-          </section>
         </div>
       </details>
     </>

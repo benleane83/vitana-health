@@ -41,7 +41,7 @@ export function parseBloodTestCsv(fileName: string, content: string, importedAt 
   const group: ObservationGroup = {
     id: groupId,
     kind: "lab_panel",
-    label: rows[0]?.panelName ?? rows[0]?.panel_name ?? "Blood test panel",
+    label: rows[0]?.panelName ?? rows[0]?.panel_name ?? "Lab test panel",
     sourceId,
     importId,
     collectedAt,
@@ -86,7 +86,7 @@ export function parseBloodTestCsv(fileName: string, content: string, importedAt 
       diagnostics: diagnosticMessages(diagnostics).slice(0, 25),
       rawContent: content
     },
-    dataSource: { id: sourceId, sourceKind: "blood-test-csv", label: `Blood test CSV: ${fileName}`, importId, createdAt: importedAt },
+    dataSource: { id: sourceId, sourceKind: "blood-test-csv", label: `Lab test CSV: ${fileName}`, importId, createdAt: importedAt },
     observations,
     observationGroups: [group],
     timeSeriesSamples: [],

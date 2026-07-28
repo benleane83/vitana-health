@@ -50,7 +50,7 @@ describe("ImportDraftReview", () => {
 
     expect(screen.getByRole("rowgroup", { name: "Selected for save, 0 measurements" }))
       .toHaveTextContent("Select at least one measurement to save it.");
-    expect(screen.getByRole("button", { name: "Save approved observations" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save approved rows" })).toBeDisabled();
   });
 
   it("shows display names without measurement codes in the known-measurement selector", () => {

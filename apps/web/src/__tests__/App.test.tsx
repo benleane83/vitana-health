@@ -119,8 +119,7 @@ describe("App smoke", () => {
   it("formats lab range review values to at most two decimal places", async () => {
     render(<App />);
 
-    fireEvent.click(await screen.findByText("Explore trends, lab ranges, and AI review"));
-
+    expect(await screen.findByText("Explore trends and lab ranges")).toBeInTheDocument();
     expect(screen.getByText("31.13 mmol/L")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /ldl cholesterol, 31\.13 mmol\/l/i })).toBeInTheDocument();
     expect(screen.queryByText(/31\.13248797551377/)).not.toBeInTheDocument();
@@ -194,6 +193,7 @@ describe("App smoke", () => {
   });
 
   it("keeps the safety disclaimer visible", () => {
+    globalThis.history.replaceState({}, "", "/insights/ai-review");
     render(<App />);
     expect(screen.getByText(safetyNotice)).toBeInTheDocument();
   });
@@ -253,7 +253,11 @@ describe("App smoke", () => {
     fireEvent.keyDown(biologicalAge, { key: "ArrowRight" });
     expect(screen.getByRole("tab", { name: /ai query/i })).toHaveFocus();
     expect(screen.getByRole("tab", { name: /ai query/i })).toHaveAttribute("aria-selected", "true");
-    fireEvent.keyDown(screen.getByRole("tab", { name: /ai query/i }), { key: "Home" });
+    fireEvent.keyDown(screen.getByRole("tab", { name: /ai query/i }), { key: "ArrowRight" });
+    expect(screen.getByRole("tab", { name: /ai review/i })).toHaveFocus();
+    expect(screen.getByRole("tab", { name: /ai review/i })).toHaveAttribute("aria-selected", "true");
+    expect(globalThis.location.pathname).toBe("/insights/ai-review");
+    fireEvent.keyDown(screen.getByRole("tab", { name: /ai review/i }), { key: "Home" });
     expect(screen.getByRole("tab", { name: /biological age/i })).toHaveFocus();
   });
 

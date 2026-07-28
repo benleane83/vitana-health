@@ -619,9 +619,9 @@ function formatSource(entry: HealthDataDetailEntry): string {
   switch (entry.sourceKind) {
     case "health-connect": return "Synced from phone";
     case "manual-entry": return "Entered manually";
-    case "blood-test-report": return "Imported from blood test report";
+    case "blood-test-report": return "Imported from lab test report";
     case "body-composition-report": return "Imported from body composition report";
-    case "blood-test-csv": return "Imported from blood test file";
+    case "blood-test-csv": return "Imported from lab test file";
     case "observation-csv": return "Imported from file";
     case "derived": return "Calculated from your records";
     default: return entry.sourceLabel ? "Imported record" : "Local record";
@@ -684,7 +684,7 @@ function TrendChart({
           <ChartToggle key={option.value} label={option.label} onPress={() => onRangeChange(option.value)} selected={range === option.value} />
         ))}
       </View>
-      {series?.aggregation !== "latest" ? (
+      {detail.measurement.aggregation !== "latest" ? (
         <View accessibilityLabel="Trend chart display" accessibilityRole="radiogroup" style={styles.chartControls}>
           <ChartToggle label="Adaptive" onPress={() => onModeChange("auto")} selected={mode === "auto"} />
           <ChartToggle label="Readings" onPress={() => onModeChange("raw")} selected={mode === "raw"} />

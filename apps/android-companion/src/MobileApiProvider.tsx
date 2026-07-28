@@ -305,17 +305,31 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     try {
       if (options.synchronize) await synchronizeConnectedData(true);
       const [nextBootstrap, nextAnalytics] = await Promise.all([source.bootstrap(), source.analytics()]);
+      let nextProfilePhoto: { revision: string; uri: string } | undefined;
+      if (operatingMode === "connected" && connection?.token && nextBootstrap.profilePhoto?.revision) {
+        try {
+          const photo = await createCompanionApi(connection).profilePhoto.get();
+          if (photo.revision === nextBootstrap.profilePhoto.revision) {
+            nextProfilePhoto = {
+              revision: photo.revision,
+              uri: `data:${photo.contentType};base64,${photo.contentBase64}`
+            };
+          }
+        } catch {
+          // The avatar fallback remains available when photo bytes cannot be refreshed.
+        }
+      }
       if (generation.current !== requestGeneration) return;
       setBootstrap(nextBootstrap);
       setAnalytics(nextAnalytics);
-      setProfilePhoto(undefined);
+      setProfilePhoto(nextProfilePhoto);
       updateConnectionState(source, nextBootstrap, nextAnalytics);
     } catch (caught) {
       if (generation.current === requestGeneration) classifyError(caught);
     } finally {
       if (generation.current === requestGeneration) setDashboardLoading(false);
     }
-  }, [classifyError, source, synchronizeConnectedData, updateConnectionState]);
+  }, [classifyError, connection, operatingMode, source, synchronizeConnectedData, updateConnectionState]);
 
   const refreshTrack = useCallback(async (options: { synchronize?: boolean } = {}) => {
     if (!source) return;
