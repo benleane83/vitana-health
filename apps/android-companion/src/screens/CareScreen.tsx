@@ -231,7 +231,7 @@ export function CareScreen() {
           {canWrite ? <Button disabled={busy} onPress={startCreate}>{view === "items" ? "Add care item" : "Add health event"}</Button> : null}
         </View>
         {demoMode ? <Message title="Demo mode is read-only" detail="Connect to your paired PC to create, edit, or delete care records." /> : null}
-        {connectionState !== "online" ? <Message title={connectionState.replaceAll("-", " ")} detail={error ?? "Showing read-only synced Care data. Reconnect or pull to refresh."} tone="warning" /> : null}
+        {connectionState !== "online" ? <Message title={connectionState.replaceAll("-", " ")} detail={error ?? "Showing read-only Care data. Reconnect or pull to refresh."} tone="warning" /> : null}
         {message ? <Message title="Care" detail={message} /> : null}
         {view === "items" ? (
           <FormField label="Kind filter">
