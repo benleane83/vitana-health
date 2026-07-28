@@ -13,6 +13,7 @@ import {
   healthEventListQuerySchema,
   healthEventMutationResponseSchema,
   linkedHealthEventConflictSchema,
+  measurementPinStateResponseSchema,
   paginatedCareItemsResponseSchema,
   paginatedHealthEventsResponseSchema,
   personalReferenceRangeInputSchema,
@@ -165,6 +166,28 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
       const measurementCode = measurementCodeParamSchema.parse(request.params.measurementCode);
       response.json(referenceRangeStateResponseSchema.parse(
         await requestStore(response).deletePersonalReferenceRange(measurementCode)
+      ));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.put("/summary/:measurementCode/pin", async (request, response, next) => {
+    try {
+      const measurementCode = measurementCodeParamSchema.parse(request.params.measurementCode);
+      response.json(measurementPinStateResponseSchema.parse(
+        await requestStore(response).pinMeasurement(measurementCode)
+      ));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.delete("/summary/:measurementCode/pin", async (request, response, next) => {
+    try {
+      const measurementCode = measurementCodeParamSchema.parse(request.params.measurementCode);
+      response.json(measurementPinStateResponseSchema.parse(
+        await requestStore(response).unpinMeasurement(measurementCode)
       ));
     } catch (error) {
       next(error);

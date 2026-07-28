@@ -21,6 +21,7 @@ import {
   type Observation,
   type ObservationGroup,
   type PersonalReferenceRange,
+  type PinnedMeasurement,
   type Profile,
   type ReplicaIdentity,
   type SourceImport,
@@ -113,6 +114,7 @@ export class ConnectedReplicaRepository {
     return {
       generatedAt: new Date().toISOString(),
       measurement: summaryRow,
+      isPinned: data.pinnedMeasurements.some((pin) => pin.measurementCode === measurementCode),
       referenceRange,
       entries,
       chartPoints: chartPoints(allEntries),
@@ -240,6 +242,7 @@ export class ConnectedReplicaRepository {
       devices: values<HealthStoreData["devices"][number]>("device"),
       measurementTypes: values<MeasurementType>("measurement-type"),
       personalReferenceRanges: values<PersonalReferenceRange>("personal-reference-range"),
+      pinnedMeasurements: values<PinnedMeasurement>("pinned-measurement"),
       observationGroups: values<ObservationGroup>("observation-group"),
       observations: values<Observation>("observation"),
       timeSeriesSamples: values<TimeSeriesSample>("time-series-sample"),

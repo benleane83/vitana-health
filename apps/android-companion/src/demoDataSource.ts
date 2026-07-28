@@ -34,6 +34,7 @@ interface DemoMetric {
   unit: string;
   kind: HealthDataDetailEntry["kind"];
   sourceLabel: string;
+  isPinned?: boolean;
 }
 
 const metrics: DemoMetric[] = [
@@ -41,7 +42,7 @@ const metrics: DemoMetric[] = [
   { code: "heart_rate", values: [68, 70, 66, 72, 69, 67, 71], unit: "bpm", kind: "sample", sourceLabel: "Demo fitness tracker" },
   { code: "sleep_duration", values: [7.2, 6.8, 7.6, 7.0, 7.4, 6.9, 7.8], unit: "h", kind: "sample", sourceLabel: "Demo fitness tracker" },
   { code: "oxygen_saturation", values: [98, 97, 98, 99, 98, 97, 98], unit: "%", kind: "sample", sourceLabel: "Demo fitness tracker" },
-  { code: "weight", values: [74.8, 74.6, 74.5, 74.3, 74.1, 74.0, 73.8], unit: "kg", kind: "observation", sourceLabel: "Demo manual entry" },
+  { code: "weight", values: [74.8, 74.6, 74.5, 74.3, 74.1, 74.0, 73.8], unit: "kg", kind: "observation", sourceLabel: "Demo manual entry", isPinned: true },
   { code: "blood_pressure_systolic", values: [124, 121, 119, 122, 118, 120, 117], unit: "mmHg", kind: "observation", sourceLabel: "Demo home monitor" },
   { code: "glucose", values: [5.1, 5.0, 5.4, 5.2, 5.1, 4.9, 5.0], unit: "mmol/L", kind: "observation", sourceLabel: "Demo laboratory report" }
 ];
@@ -255,10 +256,11 @@ function makeAnalytics(details: Map<string, HealthDataDetail>, now: Date): Analy
           value: latest.value,
           unit: latest.unit,
           observedAt: latest.timestamp,
-          status: "normal" as const
+          status: "normal" as const,
+          isPinned: detail.isPinned
         };
       })
-      .sort((left, right) => right.observedAt.localeCompare(left.observedAt)),
+      .sort((left, right) => Number(right.isPinned) - Number(left.isPinned) || right.observedAt.localeCompare(left.observedAt)),
     trendCards: [],
     labAlerts: [],
     evidenceDigest: [
@@ -333,6 +335,7 @@ function makeDetail(metric: DemoMetric, now: Date): HealthDataDetail {
   return {
     generatedAt: now.toISOString(),
     measurement,
+    isPinned: metric.isPinned ?? false,
     entries,
     chartPoints: [...entries].reverse().map((entry) => ({
       kind: entry.kind,

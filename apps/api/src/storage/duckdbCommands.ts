@@ -27,6 +27,7 @@ import {
   type HealthStoreData,
   type LinkedCareItemConflict,
   type Observation,
+  type PinnedMeasurement,
   type PersonalReferenceRange,
   type PersonalReferenceRangeInput,
   type Profile,
@@ -218,6 +219,51 @@ export async function deletePersonalReferenceRange(
 ): Promise<void> {
   await run(connection, "DELETE FROM personal_reference_ranges WHERE measurement_code = ?;", measurementCode);
   await insertAudit(connection, "personal-reference-range-removed", `Personal reference range removed for ${measurementCode}.`);
+}
+
+export interface PinMeasurementCommandResult {
+  pin?: PinnedMeasurement;
+  changed: boolean;
+}
+
+export async function pinMeasurement(
+  connection: duckdb.Connection,
+  measurementCode: string
+): Promise<PinMeasurementCommandResult> {
+  const typeRows = await allWithParams(connection, "SELECT 1 AS found FROM measurement_types WHERE code = ? LIMIT 1;", measurementCode);
+  if (!typeRows[0]) {
+    throw new RepositoryValidationError(`Unknown measurement type "${measurementCode}".`);
+  }
+  const existingRows = await allWithParams(
+    connection,
+    "SELECT measurement_code, pinned_at FROM pinned_measurements WHERE measurement_code = ?;",
+    measurementCode
+  );
+  if (existingRows[0]) {
+    return {
+      pin: { measurementCode, pinnedAt: isoTimestamp(existingRows[0].pinned_at) },
+      changed: false
+    };
+  }
+  const pin = { measurementCode, pinnedAt: new Date().toISOString() };
+  await run(connection, "INSERT INTO pinned_measurements VALUES (?, ?);", pin.measurementCode, pin.pinnedAt);
+  await insertAudit(connection, "measurement-pinned", `${measurementCode} pinned to the dashboard.`);
+  return { pin, changed: true };
+}
+
+export async function unpinMeasurement(
+  connection: duckdb.Connection,
+  measurementCode: string
+): Promise<PinMeasurementCommandResult> {
+  const existingRows = await allWithParams(
+    connection,
+    "SELECT 1 AS found FROM pinned_measurements WHERE measurement_code = ? LIMIT 1;",
+    measurementCode
+  );
+  if (!existingRows[0]) return { changed: false };
+  await run(connection, "DELETE FROM pinned_measurements WHERE measurement_code = ?;", measurementCode);
+  await insertAudit(connection, "measurement-unpinned", `${measurementCode} unpinned from the dashboard.`);
+  return { changed: true };
 }
 
 export async function insertObservationRecord(

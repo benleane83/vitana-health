@@ -49,12 +49,12 @@ describe("companion replica protocol", () => {
 
   it("rejects unsupported versions and malformed operations", () => {
     expect(() => replicaHandshakeSchema.parse({
-      protocolVersion: 2,
+      protocolVersion: 3,
       ...identity,
       highWaterMark: { revision: 0, sequence: 0 }
     })).toThrow();
     expect(() => replicaPageSchema.parse({
-      protocolVersion: 1,
+      protocolVersion: 2,
       ...identity,
       kind: "delta",
       changes: [{

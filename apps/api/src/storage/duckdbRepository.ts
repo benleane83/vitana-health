@@ -22,6 +22,7 @@ import {
   type HealthStoreData,
   type MobileMigrationBatch,
   type MobileMigrationManifest,
+  type MeasurementPinState,
   type Observation,
   type PersonalReferenceRangeInput,
   type Profile,
@@ -71,11 +72,13 @@ import {
   getProfilePhoto as readProfilePhoto,
   getProfile as readProfile,
   insertObservationRecord as insertDuckDbObservationRecord,
+  pinMeasurement as pinDuckDbMeasurement,
   replaceProfile as replaceDuckDbProfile,
   replaceProfilePhoto as replaceDuckDbProfilePhoto,
   updateCareItem as updateDuckDbCareItem,
   updateHealthEvent as updateDuckDbHealthEvent,
   updateObservation as updateDuckDbObservation,
+  unpinMeasurement as unpinDuckDbMeasurement,
   upsertPersonalReferenceRange as upsertDuckDbPersonalReferenceRange
 } from "./duckdbCommands.js";
 import {
@@ -538,6 +541,28 @@ export class DuckDbRepository implements ProfileRepository {
       await deleteDuckDbPersonalReferenceRange(this.connection, measurementCode);
       return readReferenceRangeState(this.connection, measurementCode);
     }, true);
+  }
+
+  async pinMeasurement(measurementCode: string): Promise<MeasurementPinState> {
+    this.assertOpen();
+    return this.transaction(
+      () => pinDuckDbMeasurement(this.connection, measurementCode),
+      (result) => result.changed && result.pin
+        ? [replicaUpsert("pinned-measurement", measurementCode, result.pin)]
+        : []
+    ).then((result) => ({
+      measurementCode,
+      isPinned: true,
+      pinnedAt: result.pin?.pinnedAt
+    }));
+  }
+
+  async unpinMeasurement(measurementCode: string): Promise<MeasurementPinState> {
+    this.assertOpen();
+    return this.transaction(
+      () => unpinDuckDbMeasurement(this.connection, measurementCode),
+      (result) => result.changed ? [replicaTombstone("pinned-measurement", measurementCode)] : []
+    ).then(() => ({ measurementCode, isPinned: false }));
   }
 
   async dailyMetrics(measurementCode?: string): Promise<DuckDbDailyMetric[]> {

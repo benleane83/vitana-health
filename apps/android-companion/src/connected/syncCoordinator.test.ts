@@ -17,7 +17,7 @@ const identity = {
 
 function page(kind: ReplicaPage["kind"], complete: boolean, changes: ReplicaPage["changes"]): ReplicaPage {
   return {
-    protocolVersion: 1,
+    protocolVersion: 2,
     ...identity,
     kind,
     changes,
@@ -60,7 +60,7 @@ describe("connected replica sync coordinator", () => {
     const get = vi.fn(async (path: string) => {
       if (path.endsWith("/handshake")) {
         await gate;
-        return { protocolVersion: 1, ...identity, highWaterMark: { revision: 0, sequence: 0 } };
+        return { protocolVersion: 2, ...identity, highWaterMark: { revision: 0, sequence: 0 } };
       }
       if (path.includes("/snapshot")) {
         return page("snapshot", true, [{
@@ -131,7 +131,7 @@ describe("connected replica sync coordinator", () => {
     const coordinator = new ReplicaSyncCoordinator(
       new ReplicaClient({
         get: async () => ({
-          protocolVersion: 1,
+          protocolVersion: 2,
           ...identity,
           serverInstanceId: "f60e92e9-f145-449e-ad3b-22dca8bc8ac7",
           highWaterMark: { revision: 0, sequence: 0 }
@@ -152,7 +152,7 @@ describe("connected replica sync coordinator", () => {
     const get = vi.fn(async (path: string) => {
       requested.push(path);
       if (path.endsWith("/handshake")) {
-        return { protocolVersion: 1, ...identity, highWaterMark: { revision: 1, sequence: 1 } };
+        return { protocolVersion: 2, ...identity, highWaterMark: { revision: 1, sequence: 1 } };
       }
       if (path.includes("/snapshot")) {
         if (!path.includes("cursor=")) return page("snapshot", false, [profileChange]);
@@ -186,7 +186,7 @@ describe("connected replica sync coordinator", () => {
     const get = vi.fn(async (path: string) => {
       requested.push(path);
       if (path.endsWith("/handshake")) {
-        return { protocolVersion: 1, ...identity, highWaterMark: { revision: 1, sequence: 1 } };
+        return { protocolVersion: 2, ...identity, highWaterMark: { revision: 1, sequence: 1 } };
       }
       if (path.includes("/snapshot")) return page("snapshot", true, [profileChange]);
       return page("delta", true, []);

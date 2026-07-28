@@ -399,6 +399,20 @@ describe("central owner authorization", () => {
     expect(detail.body.entries).toHaveLength(1);
     expect(detail.body.entries[0]).toMatchObject({ measurementCode: "weight", value: 72 });
 
+    const companionPin = await request(app).put("/api/summary/weight/pin?profileId=self").set(companion);
+    expect(companionPin.status).toBe(403);
+
+    const pinned = await request(app).put("/api/summary/weight/pin").set("authorization", ownerAuthorization);
+    expect(pinned.status).toBe(200);
+    expect(pinned.body).toMatchObject({ measurementCode: "weight", isPinned: true });
+    expect((await request(app).get("/api/summary/weight").set("authorization", ownerAuthorization)).body.isPinned).toBe(true);
+    expect((await storeManager.getStore("self").exportData()).pinnedMeasurements[0]).toMatchObject({ measurementCode: "weight" });
+    expect((await storeManager.getStore("phone-profile").exportData()).pinnedMeasurements).toEqual([]);
+
+    const unpinned = await request(app).delete("/api/summary/weight/pin").set("authorization", ownerAuthorization);
+    expect(unpinned.status).toBe(200);
+    expect(unpinned.body).toEqual({ measurementCode: "weight", isPinned: false });
+
     const commit = await request(app)
       .post("/api/import/body-composition/commit")
       .set(companion)

@@ -6,7 +6,7 @@ function store(overrides: Record<string, unknown> = {}) {
     schemaVersion: CURRENT_SCHEMA_VERSION,
     profile: { id: "self", displayName: "Test", units: "metric", updatedAt: "2026-01-01T00:00:00.000Z" },
     sourceImports: [], dataSources: [], devices: [], measurementTypes: [], observations: [], observationGroups: [],
-    timeSeriesSamples: [], activitySessions: [], personalReferenceRanges: [], insights: [], auditEvents: [],
+    timeSeriesSamples: [], activitySessions: [], personalReferenceRanges: [], pinnedMeasurements: [], insights: [], auditEvents: [],
     ...overrides
   };
 }
@@ -24,6 +24,16 @@ describe("persisted health store schema", () => {
     expect(result).toMatchObject({
       migrated: true,
       data: { schemaVersion: CURRENT_SCHEMA_VERSION, personalReferenceRanges: [] }
+    });
+  });
+
+  it("migrates v7 stores with an empty pinned measurement collection", () => {
+    const legacy = store({ schemaVersion: 7 });
+    delete legacy.pinnedMeasurements;
+
+    expect(parsePersistedHealthStore(legacy)).toMatchObject({
+      migrated: true,
+      data: { schemaVersion: CURRENT_SCHEMA_VERSION, pinnedMeasurements: [] }
     });
   });
 

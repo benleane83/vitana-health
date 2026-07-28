@@ -75,6 +75,26 @@ describe("createApiClient", () => {
     });
   });
 
+  it("pins and unpins encoded measurement codes", async () => {
+    const seen: ApiTransportRequest[] = [];
+    const client = createApiClient(async (request) => {
+      seen.push(request);
+      return response({
+        measurementCode: "blood pressure",
+        isPinned: request.method === "PUT",
+        ...(request.method === "PUT" ? { pinnedAt: "2026-07-28T12:00:00.000Z" } : {})
+      });
+    });
+
+    await client.pinMeasurement("blood pressure");
+    await client.unpinMeasurement("blood pressure");
+
+    expect(seen.map(({ path, method }) => ({ path, method }))).toEqual([
+      { path: "/api/summary/blood%20pressure/pin", method: "PUT" },
+      { path: "/api/summary/blood%20pressure/pin", method: "DELETE" }
+    ]);
+  });
+
   it("updates and deletes encoded observation IDs", async () => {
     const seen: ApiTransportRequest[] = [];
     const transport = async (request: ApiTransportRequest) => {

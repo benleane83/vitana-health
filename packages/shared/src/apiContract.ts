@@ -18,6 +18,7 @@ import type {
   HealthEvent,
   HealthEventMutationResponse,
   Insight,
+  MeasurementPinState,
   Profile,
   ProfilePhotoResponse,
   ProfileListEntry,
@@ -294,6 +295,11 @@ export const healthDataSummaryResponseSchema = objectResponseSchema<HealthDataSu
 export const healthDataDetailResponseSchema = objectResponseSchema<HealthDataDetail>();
 export const healthDataChartSeriesResponseSchema = objectResponseSchema<HealthDataChartSeries>();
 export const referenceRangeStateResponseSchema = objectResponseSchema<ReferenceRangeState>();
+export const measurementPinStateResponseSchema: z.ZodType<MeasurementPinState> = z.object({
+  measurementCode: z.string().trim().min(1),
+  isPinned: z.boolean(),
+  pinnedAt: z.string().datetime({ offset: true }).optional()
+}).strict();
 export const profileResponseSchema = objectResponseSchema<Profile>();
 export const cloudAiConsentResponseSchema = objectResponseSchema<CloudAiConsent>();
 export const bodyCompositionDraftResponseSchema = objectResponseSchema<BodyCompositionDraft>();

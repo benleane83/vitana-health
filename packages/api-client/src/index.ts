@@ -28,6 +28,7 @@ import {
   mobileMigrationReceiptSchema,
   mobileMigrationStartRequestSchema,
   mobileMigrationStartResponseSchema,
+  measurementPinStateResponseSchema,
   paginatedCareItemsResponseSchema,
   paginatedHealthEventsResponseSchema,
   personalReferenceRangeInputSchema,
@@ -152,6 +153,18 @@ export function createApiClient(transport: ApiTransport) {
       request(
         referenceRangeStateResponseSchema,
         `/api/summary/${encodeURIComponent(measurementCode)}/reference-range`,
+        { method: "DELETE" }
+      ),
+    pinMeasurement: (measurementCode: string) =>
+      request(
+        measurementPinStateResponseSchema,
+        `/api/summary/${encodeURIComponent(measurementCode)}/pin`,
+        { method: "PUT" }
+      ),
+    unpinMeasurement: (measurementCode: string) =>
+      request(
+        measurementPinStateResponseSchema,
+        `/api/summary/${encodeURIComponent(measurementCode)}/pin`,
         { method: "DELETE" }
       ),
     importManualObservations: (payload: ManualObservationPayload) =>

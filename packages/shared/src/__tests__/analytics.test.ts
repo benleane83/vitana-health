@@ -11,6 +11,8 @@ function makeEmptyStore(): HealthStoreData {
     dataSources: [],
     devices: [],
     measurementTypes: defaultMeasurementTypes,
+    personalReferenceRanges: [],
+    pinnedMeasurements: [],
     observations: [],
     observationGroups: [],
     timeSeriesSamples: [],
@@ -93,6 +95,35 @@ describe("computeAnalytics — latestMetrics", () => {
     const result = computeAnalytics(store);
     expect(result.latestMetrics).toHaveLength(12);
     expect(result.latestMetricsForInsight).toHaveLength(13);
+  });
+
+  it("places all pinned metrics first without changing insight recency", () => {
+    const store = makeEmptyStore();
+    const measurementTypes = defaultMeasurementTypes.slice(0, 14);
+    store.measurementTypes = measurementTypes;
+    store.observations = measurementTypes.map((type, index) => makeObservation({
+      id: `o${index}`,
+      measurementCode: type.code,
+      observedAt: new Date(Date.UTC(2026, 0, index + 1)).toISOString(),
+      value: index + 1,
+      unit: type.canonicalUnit,
+      sourceId: "src1"
+    }));
+    store.pinnedMeasurements = [
+      { measurementCode: measurementTypes[0].code, pinnedAt: "2026-02-01T00:00:00.000Z" },
+      { measurementCode: measurementTypes[1].code, pinnedAt: "2026-02-02T00:00:00.000Z" }
+    ];
+
+    const result = computeAnalytics(store);
+
+    expect(result.latestMetrics).toHaveLength(14);
+    expect(result.latestMetrics.slice(0, 2).map((metric) => metric.code)).toEqual([
+      measurementTypes[1].code,
+      measurementTypes[0].code
+    ]);
+    expect(result.latestMetrics.slice(0, 2).every((metric) => metric.isPinned)).toBe(true);
+    expect(result.latestMetricsForInsight?.[0].code).toBe(measurementTypes[13].code);
+    expect(result.evidenceDigest[1]).toContain(measurementTypes[13].display);
   });
 });
 

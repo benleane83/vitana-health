@@ -5,6 +5,7 @@ import { chartSeriesFromDetail } from "./chartSeries";
 function detail(aggregation: HealthDataDetail["measurement"]["aggregation"]): HealthDataDetail {
   return {
     generatedAt: "2026-07-26T00:00:00.000Z",
+    isPinned: false,
     measurement: {
       code: "steps",
       displayName: "Steps",

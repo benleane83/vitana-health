@@ -86,7 +86,7 @@ describe("connected replica repository", () => {
       })
     ];
     await store.applyReplicaPage({
-      protocolVersion: 1,
+      protocolVersion: 2,
       ...identity,
       kind: "snapshot",
       changes,

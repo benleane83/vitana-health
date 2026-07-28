@@ -14,6 +14,7 @@
     "@vitana/shared": "file:../../packages/shared",
     "@vitejs/plugin-react": "^4.3.4",
     "downshift": "^9.4.0",
+    "lucide-react": "^1.25.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "vite": "^6.2.1"

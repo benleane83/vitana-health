@@ -39,11 +39,11 @@ describe("replica network", () => {
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({ protocolVersion: 1 })
+        json: async () => ({ protocolVersion: 2 })
       });
 
     await expect(createReplicaNetwork(connection, 60_000).get("/api/companion/sync/handshake"))
-      .resolves.toEqual({ protocolVersion: 1 });
+      .resolves.toEqual({ protocolVersion: 2 });
 
     expect(mocks.pinnedFetch).toHaveBeenCalledTimes(2);
     expect(mocks.pinnedFetch).toHaveBeenLastCalledWith(

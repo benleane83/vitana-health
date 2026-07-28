@@ -22,6 +22,7 @@ import type {
   HealthEventMutationResponse,
   HealthStoreData,
   LinkedCareItemConflict,
+  MeasurementPinState,
   MobileMigrationBatch,
   MobileMigrationBatchAcknowledgement,
   MobileMigrationManifest,
@@ -155,6 +156,8 @@ export interface ProfileRepository {
     input: PersonalReferenceRangeInput
   ): Promise<ReferenceRangeState>;
   deletePersonalReferenceRange(measurementCode: string): Promise<ReferenceRangeState>;
+  pinMeasurement(measurementCode: string): Promise<MeasurementPinState>;
+  unpinMeasurement(measurementCode: string): Promise<MeasurementPinState>;
   runCompiledQuery(sql: string): Promise<Array<Record<string, unknown>>>;
   close(): Promise<void>;
 }

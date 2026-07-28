@@ -56,6 +56,7 @@ describe("encrypted DuckDB companion replica", () => {
         priority: "normal",
         status: "open"
       });
+      await repository.pinMeasurement("weight");
 
       const snapshotChanges = [...(firstPage?.changes ?? [])];
       let offset = firstPage?.nextOffset;
@@ -85,11 +86,18 @@ describe("encrypted DuckDB companion replica", () => {
           entityId: createdCareItem.careItem.id,
           operation: "upsert",
           payload: expect.objectContaining({ title: "Book follow-up" })
+        }),
+        expect.objectContaining({
+          entityType: "pinned-measurement",
+          entityId: "weight",
+          operation: "upsert",
+          payload: expect.objectContaining({ measurementCode: "weight" })
         })
       ]));
 
       await repository.deleteObservation(original.id);
       await repository.deleteCareItem(createdCareItem.careItem.id);
+      await repository.unpinMeasurement("weight");
       const deletePage = await repository.replicaDeltaPage(updatePage.highWaterMark.sequence, undefined, 100);
       expect(deletePage.changes).toEqual(expect.arrayContaining([
         expect.objectContaining({
@@ -100,6 +108,11 @@ describe("encrypted DuckDB companion replica", () => {
         expect.objectContaining({
           entityType: "care-item",
           entityId: createdCareItem.careItem.id,
+          operation: "tombstone"
+        }),
+        expect.objectContaining({
+          entityType: "pinned-measurement",
+          entityId: "weight",
           operation: "tombstone"
         })
       ]));

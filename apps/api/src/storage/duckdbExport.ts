@@ -93,6 +93,13 @@ export async function snapshot(
     unit: row.unit,
     updatedAt: isoTimestamp(row.updated_at)
   }));
+  const pinnedMeasurements = (await all(
+    connection,
+    "SELECT measurement_code, pinned_at FROM pinned_measurements ORDER BY pinned_at, measurement_code;"
+  )).map((row) => ({
+    measurementCode: String(row.measurement_code),
+    pinnedAt: isoTimestamp(row.pinned_at)
+  }));
   const observationGroups = (await orderedRows(connection, "observation_groups")).map((row) => compact({
     id: row.id,
     kind: row.kind,
@@ -182,6 +189,7 @@ export async function snapshot(
     devices,
     measurementTypes,
     personalReferenceRanges,
+    pinnedMeasurements,
     observations,
     observationGroups,
     timeSeriesSamples,
@@ -225,6 +233,8 @@ export async function insertStore(connection: duckdb.Connection, store: HealthSt
       entry.measurementCode, entry.normalLow ?? null, entry.normalHigh ?? null,
       entry.optimalLow ?? null, entry.optimalHigh ?? null, entry.unit, entry.updatedAt
     ]));
+  await insertRows(connection, "INSERT INTO pinned_measurements VALUES (?, ?);",
+    store.pinnedMeasurements.map((entry) => [entry.measurementCode, entry.pinnedAt]));
   await insertRows(connection, "INSERT INTO observation_groups VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
     store.observationGroups.map((entry, ordinal) => [ordinal, entry.id, entry.kind, entry.label, entry.sourceId ?? null,
       entry.importId ?? null, entry.startAt ?? null, entry.endAt ?? null, entry.collectedAt ?? null, optionalJsonValue(entry.metadata)]));

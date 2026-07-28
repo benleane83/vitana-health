@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
 import { App } from "../App.js";
+import { api } from "../api.js";
 import { defaultMeasurementTypes, type HealthStoreData } from "@vitana/shared";
 
 // ─── Minimal fetch mock ────────────────────────────────────────────────────────
@@ -15,6 +16,7 @@ function makeEmptyStore(): HealthStoreData {
     devices: [],
     measurementTypes: [],
     personalReferenceRanges: [],
+    pinnedMeasurements: [],
     observations: [],
     observationGroups: [],
     timeSeriesSamples: [],
@@ -671,6 +673,43 @@ describe("App — import tab", () => {
 });
 
 describe("App — measurement detail", () => {
+  it("pins an unpinned measurement through the accessible detail action", async () => {
+    globalThis.history.replaceState({}, "", "/track/glucose");
+    const pinMeasurement = vi.spyOn(api, "pinMeasurement");
+    const detail = {
+      generatedAt: "2026-07-14T00:00:00.000Z",
+      isPinned: false,
+      measurement: {
+        code: "glucose", displayName: "Glucose", category: "lab", canonicalUnit: "mmol/L",
+        counts: { observations: 0, samples: 0, activities: 0, total: 0 }
+      },
+      entries: [], chartPoints: [], referenceRange: { source: "none" },
+      counts: { observations: 0, samples: 0, activities: 0, total: 0 },
+      deletion: { observationEntries: 0, deletableEntries: 0 },
+      pagination: { limit: 50, loaded: 0, total: 0, hasMore: false }
+    };
+    global.fetch = mockFetch({
+      "/api/store": { ...makeEmptyStore(), measurementTypes: defaultMeasurementTypes },
+      "/api/analytics": makeEmptyAnalytics(),
+      "/api/profiles": { profiles: [], activeProfileId: "self" },
+      "/api/summary/glucose/pin": { measurementCode: "glucose", isPinned: true, pinnedAt: "2026-07-28T12:00:00.000Z" },
+      "/api/summary/glucose/chart": {
+        generatedAt: "2026-07-14T00:00:00.000Z", measurementCode: "glucose", range: "all", requestedMode: "auto",
+        granularity: "raw", aggregation: "average", totalPoints: 0, truncated: false, points: []
+      },
+      "/api/summary/glucose": detail,
+      "/api/summary": { generatedAt: "2026-07-14T00:00:00.000Z", totals: { observations: 0, samples: 0, activities: 0, total: 0, types: 0 }, categories: [] }
+    });
+
+    render(<App />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Pin measurement" })).toBeEnabled());
+    const pin = screen.getByRole("button", { name: "Pin measurement" });
+    expect(pin).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(pin);
+
+    await waitFor(() => expect(pinMeasurement).toHaveBeenCalledWith("glucose"));
+  });
+
   it("presents Health Connect provenance without transport metadata", async () => {
     globalThis.history.replaceState({}, "", "/track/steps");
     global.fetch = mockFetch({

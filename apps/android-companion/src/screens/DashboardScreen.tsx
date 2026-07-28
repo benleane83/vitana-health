@@ -2,13 +2,14 @@ import { RefreshControl, ScrollView, StyleSheet, Text, View, Pressable } from "r
 import { CompositeNavigationProp, useNavigation } from "@react-navigation/native";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { ChevronRight, Database, MonitorSmartphone } from "lucide-react-native";
+import { ChevronRight, Database, MonitorSmartphone, Pin } from "lucide-react-native";
 import { isUtcMidnightTimestamp } from "@vitana/shared";
 import { useMobileApi } from "../MobileApiProvider";
 import type { RootStackParamList, TabParamList } from "../navigationTypes";
 import { Button, Card, Loading, Message, Screen } from "../ui/components";
 import { colors, radii, spacing, type } from "../ui/theme";
 import { ProfileAvatar } from "../ui/ProfileAvatar";
+import { dashboardMetrics } from "./dashboardMetrics";
 
 type DashboardNavigation = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, "Dashboard">,
@@ -55,7 +56,7 @@ export function DashboardScreen() {
   }
 
   const counts = analytics.counts;
-  const visibleMetrics = analytics.latestMetrics.slice(0, 4);
+  const visibleMetrics = dashboardMetrics(analytics.latestMetrics);
   const connectionLabel = demoMode
     ? "Sample data · edits reset on restart"
     : standaloneMode
@@ -111,7 +112,7 @@ export function DashboardScreen() {
               const observed = formatObservedDate(metric.observedAt);
               return (
                 <Pressable
-                  accessibilityLabel={`${metric.label}, ${metric.value} ${metric.unit}, ${observed}`}
+                  accessibilityLabel={`${metric.label}, ${metric.value} ${metric.unit}, ${observed}${metric.isPinned ? ", pinned" : ""}`}
                   accessibilityRole="button"
                   key={metric.code}
                   onPress={() => navigation.navigate("TrackDetail", {
@@ -120,7 +121,10 @@ export function DashboardScreen() {
                   })}
                   style={({ pressed }) => [styles.metricTile, pressed && styles.pressed]}
                 >
-                  <Text numberOfLines={2} style={styles.metricName}>{metric.label}</Text>
+                  <View style={styles.metricHeading}>
+                    <Text numberOfLines={2} style={styles.metricName}>{metric.label}</Text>
+                    {metric.isPinned ? <Pin accessibilityElementsHidden color={colors.primary} fill={colors.primary} size={15} /> : null}
+                  </View>
                   <Text numberOfLines={1} adjustsFontSizeToFit style={styles.metricValue}>
                     {metric.value} <Text style={styles.metricUnit}>{metric.unit}</Text>
                   </Text>
@@ -190,8 +194,9 @@ const styles = StyleSheet.create({
   viewAllText: { color: colors.primary, fontSize: type.body, fontWeight: "700" },
   metricGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   metricTile: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, flexBasis: "47%", flexGrow: 1, gap: spacing.xs, minHeight: 128, padding: spacing.md },
+  metricHeading: { alignItems: "flex-start", flexDirection: "row", gap: spacing.xs, justifyContent: "space-between" },
   pressed: { opacity: 0.8 },
-  metricName: { color: colors.muted, fontSize: type.label, fontWeight: "700", minHeight: 30 },
+  metricName: { color: colors.muted, flex: 1, fontSize: type.label, fontWeight: "700", minHeight: 30 },
   metricValue: { color: colors.primaryStrong, fontSize: 22, fontWeight: "800" },
   metricUnit: { color: colors.muted, fontSize: type.label, fontWeight: "700" },
   metricDate: { color: colors.muted, fontSize: type.label },

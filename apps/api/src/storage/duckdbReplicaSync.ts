@@ -30,6 +30,7 @@ const collections: Array<{
 }> = [
   { entityType: "measurement-type", key: "measurementTypes", id: (value) => value.code },
   { entityType: "personal-reference-range", key: "personalReferenceRanges", id: (value) => value.measurementCode },
+  { entityType: "pinned-measurement", key: "pinnedMeasurements", id: (value) => value.measurementCode },
   { entityType: "source-import", key: "sourceImports", id: (value) => value.id },
   { entityType: "data-source", key: "dataSources", id: (value) => value.id },
   { entityType: "device", key: "devices", id: (value) => value.id },

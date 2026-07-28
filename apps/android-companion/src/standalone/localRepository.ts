@@ -161,6 +161,7 @@ export class LocalProfileRepository implements MobileProfileRepository {
     });
     return {
       generatedAt: new Date().toISOString(),
+      isPinned: false,
       measurement: {
         code: measurementCode,
         displayName,
