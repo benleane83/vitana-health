@@ -13,6 +13,9 @@ import {
   mergeHealthDataDetail,
   observationCalendarDate,
   usesDateOnlyObservation,
+  type HealthDataChartMode,
+  type HealthDataChartRange,
+  type HealthDataChartSeries,
   type HealthDataDetail,
   type HealthDataDetailEntry
 } from "@vitana/shared";
@@ -29,12 +32,18 @@ export function TrackDetailScreen({ route }: Props) {
   const {
     connectionState,
     deleteObservation,
+    healthDataChartSeries,
     healthDataDetail,
     importManualObservations,
     refreshTrack,
     updateObservation
   } = useMobileApi();
   const [detail, setDetail] = useState<HealthDataDetail>();
+  const [chartSeries, setChartSeries] = useState<HealthDataChartSeries>();
+  const [chartRange, setChartRange] = useState<HealthDataChartRange>("all");
+  const [chartMode, setChartMode] = useState<HealthDataChartMode>("auto");
+  const [chartLoading, setChartLoading] = useState(true);
+  const [chartError, setChartError] = useState<string>();
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -66,6 +75,21 @@ export function TrackDetailScreen({ route }: Props) {
     });
     return () => { current = false; };
   }, [healthDataDetail, route.params.measurementCode]);
+
+  useEffect(() => {
+    let current = true;
+    setChartSeries(undefined);
+    setChartLoading(true);
+    setChartError(undefined);
+    void healthDataChartSeries(route.params.measurementCode, { range: chartRange, mode: chartMode }).then((value) => {
+      if (current) setChartSeries(value);
+    }).catch((caught: unknown) => {
+      if (current) setChartError(userFacingError(caught, "Unable to load this trend. Try again."));
+    }).finally(() => {
+      if (current) setChartLoading(false);
+    });
+    return () => { current = false; };
+  }, [chartMode, chartRange, healthDataChartSeries, route.params.measurementCode]);
 
   useEffect(() => () => {
     if (deletionTimer.current) clearTimeout(deletionTimer.current);
@@ -119,8 +143,12 @@ export function TrackDetailScreen({ route }: Props) {
     }
 
     async function refreshAfterMutation(message: string, entryId?: string, title = "Updated") {
-      const next = await healthDataDetail(route.params.measurementCode);
+      const [next, nextChartSeries] = await Promise.all([
+        healthDataDetail(route.params.measurementCode),
+        healthDataChartSeries(route.params.measurementCode, { range: chartRange, mode: chartMode })
+      ]);
       setDetail(next);
+      setChartSeries(nextChartSeries);
       setActionFeedback({ entryId, detail: message, title, tone: "success" });
       await refreshTrack();
     }
@@ -181,7 +209,10 @@ export function TrackDetailScreen({ route }: Props) {
             note: draft.note.trim() || undefined
           }]
         });
-        const next = await healthDataDetail(route.params.measurementCode);
+        const [next, nextChartSeries] = await Promise.all([
+          healthDataDetail(route.params.measurementCode),
+          healthDataChartSeries(route.params.measurementCode, { range: chartRange, mode: chartMode })
+        ]);
         const addedEntry = next.entries.find((entry) =>
           entry.kind === "observation" &&
           entry.timestamp === observedAt &&
@@ -189,6 +220,7 @@ export function TrackDetailScreen({ route }: Props) {
           entry.unit === unit
         );
         setDetail(next);
+        setChartSeries(nextChartSeries);
         setAdding(false);
         setSelectedEntryId(addedEntry?.id);
         setActionFeedback({
@@ -298,7 +330,16 @@ export function TrackDetailScreen({ route }: Props) {
         </Card>
         <Card>
           <Text style={styles.heading}>Trend</Text>
-          <TrendChart detail={detail} />
+          <TrendChart
+            busy={chartLoading}
+            detail={detail}
+            error={chartError}
+            mode={chartMode}
+            onModeChange={setChartMode}
+            onRangeChange={setChartRange}
+            range={chartRange}
+            series={chartSeries}
+          />
         </Card>
         <View style={styles.historyHeader}>
           <Text style={styles.heading}>History</Text>
@@ -601,19 +642,62 @@ function ReadingStatus({ entry }: { entry: HealthDataDetailEntry }) {
   );
 }
 
-function TrendChart({ detail }: { detail: HealthDataDetail }) {
-  const baseDomain = calculateChartDomain(detail.chartPoints);
-  const latestPoint = detail.chartPoints.at(-1);
+const trendRanges: Array<{ value: HealthDataChartRange; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "1y", label: "1Y" },
+  { value: "3m", label: "3M" },
+  { value: "1m", label: "1M" }
+];
+
+function TrendChart({
+  busy,
+  detail,
+  error,
+  mode,
+  onModeChange,
+  onRangeChange,
+  range,
+  series
+}: {
+  busy: boolean;
+  detail: HealthDataDetail;
+  error?: string;
+  mode: HealthDataChartMode;
+  onModeChange: (mode: HealthDataChartMode) => void;
+  onRangeChange: (range: HealthDataChartRange) => void;
+  range: HealthDataChartRange;
+  series?: HealthDataChartSeries;
+}) {
+  const chartPoints = (series?.points ?? []).map((point) => ({ ...point, kind: "observation" as const }));
+  const baseDomain = calculateChartDomain(chartPoints);
+  const latestPoint = chartPoints.at(-1);
   const [selectedTimestamp, setSelectedTimestamp] = useState(latestPoint?.timestamp);
 
   useEffect(() => {
     setSelectedTimestamp(latestPoint?.timestamp);
   }, [detail.measurement.code, latestPoint?.timestamp]);
 
-  if (!baseDomain) return <Text style={styles.meta}>No numeric trend points.</Text>;
+  const controls = (
+    <>
+      <View accessibilityLabel="Trend chart range" accessibilityRole="radiogroup" style={styles.chartControls}>
+        {trendRanges.map((option) => (
+          <ChartToggle key={option.value} label={option.label} onPress={() => onRangeChange(option.value)} selected={range === option.value} />
+        ))}
+      </View>
+      {series?.aggregation !== "latest" ? (
+        <View accessibilityLabel="Trend chart display" accessibilityRole="radiogroup" style={styles.chartControls}>
+          <ChartToggle label="Adaptive" onPress={() => onModeChange("auto")} selected={mode === "auto"} />
+          <ChartToggle label="Readings" onPress={() => onModeChange("raw")} selected={mode === "raw"} />
+        </View>
+      ) : null}
+    </>
+  );
+  if (!baseDomain) {
+    return <View style={styles.chart}>{controls}<Text style={styles.meta}>{busy ? "Loading trend…" : error ?? "No numeric trend points in this range."}</Text></View>;
+  }
   const referenceRange = detail.referenceRange.effective;
   const chartReferenceRange = referenceRange &&
-    detail.chartPoints.every((point) => point.unit === referenceRange.unit)
+    chartPoints.every((point) => point.unit === referenceRange.unit)
     ? referenceRange
     : undefined;
   const referenceBounds = [chartReferenceRange?.low, chartReferenceRange?.high]
@@ -631,7 +715,7 @@ function TrendChart({ detail }: { detail: HealthDataDetail }) {
   const chartBottom = 126;
   const xRange = domain.xMax - domain.xMin || 1;
   const yRange = domain.yMax - domain.yMin || 1;
-  const points = detail.chartPoints.map((point) => ({
+  const points = chartPoints.map((point) => ({
     ...point,
     x: chartLeft + ((Date.parse(point.timestamp) - domain.xMin) / xRange) * (chartRight - chartLeft),
     y: chartBottom - ((point.value - domain.yMin) / yRange) * (chartBottom - chartTop)
@@ -642,6 +726,8 @@ function TrendChart({ detail }: { detail: HealthDataDetail }) {
     `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(" ");
   return (
     <View style={styles.chart}>
+      {controls}
+      {error ? <Text accessibilityRole="alert" style={styles.errorText}>{error}</Text> : null}
       {selectedPoint ? (
         <View accessibilityLiveRegion="polite" style={styles.chartReading}>
           <Text style={styles.chartReadingValue}>{formatChartValue(selectedPoint.value)} {selectedPoint.unit}</Text>
@@ -708,6 +794,19 @@ function TrendChart({ detail }: { detail: HealthDataDetail }) {
   );
 }
 
+function ChartToggle({ label, onPress, selected }: { label: string; onPress: () => void; selected: boolean }) {
+  return (
+    <Pressable
+      accessibilityRole="radio"
+      accessibilityState={{ checked: selected }}
+      onPress={onPress}
+      style={[styles.chartToggle, selected && styles.chartToggleSelected]}
+    >
+      <Text style={[styles.chartToggleText, selected && styles.chartToggleTextSelected]}>{label}</Text>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   content: { gap: spacing.md, paddingBottom: spacing.xl },
   titleRow: { alignItems: "flex-start", flexDirection: "row", gap: spacing.sm, justifyContent: "space-between" },
@@ -749,6 +848,12 @@ const styles = StyleSheet.create({
   dateValue: { color: colors.text, fontSize: 15, fontWeight: "700" },
   pickerSurface: { backgroundColor: colors.surfaceMuted, borderRadius: 8, gap: spacing.sm, padding: spacing.sm },
   chart: { gap: spacing.xs },
+  chartControls: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  chartToggle: { borderColor: colors.border, borderRadius: 999, borderWidth: 1, minHeight: 40, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  chartToggleSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chartToggleText: { color: colors.text, fontSize: 14, fontWeight: "700" },
+  chartToggleTextSelected: { color: colors.onAccent },
+  errorText: { color: colors.danger, fontSize: 14, lineHeight: 19 },
   chartReading: { alignItems: "baseline", flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   chartReadingValue: { color: colors.text, fontSize: 17, fontWeight: "800" },
   chartLegend: { alignItems: "center", flexDirection: "row", gap: spacing.sm },

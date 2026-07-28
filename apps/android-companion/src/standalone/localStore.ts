@@ -9,6 +9,8 @@ import type {
   ReplicaIdentity,
   ReplicaPage,
   SourceKind,
+  HealthDataChartSeries,
+  HealthDataChartSeriesOptions,
   UpdateObservationInput
 } from "@vitana/shared";
 
@@ -84,6 +86,11 @@ export interface LocalStore {
   latestObservationsByCode(): Promise<Observation[]>;
   observationAggregates(): Promise<LocalObservationAggregate[]>;
   observationsByCode(measurementCode: string, limit: number, offset: number): Promise<LocalObservationPage>;
+  observationChartSeries(
+    measurementCode: string,
+    aggregation: HealthDataChartSeries["aggregation"],
+    options: HealthDataChartSeriesOptions
+  ): Promise<HealthDataChartSeries>;
   updateObservation(id: string, input: UpdateObservationInput): Promise<Observation | undefined>;
   deleteObservation(id: string): Promise<Observation | undefined>;
   reset(): Promise<void>;

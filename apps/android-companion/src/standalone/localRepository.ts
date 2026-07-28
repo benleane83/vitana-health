@@ -7,6 +7,7 @@ import {
   resolveReferenceRange,
   type AppBootstrap,
   type HealthDataDetail,
+  type HealthDataChartSeriesOptions,
   type HealthDataSummary,
   type ManualObservationPayload,
   MobileMigrationReceipt,
@@ -193,6 +194,23 @@ export class LocalProfileRepository implements MobileProfileRepository {
         total: result.total,
         hasMore: offset + entries.length < result.total
       }
+    };
+  }
+
+  async healthDataChartSeries(measurementCode: string, options: HealthDataChartSeriesOptions) {
+    await this.ensureInitialized();
+    const measurement = defaultMeasurementTypes.find((candidate) => candidate.code === measurementCode);
+    const series = await this.store.observationChartSeries(
+      measurementCode,
+      measurement?.aggregation ?? "none",
+      options
+    );
+    return {
+      ...series,
+      points: series.points.map((point) => ({
+        ...point,
+        referenceRange: measurement ? getReferenceRange(measurement, point.unit) : undefined
+      }))
     };
   }
 

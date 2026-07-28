@@ -1,5 +1,7 @@
 import type {
   DataSource,
+  HealthDataChartSeries,
+  HealthDataChartSeriesOptions,
   MobileImportResult,
   MobileMigrationBatch,
   MobileMigrationManifest,
@@ -21,6 +23,7 @@ import {
   type LocalStore,
   type LocalStoreCounts
 } from "./localStore";
+import { chartSeriesFromPoints } from "../chartSeries";
 
 export interface MemoryLocalStoreState {
   profiles: Map<string, Profile>;
@@ -274,6 +277,22 @@ export class MemoryLocalStore implements LocalStore {
         };
       })
     };
+  }
+
+  async observationChartSeries(
+    measurementCode: string,
+    aggregation: HealthDataChartSeries["aggregation"],
+    options: HealthDataChartSeriesOptions
+  ) {
+    const points = this.profileValues(this.state.observations)
+      .filter((observation) => observation.measurementCode === measurementCode)
+      .map((observation) => ({
+        kind: "observation" as const,
+        timestamp: observation.observedAt,
+        value: observation.value,
+        unit: observation.unit
+      }));
+    return chartSeriesFromPoints(measurementCode, aggregation, points, options);
   }
 
   async updateObservation(id: string, input: UpdateObservationInput): Promise<Observation | undefined> {

@@ -7,6 +7,8 @@ import type {
   CompleteCareItemInput,
   CreateCareItemInput,
   CreateHealthEventInput,
+  HealthDataChartSeries,
+  HealthDataChartSeriesOptions,
   HealthDataDetail,
   HealthDataSummary,
   HealthEventListQuery,
@@ -78,6 +80,7 @@ interface MobileApiContextValue {
   refreshTrack(options?: { synchronize?: boolean }): Promise<void>;
   synchronizeConnectedData(force?: boolean): Promise<boolean>;
   healthDataDetail(measurementCode: string, page?: DetailPage): Promise<HealthDataDetail>;
+  healthDataChartSeries(measurementCode: string, options: HealthDataChartSeriesOptions): Promise<HealthDataChartSeries>;
   importManualObservations(payload: ManualObservationPayload): Promise<unknown>;
   updateObservation(id: string, input: UpdateObservationInput): Promise<void>;
   deleteObservation(id: string): Promise<void>;
@@ -348,6 +351,14 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     }
   }, [classifyError, operatingMode]);
 
+  const healthDataChartSeries = useCallback(async (
+    measurementCode: string,
+    options: HealthDataChartSeriesOptions
+  ) => {
+    if (!source) throw new Error("Health data is unavailable while the companion is disconnected.");
+    return source.healthDataChartSeries(measurementCode, options);
+  }, [source]);
+
   const importManualObservations = useCallback(async (payload: ManualObservationPayload) => {
     return runMutation(async () => {
       if (!source) throw new Error("Manual import is unavailable until a data source is ready.");
@@ -550,6 +561,7 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     refreshTrack,
     synchronizeConnectedData,
     healthDataDetail,
+    healthDataChartSeries,
     importManualObservations,
     updateObservation,
     deleteObservation,
@@ -568,10 +580,10 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     disconnect
   }), [
     analytics, bootstrap, cancelPendingConnection, clearTransientData, completeCareItem, connection, connectionState, createCareItem, createHealthEvent,
-    dashboardLoading, deleteCareItem, deleteHealthEvent, deleteObservation, demoMode, discardStandaloneDataAndConnect, disconnect, error, healthDataDetail,
-  importManualObservations, listCareItems, listHealthEvents, operatingMode, refreshAfterImport, refreshDashboard,
-  profilePhoto, refreshTrack, reloadConnection, resetStandaloneData, setDemoMode, setOperatingMode, summary, syncing, synchronizeConnectedData, trackLoading,
-  migrateStandaloneData, migrationProgress, standaloneMigrationManifest, transientRevision, updateCareItem, updateHealthEvent, updateObservation
+    dashboardLoading, deleteCareItem, deleteHealthEvent, deleteObservation, demoMode, discardStandaloneDataAndConnect, disconnect, error, healthDataChartSeries, healthDataDetail,
+    importManualObservations, listCareItems, listHealthEvents, operatingMode, refreshAfterImport, refreshDashboard,
+    profilePhoto, refreshTrack, reloadConnection, resetStandaloneData, setDemoMode, setOperatingMode, summary, syncing, synchronizeConnectedData, trackLoading,
+    migrateStandaloneData, migrationProgress, standaloneMigrationManifest, transientRevision, updateCareItem, updateHealthEvent, updateObservation
   ]);
   return <MobileApiContext.Provider value={value}>{children}</MobileApiContext.Provider>;
 }

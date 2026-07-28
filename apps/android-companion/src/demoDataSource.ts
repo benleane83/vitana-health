@@ -26,6 +26,7 @@ import type {
   CompanionObservationMutationService,
   DetailPage
 } from "./companionDataSource";
+import { chartSeriesFromDetail } from "./chartSeries";
 
 interface DemoMetric {
   code: string;
@@ -63,6 +64,11 @@ export function createDemoDataSource(
       const detail = details.get(measurementCode);
       if (!detail) throw new Error("This metric is not available in demo mode.");
       return paginateDetail(detail, page);
+    },
+    async healthDataChartSeries(measurementCode, options) {
+      const detail = details.get(measurementCode);
+      if (!detail) throw new Error("This metric is not available in demo mode.");
+      return chartSeriesFromDetail(detail, options);
     },
     async importManualObservations(payload) {
       const additions = payload.observations.map((observation) => {

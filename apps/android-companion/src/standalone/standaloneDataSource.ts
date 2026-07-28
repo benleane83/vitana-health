@@ -28,13 +28,15 @@ export interface StandaloneMigrationSource {
 
 export function createStandaloneDataSource(): CompanionDataSource & CompanionMutationService & CompanionObservationMutationService & CompanionMaintenanceService & CompanionLifecycleService & StandaloneMigrationSource {
   let repository = createStandaloneRepository();
-  const getRepository = (): Promise<MobileProfileRepository> => repository;
+  const getRepository = (): Promise<MobileProfileRepository & Pick<LocalProfileRepository, "healthDataChartSeries">> => repository;
   return {
     bootstrap: async () => (await getRepository()).bootstrap(),
     analytics: async () => (await getRepository()).analytics(),
     summary: async () => (await getRepository()).summary(),
     healthDataDetail: async (measurementCode: string, page?: MobileDetailPage) =>
       (await getRepository()).healthDataDetail(measurementCode, page),
+    healthDataChartSeries: async (measurementCode, options) =>
+      (await getRepository()).healthDataChartSeries(measurementCode, options),
     updateObservation: async (id, input) => {
       const updated = await (await getRepository()).updateObservation(id, input);
       if (!updated) throw new Error("Observation not found.");
