@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Picker } from "@react-native-picker/picker";
+import { useIsFocused } from "@react-navigation/native";
 import {
   careItemKindCodes,
   careItemKindLabels,
@@ -27,6 +28,7 @@ import { userFacingError } from "../userFacingError";
 
 type CareView = "items" | "health-events";
 type EditorMode = "closed" | "create" | "edit" | "complete";
+type Feedback = { detail: string; tone: "success" | "danger" };
 
 const defaultHealthEvent: CreateHealthEventInput = {
   kind: "other",
@@ -45,6 +47,7 @@ const defaultCareItem: CreateCareItemInput = {
 };
 
 export function CareScreen() {
+  const isFocused = useIsFocused();
   const {
     connectionState,
     demoMode,
@@ -74,14 +77,14 @@ export function CareScreen() {
   const [careItemDraft, setCareItemDraft] = useState<CreateCareItemInput>(defaultCareItem);
   const [completionDraft, setCompletionDraft] = useState<CompleteCareItemInput>({ occurredAt: dateOnlyIso(new Date()), kind: "other" });
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string>();
+  const [feedback, setFeedback] = useState<Feedback>();
 
   const load = useCallback(async (synchronize = false) => {
     if (standaloneMode) {
       setItems([]);
       setEvents([]);
       setLoading(false);
-      setMessage(undefined);
+      setFeedback(undefined);
       return;
     }
     setLoading(true);
@@ -94,13 +97,21 @@ export function CareScreen() {
       setItems(nextItems.items);
       setEvents(nextEvents.items);
     } catch (caught) {
-      setMessage(userFacingError(caught, "Unable to load care data. Try again."));
+      setFeedback({ detail: userFacingError(caught, "Unable to load care data. Try again."), tone: "danger" });
     } finally {
       setLoading(false);
     }
   }, [careItemKindFilter, healthEventKindFilter, listCareItems, listHealthEvents, standaloneMode, synchronizeConnectedData]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (!isFocused) setFeedback(undefined);
+  }, [isFocused]);
+  useEffect(() => {
+    if (feedback?.tone !== "success") return;
+    const timeout = setTimeout(() => setFeedback(undefined), 4000);
+    return () => clearTimeout(timeout);
+  }, [feedback]);
   useEffect(() => {
     if (connectionState !== "online") {
       setEditorMode("closed");
@@ -122,10 +133,10 @@ export function CareScreen() {
       }
       setEditorMode("closed");
       setEditingId(undefined);
-      setMessage(view === "health-events" ? "Health event saved." : "Care item saved.");
+      setFeedback({ detail: view === "health-events" ? "Health event saved." : "Care item saved.", tone: "success" });
       await load();
     } catch (caught) {
-      setMessage(userFacingError(caught, "Unable to save care data. Try again."));
+      setFeedback({ detail: userFacingError(caught, "Unable to save care data. Try again."), tone: "danger" });
     } finally {
       setBusy(false);
     }
@@ -138,10 +149,10 @@ export function CareScreen() {
       await completeCareItem(editingId, completionDraft);
       setEditorMode("closed");
       setEditingId(undefined);
-      setMessage("Care item completed and health event recorded.");
+      setFeedback({ detail: "Care item completed and health event recorded.", tone: "success" });
       await load();
     } catch (caught) {
-      setMessage(userFacingError(caught, "Unable to complete this care item. Try again."));
+      setFeedback({ detail: userFacingError(caught, "Unable to complete this care item. Try again."), tone: "danger" });
     } finally {
       setBusy(false);
     }
@@ -152,16 +163,17 @@ export function CareScreen() {
     try {
       if (view === "health-events") await deleteHealthEvent(id);
       else await deleteCareItem(id);
-      setMessage(view === "health-events" ? "Health event deleted." : "Care item deleted.");
+      setFeedback({ detail: view === "health-events" ? "Health event deleted." : "Care item deleted.", tone: "success" });
       await load();
     } catch (caught) {
-      setMessage(userFacingError(caught, "Unable to delete care data. Try again."));
+      setFeedback({ detail: userFacingError(caught, "Unable to delete care data. Try again."), tone: "danger" });
     } finally {
       setBusy(false);
     }
   }
 
   function startCreate() {
+    setFeedback(undefined);
     setEditingId(undefined);
     setEditorMode("create");
     setHealthEventDraft(defaultHealthEvent);
@@ -169,6 +181,7 @@ export function CareScreen() {
   }
 
   function startEditHealthEvent(entry: HealthEvent) {
+    setFeedback(undefined);
     setView("health-events");
     setEditingId(entry.id);
     setHealthEventDraft({ kind: entry.kind, status: entry.status, occurredAt: entry.occurredAt, provider: entry.provider ?? "", notes: entry.notes ?? "" });
@@ -176,6 +189,7 @@ export function CareScreen() {
   }
 
   function startEditCareItem(entry: CareItem) {
+    setFeedback(undefined);
     setView("items");
     setEditingId(entry.id);
     setCareItemDraft({ title: entry.title, kind: normalizedCareItemKind(entry.kind), dueStart: entry.dueStart, reminderAt: entry.reminderAt, priority: entry.priority, status: entry.status, notes: entry.notes ?? "" });
@@ -183,6 +197,7 @@ export function CareScreen() {
   }
 
   function startCompleteCareItem(entry: CareItem) {
+    setFeedback(undefined);
     setView("items");
     setEditingId(entry.id);
     setCompletionDraft({
@@ -193,6 +208,7 @@ export function CareScreen() {
   }
 
   function switchView(nextView: CareView) {
+    setFeedback(undefined);
     setView(nextView);
     setEditorMode("closed");
     setEditingId(undefined);
@@ -213,7 +229,7 @@ export function CareScreen() {
 
   return (
     <Screen>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={loading || syncing} onRefresh={() => { void load(true); }} />}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={loading || syncing} onRefresh={() => { setFeedback(undefined); void load(true); }} />}>
         <View style={styles.headerRow}>
           <View style={styles.segmented}>
             {(["items", "health-events"] as const).map((value) => (
@@ -228,11 +244,12 @@ export function CareScreen() {
               </Pressable>
             ))}
           </View>
-          {canWrite ? <Button disabled={busy} onPress={startCreate}>{view === "items" ? "Add care item" : "Add health event"}</Button> : null}
+          {canWrite && editorMode === "closed" ? <Button disabled={busy} onPress={startCreate}>{view === "items" ? "Add care item" : "Add health event"}</Button> : null}
         </View>
         {demoMode ? <Message title="Demo mode is read-only" detail="Connect to your paired PC to create, edit, or delete care records." /> : null}
         {connectionState !== "online" ? <Message title={connectionState.replaceAll("-", " ")} detail={error ?? "Showing read-only Care data. Reconnect or pull to refresh."} tone="warning" /> : null}
-        {message ? <Message title="Care" detail={message} /> : null}
+        {feedback ? <Message title={feedback.tone === "success" ? "Care updated" : "Care error"} detail={feedback.detail} tone={feedback.tone} /> : null}
+        {editorMode === "closed" ? <>
         {view === "items" ? (
           <FormField label="Kind filter">
             <View style={styles.pickerField}>
@@ -283,6 +300,7 @@ export function CareScreen() {
             ) : null}
           </Card>
         ))}
+        </> : null}
         {editorMode !== "closed" ? (
           <Card>
             <Text style={styles.heading}>{editorMode === "complete" ? "Complete care item" : editorMode === "create" ? `New ${view === "health-events" ? "health event" : "care item"}` : `Edit ${view === "health-events" ? "health event" : "care item"}`}</Text>

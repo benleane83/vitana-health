@@ -123,7 +123,7 @@ function ImportSourceChooser({
     {
       source: "scan",
       title: "Scan a report",
-      detail: "Photograph a blood test or body composition report for review.",
+      detail: "Photograph a lab test or body composition report for review.",
       icon: ScanLine,
       color: colors.blush,
       background: colors.blushMuted
@@ -532,7 +532,7 @@ function ScanImport() {
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <View style={styles.chips}>
         <Chip disabled={busy} label="Body composition" selected={kind === "body-composition"} onPress={() => { setKind("body-composition"); resetReview(); }} />
-        <Chip disabled={busy} label="Blood test" selected={kind === "blood-test"} onPress={() => { setKind("blood-test"); resetReview(); }} />
+        <Chip disabled={busy} label="Lab test" selected={kind === "blood-test"} onPress={() => { setKind("blood-test"); resetReview(); }} />
       </View>
       {!draft ? (
         <Card>
