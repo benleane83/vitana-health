@@ -87,7 +87,9 @@ export function readNumber(value: string | undefined): number | undefined {
  */
 export function parseLocaleNumber(value: string | undefined): number | undefined {
   if (!value) return undefined;
-  const normalized = value.trim().replace(/[\u00A0\u202F]/g, " ").replace(/\s*([.,])\s*/g, "$1");
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 128) return undefined;
+  const normalized = trimmed.replace(/[\u00A0\u202F]/g, " ").replace(/\s*([.,])\s*/g, "$1");
   const match = /^([+-]?)([\d., ]+)$/.exec(normalized);
   if (!match) return undefined;
 
@@ -200,6 +202,7 @@ function isAsciiDigits(value: string): boolean {
 }
 
 function parseStructuredDate(value: string): StructuredDate | undefined {
+  if (value.length > 128) return undefined;
   const normalizedValue = value.trim().replace(/\s*([/\-.])\s*/g, "$1");
   let timeStart = normalizedValue.length;
   while (timeStart > 0 && !isWhitespace(normalizedValue[timeStart - 1])) timeStart -= 1;

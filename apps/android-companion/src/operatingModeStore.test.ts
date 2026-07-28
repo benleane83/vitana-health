@@ -37,11 +37,14 @@ describe("companion operating mode storage", () => {
     await expect(loadOperatingMode()).resolves.toBeNull();
   });
 
-  it("preserves connected mode for paired upgrades and defaults unpaired installs to standalone", () => {
-    expect(resolveOperatingMode(null, true)).toBe("connected");
-    expect(resolveOperatingMode(null, false)).toBe("standalone");
-    expect(resolveOperatingMode("standalone", true)).toBe("standalone");
-    expect(resolveOperatingMode("connected", false)).toBe("connected");
+  it.each([
+    [null, true, "connected"],
+    [null, false, "standalone"],
+    ["standalone", true, "standalone"],
+    ["connected", true, "connected"],
+    ["connected", false, "standalone"]
+  ] as const)("resolves stored mode %s with pairing %s to %s", (stored, paired, expected) => {
+    expect(resolveOperatingMode(stored, paired)).toBe(expected);
   });
 
   it("recreates the standalone source after leaving Demo mode", () => {

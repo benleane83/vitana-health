@@ -4,7 +4,7 @@ module.exports = {
   expo: {
     name: "Vitana",
     slug: "local-fitness-companion",
-    version: "1.0.0",
+    version: "0.1.0",
     orientation: "portrait",
     icon: "./assets/icon.png",
     userInterfaceStyle: "light",
@@ -63,7 +63,7 @@ module.exports = {
         }
       }]
     ],
-    runtimeVersion: "1.0.0",
+    runtimeVersion: { policy: "appVersion" },
     updates: {
       enabled: true,
       url: "https://u.expo.dev/2cc5cf1b-57e8-4e6f-8709-662259497a57",

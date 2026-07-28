@@ -9,6 +9,8 @@ import type {
   Observation,
   ParsedImport,
   Profile,
+  ReplicaIdentity,
+  ReplicaPage,
   UpdateObservationInput
 } from "@vitana/shared";
 import { openWithDatabaseKey, type SecureKeyStore } from "./databaseKey";
@@ -30,6 +32,8 @@ import { migrate } from "./migrations";
 
 const DATABASE_NAME = "standalone-health.db";
 const DATABASE_KEY_NAME = "vitana.standaloneDatabaseKey.v1";
+let sharedDatabase: Promise<SQLiteDatabase> | undefined;
+let databaseLeases = 0;
 
 const secureKeyStore: SecureKeyStore = {
   get: () => SecureStore.getItemAsync(DATABASE_KEY_NAME),
@@ -40,8 +44,23 @@ const secureKeyStore: SecureKeyStore = {
 };
 
 export async function openSqliteLocalStore(): Promise<SqliteLocalStore> {
+  const database = await acquireSharedDatabase();
+  return new SqliteLocalStore(database, releaseSharedDatabase);
+}
+
+async function acquireSharedDatabase(): Promise<SQLiteDatabase> {
+  sharedDatabase ??= openSqliteDatabase().catch((error) => {
+    sharedDatabase = undefined;
+    throw error;
+  });
+  const database = await sharedDatabase;
+  databaseLeases += 1;
+  return database;
+}
+
+async function openSqliteDatabase(): Promise<SQLiteDatabase> {
   try {
-    return await openSqliteLocalStoreOnce();
+    return await openSqliteDatabaseOnce();
   } catch (error) {
     if (!isFileNotDatabaseError(error)) throw error;
     const removed = await deleteEmptyPlaintextDatabase(
@@ -51,11 +70,11 @@ export async function openSqliteLocalStore(): Promise<SqliteLocalStore> {
     if (!removed) throw error;
 
     await secureKeyStore.remove();
-    return openSqliteLocalStoreOnce();
+    return openSqliteDatabaseOnce();
   }
 }
 
-async function openSqliteLocalStoreOnce(): Promise<SqliteLocalStore> {
+async function openSqliteDatabaseOnce(): Promise<SQLiteDatabase> {
   let databaseReadable = false;
   return openWithDatabaseKey(secureKeyStore, Crypto.getRandomBytesAsync, async (hexKey) => {
     const database = await openDatabaseAsync(DATABASE_NAME);
@@ -80,7 +99,7 @@ async function openSqliteLocalStoreOnce(): Promise<SqliteLocalStore> {
       `);
       phase = "migrating the encrypted database";
       await migrate(database);
-      return new SqliteLocalStore(database);
+      return database;
     } catch (error) {
       await database.closeAsync().catch(() => undefined);
       const detail = error instanceof Error ? error.message : "Unknown database error";
@@ -89,15 +108,30 @@ async function openSqliteLocalStoreOnce(): Promise<SqliteLocalStore> {
   }, () => !databaseReadable);
 }
 
+async function releaseSharedDatabase(): Promise<void> {
+  databaseLeases = Math.max(0, databaseLeases - 1);
+  if (databaseLeases !== 0 || !sharedDatabase) return;
+  const database = await sharedDatabase;
+  sharedDatabase = undefined;
+  await database.closeAsync();
+}
+
 export async function resetSqliteLocalStorage(): Promise<void> {
+  if (databaseLeases > 0) {
+    throw new Error("Close active local data operations before resetting encrypted storage.");
+  }
   await deleteDatabaseAsync(DATABASE_NAME);
   await secureKeyStore.remove();
 }
 
 export class SqliteLocalStore implements LocalStore {
   private profileId?: string;
+  private closed = false;
 
-  constructor(private readonly database: SQLiteDatabase) {}
+  constructor(
+    private readonly database: SQLiteDatabase,
+    private readonly release: () => Promise<void> = () => database.closeAsync()
+  ) {}
 
   async initialize(defaultProfile: Profile): Promise<void> {
     const existing = await this.database.getFirstAsync<{ profile_id: string }>(
@@ -128,6 +162,40 @@ export class SqliteLocalStore implements LocalStore {
       );
     });
     this.profileId = defaultProfile.id;
+  }
+
+  async createDataset(profile: Profile): Promise<void> {
+    await this.database.withTransactionAsync(async () => {
+      await this.database.runAsync("UPDATE datasets SET is_selected = 0 WHERE is_selected = 1");
+      await this.database.runAsync(
+        "INSERT INTO profiles (id, profile_json, updated_at) VALUES (?, ?, ?)",
+        profile.id,
+        JSON.stringify(profile),
+        profile.updatedAt
+      );
+      await this.database.runAsync(
+        `INSERT INTO datasets
+         (dataset_id, profile_id, dataset_kind, lifecycle_state, is_selected, migration_fingerprint)
+         VALUES (?, ?, 'standalone', 'active', 1, ?)`,
+        profile.id,
+        profile.id,
+        `standalone:${profile.id}`
+      );
+    });
+    this.profileId = profile.id;
+  }
+
+  async deleteSelectedDataset(): Promise<void> {
+    const profileId = this.requireProfileId();
+    await this.database.withTransactionAsync(async () => {
+      await this.database.runAsync("DELETE FROM observations WHERE profile_id = ?", profileId);
+      await this.database.runAsync("DELETE FROM observation_groups WHERE profile_id = ?", profileId);
+      await this.database.runAsync("DELETE FROM data_sources WHERE profile_id = ?", profileId);
+      await this.database.runAsync("DELETE FROM source_imports WHERE profile_id = ?", profileId);
+      await this.database.runAsync("DELETE FROM datasets WHERE profile_id = ?", profileId);
+      await this.database.runAsync("DELETE FROM profiles WHERE id = ?", profileId);
+    });
+    this.profileId = undefined;
   }
 
   async listDatasets(): Promise<LocalDatasetSummary[]> {
@@ -635,8 +703,148 @@ export class SqliteLocalStore implements LocalStore {
     return changed ? existing : undefined;
   }
 
+  async replicaMetadata(identity: ReplicaIdentity) {
+    const row = await this.database.getFirstAsync<{
+      server_instance_id: string;
+      profile_id: string;
+      pairing_id: string;
+      cursor_sequence: number;
+      revision: number;
+      initial_snapshot_completed: number;
+      cached_at: string | null;
+      applied_at: string | null;
+      snapshot_cursor: string | null;
+    }>(
+      `SELECT server_instance_id, profile_id, pairing_id, cursor_sequence, revision,
+        initial_snapshot_completed, cached_at, applied_at, snapshot_cursor
+       FROM connected_replicas WHERE replica_id = ?`,
+      replicaId(identity)
+    );
+    return row ? {
+      serverInstanceId: row.server_instance_id,
+      profileId: row.profile_id,
+      pairingId: row.pairing_id,
+      cursorSequence: row.cursor_sequence,
+      revision: row.revision,
+      initialSnapshotCompleted: row.initial_snapshot_completed === 1,
+      cachedAt: row.cached_at ?? undefined,
+      appliedAt: row.applied_at ?? undefined,
+      snapshotCursor: row.snapshot_cursor ?? undefined
+    } : undefined;
+  }
+
+  async applyReplicaPage(page: ReplicaPage): Promise<void> {
+    const identity = replicaIdentity(page);
+    const id = replicaId(identity);
+    const appliedAt = new Date().toISOString();
+    await this.database.withTransactionAsync(async () => {
+      await this.database.runAsync(
+        `INSERT OR IGNORE INTO connected_replicas
+         (replica_id, server_instance_id, profile_id, pairing_id)
+         VALUES (?, ?, ?, ?)`,
+        id,
+        identity.serverInstanceId,
+        identity.profileId,
+        identity.pairingId
+      );
+      const metadata = await this.replicaMetadata(identity);
+      if (!metadata) throw new Error("The connected replica identity could not be initialized.");
+      if (page.kind === "delta" && !metadata.initialSnapshotCompleted) {
+        throw new Error("Complete the first connected snapshot before applying deltas.");
+      }
+      await this.writeReplicaChanges(id, page.changes);
+      const cursorSequence = page.kind === "snapshot"
+        ? (page.complete ? page.highWaterMark.sequence : metadata.cursorSequence)
+        : (page.complete
+            ? page.highWaterMark.sequence
+            : Math.max(metadata.cursorSequence, ...page.changes.map((change) => change.sequence)));
+      const initialSnapshotCompleted = metadata.initialSnapshotCompleted ||
+        (page.kind === "snapshot" && page.complete);
+      await this.database.runAsync(
+        `UPDATE connected_replicas SET cursor_sequence = ?, revision = ?,
+         initial_snapshot_completed = ?, cached_at = ?, applied_at = ?, snapshot_cursor = ?
+         WHERE replica_id = ?`,
+        cursorSequence,
+        Math.max(metadata.revision, page.highWaterMark.revision),
+        initialSnapshotCompleted ? 1 : 0,
+        page.cachedAt,
+        appliedAt,
+        resumableSnapshotCursor(page, metadata.snapshotCursor, initialSnapshotCompleted),
+        id
+      );
+    });
+  }
+
+  /**
+   * Applies one page of replica changes. No read-before-write is needed: the revision guards live
+   * in the statements themselves, which halves the number of round trips per page.
+   */
+  private async writeReplicaChanges(id: string, changes: ReplicaPage["changes"]): Promise<void> {
+    if (changes.length === 0) return;
+    const upsert = await this.database.prepareAsync(
+      `INSERT INTO connected_replica_entities
+       (replica_id, entity_type, entity_id, payload_json, revision)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT (replica_id, entity_type, entity_id) DO UPDATE SET
+         payload_json = excluded.payload_json,
+         revision = excluded.revision
+       WHERE excluded.revision >= connected_replica_entities.revision`
+    );
+    const tombstone = await this.database.prepareAsync(
+      `DELETE FROM connected_replica_entities
+       WHERE replica_id = ? AND entity_type = ? AND entity_id = ? AND revision <= ?`
+    );
+    try {
+      for (const change of changes) {
+        if (change.operation === "tombstone") {
+          await tombstone.executeAsync(id, change.entityType, change.entityId, change.revision);
+          continue;
+        }
+        if (change.payload === undefined) throw new Error("Replica upsert payload is missing.");
+        await upsert.executeAsync(
+          id,
+          change.entityType,
+          change.entityId,
+          JSON.stringify(change.payload),
+          change.revision
+        );
+      }
+    } finally {
+      await tombstone.finalizeAsync().catch(() => undefined);
+      await upsert.finalizeAsync().catch(() => undefined);
+    }
+  }
+
+  async replicaEntities(identity: ReplicaIdentity) {
+    const metadata = await this.replicaMetadata(identity);
+    if (!metadata?.initialSnapshotCompleted) {
+      throw new Error("Connected data is unavailable offline until the first snapshot completes.");
+    }
+    const rows = await this.database.getAllAsync<{ entity_type: string; payload_json: string }>(
+      `SELECT entity_type, payload_json FROM connected_replica_entities
+       WHERE replica_id = ? ORDER BY entity_type, entity_id`,
+      replicaId(identity)
+    );
+    return rows.map((row) => ({
+      entityType: row.entity_type,
+      payload: JSON.parse(row.payload_json) as Record<string, unknown>
+    }));
+  }
+
+  async deleteReplica(identity: ReplicaIdentity): Promise<void> {
+    const id = replicaId(identity);
+    // Deleted explicitly rather than through the foreign-key cascade: this is the "forget my synced
+    // health data" path, and orphaned entity rows would be unreachable health data.
+    await this.database.withTransactionAsync(async () => {
+      await this.database.runAsync("DELETE FROM connected_replica_entities WHERE replica_id = ?", id);
+      await this.database.runAsync("DELETE FROM connected_replicas WHERE replica_id = ?", id);
+    });
+  }
+
   close(): Promise<void> {
-    return this.database.closeAsync();
+    if (this.closed) return Promise.resolve();
+    this.closed = true;
+    return this.release();
   }
 
   async reset(): Promise<void> {
@@ -705,6 +913,32 @@ export class SqliteLocalStore implements LocalStore {
     };
   }
 
+}
+
+function replicaIdentity(page: ReplicaPage): ReplicaIdentity {
+  return {
+    serverInstanceId: page.serverInstanceId,
+    profileId: page.profileId,
+    pairingId: page.pairingId
+  };
+}
+
+function replicaId(identity: ReplicaIdentity): string {
+  return `${identity.serverInstanceId}:${identity.profileId}:${identity.pairingId}`;
+}
+
+/**
+ * Keeps the resume point for an interrupted first snapshot so a failed page does not force the
+ * whole dataset to be downloaded again. Cleared once the snapshot completes.
+ */
+function resumableSnapshotCursor(
+  page: ReplicaPage,
+  current: string | undefined,
+  initialSnapshotCompleted: boolean
+): string | null {
+  if (initialSnapshotCompleted) return null;
+  if (page.kind === "snapshot") return page.nextCursor ?? null;
+  return current ?? null;
 }
 
 function withUndefinedNulls<T extends Record<string, unknown>>(value: T): T {

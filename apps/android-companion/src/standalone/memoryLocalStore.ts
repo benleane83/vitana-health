@@ -10,6 +10,8 @@ import type {
   ObservationGroup,
   ParsedImport,
   Profile,
+  ReplicaIdentity,
+  ReplicaPage,
   SourceImport,
   UpdateObservationInput
 } from "@vitana/shared";
@@ -45,7 +47,11 @@ export function createMemoryLocalStoreState(): MemoryLocalStoreState {
 
 export class MemoryLocalStore implements LocalStore {
   private profileId?: string;
-  private archivedReceipt?: MobileMigrationReceipt;
+  private archivedReceipts = new Map<string, MobileMigrationReceipt>();
+  private replicas = new Map<string, {
+    metadata: import("./localStore").LocalReplicaMetadata;
+    entities: Map<string, { entityType: string; payload: Record<string, unknown>; revision: number }>;
+  }>();
 
   constructor(private readonly state = createMemoryLocalStoreState()) {}
 
@@ -59,13 +65,24 @@ export class MemoryLocalStore implements LocalStore {
     }
   }
 
+  async createDataset(profile: Profile): Promise<void> {
+    if (this.state.profiles.has(profile.id)) throw new Error("The local dataset already exists.");
+    this.state.profiles.set(profile.id, structuredClone(profile));
+    this.state.migrationFingerprints.set(profile.id, `standalone:${profile.id}`);
+    this.profileId = profile.id;
+  }
+
+  async deleteSelectedDataset(): Promise<void> {
+    await this.reset();
+  }
+
   async listDatasets() {
     return [...this.state.profiles.values()].map((profile) => ({
       datasetId: profile.id,
       profileId: profile.id,
       displayName: profile.displayName,
       kind: "standalone" as const,
-      lifecycleState: this.archivedReceipt && this.profileId === profile.id ? "archived" as const : "active" as const,
+      lifecycleState: this.archivedReceipts.has(profile.id) ? "archived" as const : "active" as const,
       selected: this.profileId === profile.id
     }));
   }
@@ -83,13 +100,14 @@ export class MemoryLocalStore implements LocalStore {
 
   async datasetMetadata() {
     const profileId = this.requireProfileId();
+    const archivedReceipt = this.archivedReceipts.get(profileId);
     return {
       datasetId: profileId,
       profileId,
       kind: "standalone" as const,
-      lifecycleState: this.archivedReceipt ? "archived" as const : "active" as const,
+      lifecycleState: archivedReceipt ? "archived" as const : "active" as const,
       migrationFingerprint: this.state.migrationFingerprints.get(profileId) ?? `standalone:${profileId}`,
-      migrationReceipt: this.archivedReceipt
+      migrationReceipt: archivedReceipt
     };
   }
 
@@ -200,7 +218,7 @@ export class MemoryLocalStore implements LocalStore {
     if ((await this.datasetMetadata()).migrationFingerprint !== receipt.datasetFingerprint) {
       throw new Error("Standalone data changed during migration. The updated dataset was not archived.");
     }
-    this.archivedReceipt = structuredClone(receipt);
+    this.archivedReceipts.set(this.requireProfileId(), structuredClone(receipt));
   }
 
   async latestObservationsByCode(): Promise<Observation[]> {
@@ -307,10 +325,81 @@ export class MemoryLocalStore implements LocalStore {
 
   async close(): Promise<void> {}
 
+  async replicaMetadata(identity: ReplicaIdentity) {
+    return this.replicas.get(replicaId(identity))?.metadata;
+  }
+
+  async applyReplicaPage(page: ReplicaPage): Promise<void> {
+    const identity = { serverInstanceId: page.serverInstanceId, profileId: page.profileId, pairingId: page.pairingId };
+    const id = replicaId(identity);
+    const existing = this.replicas.get(id);
+    const next: {
+      metadata: import("./localStore").LocalReplicaMetadata;
+      entities: Map<string, { entityType: string; payload: Record<string, unknown>; revision: number }>;
+    } = existing ? {
+      metadata: structuredClone(existing.metadata),
+      entities: new Map([...existing.entities].map(([key, value]) => [key, structuredClone(value)]))
+    } : {
+      metadata: {
+        ...identity,
+        cursorSequence: 0,
+        revision: 0,
+        initialSnapshotCompleted: false
+      },
+      entities: new Map()
+    };
+    if (page.kind === "delta" && !next.metadata.initialSnapshotCompleted) {
+      throw new Error("Complete the first connected snapshot before applying deltas.");
+    }
+    for (const change of page.changes) {
+      const key = `${change.entityType}\u0000${change.entityId}`;
+      const current = next.entities.get(key);
+      if ((current?.revision ?? -1) > change.revision) continue;
+      if (change.operation === "tombstone") next.entities.delete(key);
+      else if (change.payload) next.entities.set(key, {
+        entityType: change.entityType,
+        payload: structuredClone(change.payload),
+        revision: change.revision
+      });
+      else throw new Error("Replica upsert payload is missing.");
+    }
+    next.metadata.revision = Math.max(next.metadata.revision, page.highWaterMark.revision);
+    next.metadata.cachedAt = page.cachedAt;
+    next.metadata.appliedAt = new Date().toISOString();
+    if (page.kind === "snapshot" && page.complete) {
+      next.metadata.initialSnapshotCompleted = true;
+      next.metadata.cursorSequence = page.highWaterMark.sequence;
+    } else if (page.kind === "delta") {
+      next.metadata.cursorSequence = page.complete
+        ? page.highWaterMark.sequence
+        : Math.max(next.metadata.cursorSequence, ...page.changes.map((change) => change.sequence));
+    }
+    next.metadata.snapshotCursor = next.metadata.initialSnapshotCompleted
+      ? undefined
+      : (page.kind === "snapshot" ? page.nextCursor : next.metadata.snapshotCursor);
+    this.replicas.set(id, next);
+  }
+
+  async replicaEntities(identity: ReplicaIdentity) {
+    const replica = this.replicas.get(replicaId(identity));
+    if (!replica?.metadata.initialSnapshotCompleted) {
+      throw new Error("Connected data is unavailable offline until the first snapshot completes.");
+    }
+    return [...replica.entities.values()].map(({ entityType, payload }) => ({
+      entityType,
+      payload: structuredClone(payload)
+    }));
+  }
+
+  async deleteReplica(identity: ReplicaIdentity): Promise<void> {
+    this.replicas.delete(replicaId(identity));
+  }
+
   async reset(): Promise<void> {
     const profileId = this.requireProfileId();
     this.state.profiles.delete(profileId);
     this.state.migrationFingerprints.delete(profileId);
+    this.archivedReceipts.delete(profileId);
     for (const values of [
       this.state.sourceImports,
       this.state.dataSources,
@@ -335,7 +424,9 @@ export class MemoryLocalStore implements LocalStore {
   }
 
   private assertWritable(): void {
-    if (this.archivedReceipt) throw new Error("This migrated Standalone dataset is a read-only archive.");
+    if (this.archivedReceipts.has(this.requireProfileId())) {
+      throw new Error("This migrated Standalone dataset is a read-only archive.");
+    }
   }
 
   private profileValues<T>(values: Map<string, T>): T[] {
@@ -346,6 +437,10 @@ export class MemoryLocalStore implements LocalStore {
 
 function key(profileId: string, id: string): string {
   return `${profileId}\u0000${id}`;
+}
+
+function replicaId(identity: ReplicaIdentity): string {
+  return `${identity.serverInstanceId}:${identity.profileId}:${identity.pairingId}`;
 }
 
 function compareObservationsNewestFirst(left: Observation, right: Observation): number {

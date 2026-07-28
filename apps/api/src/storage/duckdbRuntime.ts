@@ -9,7 +9,7 @@ import {
 } from "../analyticalViews.js";
 
 const markerName = ".vitana-duckdb-poc";
-const schemaVersion = 12;
+const schemaVersion = 13;
 
 export interface DuckDbOptions {
   httpfsExtensionPath?: string;
@@ -436,6 +436,30 @@ const schemaVersion12Sql = `
   INSERT OR IGNORE INTO poc_metadata VALUES (12, CURRENT_TIMESTAMP, 'Per-entity companion migration batch counts');
 `;
 
+const schemaVersion13Sql = `
+  CREATE TABLE IF NOT EXISTS companion_sync_state (
+    singleton BOOLEAN PRIMARY KEY, revision BIGINT NOT NULL, next_sequence BIGINT NOT NULL,
+    CHECK (singleton = TRUE)
+  );
+  INSERT OR IGNORE INTO companion_sync_state VALUES (TRUE, 0, 1);
+  CREATE TABLE IF NOT EXISTS companion_sync_changes (
+    sequence BIGINT PRIMARY KEY, revision BIGINT NOT NULL, entity_type VARCHAR NOT NULL,
+    entity_id VARCHAR NOT NULL, operation VARCHAR NOT NULL, payload JSON, changed_at TIMESTAMP NOT NULL,
+    CHECK (operation IN ('upsert', 'tombstone'))
+  );
+  CREATE INDEX IF NOT EXISTS companion_sync_changes_revision_idx
+    ON companion_sync_changes(revision, sequence);
+  CREATE TABLE IF NOT EXISTS companion_sync_snapshots (
+    snapshot_id VARCHAR PRIMARY KEY, pairing_id VARCHAR NOT NULL, revision BIGINT NOT NULL,
+    high_water_sequence BIGINT NOT NULL, created_at TIMESTAMP NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS companion_sync_snapshot_entries (
+    snapshot_id VARCHAR NOT NULL, entry_index BIGINT NOT NULL, entity_type VARCHAR NOT NULL,
+    entity_id VARCHAR NOT NULL, payload JSON NOT NULL, PRIMARY KEY (snapshot_id, entry_index)
+  );
+  INSERT OR IGNORE INTO poc_metadata VALUES (13, CURRENT_TIMESTAMP, 'Read-only companion replica change log and snapshots');
+`;
+
 const schemaMigrations = [
   { version: 1, sql: schemaVersion1Sql },
   { version: 2, sql: schemaVersion2Sql },
@@ -448,5 +472,6 @@ const schemaMigrations = [
   { version: 9, sql: schemaVersion9Sql },
   { version: 10, sql: schemaVersion10Sql },
   { version: 11, sql: schemaVersion11Sql },
-  { version: 12, sql: schemaVersion12Sql }
+  { version: 12, sql: schemaVersion12Sql },
+  { version: 13, sql: schemaVersion13Sql }
 ] as const;

@@ -75,7 +75,7 @@ Reviewers can inspect the Dashboard and Track experience without installing or p
 
 Demo mode does not contact a local PC, alter pairing credentials, or write sample records. Import, report scanning, manual entry, and Health Connect sync remain unavailable because they require a paired PC or native health provider. Turning Demo mode off restores the existing paired connection, if present.
 
-Standalone mode is separate from Demo mode. It stores the user's local profile and imported health records in a SQLCipher-encrypted database on the phone. Switching temporarily from Standalone to Demo and back reopens the same Standalone profile and data.
+Local-only use is separate from Demo mode. It stores the user's local profile and imported health records in a SQLCipher-encrypted database on the phone. Turning Demo mode off reopens the same local profile and data when the phone is not paired.
 
 ## Release checklist
 
@@ -88,11 +88,11 @@ Standalone mode is separate from Demo mode. It stores the user's local profile a
 - [ ] Development, preview, and production EAS environments are distinct; production has no development-only values.
 - [ ] Repository checks pass: workspace typecheck, build, tests, and Android production dependency audit.
 - [ ] Production AAB build completes with a new remote Android version code, `production` channel, and cleartext disabled.
-- [ ] The exact AAB is tested on a physical Android device with the phone assigned to a profile different from the PC active profile: Dashboard refresh, Track search/detail/pagination, manual import, both camera/gallery scan types and row exclusion, HTTPS certificate-pin validation, Health Connect selected-category/cursor sync, revoke/disconnect, PC restart, maintenance, and offline recovery.
-- [ ] Standalone mode is tested by importing data, force-closing and relaunching the app, and confirming the same profile and records remain. Standalone → Demo → Standalone also restores usable persisted data.
+- [ ] The exact AAB is tested on a physical Android device with the phone assigned to a profile different from the PC active profile: Dashboard refresh, Track search/detail/pagination, Care lists and offline read-only behavior, manual import, both camera/gallery scan types and row exclusion, HTTPS certificate-pin validation, Health Connect selected-category/cursor sync, revoke/disconnect, PC restart, maintenance, and offline recovery.
+- [ ] Local-only use is tested by importing data, force-closing and relaunching the app, and confirming the same profile and records remain. Turning Demo mode on and off also restores usable persisted data.
 - [ ] Health Connect is tested with a 30-day window and a window over 30 days. The extended run requests `READ_HEALTH_DATA_HISTORY`; the 30-day run does not request extended history access.
 - [ ] Report drafts clear on backgrounding, cancellation, commit, and disconnect; small and large accessibility font scales remain usable.
-- [ ] Storage inspection confirms that report images, OCR text, and review drafts are not persisted; Connected-mode Dashboard and Track responses remain memory-only; Standalone health records exist only in the SQLCipher-encrypted database; and its key remains in device-only SecureStore.
+- [ ] Storage inspection confirms that report images, OCR text, and review drafts are not persisted; the paired Dashboard, Track, and Care replica and local health records exist only in the SQLCipher-encrypted database; its key remains in device-only SecureStore; and unpairing removes the identity-bound replica.
 - [ ] EAS Update traffic is inspected to confirm update requests contain no personal health records, and Play Data Safety answers match Expo's current disclosure for the shipped SDK version.
 - [ ] Reviewer Demo mode works without network access, exposes Dashboard and Track sample data, blocks all import actions, and preserves any existing paired connection when turned off.
 - [ ] A production-compatible OTA update is tested on the production channel only, or the release notes state that no OTA update is included.

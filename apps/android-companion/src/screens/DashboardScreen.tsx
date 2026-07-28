@@ -1,6 +1,5 @@
-import { useCallback } from "react";
 import { RefreshControl, ScrollView, StyleSheet, Text, View, Pressable } from "react-native";
-import { CompositeNavigationProp, useFocusEffect, useNavigation } from "@react-navigation/native";
+import { CompositeNavigationProp, useNavigation } from "@react-navigation/native";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { ChevronRight, Database, MonitorSmartphone } from "lucide-react-native";
@@ -27,10 +26,9 @@ export function DashboardScreen() {
     error,
     profilePhotoUri,
     refreshDashboard,
-    standaloneMode
+    standaloneMode,
+    syncing
   } = useMobileApi();
-
-  useFocusEffect(useCallback(() => { void refreshDashboard(); }, [refreshDashboard]));
 
   if (connectionState === "unpaired" || connectionState === "re-pair-required") {
     return (
@@ -51,7 +49,7 @@ export function DashboardScreen() {
           title={connectionState === "maintenance" ? "PC maintenance in progress" : "PC unavailable"}
           detail={error ?? "Dashboard data remains on your PC. Reconnect to view it."}
         />
-        <Button onPress={() => { void refreshDashboard(); }}>Retry</Button>
+        <Button onPress={() => { void refreshDashboard({ synchronize: true }); }}>Retry</Button>
       </Screen>
     );
   }
@@ -61,15 +59,17 @@ export function DashboardScreen() {
   const connectionLabel = demoMode
     ? "Sample data · edits reset on restart"
     : standaloneMode
-      ? "Standalone · encrypted on this phone"
+      ? "On this phone · encrypted"
+      : syncing
+        ? "Syncing encrypted data from your PC"
       : connectionState === "online"
-        ? "Connected · refreshed just now"
-        : `${connectionState.replaceAll("-", " ")} · showing current session data`;
+        ? "Connected"
+        : `${connectionState.replaceAll("-", " ")} · showing read-only data`;
   return (
     <Screen>
       <ScrollView
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={dashboardLoading} onRefresh={() => { void refreshDashboard(); }} />}
+        refreshControl={<RefreshControl refreshing={dashboardLoading} onRefresh={() => { void refreshDashboard({ synchronize: true }); }} />}
       >
         <View style={styles.contextPanel}>
           <View style={styles.profileRow}>

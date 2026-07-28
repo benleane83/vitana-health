@@ -37,6 +37,9 @@ export interface ConnectionDetails {
   name: string | null;
   pairedAt: string | null;
   lastSyncAt: string | null;
+  pairingId?: string | null;
+  serverInstanceId?: string | null;
+  profileId?: string | null;
   healthConnectSyncCursor: string | null;
   healthConnectSyncWindowDays: number;
   healthConnectCategories: HealthConnectCategory[];
@@ -70,6 +73,9 @@ export async function loadConnection(): Promise<ConnectionDetails | null> {
       deviceId,
       token,
       healthConnectSyncCursor: stored.healthConnectSyncCursor ?? null,
+      pairingId: stored.pairingId ?? null,
+      serverInstanceId: stored.serverInstanceId ?? null,
+      profileId: stored.profileId ?? null,
       healthConnectSyncWindowDays: normalizeSyncWindowDays(stored.healthConnectSyncWindowDays),
       healthConnectCategories: normalizeHealthConnectCategories(stored.healthConnectCategories),
       healthConnectDisclosureAcknowledged: stored.healthConnectDisclosureAcknowledged === true
@@ -91,6 +97,9 @@ export async function saveConnection(patch: Partial<ConnectionDetails> & { url: 
     name: patch.name !== undefined ? patch.name : (existing?.name ?? null),
     pairedAt: patch.pairedAt !== undefined ? patch.pairedAt : (existing?.pairedAt ?? null),
     lastSyncAt: patch.lastSyncAt !== undefined ? patch.lastSyncAt : (existing?.lastSyncAt ?? null),
+    pairingId: patch.pairingId !== undefined ? patch.pairingId : (existing?.pairingId ?? null),
+    serverInstanceId: patch.serverInstanceId !== undefined ? patch.serverInstanceId : (existing?.serverInstanceId ?? null),
+    profileId: patch.profileId !== undefined ? patch.profileId : (existing?.profileId ?? null),
     healthConnectSyncCursor:
       patch.healthConnectSyncCursor !== undefined ? patch.healthConnectSyncCursor : (existing?.healthConnectSyncCursor ?? null),
     healthConnectSyncWindowDays: normalizeSyncWindowDays(

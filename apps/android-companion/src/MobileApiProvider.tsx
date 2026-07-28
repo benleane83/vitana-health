@@ -40,10 +40,16 @@ import {
 import type { CompanionMutationService } from "./companionDataSource";
 import type { CompanionObservationMutationService } from "./companionDataSource";
 import { createStandaloneDataSource } from "./standalone/standaloneDataSource";
+import {
+  createConnectedDataSource,
+  retainConnectedStore,
+  type ConnectedReplicaMaintenance
+} from "./connected/connectedDataSource";
 import type { StandaloneMigrationSource } from "./standalone/standaloneDataSource";
-import type { LocalDatasetSummary } from "./standalone/localStore";
 import { userFacingError } from "./userFacingError";
 import { queueConnectionRevocation, retryPendingRevocation } from "./pendingRevocation";
+import { LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS } from "./pinnedFetch";
+import { retryPinnedRequest } from "./retryPinnedRequest";
 
 export type { ConnectionState } from "./connectionState";
 
@@ -59,18 +65,20 @@ interface MobileApiContextValue {
   profilePhotoUri?: string;
   dashboardLoading: boolean;
   trackLoading: boolean;
+  syncing: boolean;
   error?: string;
   transientRevision: number;
   migrationProgress?: { uploaded: number; total: number };
   reloadConnection(): Promise<void>;
   setDemoMode(enabled: boolean): Promise<void>;
   setOperatingMode(mode: CompanionOperatingMode): Promise<void>;
-  listStandaloneDatasets(): Promise<LocalDatasetSummary[]>;
-  selectStandaloneDataset(datasetId: string): Promise<void>;
   standaloneMigrationManifest(): Promise<MobileMigrationManifest>;
   migrateStandaloneData(): Promise<MobileMigrationReceipt>;
-  refreshDashboard(): Promise<void>;
-  refreshTrack(): Promise<void>;
+  discardStandaloneDataAndConnect(): Promise<void>;
+  cancelPendingConnection(): Promise<void>;
+  refreshDashboard(options?: { synchronize?: boolean }): Promise<void>;
+  refreshTrack(options?: { synchronize?: boolean }): Promise<void>;
+  synchronizeConnectedData(force?: boolean): Promise<boolean>;
   healthDataDetail(measurementCode: string, page?: DetailPage): Promise<HealthDataDetail>;
   healthDataChartSeries(measurementCode: string, options: HealthDataChartSeriesOptions): Promise<HealthDataChartSeries>;
   importManualObservations(payload: ManualObservationPayload): Promise<unknown>;
@@ -105,10 +113,13 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
   const [profilePhoto, setProfilePhoto] = useState<{ revision: string; uri: string }>();
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [trackLoading, setTrackLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string>();
   const [transientRevision, setTransientRevision] = useState(0);
   const [migrationProgress, setMigrationProgress] = useState<{ uploaded: number; total: number }>();
   const generation = useRef(0);
+  const syncOperation = useRef<{ promise: Promise<boolean>; force: boolean } | undefined>(undefined);
+  const storeKeepAlive = useRef<(() => Promise<void>) | undefined>(undefined);
   const demoSource = useMemo(() => createDemoDataSource(), []);
   const standaloneSource = useMemo(
     () => shouldCreateStandaloneSource(preferencesLoaded, operatingMode, demoMode)
@@ -120,8 +131,17 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     if (!preferencesLoaded) return undefined;
     if (demoMode) return demoSource;
     if (operatingMode === "standalone") return standaloneSource;
-    return connection?.token ? createCompanionApi(connection) : undefined;
+    return connection?.token ? createConnectedDataSource(connection) : undefined;
   }, [connection, demoMode, demoSource, operatingMode, preferencesLoaded, standaloneSource]);
+
+  // Releases the keep-alive taken during a mode switch, once the replacement source exists and has
+  // taken its own lease on the shared encrypted database.
+  useEffect(() => {
+    const release = storeKeepAlive.current;
+    if (!release) return;
+    storeKeepAlive.current = undefined;
+    void release();
+  }, [source]);
 
   const clearHealthData = useCallback(() => {
     setBootstrap(undefined);
@@ -134,6 +154,51 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     setConnectionState(connectionStateForError(caught));
     setError(userFacingError(caught, "Unable to reach the paired PC."));
   }, []);
+
+  const updateConnectionState = useCallback((currentSource: CompanionDataSource, ...results: object[]) => {
+    const connectedSource = currentSource as Partial<ConnectedReplicaMaintenance>;
+    const caught = results.map((result) => connectedSource.connectionError?.(result)).find(Boolean);
+    if (caught) {
+      classifyError(caught);
+    } else {
+      setConnectionState("online");
+      setError(undefined);
+    }
+  }, [classifyError]);
+
+  const synchronizeConnectedData = useCallback((force = false): Promise<boolean> => {
+    const connectedSource = source as Partial<ConnectedReplicaMaintenance> | undefined;
+    const synchronizeReplica = connectedSource?.synchronizeConnectedReplica;
+    if (!synchronizeReplica) return Promise.resolve(false);
+    const inFlight = syncOperation.current;
+    // A background sync can decide the replica is still fresh and skip the network entirely.
+    // Joining it would make an explicit pull-to-refresh silently no-op, so a forced request instead
+    // chains after whatever is running.
+    if (inFlight && (!force || inFlight.force)) return inFlight.promise;
+    setSyncing(true);
+    const run = () => synchronizeReplica({ force })
+      .then((changed) => {
+        setConnectionState("online");
+        setError(undefined);
+        return changed;
+      })
+      .catch((caught: unknown) => {
+        classifyError(caught);
+        return false;
+      });
+    const operation: { promise: Promise<boolean>; force: boolean } = {
+      force,
+      promise: (inFlight ? inFlight.promise.catch(() => false).then(run) : run())
+        .finally(() => {
+          if (syncOperation.current === operation) {
+            syncOperation.current = undefined;
+            setSyncing(false);
+          }
+        })
+    };
+    syncOperation.current = operation;
+    return operation.promise;
+  }, [classifyError, source]);
 
   const reloadConnection = useCallback(async () => {
     const next = await loadConnection();
@@ -154,49 +219,69 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
   }, [clearHealthData, connection, operatingMode]);
 
   const setOperatingMode = useCallback(async (mode: CompanionOperatingMode) => {
-    if (mode === "connected" && !connection?.token) throw new Error("Pair with a PC before using Connected mode.");
-    await saveOperatingMode(mode);
+    if (mode === "connected" && !connection?.token) throw new Error("Pair with a PC before activating the connection.");
+    // Keeps the encrypted database open while the old source is torn down and the new one is built.
+    // Released by the effect above once the replacement source has taken its own lease.
+    await storeKeepAlive.current?.();
+    storeKeepAlive.current = await retainConnectedStore().catch(() => undefined);
+    try {
+      if (mode === "connected" && connection) {
+        const pendingSource = createConnectedDataSource(connection);
+        setConnectionState("connecting");
+        setError(undefined);
+        try {
+          const preparedConnection = await pendingSource.prepareConnectedReplica();
+          setConnection(preparedConnection);
+        } catch (caught) {
+          classifyError(caught);
+          throw caught;
+        } finally {
+          await pendingSource.dispose?.();
+        }
+      }
+      await saveOperatingMode(mode);
+    } catch (caught) {
+      const release = storeKeepAlive.current;
+      storeKeepAlive.current = undefined;
+      await release?.();
+      throw caught;
+    }
     generation.current += 1;
     setOperatingModeState(mode);
     clearHealthData();
     setError(undefined);
     setConnectionState(mode === "standalone" ? "online" : "connecting");
-  }, [clearHealthData, connection]);
+  }, [classifyError, clearHealthData, connection]);
 
   const standaloneMigrationManifest = useCallback(async () => {
     const migrationSource = standaloneSource as StandaloneMigrationSource | undefined;
-    if (!migrationSource) throw new Error("Switch to Standalone mode before migrating local data.");
+    if (!migrationSource) throw new Error("Local phone data is unavailable for migration.");
     return migrationSource.migrationManifest();
-  }, [standaloneSource]);
-
-  const listStandaloneDatasets = useCallback(async () => {
-    const migrationSource = standaloneSource as StandaloneMigrationSource | undefined;
-    return migrationSource ? migrationSource.listDatasets() : [];
   }, [standaloneSource]);
 
   const migrateStandaloneData = useCallback(async () => {
     if (!connection?.token) throw new Error("Pair with a PC before migrating local data.");
     const migrationSource = standaloneSource as StandaloneMigrationSource | undefined;
-    if (!migrationSource) throw new Error("Switch to Standalone mode before migrating local data.");
-    const api = createCompanionApi(connection);
+    if (!migrationSource) throw new Error("Local phone data is unavailable for migration.");
+    const api = createCompanionApi(connection, LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS);
     const manifest = await migrationSource.migrationManifest();
-    const started = await api.mobileMigration.start({ manifest });
+    const started = await retryPinnedRequest(() => api.mobileMigration.start({ manifest }));
     const batches = await migrationSource.exportMigrationBatches(started.sessionId);
     const processed = new Set(started.processedBatchIds);
     const pending = batches.filter((batch) => !processed.has(batch.batchId));
     setMigrationProgress({ uploaded: batches.length - pending.length, total: batches.length });
     try {
       for (const batch of pending) {
-        await api.mobileMigration.uploadBatch(batch);
+        await retryPinnedRequest(() => api.mobileMigration.uploadBatch(batch));
         setMigrationProgress((current) => ({
           uploaded: (current?.uploaded ?? 0) + 1,
           total: batches.length
         }));
       }
-      const receipt = await api.mobileMigration.complete({
+      const receipt = await retryPinnedRequest(() => api.mobileMigration.complete({
         protocolVersion: 1,
         sessionId: started.sessionId
-      });
+      }));
       await migrationSource.archiveAfterMigration(receipt, connection.url);
       return receipt;
     } finally {
@@ -204,70 +289,67 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     }
   }, [connection, standaloneSource]);
 
-  const refreshDashboard = useCallback(async () => {
+  const discardStandaloneDataAndConnect = useCallback(async () => {
+    if (!connection?.token) throw new Error("Pair with a PC before deleting local data.");
+    const migrationSource = standaloneSource as StandaloneMigrationSource | undefined;
+    if (!migrationSource) throw new Error("Local phone data is unavailable.");
+    await migrationSource.deleteSelectedDataset();
+    await setOperatingMode("connected");
+  }, [connection, setOperatingMode, standaloneSource]);
+
+  const refreshDashboard = useCallback(async (options: { synchronize?: boolean } = {}) => {
     if (!source) return;
     const requestGeneration = generation.current;
     setDashboardLoading(true);
     setError(undefined);
     try {
+      if (options.synchronize) await synchronizeConnectedData(true);
       const [nextBootstrap, nextAnalytics] = await Promise.all([source.bootstrap(), source.analytics()]);
       if (generation.current !== requestGeneration) return;
       setBootstrap(nextBootstrap);
       setAnalytics(nextAnalytics);
-      const revision = nextBootstrap.profilePhoto?.revision;
-      if (!demoMode && operatingMode === "connected" && connection?.token && revision) {
-        try {
-          const photo = await createCompanionApi(connection).profilePhoto.get();
-          if (generation.current !== requestGeneration) return;
-          setProfilePhoto(photo.revision === revision ? {
-            revision,
-            uri: `data:${photo.contentType};base64,${photo.contentBase64}`
-          } : undefined);
-        } catch {
-          if (generation.current === requestGeneration) setProfilePhoto(undefined);
-        }
-      } else {
-        setProfilePhoto(undefined);
-      }
-      setConnectionState("online");
+      setProfilePhoto(undefined);
+      updateConnectionState(source, nextBootstrap, nextAnalytics);
     } catch (caught) {
       if (generation.current === requestGeneration) classifyError(caught);
     } finally {
       if (generation.current === requestGeneration) setDashboardLoading(false);
     }
-  }, [classifyError, connection, demoMode, operatingMode, source]);
+  }, [classifyError, source, synchronizeConnectedData, updateConnectionState]);
 
-  const refreshTrack = useCallback(async () => {
+  const refreshTrack = useCallback(async (options: { synchronize?: boolean } = {}) => {
     if (!source) return;
     const requestGeneration = generation.current;
     setTrackLoading(true);
     setError(undefined);
     try {
+      if (options.synchronize) await synchronizeConnectedData(true);
       const nextSummary = await source.summary();
       if (generation.current !== requestGeneration) return;
       setSummary(nextSummary);
-      setConnectionState("online");
+      updateConnectionState(source, nextSummary);
     } catch (caught) {
       if (generation.current === requestGeneration) classifyError(caught);
     } finally {
       if (generation.current === requestGeneration) setTrackLoading(false);
     }
-  }, [classifyError, source]);
-
-  const selectStandaloneDataset = useCallback(async (datasetId: string) => {
-    const migrationSource = standaloneSource as StandaloneMigrationSource | undefined;
-    if (!migrationSource) throw new Error("Switch to Standalone mode before selecting local data.");
-    await migrationSource.selectDataset(datasetId);
-    generation.current += 1;
-    clearHealthData();
-    setError(undefined);
-    await Promise.all([refreshDashboard(), refreshTrack()]);
-  }, [clearHealthData, refreshDashboard, refreshTrack, standaloneSource]);
+  }, [classifyError, source, synchronizeConnectedData, updateConnectionState]);
 
   const healthDataDetail = useCallback(async (measurementCode: string, page?: DetailPage) => {
     if (!source) throw new Error("Health data is unavailable while the companion is disconnected.");
-    return source.healthDataDetail(measurementCode, page);
-  }, [source]);
+    const detail = await source.healthDataDetail(measurementCode, page);
+    updateConnectionState(source, detail);
+    return detail;
+  }, [source, updateConnectionState]);
+
+  const runMutation = useCallback(async <T,>(operation: () => Promise<T>): Promise<T> => {
+    try {
+      return await operation();
+    } catch (caught) {
+      if (operatingMode === "connected") classifyError(caught);
+      throw caught;
+    }
+  }, [classifyError, operatingMode]);
 
   const healthDataChartSeries = useCallback(async (
     measurementCode: string,
@@ -278,23 +360,25 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
   }, [source]);
 
   const importManualObservations = useCallback(async (payload: ManualObservationPayload) => {
-    if (!source) throw new Error("Manual import is unavailable until a data source is ready.");
-    const mutations = source as Partial<CompanionMutationService>;
-    if (mutations.importManualObservations) return mutations.importManualObservations(payload);
-    if (!connection?.token) throw new Error("Pair with a PC before importing readings.");
-    return createCompanionApi(connection).importManualObservations(payload);
-  }, [connection, source]);
+    return runMutation(async () => {
+      if (!source) throw new Error("Manual import is unavailable until a data source is ready.");
+      const mutations = source as Partial<CompanionMutationService>;
+      if (mutations.importManualObservations) return mutations.importManualObservations(payload);
+      if (!connection?.token) throw new Error("Pair with a PC before importing readings.");
+      return createCompanionApi(connection).importManualObservations(payload);
+    });
+  }, [connection, runMutation, source]);
 
   const updateObservation = useCallback(async (id: string, input: UpdateObservationInput) => {
-    await requireObservationMutationService(source).updateObservation(id, input);
-  }, [source]);
+    await runMutation(() => requireObservationMutationService(source).updateObservation(id, input));
+  }, [runMutation, source]);
 
   const deleteObservation = useCallback(async (id: string) => {
-    await requireObservationMutationService(source).deleteObservation(id);
-  }, [source]);
+    await runMutation(() => requireObservationMutationService(source).deleteObservation(id));
+  }, [runMutation, source]);
 
   const resetStandaloneData = useCallback(async () => {
-    if (operatingMode !== "standalone" || !standaloneSource) throw new Error("Switch to Standalone mode before resetting local storage.");
+    if (operatingMode !== "standalone" || !standaloneSource) throw new Error("Local phone data is unavailable for reset.");
     await (standaloneSource as CompanionMaintenanceService).resetLocalData();
     generation.current += 1;
     clearHealthData();
@@ -304,49 +388,70 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
   }, [clearHealthData, operatingMode, refreshDashboard, refreshTrack, standaloneSource]);
 
   const listHealthEvents = useCallback(async (query?: HealthEventListQuery) => {
-    return requireCareService(source).listHealthEvents(query);
-  }, [source]);
+    const result = await requireCareService(source).listHealthEvents(query);
+    updateConnectionState(source!, result);
+    return result;
+  }, [source, updateConnectionState]);
 
   const createHealthEvent = useCallback(async (payload: CreateHealthEventInput) => {
-    await requireCareService(source).createHealthEvent(payload);
-  }, [source]);
+    await runMutation(() => requireCareService(source).createHealthEvent(payload));
+  }, [runMutation, source]);
 
   const updateHealthEvent = useCallback(async (id: string, payload: CreateHealthEventInput) => {
-    await requireCareService(source).updateHealthEvent(id, payload);
-  }, [source]);
+    await runMutation(() => requireCareService(source).updateHealthEvent(id, payload));
+  }, [runMutation, source]);
 
   const deleteHealthEvent = useCallback(async (id: string) => {
-    await requireCareService(source).deleteHealthEvent(id);
-  }, [source]);
+    await runMutation(() => requireCareService(source).deleteHealthEvent(id));
+  }, [runMutation, source]);
 
   const listCareItems = useCallback(async (query?: CareItemListQuery) => {
-    return requireCareService(source).listCareItems(query);
-  }, [source]);
+    const result = await requireCareService(source).listCareItems(query);
+    updateConnectionState(source!, result);
+    return result;
+  }, [source, updateConnectionState]);
 
   const createCareItem = useCallback(async (payload: CreateCareItemInput) => {
-    await requireCareService(source).createCareItem(payload);
-  }, [source]);
+    await runMutation(() => requireCareService(source).createCareItem(payload));
+  }, [runMutation, source]);
 
   const updateCareItem = useCallback(async (id: string, payload: CreateCareItemInput) => {
-    await requireCareService(source).updateCareItem(id, payload);
-  }, [source]);
+    await runMutation(() => requireCareService(source).updateCareItem(id, payload));
+  }, [runMutation, source]);
 
   const completeCareItem = useCallback(async (id: string, payload: CompleteCareItemInput) => {
-    await requireCareService(source).completeCareItem(id, payload);
-  }, [source]);
+    await runMutation(() => requireCareService(source).completeCareItem(id, payload));
+  }, [runMutation, source]);
 
   const deleteCareItem = useCallback(async (id: string) => {
-    await requireCareService(source).deleteCareItem(id);
-  }, [source]);
+    await runMutation(() => requireCareService(source).deleteCareItem(id));
+  }, [runMutation, source]);
 
   const refreshAfterImport = useCallback(async () => {
+    await synchronizeConnectedData(true);
     await Promise.all([refreshDashboard(), refreshTrack()]);
-  }, [refreshDashboard, refreshTrack]);
+  }, [refreshDashboard, refreshTrack, synchronizeConnectedData]);
 
   const clearTransientData = useCallback(() => {
     setTransientRevision((current) => current + 1);
     setProfilePhoto(undefined);
   }, []);
+
+  const cancelPendingConnection = useCallback(async () => {
+    if (!connection?.token || operatingMode !== "standalone") return;
+    await queueConnectionRevocation(connection);
+    try {
+      await retryPendingRevocation();
+    } catch {
+      // Securely retain the credential for revocation when the paired PC is reachable again.
+    }
+    generation.current += 1;
+    await Promise.all([clearConnection(), clearSelectedProfileId()]);
+    setConnection(null);
+    setConnectionState("online");
+    clearHealthData();
+    clearTransientData();
+  }, [clearHealthData, clearTransientData, connection, operatingMode]);
 
   const disconnect = useCallback(async () => {
     if (demoMode || !connection?.token) return;
@@ -357,12 +462,21 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
       // Securely retain the credential for revocation when the paired PC is reachable again.
     }
     generation.current += 1;
+    await (source as Partial<ConnectedReplicaMaintenance> | undefined)?.deleteConnectedReplica?.();
+    const freshLocalSource = createStandaloneDataSource();
+    try {
+      await (freshLocalSource as StandaloneMigrationSource).createFreshDataset();
+    } finally {
+      await freshLocalSource.dispose?.();
+    }
+    await saveOperatingMode("standalone");
     await Promise.all([clearConnection(), clearSelectedProfileId()]);
     setConnection(null);
-    setConnectionState("unpaired");
+    setOperatingModeState("standalone");
+    setConnectionState("online");
     clearHealthData();
     clearTransientData();
-  }, [clearHealthData, clearTransientData, connection, demoMode]);
+  }, [clearHealthData, clearTransientData, connection, demoMode, source]);
 
   useEffect(() => {
     let current = true;
@@ -391,8 +505,15 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     return () => { current = false; };
   }, []);
   useEffect(() => {
-    if (source) void Promise.all([refreshDashboard(), refreshTrack()]);
-  }, [source, refreshDashboard, refreshTrack]);
+    let current = true;
+    if (source) {
+      void Promise.all([refreshDashboard(), refreshTrack()]).then(async () => {
+        const changed = await synchronizeConnectedData(false);
+        if (current && changed) await Promise.all([refreshDashboard(), refreshTrack()]);
+      });
+    }
+    return () => { current = false; };
+  }, [source, refreshDashboard, refreshTrack, synchronizeConnectedData]);
   useEffect(() => () => {
     void (source as Partial<CompanionLifecycleService> | undefined)?.dispose?.();
   }, [source]);
@@ -400,13 +521,15 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "active") {
         void retryPendingRevocation().catch(() => undefined);
-        void refreshDashboard();
+        void synchronizeConnectedData(false).then((changed) => {
+          if (changed) void Promise.all([refreshDashboard(), refreshTrack()]);
+        });
       } else {
         clearTransientData();
       }
     });
     return () => subscription.remove();
-  }, [clearTransientData, refreshDashboard]);
+  }, [clearTransientData, refreshDashboard, refreshTrack, synchronizeConnectedData]);
   useEffect(() => {
     void retryPendingRevocation().catch(() => undefined);
   }, []);
@@ -423,18 +546,20 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     profilePhotoUri: bootstrap?.profilePhoto?.revision === profilePhoto?.revision ? profilePhoto?.uri : undefined,
     dashboardLoading,
     trackLoading,
+    syncing,
     error,
     transientRevision,
     migrationProgress,
     reloadConnection,
     setDemoMode,
     setOperatingMode,
-    listStandaloneDatasets,
-    selectStandaloneDataset,
     standaloneMigrationManifest,
     migrateStandaloneData,
+    discardStandaloneDataAndConnect,
+    cancelPendingConnection,
     refreshDashboard,
     refreshTrack,
+    synchronizeConnectedData,
     healthDataDetail,
     healthDataChartSeries,
     importManualObservations,
@@ -454,11 +579,11 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     clearTransientData,
     disconnect
   }), [
-    analytics, bootstrap, clearTransientData, completeCareItem, connection, connectionState, createCareItem, createHealthEvent,
-    dashboardLoading, deleteCareItem, deleteHealthEvent, deleteObservation, demoMode, disconnect, error, healthDataChartSeries, healthDataDetail,
-  importManualObservations, listCareItems, listHealthEvents, listStandaloneDatasets, operatingMode, refreshAfterImport, refreshDashboard,
-  profilePhoto, refreshTrack, reloadConnection, resetStandaloneData, setDemoMode, setOperatingMode, summary, trackLoading,
-  migrateStandaloneData, migrationProgress, selectStandaloneDataset, standaloneMigrationManifest, transientRevision, updateCareItem, updateHealthEvent, updateObservation
+    analytics, bootstrap, cancelPendingConnection, clearTransientData, completeCareItem, connection, connectionState, createCareItem, createHealthEvent,
+    dashboardLoading, deleteCareItem, deleteHealthEvent, deleteObservation, demoMode, discardStandaloneDataAndConnect, disconnect, error, healthDataChartSeries, healthDataDetail,
+    importManualObservations, listCareItems, listHealthEvents, operatingMode, refreshAfterImport, refreshDashboard,
+    profilePhoto, refreshTrack, reloadConnection, resetStandaloneData, setDemoMode, setOperatingMode, summary, syncing, synchronizeConnectedData, trackLoading,
+    migrateStandaloneData, migrationProgress, standaloneMigrationManifest, transientRevision, updateCareItem, updateHealthEvent, updateObservation
   ]);
   return <MobileApiContext.Provider value={value}>{children}</MobileApiContext.Provider>;
 }
@@ -476,7 +601,7 @@ function requireCareService(source: CompanionDataSource | undefined): CompanionC
     !candidate.deleteHealthEvent || !candidate.listCareItems || !candidate.createCareItem ||
     !candidate.updateCareItem || !candidate.completeCareItem || !candidate.deleteCareItem
   ) {
-    throw new Error("Switch to Connected mode to use Care.");
+    throw new Error("Pair with your PC to use Care.");
   }
   return candidate as CompanionCareService;
 }

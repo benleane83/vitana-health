@@ -14,7 +14,16 @@ describe("standalone schema migrations", () => {
     expect(incrementalSql).toContain("migration_receipt_json");
     expect(incrementalSql).toContain("SELECT COUNT(*) FROM profiles");
     expect(incrementalSql).not.toContain("COUNT(*) FROM observations");
-    expect(incrementalSql).toContain(`PRAGMA user_version = ${LOCAL_SCHEMA_VERSION}`);
+    expect(incrementalSql).toContain("PRAGMA user_version = 2");
+    const replicaSql = migrationSql(2);
+    expect(replicaSql).toContain("CREATE TABLE connected_replicas");
+    expect(replicaSql).toContain("connected_replica_entities");
+    expect(replicaSql).toContain("PRAGMA user_version = 3");
+    const resumableSql = migrationSql(3);
+    expect(resumableSql).toContain("ADD COLUMN snapshot_cursor");
+    expect(resumableSql).toContain("ADD COLUMN applied_at");
+    expect(resumableSql).toContain("DROP INDEX IF EXISTS connected_replica_entities_type_idx");
+    expect(resumableSql).toContain(`PRAGMA user_version = ${LOCAL_SCHEMA_VERSION}`);
   });
 
   it("rejects future, negative, and unsupported schema versions", () => {
@@ -38,9 +47,11 @@ describe("standalone schema migrations", () => {
 
     await migrate(database);
 
-    expect(withTransactionAsync).toHaveBeenCalledTimes(2);
+    expect(withTransactionAsync).toHaveBeenCalledTimes(LOCAL_SCHEMA_VERSION);
     expect(withExclusiveTransactionAsync).not.toHaveBeenCalled();
     expect(execAsync).toHaveBeenCalledWith(expect.stringContaining("CREATE TABLE profiles"));
     expect(execAsync).toHaveBeenCalledWith(expect.stringContaining("CREATE TABLE datasets"));
+    expect(execAsync).toHaveBeenCalledWith(expect.stringContaining("CREATE TABLE connected_replicas"));
+    expect(execAsync).toHaveBeenCalledWith(expect.stringContaining("ADD COLUMN snapshot_cursor"));
   });
 });

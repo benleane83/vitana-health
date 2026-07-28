@@ -100,7 +100,15 @@ export function PairScreen({
       }
 
       if (body.status === "approved" && typeof body.token === "string") {
-        await saveConnection({ url: detectedUrl, token: body.token, publicKeyHash, pairedAt: new Date().toISOString() });
+        await saveConnection({
+          url: detectedUrl,
+          token: body.token,
+          publicKeyHash,
+          pairedAt: new Date().toISOString(),
+          pairingId: typeof body.id === "string" ? body.id : null,
+          serverInstanceId: null,
+          profileId: null
+        });
         setStatus("approved");
         setMessage("Paired successfully! Returning to sync screen…");
         pollTimeoutRef.current = setTimeout(
@@ -164,7 +172,15 @@ export function PairScreen({
         if (body.status === "approved" && typeof body.token === "string") {
           cancelledRef.current = true;
           if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
-          await saveConnection({ url, token: body.token, publicKeyHash: pinnedHash, pairedAt: new Date().toISOString() });
+          await saveConnection({
+            url,
+            token: body.token,
+            publicKeyHash: pinnedHash,
+            pairedAt: new Date().toISOString(),
+            pairingId,
+            serverInstanceId: null,
+            profileId: null
+          });
           setStatus("approved");
           setMessage("Paired successfully! Returning to sync screen…");
           pollTimeoutRef.current = setTimeout(() => onComplete({ url, token: body.token as string, publicKeyHash: pinnedHash }), 1500);
