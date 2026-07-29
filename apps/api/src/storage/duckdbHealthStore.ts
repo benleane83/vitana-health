@@ -36,6 +36,7 @@ import type {
   ProfileImport,
   ProfileRepository
 } from "./profileRepository.js";
+import type { HealthConnectSyncSessionStart } from "./duckdbHealthConnectSync.js";
 
 export interface DuckDbHealthStoreOptions {
   root: string;
@@ -171,6 +172,14 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
     return this.enqueueMutation(async () => {
       return this.repository.mergeImport(parsed);
     });
+  }
+
+  startHealthConnectSyncSession(pairingId: string, request: HealthConnectSyncSessionStart) {
+    return this.enqueueMutation(() => this.repository.startHealthConnectSyncSession(pairingId, request));
+  }
+
+  applyHealthConnectSyncChunk(pairingId: string, sessionId: string, batchId: string, parsed: ProfileImport) {
+    return this.enqueueMutation(() => this.repository.applyHealthConnectSyncChunk(pairingId, sessionId, batchId, parsed));
   }
 
   startMobileMigration(pairingId: string, manifest: MobileMigrationManifest) {

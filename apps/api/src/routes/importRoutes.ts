@@ -7,7 +7,12 @@ import {
   buildManualLabEntryImport,
   buildManualObservationImport,
   buildStructuredUploadImportFromDraft,
+  healthConnectSyncBatchAcknowledgementSchema,
+  healthConnectSyncChunkRequestSchema,
+  healthConnectSyncSessionRequestSchema,
+  healthConnectSyncSessionResponseSchema,
   importMutationResponseSchema,
+  negotiateHealthConnectSyncProtocolVersion,
   parseBloodTestCsv,
   parseBloodTestScanText,
   parseObservationCsv,
@@ -31,6 +36,32 @@ function compactImportResponse(imported: ProfileImport, merged: ImportMutationRe
     import: { ...imported.sourceImport, rawContent: undefined },
     outcome: merged.outcome
   };
+}
+
+/** Chunked sync is a paired-phone protocol; the owner UI keeps using the one-shot endpoint. */
+function requireCompanionPrincipal(principal: AuthorizationPrincipal) {
+  if (principal.kind !== "companion") {
+    throw Object.assign(new Error("Health Connect sync requires a paired companion device."), { status: 403 });
+  }
+  return principal;
+}
+
+function assertCompanionProfile(profileId: string | undefined, principal: { allowedProfileIds: readonly string[] }) {
+  if (profileId !== undefined && profileId !== principal.allowedProfileIds[0]) {
+    throw Object.assign(new Error("The requested profile is not authorized for this device."), {
+      status: 403,
+      code: "PROFILE_ACCESS_DENIED"
+    });
+  }
+}
+
+/** A protocol mismatch is a client-side problem the phone can explain, not a server fault. */
+function negotiateSyncProtocol(version: number): void {
+  try {
+    negotiateHealthConnectSyncProtocolVersion(version);
+  } catch (error) {
+    throw Object.assign(error as Error, { status: 409, code: "SYNC_PROTOCOL_UNSUPPORTED" });
+  }
 }
 
 const importSchema = z.object({
@@ -328,6 +359,52 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
       const merged = await store.mergeImport(imported);
       const analyticsStorage = describeAnalyticsStorage(storeManager, merged.counts, store.profileId);
       sendJson(response.status(201), importMutationResponseSchema, { ...compactImportResponse(imported, merged), analyticsStorage });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  /**
+   * Declares a chunked sync. Idempotent on the phone-minted session key, and the response tells the
+   * phone which batches the PC already holds so an interrupted sync resumes instead of restarting.
+   */
+  router.post("/health-connect/sessions", async (request, response, next) => {
+    try {
+      const principal = requireCompanionPrincipal(response.locals.principal as AuthorizationPrincipal);
+      const input = healthConnectSyncSessionRequestSchema.parse(request.body ?? {});
+      negotiateSyncProtocol(input.protocolVersion);
+      assertCompanionProfile(input.profileId, principal);
+      const store = resolvePrincipalStore(storeManager, principal);
+      sendJson(
+        response.status(201),
+        healthConnectSyncSessionResponseSchema,
+        await store.startHealthConnectSyncSession(principal.pairingId, input)
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/health-connect/sessions/:sessionId/chunks", async (request, response, next) => {
+    try {
+      const principal = requireCompanionPrincipal(response.locals.principal as AuthorizationPrincipal);
+      const input = healthConnectSyncChunkRequestSchema.parse(request.body ?? {});
+      negotiateSyncProtocol(input.protocolVersion);
+      assertCompanionProfile(input.profileId, principal);
+      if (input.sessionId !== request.params.sessionId) {
+        throw Object.assign(new Error("Sync session does not match the route."), { status: 400 });
+      }
+      const store = resolvePrincipalStore(storeManager, principal);
+      const acknowledgement = await store.applyHealthConnectSyncChunk(
+        principal.pairingId,
+        input.sessionId,
+        input.batchId,
+        parseHealthConnectImport(input)
+      );
+      if (!acknowledgement) {
+        throw Object.assign(new Error("That sync session is not known to this PC. Start a new sync."), { status: 404 });
+      }
+      sendJson(response, healthConnectSyncBatchAcknowledgementSchema, acknowledgement);
     } catch (error) {
       next(error);
     }

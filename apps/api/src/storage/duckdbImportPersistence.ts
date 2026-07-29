@@ -196,18 +196,14 @@ export async function importObservationRecords(
   };
 }
 
+/**
+ * Returns true when this import row was actually written. `imports_identity_idx` makes the
+ * (source_kind, checksum, file_name) identity a database constraint, so a single INSERT OR IGNORE
+ * both deduplicates and reports the outcome - the previous SELECT-then-INSERT pair could let two
+ * concurrent sync chunks each see "not present" and both insert.
+ */
 async function insertImportIfNew(connection: duckdb.Connection, sourceImport: SourceImport): Promise<boolean> {
-  const duplicateImports = await allWithParams(
-    connection,
-    "SELECT 1 AS found FROM imports WHERE source_kind = ? AND checksum = ? AND file_name = ? LIMIT 1;",
-    sourceImport.sourceKind,
-    sourceImport.checksum,
-    sourceImport.fileName
-  );
-  if (duplicateImports.length > 0) {
-    return false;
-  }
-  await insertRows(connection, "imports", [[
+  const inserted = await insertRows(connection, "imports", [[
     await nextOrdinal(connection, "imports"),
     sourceImport.id,
     sourceImport.sourceKind,
@@ -219,8 +215,8 @@ async function insertImportIfNew(connection: duckdb.Connection, sourceImport: So
     sourceImport.status,
     json(sourceImport.diagnostics),
     sourceImport.rawContent ?? null
-  ]]);
-  return true;
+  ]], { ignoreDuplicates: true, returningIds: true });
+  return inserted.length > 0;
 }
 
 function importAuditDetail(sourceKind: string, outcome: ImportOutcome): string {

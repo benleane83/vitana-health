@@ -679,6 +679,28 @@ profile is always used. Owners may omit `profileId` to use the active profile or
 target profile. Missing or invalid credentials return `401`; an authenticated companion
 without the required capability returns `403`.
 
+### Start a chunked Health Connect sync session *(companion only)*
+```
+POST /api/import/health-connect/sessions
+```
+**Request body:** `{ "protocolVersion", "sessionKey", "deviceLabel", "rangeStart", "rangeEnd", "profileId"? }`
+**Success `201`:** `{ "protocolVersion", "sessionId", "processedBatchIds" }`
+
+Sessions are idempotent on `(pairing, sessionKey)`. Replaying a key returns the same `sessionId`
+plus every batch already applied, so an interrupted phone resumes instead of re-uploading a full
+window. A `protocolVersion` this PC cannot serve returns `409 SYNC_PROTOCOL_UNSUPPORTED`.
+
+### Upload one sync chunk *(companion only)*
+```
+POST /api/import/health-connect/sessions/:sessionId/chunks
+```
+**Request body:** the Health Connect import body plus `{ "protocolVersion", "sessionId", "batchId" }`
+**Success `201`:** `{ "protocolVersion", "sessionId", "batchId", "counts": { "accepted", "duplicates", "rejected" } }`
+
+The chunk is applied in a single transaction with its acknowledgement, so a replayed `batchId`
+returns the original counts without importing twice. A `sessionId` in the path that disagrees with
+the body returns `400`; a session unknown to this pairing returns `404`.
+
 ---
 
 ## Query / AI

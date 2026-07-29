@@ -21,17 +21,45 @@ vi.mock("react-native-health-connect", () => ({
 }));
 vi.mock("./endpointStore", () => ({
   DEFAULT_HEALTH_CONNECT_SYNC_WINDOW_DAYS: 365,
-  HEALTH_CONNECT_CATEGORIES: ["Steps", "Weight"]
+  HEALTH_CONNECT_CATEGORIES: ["Steps", "Weight", "ExerciseSession"]
 }));
 vi.mock("./pinnedFetch", () => ({ LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS: 60_000, pinnedFetch: mocks.pinnedFetch }));
 
 import { chunkPayload, syncHealthConnect, type HealthConnectImportPayload } from "./syncHealthConnect";
 
-const response = {
-  ok: true,
-  status: 201,
-  json: async () => ({ counts: { observations: 2, timeSeriesSamples: 0, activitySessions: 0 } })
-};
+const sessionsPath = "/api/import/health-connect/sessions";
+
+function jsonResponse(body: unknown, status = 201) {
+  return { ok: status >= 200 && status < 300, status, json: async () => body };
+}
+
+function sessionBody(processedBatchIds: string[] = []) {
+  return { protocolVersion: 1, sessionId: "session-1", processedBatchIds };
+}
+
+function acknowledgementBody() {
+  return { protocolVersion: 1, sessionId: "session-1", batchId: "batch", counts: { accepted: 2, duplicates: 0, rejected: 0 } };
+}
+
+/** Routes the session handshake and the chunk uploads the way the API does, recording call order. */
+function mockTransport(options: { processedBatchIds?: string[] } = {}): string[] {
+  const order: string[] = [];
+  mocks.pinnedFetch.mockImplementation(async (url: string) => {
+    if (url.endsWith(sessionsPath)) {
+      order.push("session");
+      return jsonResponse(sessionBody(options.processedBatchIds));
+    }
+    order.push("upload");
+    return jsonResponse(acknowledgementBody());
+  });
+  return order;
+}
+
+function uploadedBodies(): Array<Record<string, any>> {
+  return (mocks.pinnedFetch.mock.calls as any[][])
+    .filter((call) => !String(call[0]).endsWith(sessionsPath))
+    .map((call) => JSON.parse(call[2].body));
+}
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -40,7 +68,7 @@ beforeEach(() => {
   mocks.initialize.mockResolvedValue(true);
   mocks.requestPermission.mockResolvedValue([{ accessType: "read", recordType: "Steps" }]);
   mocks.readRecords.mockResolvedValue({ records: [], pageToken: undefined });
-  mocks.pinnedFetch.mockResolvedValue(response);
+  mockTransport();
 });
 
 afterEach(() => {
@@ -57,7 +85,7 @@ describe("Health Connect sync", () => {
     expect(mocks.requestPermission).not.toHaveBeenCalled();
   });
 
-  it("uses an overlapping cursor, follows pages, and does not advance after a partial permission grant", async () => {
+  it("uses an overlapping cursor, follows pages, and leaves ungranted categories on their old cursor", async () => {
     mocks.readRecords.mockImplementation(async (_recordType: string, options: { pageToken?: string }) => (
       options.pageToken
         ? { records: [{ startTime: "2026-01-10T11:00:00.000Z", endTime: "2026-01-10T11:05:00.000Z", count: 11 }], pageToken: undefined }
@@ -66,7 +94,7 @@ describe("Health Connect sync", () => {
 
     const result = await syncHealthConnect("https://desktop.test/", "companion-token", "profile-1", "pin", {
       deviceId: "device-1",
-      syncCursor: "2026-01-10T12:00:00.000Z",
+      syncCursors: { Steps: "2026-01-10T12:00:00.000Z", Weight: "2026-01-05T12:00:00.000Z" },
       syncWindowDays: 30,
       categories: ["Steps", "Weight"]
     });
@@ -81,23 +109,35 @@ describe("Health Connect sync", () => {
       timeRangeFilter: { startTime: "2026-01-10T11:55:00.000Z", endTime: "2026-01-11T12:00:00.000Z" }
     });
     expect(mocks.readRecords.mock.calls[1][1].pageToken).toBe("next");
-    expect(mocks.pinnedFetch).toHaveBeenCalledWith(
-      "https://desktop.test/api/import/health-connect",
-      "pin",
-      expect.objectContaining({ headers: expect.objectContaining({ "x-companion-token": "companion-token" }) })
-    );
-    expect(JSON.parse(mocks.pinnedFetch.mock.calls[0][2].body).steps).toHaveLength(2);
-    expect(result.canAdvanceCursor).toBe(false);
+    expect(mocks.pinnedFetch.mock.calls[1][0]).toBe("https://desktop.test/api/import/health-connect/sessions/session-1/chunks");
+    expect(mocks.pinnedFetch.mock.calls[1][2].headers["x-companion-token"]).toBe("companion-token");
+    expect(uploadedBodies()[0].steps).toHaveLength(2);
+    expect(result.syncCursors).toEqual({
+      Steps: "2026-01-11T12:00:00.000Z",
+      Weight: "2026-01-05T12:00:00.000Z"
+    });
     expect(result.details).toContain("Synced 2 records");
     expect(result.details).toContain("Oldest record returned by Health Connect: 2026-01-10");
-    expect(result.details).not.toContain("Store counts:");
   });
 
-  it("requests historical access for sync windows over 30 days without relying on its omitted return mapping", async () => {
+  it("backfills a newly enabled category over the full window while resuming the others", async () => {
     mocks.requestPermission.mockResolvedValue([
-      { accessType: "read", recordType: "Steps" }
+      { accessType: "read", recordType: "Steps" },
+      { accessType: "read", recordType: "Weight" }
     ]);
 
+    await syncHealthConnect("https://desktop.test", "companion-token", null, "pin", {
+      deviceId: "device-1",
+      syncCursors: { Steps: "2026-01-10T12:00:00.000Z" },
+      syncWindowDays: 30,
+      categories: ["Steps", "Weight"]
+    });
+
+    expect(mocks.readRecords.mock.calls[0][1].timeRangeFilter.startTime).toBe("2026-01-10T11:55:00.000Z");
+    expect(mocks.readRecords.mock.calls[1][1].timeRangeFilter.startTime).toBe("2025-12-12T12:00:00.000Z");
+  });
+
+  it("requests historical access for sync windows over 30 days", async () => {
     const result = await syncHealthConnect("https://desktop.test", "companion-token", null, "pin", {
       deviceId: "device-1",
       syncWindowDays: 90,
@@ -108,7 +148,7 @@ describe("Health Connect sync", () => {
       { accessType: "read", recordType: "Steps" },
       { accessType: "read", recordType: "ReadHealthDataHistory" }
     ]);
-    expect(result.canAdvanceCursor).toBe(true);
+    expect(result.syncCursors).toEqual({ Steps: "2026-01-11T12:00:00.000Z" });
     expect(result.details).toContain("Extended Health Connect history access was requested");
     expect(result.details).toContain("Health Connect returned no records in this window");
   });
@@ -128,17 +168,91 @@ describe("Health Connect sync", () => {
       categories: ["Steps"]
     });
 
-    const uploaded = JSON.parse(mocks.pinnedFetch.mock.calls[0][2].body);
-    expect(uploaded.steps).toEqual([
+    expect(uploadedBodies()[0].steps).toEqual([
       expect.objectContaining({ startTime: "2026-01-10T10:00:00.000Z", count: 120 })
     ]);
     expect(result.details).toContain("Synced 1 records");
   });
 
+  it("uploads while it is still reading rather than buffering the whole window", async () => {
+    const order = mockTransport();
+    const page = (label: string) => ({
+      records: Array.from({ length: 800 }, () => ({
+        startTime: "2026-01-10T10:00:00.000Z",
+        endTime: "2026-01-10T11:00:00.000Z",
+        exerciseType: "run",
+        title: label.repeat(1_500)
+      })),
+      pageToken: label === "a" ? "next" : undefined
+    });
+    mocks.requestPermission.mockResolvedValue([{ accessType: "read", recordType: "ExerciseSession" }]);
+    mocks.readRecords.mockImplementation(async (_recordType: string, options: { pageToken?: string }) => {
+      order.push("read");
+      return options.pageToken ? page("b") : page("a");
+    });
+
+    await syncHealthConnect("https://desktop.test", "companion-token", null, "pin", {
+      deviceId: "device-1",
+      categories: ["ExerciseSession"]
+    });
+
+    const bodies = uploadedBodies();
+    expect(bodies.length).toBeGreaterThan(1);
+    // An upload landing before the last read is what proves nothing is held back until the end.
+    expect(order.indexOf("upload")).toBeLessThan(order.lastIndexOf("read"));
+    expect(bodies.every((body) => new TextEncoder().encode(JSON.stringify(body)).length <= 2_000_000)).toBe(true);
+    expect(bodies.flatMap((body) => body.exerciseSessions)).toHaveLength(1_600);
+  });
+
+  it("resumes a session by skipping batches the PC already acknowledged", async () => {
+    mockTransport({ processedBatchIds: ["device-1:resumed:1"] });
+    mocks.readRecords.mockResolvedValue({
+      records: [{ startTime: "2026-01-10T10:00:00.000Z", endTime: "2026-01-10T10:05:00.000Z", count: 120 }],
+      pageToken: undefined
+    });
+
+    const sessionKeys: Array<string | null> = [];
+    await syncHealthConnect("https://desktop.test", "companion-token", null, "pin", {
+      deviceId: "device-1",
+      sessionKey: "device-1:resumed",
+      categories: ["Steps"],
+      onSessionKey: (key) => { sessionKeys.push(key); }
+    });
+
+    expect(uploadedBodies()).toHaveLength(0);
+    expect(mocks.pinnedFetch).toHaveBeenCalledTimes(1);
+    expect(sessionKeys).toEqual(["device-1:resumed", null]);
+  });
+
+  it("mints batch IDs from the session key so a resumed sync reproduces them", async () => {
+    await syncHealthConnect("https://desktop.test", "companion-token", null, "pin", {
+      deviceId: "device-1",
+      sessionKey: "device-1:resumed",
+      categories: ["Steps"]
+    });
+
+    expect(uploadedBodies()[0]).toMatchObject({ batchId: "device-1:resumed:1", sessionId: "session-1", protocolVersion: 1 });
+  });
+
+  it("stops immediately when the sync is cancelled", async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(syncHealthConnect("https://desktop.test", "companion-token", null, "pin", {
+      deviceId: "device-1",
+      categories: ["Steps"],
+      signal: controller.signal
+    })).rejects.toThrow("Sync was cancelled.");
+
+    expect(mocks.pinnedFetch).not.toHaveBeenCalled();
+  });
+
   it("retries a timeout once without changing the upload payload or authentication", async () => {
     mocks.pinnedFetch
       .mockRejectedValueOnce(new Error("Pinned HTTPS request timed out while waiting for the API response."))
-      .mockResolvedValueOnce(response);
+      .mockImplementation(async (url: string) => (url.endsWith(sessionsPath)
+        ? jsonResponse(sessionBody())
+        : jsonResponse(acknowledgementBody())));
 
     const sync = syncHealthConnect("https://desktop.test", "companion-token", null, "pin", {
       deviceId: "device-1",
@@ -147,15 +261,15 @@ describe("Health Connect sync", () => {
     await vi.advanceTimersByTimeAsync(1000);
     await sync;
 
-    expect(mocks.pinnedFetch).toHaveBeenCalledTimes(2);
-    expect(mocks.pinnedFetch.mock.calls[0][2].headers["x-companion-token"]).toBe("companion-token");
-    expect(mocks.pinnedFetch.mock.calls[1][2].body).toBe(mocks.pinnedFetch.mock.calls[0][2].body);
+    expect(mocks.pinnedFetch).toHaveBeenCalledTimes(3);
+    expect(mocks.pinnedFetch.mock.calls[0][2].body).toBe(mocks.pinnedFetch.mock.calls[1][2].body);
+    expect(mocks.pinnedFetch.mock.calls[1][2].headers["x-companion-token"]).toBe("companion-token");
   });
 
   it("retries an interrupted native connection", async () => {
-    mocks.pinnedFetch
-      .mockRejectedValueOnce(new Error("The connection to your paired PC was interrupted. Check the local network and try again."))
-      .mockResolvedValueOnce(response);
+    mocks.pinnedFetch.mockRejectedValueOnce(
+      Object.assign(new Error("The connection to your paired PC was interrupted."), { code: "network-interrupted" })
+    );
 
     const sync = syncHealthConnect("https://desktop.test", "companion-token", null, "pin", {
       deviceId: "device-1",
@@ -164,7 +278,7 @@ describe("Health Connect sync", () => {
     await vi.advanceTimersByTimeAsync(1000);
     await sync;
 
-    expect(mocks.pinnedFetch).toHaveBeenCalledTimes(2);
+    expect(mocks.pinnedFetch).toHaveBeenCalledTimes(3);
   });
 
   it("reports the permission, read, upload, and finalization stages", async () => {
@@ -199,8 +313,8 @@ describe("payload chunking", () => {
 
     expect(chunks).toHaveLength(2);
     expect(chunks.map((chunk) => chunk.batchId)).toEqual([
-      "2026-01-11T12:00:00.000Z:1/2",
-      "2026-01-11T12:00:00.000Z:2/2"
+      "2026-01-11T12:00:00.000Z:1",
+      "2026-01-11T12:00:00.000Z:2"
     ]);
     expect(chunks.flatMap((chunk) => chunk.exerciseSessions).map((session) => session.title)).toEqual(["a".repeat(500), "b".repeat(500)]);
   });

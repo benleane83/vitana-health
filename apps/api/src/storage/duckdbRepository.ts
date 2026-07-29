@@ -16,6 +16,8 @@ import {
   type DeleteHealthEventResponse,
   type DeleteObservationResponse,
   type DeleteObservationsByTypeResponse,
+  HEALTH_CONNECT_SYNC_PROTOCOL_VERSION,
+  type HealthConnectSyncBatchAcknowledgement,
   type HealthDataChartSeriesOptions,
   type HealthEventListQuery,
   type HealthEventMutationResponse,
@@ -95,6 +97,14 @@ import {
   completeMobileMigration,
   startMobileMigration
 } from "./duckdbMigrationPersistence.js";
+import {
+  findHealthConnectSyncAcknowledgement,
+  findHealthConnectSyncSession,
+  recordHealthConnectSyncAcknowledgement,
+  startHealthConnectSyncSession,
+  summarizeHealthConnectSyncCounts,
+  type HealthConnectSyncSessionStart
+} from "./duckdbHealthConnectSync.js";
 import {
   analyticsSummary as readAnalyticsSummary,
   appBootstrap as readAppBootstrap,
@@ -318,6 +328,47 @@ export class DuckDbRepository implements ProfileRepository {
       (merged) => merged.replicaChanges
     );
     return result;
+  }
+
+  async startHealthConnectSyncSession(pairingId: string, request: HealthConnectSyncSessionStart) {
+    this.assertOpen();
+    return this.transaction(() => startHealthConnectSyncSession(this.connection, pairingId, request));
+  }
+
+  /**
+   * Applies one sync chunk and records its acknowledgement in the same transaction, so a retry after
+   * a lost response replays the stored answer instead of importing the payload a second time.
+   */
+  async applyHealthConnectSyncChunk(
+    pairingId: string,
+    sessionId: string,
+    batchId: string,
+    parsed: DuckDbImport
+  ): Promise<HealthConnectSyncBatchAcknowledgement | undefined> {
+    this.assertOpen();
+    if (!await findHealthConnectSyncSession(this.connection, pairingId, sessionId)) {
+      return undefined;
+    }
+    const replayed = await findHealthConnectSyncAcknowledgement(this.connection, sessionId, batchId);
+    if (replayed) {
+      return replayed;
+    }
+    let acknowledgement: HealthConnectSyncBatchAcknowledgement | undefined;
+    await this.transaction(
+      async () => {
+        const merged = await mergeDuckDbImport(this.connection, parsed);
+        acknowledgement = {
+          protocolVersion: HEALTH_CONNECT_SYNC_PROTOCOL_VERSION,
+          sessionId,
+          batchId,
+          counts: summarizeHealthConnectSyncCounts(merged.outcome)
+        };
+        await recordHealthConnectSyncAcknowledgement(this.connection, acknowledgement);
+        return merged;
+      },
+      (merged) => merged.replicaChanges
+    );
+    return acknowledgement;
   }
 
   async startMobileMigration(pairingId: string, manifest: MobileMigrationManifest) {

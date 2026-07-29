@@ -43,6 +43,11 @@ import type {
   UpdateObservationInput,
   UpdateObservationResponse
 } from "@vitana/shared";
+import type {
+  HealthConnectSyncBatchAcknowledgement,
+  HealthConnectSyncSessionResponse
+} from "@vitana/shared";
+import type { HealthConnectSyncSessionStart } from "./duckdbHealthConnectSync.js";
 import type { MeasurementDetailPage } from "../summary.js";
 import type { ClinicianReportSourceImport } from "../clinicianReport.js";
 import type { StoredReplicaPage } from "./duckdbReplicaSync.js";
@@ -122,6 +127,17 @@ export interface ProfileRepository {
   deleteProfilePhoto(): Promise<boolean>;
   resetMeasurementTypeMetadataFromRegistry(): Promise<MeasurementRegistryResetResult>;
   mergeImport(imported: ProfileImport): Promise<ImportMutationResult>;
+  startHealthConnectSyncSession(
+    pairingId: string,
+    request: HealthConnectSyncSessionStart
+  ): Promise<HealthConnectSyncSessionResponse>;
+  /** Resolves to `undefined` when the session id is unknown for this pairing. */
+  applyHealthConnectSyncChunk(
+    pairingId: string,
+    sessionId: string,
+    batchId: string,
+    imported: ProfileImport
+  ): Promise<HealthConnectSyncBatchAcknowledgement | undefined>;
   startMobileMigration(pairingId: string, manifest: MobileMigrationManifest): Promise<MobileMigrationStartResponse>;
   applyMobileMigrationBatch(pairingId: string, batch: MobileMigrationBatch): Promise<MobileMigrationBatchAcknowledgement>;
   completeMobileMigration(pairingId: string, sessionId: string): Promise<MobileMigrationReceipt>;

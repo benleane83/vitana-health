@@ -26,6 +26,7 @@ export const HEALTH_CONNECT_CATEGORIES = [
 ] as const;
 
 export type HealthConnectCategory = (typeof HEALTH_CONNECT_CATEGORIES)[number];
+export type HealthSourceCursors = Partial<Record<HealthConnectCategory, string>>;
 export const DEFAULT_HEALTH_CONNECT_SYNC_WINDOW_DAYS = 30;
 export const HEALTH_CONNECT_SYNC_WINDOW_OPTIONS = [30, 60, 90, 180, 365] as const;
 
@@ -40,15 +41,23 @@ export interface ConnectionDetails {
   pairingId?: string | null;
   serverInstanceId?: string | null;
   profileId?: string | null;
-  healthConnectSyncCursor: string | null;
+  /** One cursor per category so enabling a category backfills only that category. */
+  healthSourceCursors: HealthSourceCursors;
+  /** Identity of an interrupted sync, so a killed app resumes instead of restarting. */
+  healthSourceSessionKey: string | null;
   healthConnectSyncWindowDays: number;
-  healthConnectCategories: HealthConnectCategory[];
+  healthSourceCategories: HealthConnectCategory[];
   healthConnectDisclosureAcknowledged: boolean;
 }
 
 export type PendingRevocation = Pick<ConnectionDetails, "url" | "token" | "publicKeyHash">;
 
-interface StoredConnection extends Omit<ConnectionDetails, "token" | "deviceId"> {}
+interface StoredConnection extends Omit<ConnectionDetails, "token" | "deviceId"> {
+  /** Retired in favour of the per-category map; still read once so existing installs keep their place. */
+  healthConnectSyncCursor?: string | null;
+  /** Retired platform-specific name for the selected categories. */
+  healthConnectCategories?: HealthConnectCategory[];
+}
 
 async function generateDeviceId(): Promise<string> {
   return Array.from(await Crypto.getRandomBytesAsync(16), (byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -68,16 +77,20 @@ export async function loadConnection(): Promise<ConnectionDetails | null> {
   try {
     const stored = JSON.parse(raw) as StoredConnection;
     const [deviceId, token] = await Promise.all([getDeviceId(), SecureStore.getItemAsync(TOKEN_KEY)]);
+    const healthSourceCategories = normalizeHealthConnectCategories(
+      stored.healthSourceCategories ?? stored.healthConnectCategories
+    );
     return {
       ...stored,
       deviceId,
       token,
-      healthConnectSyncCursor: stored.healthConnectSyncCursor ?? null,
+      healthSourceCursors: migrateHealthSourceCursors(stored, healthSourceCategories),
+      healthSourceSessionKey: stored.healthSourceSessionKey ?? null,
       pairingId: stored.pairingId ?? null,
       serverInstanceId: stored.serverInstanceId ?? null,
       profileId: stored.profileId ?? null,
       healthConnectSyncWindowDays: normalizeSyncWindowDays(stored.healthConnectSyncWindowDays),
-      healthConnectCategories: normalizeHealthConnectCategories(stored.healthConnectCategories),
+      healthSourceCategories,
       healthConnectDisclosureAcknowledged: stored.healthConnectDisclosureAcknowledged === true
     };
   } catch {
@@ -100,13 +113,14 @@ export async function saveConnection(patch: Partial<ConnectionDetails> & { url: 
     pairingId: patch.pairingId !== undefined ? patch.pairingId : (existing?.pairingId ?? null),
     serverInstanceId: patch.serverInstanceId !== undefined ? patch.serverInstanceId : (existing?.serverInstanceId ?? null),
     profileId: patch.profileId !== undefined ? patch.profileId : (existing?.profileId ?? null),
-    healthConnectSyncCursor:
-      patch.healthConnectSyncCursor !== undefined ? patch.healthConnectSyncCursor : (existing?.healthConnectSyncCursor ?? null),
+    healthSourceCursors: patch.healthSourceCursors ?? existing?.healthSourceCursors ?? {},
+    healthSourceSessionKey:
+      patch.healthSourceSessionKey !== undefined ? patch.healthSourceSessionKey : (existing?.healthSourceSessionKey ?? null),
     healthConnectSyncWindowDays: normalizeSyncWindowDays(
       patch.healthConnectSyncWindowDays ?? existing?.healthConnectSyncWindowDays
     ),
-    healthConnectCategories: normalizeHealthConnectCategories(
-      patch.healthConnectCategories ?? existing?.healthConnectCategories
+    healthSourceCategories: normalizeHealthConnectCategories(
+      patch.healthSourceCategories ?? existing?.healthSourceCategories
     ),
     healthConnectDisclosureAcknowledged:
       patch.healthConnectDisclosureAcknowledged ??
@@ -126,10 +140,35 @@ export async function updateLastSyncAt(url: string): Promise<void> {
   await saveConnection({ ...existing, lastSyncAt: new Date().toISOString() });
 }
 
-export async function updateHealthConnectSyncCursor(url: string, cursor: string): Promise<void> {
+export async function updateHealthSourceCursors(url: string, cursors: HealthSourceCursors): Promise<void> {
   const existing = await loadConnection();
   if (!existing || existing.url !== url) return;
-  await saveConnection({ ...existing, healthConnectSyncCursor: cursor, lastSyncAt: new Date().toISOString() });
+  await saveConnection({
+    ...existing,
+    healthSourceCursors: cursors,
+    healthSourceSessionKey: null,
+    lastSyncAt: new Date().toISOString()
+  });
+}
+
+export async function updateHealthSourceSessionKey(url: string, sessionKey: string | null): Promise<void> {
+  const existing = await loadConnection();
+  if (!existing || existing.url !== url) return;
+  await saveConnection({ ...existing, healthSourceSessionKey: sessionKey });
+}
+
+/**
+ * Earlier builds tracked a single cursor across every category, which meant enabling a new category
+ * silently skipped its history. Fan the old value out so migrated installs keep their position.
+ */
+function migrateHealthSourceCursors(
+  stored: StoredConnection,
+  categories: HealthConnectCategory[]
+): HealthSourceCursors {
+  if (stored.healthSourceCursors && typeof stored.healthSourceCursors === "object") return stored.healthSourceCursors;
+  const legacy = stored.healthConnectSyncCursor;
+  if (!legacy) return {};
+  return Object.fromEntries(categories.map((category) => [category, legacy])) as HealthSourceCursors;
 }
 
 export async function clearConnection(): Promise<void> {

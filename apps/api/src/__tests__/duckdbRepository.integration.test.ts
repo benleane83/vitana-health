@@ -29,6 +29,7 @@ import { createDuckDbHealthStoreFixture } from "./support/duckdbFixture.js";
 import { DuckDbRepository, digestHealthStoreData } from "../storage/duckdbRepository.js";
 import { all } from "../storage/duckdbRows.js";
 import { buildClinicianReport } from "../clinicianReport.js";
+import { healthConnectImportRequestSchema, parseHealthConnectImport } from "../healthConnectImport.js";
 import { findPreparedExtension } from "./support/duckdbExtension.js";
 
 const httpfsExtensionPath = findPreparedExtension();
@@ -141,6 +142,47 @@ describe("DuckDbRepository fidelity", () => {
       expect(await repository.completeMobileMigration("pairing-1", started.sessionId)).toEqual(receipt);
       expect((await repository.snapshot()).observations.some((entry) => entry.id === "mobile-cross-source-lookalike")).toBe(true);
       expect((await repository.snapshot()).observations.some((entry) => entry.id === "mobile-semantic-duplicate")).toBe(false);
+    } finally {
+      await repository.close();
+    }
+  });
+
+  it.skipIf(!httpfsExtensionPath)("resumes and replays chunked Health Connect sync", async () => {
+    const databasePath = join(root, "databases", "health-connect-sync.duckdb-poc");
+    const options = { httpfsExtensionPath };
+    const start = {
+      sessionKey: "device-1:2026-07-02T00:00:00.000Z",
+      deviceLabel: "android-companion:device-1",
+      rangeStart: "2026-07-01T00:00:00.000Z",
+      rangeEnd: "2026-07-02T00:00:00.000Z"
+    };
+    const chunk = () => parseHealthConnectImport(healthConnectImportRequestSchema.parse({
+      syncedAt: "2026-07-02T00:00:00.000Z",
+      rangeStart: start.rangeStart,
+      rangeEnd: start.rangeEnd,
+      deviceLabel: start.deviceLabel,
+      batchId: "chunk-1",
+      weightKg: [{ time: "2026-07-01T06:00:00.000Z", value: 80 }]
+    }));
+
+    const repository = await DuckDbRepository.hydrate(root, databasePath, key, createDuckDbHealthStoreFixture(), options);
+    try {
+      const session = await repository.startHealthConnectSyncSession("pairing-hc", start);
+      expect(session.processedBatchIds).toEqual([]);
+      // A phone that lost its session id resends the same key and must get the same session back.
+      expect((await repository.startHealthConnectSyncSession("pairing-hc", start)).sessionId).toBe(session.sessionId);
+
+      const acknowledgement = await repository.applyHealthConnectSyncChunk("pairing-hc", session.sessionId, "chunk-1", chunk());
+      expect(acknowledgement).toMatchObject({ sessionId: session.sessionId, batchId: "chunk-1" });
+      expect(acknowledgement!.counts.accepted).toBeGreaterThan(0);
+      const afterFirst = (await repository.snapshot()).observations.length;
+
+      // A retry after a lost response replays the stored answer instead of importing again.
+      expect(await repository.applyHealthConnectSyncChunk("pairing-hc", session.sessionId, "chunk-1", chunk())).toEqual(acknowledgement);
+      expect((await repository.snapshot()).observations.length).toBe(afterFirst);
+
+      expect((await repository.startHealthConnectSyncSession("pairing-hc", start)).processedBatchIds).toEqual(["chunk-1"]);
+      expect(await repository.applyHealthConnectSyncChunk("pairing-hc", "unknown-session", "chunk-2", chunk())).toBeUndefined();
     } finally {
       await repository.close();
     }

@@ -63,7 +63,9 @@ const tableOrder = [
   "audit_events",
   "companion_migration_sessions",
   "companion_migration_batches",
-  "companion_migration_aliases"
+  "companion_migration_aliases",
+  "health_connect_sync_sessions",
+  "health_connect_sync_batches"
 ];
 
 interface ExportManifest {

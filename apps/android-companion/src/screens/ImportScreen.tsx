@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, AppState, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
@@ -25,9 +25,12 @@ import {
   HEALTH_CONNECT_CATEGORIES,
   HEALTH_CONNECT_SYNC_WINDOW_OPTIONS,
   saveConnection,
-  updateHealthConnectSyncCursor,
-  type HealthConnectCategory
+  updateHealthSourceCursors,
+  updateHealthSourceSessionKey,
+  type HealthConnectCategory,
+  type HealthSourceCursors
 } from "../endpointStore";
+import { healthSourceSyncCoordinator } from "../healthSourceSyncCoordinator";
 import { useMobileApi } from "../MobileApiProvider";
 import type { RootStackParamList, TabParamList } from "../navigationTypes";
 import { syncHealthConnect } from "../syncHealthConnect";
@@ -591,8 +594,20 @@ function HealthConnectImport() {
   const [updating, setUpdating] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   useKeepAwake(syncing ? "health-connect-sync" : undefined);
+  // Leaving the app abandons the read rather than letting the OS kill it mid-batch; the persisted
+  // session key means the next sync resumes from the last acknowledged chunk.
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state !== "active") healthSourceSyncCoordinator.cancel();
+    });
+    return () => subscription.remove();
+  }, []);
   if (!connection) return <Message title="Pair with your PC before syncing." />;
   const currentConnection = connection;
+  const earliestCursor = earliestHealthSourceCursor(
+    currentConnection.healthSourceCursors,
+    currentConnection.healthSourceCategories
+  );
 
   async function update(patch: Partial<typeof currentConnection>): Promise<boolean> {
     if (updating || syncing) return false;
@@ -622,31 +637,34 @@ function HealthConnectImport() {
   }
 
   async function resetSyncCursor() {
-    if (await update({ healthConnectSyncCursor: null })) {
+    if (await update({ healthSourceCursors: {}, healthSourceSessionKey: null })) {
       setStatusTone("success");
       setStatus(`Sync start date reset. Your next sync will include the full ${currentConnection.healthConnectSyncWindowDays}-day window.`);
     }
   }
 
   async function sync() {
-    if (syncing || updating) return;
+    if (syncing || updating || healthSourceSyncCoordinator.busy) return;
     setSyncing(true);
     setSyncProgress("Checking Health Connect on this phone…");
     try {
-      const result = await syncHealthConnect(
+      const result = await healthSourceSyncCoordinator.run((signal) => syncHealthConnect(
         currentConnection.url,
         currentConnection.token,
         bootstrap?.profile.id ?? null,
         currentConnection.publicKeyHash,
         {
           deviceId: currentConnection.deviceId,
-          syncCursor: currentConnection.healthConnectSyncCursor,
+          syncCursors: currentConnection.healthSourceCursors,
+          sessionKey: currentConnection.healthSourceSessionKey,
           syncWindowDays: currentConnection.healthConnectSyncWindowDays,
-          categories: currentConnection.healthConnectCategories,
-          onProgress: ({ detail }) => setSyncProgress(detail)
+          categories: currentConnection.healthSourceCategories,
+          onProgress: ({ detail }) => setSyncProgress(detail),
+          onSessionKey: (sessionKey) => updateHealthSourceSessionKey(currentConnection.url, sessionKey),
+          signal
         }
-      );
-      if (result.canAdvanceCursor) await updateHealthConnectSyncCursor(currentConnection.url, result.syncCursor);
+      ));
+      await updateHealthSourceCursors(currentConnection.url, result.syncCursors);
       setStatusTone("success");
       setStatus(`${result.status} ${result.details}`);
       setSyncProgress("Refreshing your imported readings…");
@@ -680,12 +698,12 @@ function HealthConnectImport() {
               key={category}
               label={category}
               disabled={updating || syncing}
-              selected={currentConnection.healthConnectCategories.includes(category)}
+              selected={currentConnection.healthSourceCategories.includes(category)}
               onPress={() => {
-                const categories: HealthConnectCategory[] = currentConnection.healthConnectCategories.includes(category)
-                  ? currentConnection.healthConnectCategories.filter((entry) => entry !== category)
-                  : [...currentConnection.healthConnectCategories, category];
-                void update({ healthConnectCategories: categories });
+                const categories: HealthConnectCategory[] = currentConnection.healthSourceCategories.includes(category)
+                  ? currentConnection.healthSourceCategories.filter((entry) => entry !== category)
+                  : [...currentConnection.healthSourceCategories, category];
+                void update({ healthSourceCategories: categories });
               }}
             />
           ))}
@@ -733,14 +751,14 @@ function HealthConnectImport() {
           <View style={styles.advancedContent}>
             <View>
               <Text style={styles.label}>Sync start date</Text>
-              <Text style={styles.body}>{formatSyncCursor(currentConnection.healthConnectSyncCursor)}</Text>
+              <Text style={styles.body}>{formatSyncCursor(earliestCursor)}</Text>
               <Text style={styles.meta}>
-                {currentConnection.healthConnectSyncCursor
+                {earliestCursor
                   ? "Future syncs include a short overlap before this date to avoid missing readings."
                   : `The next sync will include the full selected ${currentConnection.healthConnectSyncWindowDays}-day window.`}
               </Text>
             </View>
-            <Button danger disabled={!currentConnection.healthConnectSyncCursor || updating || syncing} onPress={confirmResetSyncCursor}>Reset sync start date</Button>
+            <Button danger disabled={!earliestCursor || updating || syncing} onPress={confirmResetSyncCursor}>Reset sync start date</Button>
           </View>
         ) : null}
       </Card>
@@ -763,6 +781,24 @@ function formatObservedDate(date: Date): string {
 
 function formatDateOnly(value: string): string {
   return dateOnlyToLocalDate(value).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+}
+
+/**
+ * A selected category with no cursor still needs a full backfill, so the panel only claims a start
+ * date once every selected category has one.
+ */
+function earliestHealthSourceCursor(
+  cursors: HealthSourceCursors,
+  categories: readonly HealthConnectCategory[]
+): string | null {
+  if (categories.length === 0) return null;
+  let earliest: string | null = null;
+  for (const category of categories) {
+    const cursor = cursors[category];
+    if (!cursor) return null;
+    if (!earliest || cursor < earliest) earliest = cursor;
+  }
+  return earliest;
 }
 
 function formatSyncCursor(cursor: string | null): string {

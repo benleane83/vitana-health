@@ -78,9 +78,10 @@ const connection = {
   serverInstanceId: "server-1",
   profileId: "profile-1",
   pairingId: "pairing-1",
-  healthConnectSyncCursor: null,
+  healthSourceCursors: {},
+  healthSourceSessionKey: null,
   healthConnectSyncWindowDays: 30,
-  healthConnectCategories: [],
+  healthSourceCategories: [],
   healthConnectDisclosureAcknowledged: false
 };
 

@@ -379,6 +379,10 @@ const baselineSchemaSql = `
     checksum VARCHAR NOT NULL, row_count BIGINT NOT NULL, status VARCHAR NOT NULL,
     diagnostics JSON NOT NULL, raw_content VARCHAR
   );
+  -- Import identity. Declaring it lets the import path use a single INSERT OR IGNORE instead of a
+  -- SELECT-then-INSERT pair, which was not atomic against a concurrent sync chunk.
+  CREATE UNIQUE INDEX IF NOT EXISTS imports_identity_idx
+    ON imports(source_kind, checksum, file_name);
 
   CREATE TABLE IF NOT EXISTS sources (
     ordinal BIGINT NOT NULL UNIQUE, id VARCHAR PRIMARY KEY, source_kind VARCHAR NOT NULL,
@@ -490,6 +494,20 @@ const baselineSchemaSql = `
   CREATE TABLE IF NOT EXISTS companion_migration_aliases (
     session_id VARCHAR NOT NULL, entity_type VARCHAR NOT NULL, source_id VARCHAR NOT NULL,
     destination_id VARCHAR NOT NULL, PRIMARY KEY (session_id, entity_type, source_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS health_connect_sync_sessions (
+    session_id VARCHAR PRIMARY KEY, pairing_id VARCHAR NOT NULL, session_key VARCHAR NOT NULL,
+    device_label VARCHAR NOT NULL, range_start TIMESTAMPTZ NOT NULL, range_end TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS health_connect_sync_identity_idx
+    ON health_connect_sync_sessions(pairing_id, session_key);
+
+  CREATE TABLE IF NOT EXISTS health_connect_sync_batches (
+    session_id VARCHAR NOT NULL, batch_id VARCHAR NOT NULL, acknowledgement JSON NOT NULL,
+    processed_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (session_id, batch_id)
   );
 
   CREATE TABLE IF NOT EXISTS companion_sync_state (

@@ -57,7 +57,7 @@ Everything else on this list stays cheap to fix after users exist. These three d
 | 5 — API contracts | P1-11 | Done |
 | 6 — Web stability and performance | P1-13, P1-14, P1-15 | Done |
 | 7 — Android core | P1-8, P1-19 | Done |
-| 8 — Health Connect sync | P1-7 | Not started |
+| 8 — Health Connect sync | P1-7 | Done |
 | 9 — Desktop lifecycle | P1-17 | Done (LAN bind deferred) |
 | 10 — Final validation and docs | — | Not started |
 
@@ -229,6 +229,24 @@ Four defects in the same path, all of which surface on a tester's first real syn
 3. Make the cursor a `Record<category, string>` **now**, and reset the entry for any newly-enabled category.
 4. Add a `signal` parameter through `syncHealthConnect` and `VitanaPinnedHttp.request` (OkHttp `Call.cancel()`); abort on `AppState` background.
 5. Move the in-flight guard to module scope, matching the single-flight pattern already in [syncCoordinator.ts:22](apps/android-companion/src/connected/syncCoordinator.ts#L22).
+
+### Status — Resolved (Phase 8)
+
+**Wire protocol.** `packages/shared/src/healthConnectSync.ts` owns the versioned session/chunk/acknowledgement schemas and the version negotiator; an unsupported `protocolVersion` returns `409 SYNC_PROTOCOL_UNSUPPORTED`. Both new endpoints are documented in `docs/API_CONTRACT.md`.
+
+**Server-side ack contract.** `health_connect_sync_sessions` is idempotent on `(pairing, sessionKey)` and `health_connect_sync_batches` stores one acknowledgement per `(sessionId, batchId)`. A chunk and its acknowledgement commit in the same transaction, so a replayed batch returns the original counts without importing twice, and a resumed session reports `processedBatchIds` for the phone to skip. The import identity check also became a single `INSERT OR IGNORE` backed by `imports_identity_idx`, replacing a non-atomic SELECT-then-INSERT.
+
+**Streaming.** `readAllRecords` is now the `readRecordPages` generator and each descriptor exposes `readPages`, converting one page at a time into a single `ChunkBuilder`. The `flatMap` copy and the third oldest-timestamp pass are gone — the minimum timestamp is tracked during conversion. Peak memory is one chunk plus one page regardless of history length.
+
+**Per-chunk resumption.** Batch ids are `<sessionKey>:<ordinal>` in a deterministic read order, so a resumed run mints the same ids. The in-progress session key is persisted as `healthSourceSessionKey` and cleared only on completion, which is also why cursors do not advance mid-session.
+
+**Per-category cursors.** `healthConnectSyncCursor` / `healthConnectCategories` became `healthSourceCursors` (a `Partial<Record<HealthConnectCategory, string>>`) / `healthSourceCategories`, with a stored-blob migration in `loadConnection` that fans the old scalar out across the categories it had covered. A newly-enabled category has no entry and therefore backfills the full window; a category whose permission was denied keeps its old entry, which retired `canAdvanceCursor`.
+
+**Cancellation.** `signal` flows from `ImportScreen` through `syncHealthConnect`, `pinnedFetch`, and into `VitanaPinnedHttp.request`, which now registers each `Call` by request id so `cancel(requestId)` reaches OkHttp. The screen aborts on `AppState` leaving `active`.
+
+**Single flight.** `healthSourceSyncCoordinator` is a module-scope single-flight guard modelled on `syncCoordinator.ts`, replacing the component-local `syncing` check.
+
+**Shared retry policy.** `packages/shared/src/networkRetry.ts` provides full-jitter backoff and retryability classification; both duplicated regexes are gone, and the Kotlin module now throws `CodedException`s carrying `network-timeout`, `network-unreachable`, `network-connect-failed`, `network-interrupted`, and `cancelled`.
 
 ---
 
@@ -565,7 +583,7 @@ The repository abstraction is good but leaks in four specific places. These are 
 
 - **Certificate pinning — the core security control — is Android-only.** [expo-module.config.json:2](apps/android-companion/modules/vitana-pinned-http/expo-module.config.json#L2) declares `"platforms": ["android"]`; the module has only `android/` plus a web stub with no `request` method, and every API call routes through it via [api.ts:10](apps/android-companion/src/api.ts#L10). Reimplementing it means a Swift module replicating OkHttp's pinned `X509TrustManager` and the permissive hostname verifier at [VitanaPinnedHttpModule.kt:97](apps/android-companion/modules/vitana-pinned-http/android/src/main/java/app/vitanahealth/pinnedhttp/VitanaPinnedHttpModule.kt#L97). **Define the module's TypeScript contract — including structured error codes — now**, while there is no shipped behaviour to preserve.
 - **Health Connect is used directly with no provider abstraction.** [syncHealthConnect.ts:231](apps/android-companion/src/syncHealthConnect.ts#L231) hard-throws on non-Android; the file imports `react-native-health-connect` at module top level and hardcodes 14 descriptors bound to its `RecordType` union ([L100-196](apps/android-companion/src/syncHealthConnect.ts#L100)). HealthKit has a different permission model, different pagination (anchored queries), and different record shapes — all 564 lines are Android-shaped. Extract a `HealthSourceProvider` interface into `packages/shared` **before the descriptor list grows further**.
-- **Android's vocabulary is baked into persisted state.** `healthConnectSyncCursor` / `healthConnectCategories` in [endpointStore.ts](apps/android-companion/src/endpointStore.ts). Renaming these post-beta requires an AsyncStorage migration on every paired device — rename to `healthSourceCursor` / `healthSourceCategories` now. (Do it in the same change as the per-category cursor from P1-7.)
+- **Android's vocabulary is baked into persisted state.** `healthConnectSyncCursor` / `healthConnectCategories` in [endpointStore.ts](apps/android-companion/src/endpointStore.ts). Renaming these post-beta requires an AsyncStorage migration on every paired device — rename to `healthSourceCursor` / `healthSourceCategories` now. (Do it in the same change as the per-category cursor from P1-7.) **Resolved in Phase 8** — renamed to `healthSourceCursors` / `healthSourceCategories` with a `loadConnection` migration.
 - **No iOS configuration exists at all.** [app.config.js](apps/android-companion/app.config.js) has no `ios` key — no `bundleIdentifier`, no `infoPlist` usage strings — and [eas.json](apps/android-companion/eas.json) has no iOS profiles, yet [package.json:46](apps/android-companion/package.json#L46) ships an `"ios": "expo run:ios"` script that cannot succeed. Adding the `ios` block now makes `expo run:ios` fail with *real* errors, which makes the remaining work measurable.
 - **The desktop platform gate is a scalar, not a table.** [profileStoreManager.ts:435](apps/api/src/storage/profileStoreManager.ts#L435) throws `"DuckDB storage productionization is currently approved only for Windows x64."` and compares against a single hardcoded digest at [L66](apps/api/src/storage/profileStoreManager.ts#L66). The pinning mechanism is right; its shape means adding macOS changes the check's structure rather than adding a row. Replace with `Record<`${platform}-${arch}`, string>`.
 
@@ -670,7 +688,7 @@ Nine files carry disproportionate change pressure. These are the files that must
 
 Suggested splits: `duckdbProjections.ts` → `projections/{measurements,care,analytics,counts}.ts` with one shared UNION fragment; `ImportScreen.tsx` → one file per import mode under `screens/import/` with permission/settings/sync logic lifted into testable hooks; `MobileApiProvider` → separate stable-actions and volatile-data contexts so actions get an empty dependency array; `SummaryPage.tsx` → extract `ObservationTypeDetailPage`.
 
-Duplicated logic that should live in `packages/shared`: the retry-classification regex (two copies), the Health Connect category/descriptor list (two copies — and the source of the P1-7 backfill bug), and **three** different downsampling implementations ([connectedRepository.ts:307-318](apps/android-companion/src/connected/connectedRepository.ts#L307), [chartSeries.ts:71-103](apps/android-companion/src/chartSeries.ts#L71), and SQL bucketing in `sqliteLocalStore.ts`).
+Duplicated logic that should live in `packages/shared`: the retry-classification regex (two copies — **resolved in Phase 8**, both now use `packages/shared/src/networkRetry.ts`), the Health Connect category/descriptor list (two copies — and the source of the P1-7 backfill bug), and **three** different downsampling implementations ([connectedRepository.ts:307-318](apps/android-companion/src/connected/connectedRepository.ts#L307), [chartSeries.ts:71-103](apps/android-companion/src/chartSeries.ts#L71), and SQL bucketing in `sqliteLocalStore.ts`).
 
 ---
 

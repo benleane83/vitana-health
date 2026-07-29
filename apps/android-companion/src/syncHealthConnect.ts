@@ -11,15 +11,20 @@ import {
 } from "react-native-health-connect";
 import { Platform } from "react-native";
 import {
+  HEALTH_CONNECT_SYNC_PROTOCOL_VERSION,
+  type HealthConnectSyncBatchAcknowledgement,
+  type HealthConnectSyncSessionResponse
+} from "@vitana/shared";
+import {
   DEFAULT_HEALTH_CONNECT_SYNC_WINDOW_DAYS,
   HEALTH_CONNECT_CATEGORIES,
   type HealthConnectCategory
 } from "./endpointStore";
 import { LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS, pinnedFetch } from "./pinnedFetch";
+import { retryPinnedRequest } from "./retryPinnedRequest";
 
 const OVERLAP_MS = 5 * 60 * 1000;
 const MAX_UPLOAD_BYTES = 2_000_000;
-const MAX_UPLOAD_ATTEMPTS = 3;
 const DAILY_AGGREGATE_MIN_DURATION_MS = 23 * 60 * 60 * 1000;
 
 interface HealthConnectProvenance {
@@ -101,7 +106,16 @@ function defineHealthConnectDescriptor<
     available: true as const,
     permission: { accessType: "read", recordType } satisfies Permission,
     toPayload,
-    read: async (options: ReadRecordsOptions) => toPayload(await readAllRecords(recordType, options))
+    /**
+     * Yields one converted page at a time. Holding only the page under conversion is what keeps
+     * a multi-year backfill inside a phone's memory budget - the previous `readAllRecords` built
+     * one array containing every record of every type before anything was uploaded.
+     */
+    readPages: async function* (options: ReadRecordsOptions) {
+      for await (const records of readRecordPages(recordType, options)) {
+        yield toPayload(records);
+      }
+    }
   };
 }
 
@@ -201,12 +215,22 @@ export const HEALTH_CONNECT_DESCRIPTORS = [
 
 const PAYLOAD_COLLECTION_KEYS = HEALTH_CONNECT_DESCRIPTORS.flatMap((descriptor) => descriptor.payloadKeys) as PayloadCollectionKey[];
 
+export type HealthConnectSyncCursors = Partial<Record<HealthConnectCategory, string>>;
+
 export interface SyncOptions {
   deviceId: string;
-  syncCursor?: string | null;
+  /** One cursor per category, so enabling a new category backfills it without rewinding the rest. */
+  syncCursors?: HealthConnectSyncCursors | null;
+  /**
+   * Identity of an interrupted sync. Reusing it lets the PC skip the chunks it already applied,
+   * which is why cursors must not advance until the whole session finishes.
+   */
+  sessionKey?: string | null;
+  onSessionKey?: (sessionKey: string | null) => void | Promise<void>;
   syncWindowDays?: number;
   categories?: HealthConnectCategory[];
   onProgress?: (progress: HealthConnectSyncProgress) => void;
+  signal?: AbortSignal;
 }
 
 export interface HealthConnectSyncProgress {
@@ -217,8 +241,7 @@ export interface HealthConnectSyncProgress {
 export interface SyncResult {
   status: string;
   details: string;
-  syncCursor: string;
-  canAdvanceCursor: boolean;
+  syncCursors: HealthConnectSyncCursors;
 }
 
 export async function syncHealthConnect(
@@ -273,146 +296,238 @@ export async function syncHealthConnect(
 
   const rangeEnd = new Date();
   const initialStart = new Date(rangeEnd.getTime() - windowDays * 24 * 60 * 60 * 1000);
-  const cursor = parseCursor(options.syncCursor);
-  const rangeStart = cursor && cursor > initialStart ? new Date(cursor.getTime() - OVERLAP_MS) : initialStart;
-  const readOptions: ReadRecordsOptions = {
-    timeRangeFilter: { operator: "between", startTime: rangeStart.toISOString(), endTime: rangeEnd.toISOString() },
-    pageSize: 1000,
-    ascendingOrder: true
+  const cursors = options.syncCursors ?? {};
+  const rangeStartFor = (category: HealthConnectCategory) => {
+    const cursor = parseCursor(cursors[category]);
+    return cursor && cursor > initialStart ? new Date(cursor.getTime() - OVERLAP_MS) : initialStart;
   };
+  const earliestStart = grantedDescriptors.reduce(
+    (earliest, descriptor) => {
+      const start = rangeStartFor(descriptor.category);
+      return start < earliest ? start : earliest;
+    },
+    rangeEnd
+  );
 
-  const collections = await readGrantedCollections(grantedDescriptors, readOptions, options.onProgress);
-  const payload: HealthConnectImportPayload = {
-    ...(profileId ? { profileId } : {}),
-    syncedAt: new Date().toISOString(),
-    rangeStart: rangeStart.toISOString(),
+  const sessionKey = options.sessionKey ?? `${options.deviceId}:${rangeEnd.toISOString()}`;
+  const deviceLabel = `android-companion:${options.deviceId}`;
+  const transport = {
+    endpointUrl: endpointUrl.replace(/\/+$/, ""),
+    publicKeyHash: publicKeyHash ?? null,
+    token: companionToken,
+    signal: options.signal
+  };
+  await options.onSessionKey?.(sessionKey);
+
+  const session = await startSyncSession(transport, {
+    protocolVersion: HEALTH_CONNECT_SYNC_PROTOCOL_VERSION,
+    sessionKey,
+    deviceLabel,
+    rangeStart: earliestStart.toISOString(),
     rangeEnd: rangeEnd.toISOString(),
-    deviceLabel: `android-companion:${options.deviceId}`,
-    ...collections
+    ...(profileId ? { profileId } : {})
+  });
+  const alreadyProcessed = new Set(session.processedBatchIds);
+
+  const builder = new ChunkBuilder(
+    {
+      ...(profileId ? { profileId } : {}),
+      syncedAt: new Date().toISOString(),
+      rangeStart: earliestStart.toISOString(),
+      rangeEnd: rangeEnd.toISOString(),
+      deviceLabel
+    },
+    sessionKey
+  );
+  let uploads = 0;
+  const upload = async (chunk: HealthConnectImportPayload) => {
+    if (alreadyProcessed.has(chunk.batchId!)) return;
+    options.onProgress?.({ stage: "uploading", detail: `Uploading batch ${uploads + 1} to your paired PC…` });
+    await uploadChunk(transport, session.sessionId, chunk);
+    uploads += 1;
   };
 
-  const chunks = chunkPayload(payload);
-  const uploadResults = [];
-  for (const [index, chunk] of chunks.entries()) {
-    options.onProgress?.({ stage: "uploading", detail: `Uploading ${index + 1} of ${chunks.length} to your paired PC…` });
-    uploadResults.push(await uploadChunk(endpointUrl, publicKeyHash, companionToken, chunk));
+  for (const [index, descriptor] of grantedDescriptors.entries()) {
+    throwIfAborted(options.signal);
+    options.onProgress?.({
+      stage: "reading",
+      detail: `Reading ${descriptor.category} (${index + 1} of ${grantedDescriptors.length})…`
+    });
+    const readOptions: ReadRecordsOptions = {
+      timeRangeFilter: {
+        operator: "between",
+        startTime: rangeStartFor(descriptor.category).toISOString(),
+        endTime: rangeEnd.toISOString()
+      },
+      pageSize: 1000,
+      ascendingOrder: true
+    };
+    for await (const page of descriptor.readPages(readOptions)) {
+      throwIfAborted(options.signal);
+      for (const key of descriptor.payloadKeys) {
+        for (const value of (page as HealthConnectPayloadCollections)[key]) {
+          const completed = builder.add(key, value);
+          if (completed) await upload(completed);
+        }
+      }
+    }
   }
+  await upload(builder.flush());
 
   options.onProgress?.({ stage: "finalizing", detail: "Finalizing sync…" });
-  const importedRows = countRows(payload);
-  const oldestReturnedAt = oldestPayloadTimestamp(payload);
+  await options.onSessionKey?.(null);
+  const advanced: HealthConnectSyncCursors = { ...cursors };
+  for (const descriptor of grantedDescriptors) {
+    advanced[descriptor.category] = rangeEnd.toISOString();
+  }
+
   return {
     status: "Sync complete.",
-    syncCursor: rangeEnd.toISOString(),
-    canAdvanceCursor: omittedCategories.length === 0,
+    syncCursors: advanced,
     details: [
-      `Synced ${importedRows} records from ${rangeStart.toLocaleDateString()} to ${rangeEnd.toLocaleDateString()} in ${uploadResults.length} upload${uploadResults.length === 1 ? "" : "s"}.`,
-      oldestReturnedAt ? `Oldest record returned by Health Connect: ${oldestReturnedAt.slice(0, 10)}.` : "Health Connect returned no records in this window.",
+      `Synced ${builder.totalRows} records from ${earliestStart.toLocaleDateString()} to ${rangeEnd.toLocaleDateString()} in ${uploads} upload${uploads === 1 ? "" : "s"}.`,
+      builder.oldestTimestamp
+        ? `Oldest record returned by Health Connect: ${builder.oldestTimestamp.slice(0, 10)}.`
+        : "Health Connect returned no records in this window.",
       windowDays > 30 ? "Extended Health Connect history access was requested for this sync." : "",
       omittedCategories.length ? `Not synced (permission not granted): ${omittedCategories.join(", ")}.` : ""
     ].filter(Boolean).join("\n")
   };
 }
 
-async function readGrantedCollections(
-  descriptors: Array<(typeof HEALTH_CONNECT_DESCRIPTORS)[number]>,
-  options: ReadRecordsOptions,
-  onProgress?: SyncOptions["onProgress"]
-): Promise<HealthConnectPayloadCollections> {
-  const collections = makeEmptyPayloadCollections();
-  for (const [index, descriptor] of descriptors.entries()) {
-    onProgress?.({ stage: "reading", detail: `Reading ${descriptor.category} (${index + 1} of ${descriptors.length})…` });
-    Object.assign(collections, await descriptor.read(options));
+type ChunkBase = Pick<HealthConnectImportPayload, "syncedAt" | "rangeStart" | "rangeEnd" | "deviceLabel"> & { profileId?: string };
+
+/**
+ * Accumulates converted rows into exactly one in-flight chunk, handing it back the moment it would
+ * exceed the upload limit. Batch ids are `<sessionKey>:<ordinal>` rather than `n/total` because a
+ * streaming producer cannot know the total - and because a resumed sync replays the same read order
+ * and therefore mints the same ids, which is what lets the PC skip what it already has.
+ */
+export class ChunkBuilder {
+  private current!: HealthConnectImportPayload;
+  private rows = 0;
+  private size = 0;
+  private index = 0;
+  totalRows = 0;
+  oldestTimestamp: string | undefined;
+
+  constructor(
+    private readonly base: ChunkBase,
+    private readonly batchIdPrefix: string,
+    private readonly maxUploadBytes = MAX_UPLOAD_BYTES
+  ) {
+    this.reset();
   }
-  return collections;
+
+  add<Key extends PayloadCollectionKey>(key: Key, value: HealthConnectPayloadCollections[Key][number]): HealthConnectImportPayload | undefined {
+    const valueSize = utf8ByteLength(JSON.stringify(value));
+    let completed: HealthConnectImportPayload | undefined;
+    if (this.rows > 0 && this.size + valueSize + (this.current[key].length > 0 ? 1 : 0) > this.maxUploadBytes) {
+      completed = this.current;
+      this.reset();
+    }
+    this.current[key].push(value as never);
+    this.rows += 1;
+    this.totalRows += 1;
+    this.size += valueSize + (this.current[key].length > 1 ? 1 : 0);
+    this.trackOldest(value);
+    return completed;
+  }
+
+  /** Always returns the trailing chunk, so a sync that found nothing still records an attempt. */
+  flush(): HealthConnectImportPayload {
+    return this.current;
+  }
+
+  private reset(): void {
+    this.index += 1;
+    this.current = {
+      ...this.base,
+      batchId: `${this.batchIdPrefix}:${this.index}`,
+      ...makeEmptyPayloadCollections()
+    };
+    this.rows = 0;
+    // The batch id is present from the start, so the running size is exact and needs no reserve.
+    this.size = utf8ByteLength(JSON.stringify(this.current));
+  }
+
+  private trackOldest(value: unknown): void {
+    const row = value as Record<string, unknown>;
+    for (const field of ["time", "startTime", "endTime"] as const) {
+      const candidate = row[field];
+      if (typeof candidate === "string" && (!this.oldestTimestamp || candidate < this.oldestTimestamp)) {
+        this.oldestTimestamp = candidate;
+      }
+    }
+  }
 }
 
+/** Retained for tests and for callers holding a materialised payload; the sync path streams instead. */
 export function chunkPayload(
   payload: HealthConnectImportPayload,
   maxUploadBytes = MAX_UPLOAD_BYTES
 ): HealthConnectImportPayload[] {
-  const rows = PAYLOAD_COLLECTION_KEYS.flatMap((key) => payload[key].map((value) => [key, value] as const));
-
-  if (rows.length === 0) {
-    return [{ ...makeChunkSkeleton(payload), batchId: `${payload.rangeEnd}:1/1` }];
-  }
-
+  const builder = new ChunkBuilder(payload, payload.rangeEnd, maxUploadBytes);
   const chunks: HealthConnectImportPayload[] = [];
-  let current = makeChunkSkeleton(payload);
-  let currentRows = 0;
-  const batchIdDigits = String(Math.max(1, rows.length)).length;
-  const batchIdReserve = utf8ByteLength(JSON.stringify({
-    batchId: `${payload.rangeEnd}:${"9".repeat(batchIdDigits)}/${"9".repeat(batchIdDigits)}`
-  })) - 1;
-  let currentSize = utf8ByteLength(JSON.stringify(current)) + batchIdReserve;
-
-  for (const [category, value] of rows) {
-    const valueSize = utf8ByteLength(JSON.stringify(value));
-    const addedSize = valueSize + (current[category].length > 0 ? 1 : 0);
-    if (currentRows > 0 && currentSize + addedSize > maxUploadBytes) {
-      chunks.push(current);
-      current = makeChunkSkeleton(payload);
-      currentRows = 0;
-      currentSize = utf8ByteLength(JSON.stringify(current)) + batchIdReserve;
+  for (const key of PAYLOAD_COLLECTION_KEYS) {
+    for (const value of payload[key]) {
+      const completed = builder.add(key, value as never);
+      if (completed) chunks.push(completed);
     }
-    current[category].push(value as never);
-    currentRows += 1;
-    currentSize += valueSize + (current[category].length > 1 ? 1 : 0);
   }
-
-  if (currentRows > 0) chunks.push(current);
-
-  return chunks.map((chunk, index) => ({
-    ...chunk,
-    batchId: `${payload.rangeEnd}:${index + 1}/${chunks.length}`
-  }));
+  chunks.push(builder.flush());
+  return chunks;
 }
 
-async function uploadChunk(endpointUrl: string, publicKeyHash: string | null | undefined, token: string, payload: HealthConnectImportPayload) {
-  const importUrl = `${endpointUrl.replace(/\/+$/, "")}/api/import/health-connect`;
-  let response: Awaited<ReturnType<typeof pinnedFetch>> | null = null;
-  let lastNetworkError: string | null = null;
+interface SyncTransport {
+  endpointUrl: string;
+  publicKeyHash: string | null;
+  token: string;
+  signal?: AbortSignal;
+}
 
-  for (let attempt = 1; attempt <= MAX_UPLOAD_ATTEMPTS; attempt++) {
-    try {
-      response = await pinnedFetch(importUrl, publicKeyHash ?? null, {
-        method: "POST",
-        headers: { Accept: "application/json", "Content-Type": "application/json", "x-companion-token": token },
-        body: JSON.stringify(payload),
-        timeoutMs: LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS
-      });
-      break;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown network error";
-      lastNetworkError = message;
-      const retryable = /network i\/o error|timed out|could not connect|connection (?:abort|reset)|interrupted/i.test(message);
-      if (!retryable || attempt === MAX_UPLOAD_ATTEMPTS) {
-        throw new Error(message);
+async function startSyncSession(transport: SyncTransport, request: unknown): Promise<HealthConnectSyncSessionResponse> {
+  return postJson<HealthConnectSyncSessionResponse>(transport, "/api/import/health-connect/sessions", request);
+}
+
+async function uploadChunk(
+  transport: SyncTransport,
+  sessionId: string,
+  chunk: HealthConnectImportPayload
+): Promise<HealthConnectSyncBatchAcknowledgement> {
+  return postJson<HealthConnectSyncBatchAcknowledgement>(
+    transport,
+    `/api/import/health-connect/sessions/${encodeURIComponent(sessionId)}/chunks`,
+    { ...chunk, protocolVersion: HEALTH_CONNECT_SYNC_PROTOCOL_VERSION, sessionId, batchId: chunk.batchId }
+  );
+}
+
+async function postJson<T>(transport: SyncTransport, path: string, request: unknown): Promise<T> {
+  const body = JSON.stringify(request);
+  return retryPinnedRequest(async () => {
+    throwIfAborted(transport.signal);
+    const response = await pinnedFetch(`${transport.endpointUrl}${path}`, transport.publicKeyHash, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json", "x-companion-token": transport.token },
+      body,
+      timeoutMs: LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS,
+      signal: transport.signal
+    });
+    const parsed = (await response.json().catch(() => ({}))) as { error?: unknown };
+    if (!response.ok) {
+      if (response.status === 413) {
+        throw new Error("Sync payload exceeded API size limits. Reduce selected categories or sync window and try again.");
       }
-      await sleep(attempt * 1000);
+      throw new Error(typeof parsed.error === "string" ? parsed.error : "Your paired PC could not complete the sync. Try again.");
     }
-  }
-
-  if (!response) {
-    throw new Error(lastNetworkError ?? "Could not reach your paired PC. Check the local network and try again.");
-  }
-
-  const body = (await response.json().catch(() => ({}))) as { error?: unknown; counts?: { observations?: number; timeSeriesSamples?: number; activitySessions?: number } };
-  if (!response.ok) {
-    if (response.status === 413) {
-      throw new Error("Sync payload exceeded API size limits. Reduce selected categories or sync window and try again.");
-    }
-    throw new Error(typeof body.error === "string" ? body.error : "Your paired PC could not complete the sync. Try again.");
-  }
-  return body;
+    return parsed as T;
+  }, { signal: transport.signal });
 }
 
-function makeChunkSkeleton(payload: HealthConnectImportPayload): HealthConnectImportPayload {
-  return {
-    ...payload,
-    batchId: undefined,
-    ...makeEmptyPayloadCollections()
-  };
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
+    throw Object.assign(new Error("Sync was cancelled."), { name: "AbortError", code: "cancelled" });
+  }
 }
 
 function makeEmptyPayloadCollections(): HealthConnectPayloadCollections {
@@ -440,10 +555,6 @@ function utf8ByteLength(value: string): number {
     }
   }
   return bytes;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function extractProvenance(record: unknown): HealthConnectProvenance | undefined {
@@ -519,25 +630,8 @@ function objectValue(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
 
-function countRows(payload: HealthConnectImportPayload): number {
-  return PAYLOAD_COLLECTION_KEYS.reduce((total, key) => total + payload[key].length, 0);
-}
-
 function isDailyAggregateInterval(startAt: string, endAt: string): boolean {
   return new Date(endAt).getTime() - new Date(startAt).getTime() >= DAILY_AGGREGATE_MIN_DURATION_MS;
-}
-
-function oldestPayloadTimestamp(payload: HealthConnectImportPayload): string | undefined {
-  let oldest: string | undefined;
-  for (const key of PAYLOAD_COLLECTION_KEYS) {
-    for (const row of payload[key] as Array<Record<string, unknown>>) {
-      for (const field of ["time", "startTime", "endTime"] as const) {
-        const value = row[field];
-        if (typeof value === "string" && (!oldest || value < oldest)) oldest = value;
-      }
-    }
-  }
-  return oldest;
 }
 
 function parseCursor(value: string | null | undefined): Date | undefined {
@@ -552,13 +646,11 @@ function normalizeSyncWindowDays(value: number | undefined): number {
     : DEFAULT_HEALTH_CONNECT_SYNC_WINDOW_DAYS;
 }
 
-async function readAllRecords<T extends RecordType>(recordType: T, options: ReadRecordsOptions) {
-  const records: Array<Awaited<ReturnType<typeof readRecords<T>>>["records"][number]> = [];
+async function* readRecordPages<T extends RecordType>(recordType: T, options: ReadRecordsOptions) {
   let pageToken: string | undefined;
   do {
     const page = await readRecords(recordType, { ...options, pageToken });
-    records.push(...page.records);
+    yield page.records;
     pageToken = page.pageToken;
   } while (pageToken);
-  return records;
 }
