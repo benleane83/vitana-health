@@ -19,9 +19,10 @@ Each profile has:
 
 Initial startup:
 
-1. Verify Windows x64 and the pinned core-signed DuckDB 1.4.4 `httpfs` extension.
-2. Create an empty encrypted `self` profile directly in DuckDB.
-3. Write `storage-backend.json`, `profiles.json`, and `active-profile.json`.
+1. Verify Windows x64 and the pinned core-signed DuckDB `httpfs` extension.
+2. Sweep temp files left by processes that are no longer running (see "Temporary files" below).
+3. Create an empty encrypted `self` profile directly in DuckDB.
+4. Write `storage-backend.json`, `profiles.json`, and `active-profile.json`.
 
 Startup fails closed if the extension, key, manifest, schema, profile identity, or manifest-listed database is invalid. Reopen reads canonical encrypted databases directly and never consults legacy JSON files.
 
@@ -29,9 +30,15 @@ Profile creation builds an empty in-memory seed, hydrates the encrypted database
 
 ## Encryption and keys
 
-DuckDB uses AES-256-GCM with encrypted temporary spill files. Writable encryption requires the explicitly bundled core-signed `httpfs` OpenSSL provider. The approved Windows x64 extension SHA-256 is:
+DuckDB uses AES-256-GCM with encrypted temporary spill files. Writable encryption requires the explicitly bundled core-signed `httpfs` OpenSSL provider.
 
-`21eea4547cf5aa5231f4838906e8935067c956f56a5efd09035a51189af8a77b`
+The DuckDB version and the approved extension digest are declared once, in `packages/shared/src/duckdbPin.ts`. The runtime verification (`profileStoreManager.ts`), the download/packaging step (`scripts/prepare-duckdb-httpfs.mjs`), and the npm dependency all derive from it, and `apps/desktop/package-config.test.cjs` fails the build if `apps/api` stops pinning the exact version. The dependency must not use a caret range: a digest is only valid for one DuckDB build, so a resolved patch upgrade would turn into a startup failure.
+
+When bumping DuckDB, change `PINNED_DUCKDB_VERSION`, run the prepare script, and replace the digest with the one it reports.
+
+## Temporary files
+
+Atomic writes stage bytes in a sibling temp file and rename it into place, cleaning up in a `finally`. A hard kill skips that cleanup, and for database copies the orphans are full size. On open, `sweepOrphanedTempFiles` removes staged files whose embedded process ID is no longer running and which are older than five minutes. Three naming schemes are recognised: `<name>.tmp-<pid>-<timestamp>[-<hex>]`, `<name>.<pid>.<hex>.tmp`, and `<name>.hydrating-<pid>-<hex>`.
 
 The desktop generates a random 256-bit data key, wraps it with Electron `safeStorage`, and persists only the wrapped blob. The unwrapped passphrase is injected into the in-process API. A profile-specific database key is derived with a versioned SHA-256 domain separator and the profile ID. Packaged desktop model API keys use the same OS-backed storage: `ai-settings.json` contains a wrapped key blob rather than the plaintext key. Opening a legacy desktop settings file with a plaintext key migrates it atomically on first read.
 

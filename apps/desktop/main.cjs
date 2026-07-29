@@ -8,12 +8,9 @@ const { createStartupDiagnostics } = require("./startup-diagnostics.cjs");
 const { createDesktopUpdaterController } = require("./desktop-updater.cjs");
 const { migrateUserDataDirectory } = require("./user-data-migration.cjs");
 const { createPreUpdateBackup } = require("./pre-update-backup.cjs");
+const { createDesktopLifecycle } = require("./desktop-lifecycle.cjs");
 
-let apiServer;
 let mainWindow;
-let quitting = false;
-let shutdownStarted = false;
-let updateInstallPending = false;
 let launchPromise;
 const backgroundLaunch = process.argv.includes("--background");
 let startupPathError;
@@ -23,13 +20,21 @@ const brandedUserDataPath = path.join(
   app.getPath("appData"),
   distributionChannel === "store" ? "Vitana Health Store Test" : "Vitana Health"
 );
-try {
-  if (distributionChannel === "github") migrateUserDataDirectory(app.getPath("appData"));
-} catch (error) {
-  startupPathError = error;
-}
 app.setPath("userData", brandedUserDataPath);
+
+// The lock has to be taken before the legacy user-data directory is moved. Two copies launching
+// together would otherwise both see the old directory and race their renames, and the loser can
+// leave the store half-moved between the two paths.
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (hasSingleInstanceLock) {
+  try {
+    if (distributionChannel === "github") migrateUserDataDirectory(app.getPath("appData"));
+  } catch (error) {
+    startupPathError = error;
+  }
+}
 const diagnostics = createStartupDiagnostics({ userDataPath: app.getPath("userData") });
+const lifecycle = createDesktopLifecycle({ app, diagnostics });
 const settingsStore = createBackgroundServiceSettingsStore({ userDataPath: app.getPath("userData") });
 const updateChannel = packageMetadata.vitanaUpdateChannel;
 const desktopUpdater = createDesktopUpdaterController({
@@ -46,40 +51,26 @@ function trayIconPath() {
 }
 
 function requestQuit() {
-  quitting = true;
+  lifecycle.markQuitting();
   app.quit();
 }
 
 async function shutdownApiForUpdate(versions = {}) {
-  if (updateInstallPending) return;
-  updateInstallPending = true;
-  quitting = true;
-  backgroundService.destroyTray();
-  if (apiServer) {
+  await lifecycle.prepareForUpdateInstall(async () => {
+    backgroundService.destroyTray();
+    // Only safe now that the API has closed and checkpointed the databases. A failure here must not
+    // block the update, so it is recorded and swallowed.
     try {
-      await Promise.race([
-        apiServer.shutdown(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Embedded API shutdown timed out.")), 10_000))
-      ]);
-      apiServer = undefined;
+      const backupPath = createPreUpdateBackup({
+        userDataPath: app.getPath("userData"),
+        fromVersion: versions.fromVersion ?? app.getVersion(),
+        toVersion: versions.toVersion
+      });
+      if (backupPath) diagnostics.info(`Pre-update backup written to ${backupPath}`);
     } catch (error) {
-      updateInstallPending = false;
-      quitting = false;
-      throw error;
+      diagnostics.error("Pre-update backup failed.", error);
     }
-  }
-  // Only safe now that the API has closed and checkpointed the databases. A failure here must not
-  // block the update, so it is recorded and swallowed.
-  try {
-    const backupPath = createPreUpdateBackup({
-      userDataPath: app.getPath("userData"),
-      fromVersion: versions.fromVersion ?? app.getVersion(),
-      toVersion: versions.toVersion
-    });
-    if (backupPath) diagnostics.info(`Pre-update backup written to ${backupPath}`);
-  } catch (error) {
-    diagnostics.error("Pre-update backup failed.", error);
-  }
+  });
 }
 
 async function createOrFocusWindow() {
@@ -89,7 +80,7 @@ async function createOrFocusWindow() {
     mainWindow.focus();
     return mainWindow;
   }
-  if (!apiServer) return undefined;
+  if (!lifecycle.hasServer()) return undefined;
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 840,
@@ -137,8 +128,8 @@ const backgroundService = createBackgroundServiceController({
 });
 
 diagnostics.info(`Process started (Electron ${process.versions.electron}, Node ${process.versions.node})`);
-process.on("uncaughtException", (error) => diagnostics.error("Uncaught exception", error));
-process.on("unhandledRejection", (error) => diagnostics.error("Unhandled rejection", error));
+process.on("uncaughtException", (error) => void lifecycle.handleFatalError("Uncaught exception", error));
+process.on("unhandledRejection", (error) => void lifecycle.handleFatalError("Unhandled rejection", error));
 app.on("child-process-gone", (_event, details) => {
   diagnostics.error(`Child process exited (${details.type}, reason ${details.reason}, exit code ${details.exitCode})`);
 });
@@ -146,7 +137,7 @@ app.on("render-process-gone", (_event, _webContents, details) => {
   diagnostics.error(`Renderer process exited (reason ${details.reason}, exit code ${details.exitCode})`);
 });
 
-if (!app.requestSingleInstanceLock()) {
+if (!hasSingleInstanceLock) {
   app.quit();
 } else {
   app.on("second-instance", () => {
@@ -208,13 +199,14 @@ async function launch() {
   } finally {
     secureKeyInitialization?.finalize();
   }
-  apiServer = await startServer({
+  const apiServer = await startServer({
     storeSecurity: configuredSecret
       ? { passphrase: configuredSecret, securityMode: "env-secret" }
       : { passphrase: secureKey.passphrase, securityMode: "os-secure-storage" },
     desktopRuntimeController: backgroundService,
     desktopUpdaterController: desktopUpdater
   });
+  lifecycle.setServer(apiServer);
   secureKey?.finalize();
   diagnostics.info(`Embedded API listening on port ${process.env.PORT}`);
   desktopUpdater.start();
@@ -236,22 +228,8 @@ function handleStartupFailure(error) {
 }
 
 app.on("window-all-closed", () => {
-  if (quitting) return;
+  if (lifecycle.isQuitting()) return;
   if (!backgroundService.handleLastWindowClosed()) requestQuit();
 });
 
-app.on("before-quit", (event) => {
-  quitting = true;
-  diagnostics.info("Application shutdown requested");
-  if (updateInstallPending) return;
-  if (shutdownStarted || !apiServer) return;
-  event.preventDefault();
-  shutdownStarted = true;
-  void apiServer.shutdown()
-    .then(() => app.quit())
-    .catch((error) => {
-      diagnostics.error("Embedded API shutdown failed", error);
-      console.error(error);
-      app.exit(1);
-    });
-});
+app.on("before-quit", (event) => lifecycle.handleBeforeQuit(event));

@@ -90,3 +90,32 @@ test("desktop updater shutdown callback is available during main-process initial
   assert.match(mainProcess.slice(updaterController, beforeQuitHandler), /prepareToInstall: shutdownApiForUpdate/);
   assert.match(mainProcess, /distributionChannel === "store" \? "Vitana Health Store Test" : "Vitana Health"/);
 });
+
+test("every local module main.cjs requires is packaged", () => {
+  // `files` replaces electron-builder's default `**/*`, so a new local module is silently left out
+  // of the asar and only fails once someone installs the build. `pre-update-backup.cjs` was.
+  const packageJson = JSON.parse(readFileSync(path.join(__dirname, "package.json"), "utf8"));
+  const mainProcess = readFileSync(path.join(__dirname, "main.cjs"), "utf8");
+  const required = [...mainProcess.matchAll(/require\("\.\/([^"]+\.cjs)"\)/g)].map((match) => match[1]);
+
+  assert.ok(required.length > 0);
+  for (const module of new Set(required)) {
+    assert.ok(packageJson.build.files.includes(module), `${module} must be listed in build.files`);
+  }
+});
+
+test("DuckDB is pinned to an exact version matching the shared httpfs digest", () => {
+  const apiPackageJson = JSON.parse(
+    readFileSync(path.join(__dirname, "..", "api", "package.json"), "utf8")
+  );
+  const pinSource = readFileSync(
+    path.join(__dirname, "..", "..", "packages", "shared", "src", "duckdbPin.ts"),
+    "utf8"
+  );
+  const pinnedVersion = /PINNED_DUCKDB_VERSION = "([^"]+)"/.exec(pinSource)?.[1];
+
+  // A caret range would let npm resolve a DuckDB build whose core-signed httpfs extension no
+  // longer matches the digest we verify at runtime, turning an upgrade into a startup failure.
+  assert.ok(pinnedVersion, "shared duckdbPin.ts must declare PINNED_DUCKDB_VERSION");
+  assert.equal(apiPackageJson.dependencies.duckdb, pinnedVersion);
+});

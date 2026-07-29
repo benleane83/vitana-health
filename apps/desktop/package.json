@@ -16,8 +16,9 @@
     "electron-builder": "26.15.3"
   },
   "scripts": {
-    "prepackage": "node ../../scripts/prepare-duckdb-httpfs.mjs --output build/duckdb-extensions --skip-runtime-verification",
+    "prepackage": "npm run build -w packages/shared --prefix ../.. && node ../../scripts/prepare-duckdb-httpfs.mjs --output build/duckdb-extensions --skip-runtime-verification",
     "start": "electron .",
+    "typecheck": "tsc -p tsconfig.json",
     "test": "node --test *.test.cjs",
     "package": "electron-builder --publish=never",
     "package:store": "npm run prepackage && electron-builder --win appx --x64 --publish=never --config.directories.output=dist-store --config.extraMetadata.vitanaDistributionChannel=store"
@@ -40,6 +41,8 @@
       "startup-diagnostics.cjs",
       "desktop-updater.cjs",
       "user-data-migration.cjs",
+      "pre-update-backup.cjs",
+      "desktop-lifecycle.cjs",
       "build/*.ico",
       "package.json",
       "!**/node_modules/@vitana/api/data{,/**}",

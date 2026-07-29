@@ -58,7 +58,7 @@ Everything else on this list stays cheap to fix after users exist. These three d
 | 6 — Web stability and performance | P1-13, P1-14, P1-15 | Not started |
 | 7 — Android core | P1-8, P1-19 | Not started |
 | 8 — Health Connect sync | P1-7 | Not started |
-| 9 — Desktop lifecycle | P1-17 | Not started |
+| 9 — Desktop lifecycle | P1-17 | Done (LAN bind deferred) |
 | 10 — Final validation and docs | — | Not started |
 
 Phase 1 added `npm run export:profiles` / `npm run import:profiles` (`apps/api/src/dev/`), a developer-only capture-and-replay pair used to rebuild the author's local test profiles onto the new baseline. It is not an end-user migration path.
@@ -446,6 +446,21 @@ Related CI gaps:
 **And nothing catches a stray rejection.** A search across `apps/api/src` for `unhandledRejection|uncaughtException` returns **zero hits**; only `SIGTERM`/`SIGINT` are handled ([server.ts:149-150](apps/api/src/server.ts#L149)). On Node ≥15 an unhandled rejection terminates the process, bypassing `closeStorage()` entirely — no `CHECKPOINT`, no clean `DETACH`.
 
 **Action:** move `migrateUserDataDirectory` inside the `requestSingleInstanceLock()` success branch; mirror the update path's `Promise.race` on quit and call `server.closeAllConnections()`; wrap everything after `ProfileStoreManager.open()` in `try/catch` that closes storage before rethrowing; register `uncaughtException` and `unhandledRejection` handlers that run the same `closeStorage()` path.
+
+**Status — Resolved (Phase 9).**
+
+- `migrateUserDataDirectory` now runs inside the `requestSingleInstanceLock()` success branch. `desktop-lifecycle.test.cjs` asserts the declaration ordering in `main.cjs` so a future reshuffle cannot silently reintroduce the race.
+- `before-quit` races a 10s timer and force-exits with code 1 rather than hanging. `server.shutdown()` now calls `closeIdleConnections()` and `closeAllConnections()` so a keep-alive companion socket cannot hold the quit open.
+- `startServer` declares `closeStorage()` immediately after `ProfileStoreManager.open()` and wraps everything after it in `try/catch`, releasing the DuckDB handles on any later failure. `serverLifecycle.test.ts` proves it by forcing `EADDRINUSE` and asserting `closeAll()` ran exactly once.
+- `uncaughtException` and `unhandledRejection` now route through the same storage-close path before exiting.
+- The lifecycle state machine is extracted into `apps/desktop/desktop-lifecycle.cjs` (`createDesktopLifecycle`) following the `background-service.cjs` DI pattern, covered by 11 behavioural tests with fakes.
+- `apps/desktop/tsconfig.json` typechecks the production `.cjs` files with `checkJs` and is wired into the root `typecheck` script.
+- `duckdb` is pinned to an exact `1.4.4`. The version and the httpfs SHA-256 are declared once in `packages/shared/src/duckdbPin.ts` and consumed by `prepare-duckdb-httpfs.mjs`, `profileStoreManager.ts` and the docs; `package-config.test.cjs` fails if they drift.
+- The NSIS `customInstall` firewall step is now a non-fatal `DetailPrint` warning instead of an `Abort`, so an upgrade can no longer leave a half-removed install.
+- Startup sweeps orphaned temp files using a PID-liveness check plus a 5-minute minimum age. This lives in `apps/api` (`profileStoreManager.openDuckDb`) rather than the desktop shell, because the storage layer owns both the temp-file creation and the storage root, so every host benefits.
+- Bonus: `pre-update-backup.cjs` was missing from the electron-builder `build.files` allowlist and would have crashed packaged builds. Fixed, with a regression test that checks every local module `main.cjs` requires is packaged.
+
+**Deferred.** Binding `127.0.0.1` by default and rebinding `0.0.0.0` only when a device is paired is not implemented. `paired-devices.json` only ever holds approved, token-delivered devices, so on a clean install the file is empty, the API would bind loopback, and the phone could never reach `/pair` to create the first record. This needs its own design (an on-demand LAN listener, or a persisted opt-in flag) and is tracked separately.
 
 ---
 

@@ -14,6 +14,7 @@ import { dirname, resolve } from "node:path";
 import {
   CURRENT_SCHEMA_VERSION,
   defaultMeasurementTypes,
+  pinnedHttpfsSha256,
   type HealthStoreData,
   type Profile,
   type ProfilePhotoMetadata,
@@ -23,6 +24,7 @@ import { initializeDuckDbRoot, type DuckDbOptions } from "./duckdbRuntime.js";
 import { DuckDbHealthStore } from "./duckdbHealthStore.js";
 import type { ManagedProfileRepository } from "./profileRepository.js";
 import { RestoreJournal } from "./restoreJournal.js";
+import { sweepOrphanedTempFiles } from "./orphanedTempFiles.js";
 
 export type StoreSecurityMode = "env-secret" | "generated-local-key" | "os-secure-storage";
 
@@ -70,7 +72,7 @@ export interface RestoreProfileResult {
   success: true;
 }
 
-const windowsX64HttpfsSha256 = "21eea4547cf5aa5231f4838906e8935067c956f56a5efd09035a51189af8a77b";
+const windowsX64HttpfsSha256 = pinnedHttpfsSha256("win32", "x64");
 
 export class ProfileStoreManager {
   readonly securityMode: StoreSecurityMode;
@@ -340,6 +342,7 @@ export class ProfileStoreManager {
     validateDuckDbRuntime(options);
     RestoreJournal.recover(resolveDataDir());
     this.root = initializeDuckDbRoot(options.root ?? duckdbStorageRoot());
+    sweepOrphanedTempFiles([resolveDataDir(), this.root, resolve(this.root, "databases")]);
     this.duckdbOptions = { httpfsExtensionPath: options.httpfsExtensionPath, memoryLimit: "256MB" };
     const existingManifest = loadStorageBackendManifest();
     const manifest = existingManifest ?? createInitialManifest();
@@ -447,7 +450,7 @@ function validateDuckDbRuntime(options: DuckDbActivationOptions): void {
     throw new Error(`Pinned DuckDB extension is unavailable at ${options.httpfsExtensionPath}.`);
   }
   const digest = createHash("sha256").update(readFileSync(options.httpfsExtensionPath)).digest("hex");
-  if (digest !== windowsX64HttpfsSha256) {
+  if (!windowsX64HttpfsSha256 || digest !== windowsX64HttpfsSha256) {
     throw new Error("Pinned DuckDB extension failed SHA-256 verification.");
   }
 }

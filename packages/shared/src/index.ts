@@ -14,4 +14,5 @@ export * from "./mobileRepository.js";
 export * from "./brand.js";
 export * from "./mobileMigration.js";
 export * from "./replicaSync.js";
+export * from "./duckdbPin.js";
 export * from "./healthConnectImport.js";

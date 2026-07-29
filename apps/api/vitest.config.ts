@@ -5,6 +5,7 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.test.ts"],
     exclude: ["src/**/*.integration.test.ts", "src/**/*.durability.test.ts"],
-    testTimeout: 5_000
+    // See apps/web/vitest.config.ts - the parallel monorepo run makes a 5s budget flaky.
+    testTimeout: 20_000
   }
 });

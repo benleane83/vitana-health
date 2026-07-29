@@ -4,13 +4,27 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
 
+// The version and digest live in @vitana/shared so the runtime check, the npm pin and this
+// download cannot drift apart. That module is TypeScript, so it must be built first.
+let pinnedDuckDbVersion;
+let pinnedSha256ByPlatform;
+let duckDbPlatform;
+try {
+  ({
+    PINNED_DUCKDB_VERSION: pinnedDuckDbVersion,
+    PINNED_DUCKDB_HTTPFS_SHA256: pinnedSha256ByPlatform,
+    duckDbPlatform
+  } = await import("../packages/shared/dist/duckdbPin.js"));
+} catch (error) {
+  throw new Error(
+    "Could not load the DuckDB pin from @vitana/shared. Run `npm run build -w packages/shared` first.",
+    { cause: error }
+  );
+}
+
 const require = createRequire(import.meta.url);
 const duckdb = require("duckdb");
 const duckdbPackage = require("duckdb/package.json");
-const pinnedDuckDbVersion = "1.4.4";
-const pinnedSha256ByPlatform = {
-  windows_amd64: "21eea4547cf5aa5231f4838906e8935067c956f56a5efd09035a51189af8a77b"
-};
 
 if (duckdbPackage.version !== pinnedDuckDbVersion) {
   throw new Error(`Expected DuckDB ${pinnedDuckDbVersion}, found ${duckdbPackage.version}.`);
@@ -75,22 +89,6 @@ writeFileSync(manifestPath, `${JSON.stringify({
 }, null, 2)}\n`, { mode: 0o600 });
 
 console.log(JSON.stringify({ extensionPath, manifestPath, platform, sha256: extensionSha256 }));
-
-function duckDbPlatform(nodePlatform, nodeArchitecture) {
-  const operatingSystem = {
-    darwin: "osx",
-    linux: "linux",
-    win32: "windows"
-  }[nodePlatform];
-  const architecture = {
-    arm64: "arm64",
-    x64: "amd64"
-  }[nodeArchitecture];
-  if (!operatingSystem || !architecture) {
-    throw new Error(`DuckDB httpfs is not prepared for ${nodePlatform}/${nodeArchitecture}.`);
-  }
-  return `${operatingSystem}_${architecture}`;
-}
 
 async function verifySignedExtension(path, extensionDirectory) {
   const database = await new Promise((resolvePromise, reject) => {
