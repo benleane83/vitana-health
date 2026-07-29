@@ -41,6 +41,8 @@ import {
   createDuckDbSchema,
   migrateDuckDbSchema,
   openEncryptedDuckDbDatabase,
+  restoreDatabaseBackup,
+  SchemaMigrationError,
   type DuckDbOptions,
   type EncryptedDuckDbDatabase
 } from "./duckdbRuntime.js";
@@ -217,6 +219,11 @@ export class DuckDbRepository implements ProfileRepository {
       return repository;
     } catch (error) {
       await closeEncryptedDuckDbDatabase(handle).catch(() => undefined);
+      // The file is only replaceable now that nothing holds it open, so the pre-migration copy goes
+      // back here rather than inside the migrator.
+      if (error instanceof SchemaMigrationError && error.backupPath) {
+        restoreDatabaseBackup(error.backupPath, handle.databasePath);
+      }
       throw error;
     }
   }

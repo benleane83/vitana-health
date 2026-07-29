@@ -79,7 +79,7 @@ test("Store packages use an isolated AppX target and placeholder identity", () =
 
 test("desktop updater shutdown callback is available during main-process initialization", () => {
   const mainProcess = readFileSync(path.join(__dirname, "main.cjs"), "utf8");
-  const shutdownCallback = mainProcess.indexOf("async function shutdownApiForUpdate()");
+  const shutdownCallback = mainProcess.indexOf("async function shutdownApiForUpdate(");
   const updaterController = mainProcess.indexOf("const desktopUpdater = createDesktopUpdaterController(");
   const beforeQuitHandler = mainProcess.indexOf("app.on(\"before-quit\"");
 

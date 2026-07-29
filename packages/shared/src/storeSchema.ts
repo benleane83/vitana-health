@@ -5,6 +5,12 @@ import { defaultMeasurementTypes } from "./registry.js";
 
 export const CURRENT_SCHEMA_VERSION = 8 as const;
 
+/**
+ * Every persisted schema version `parsePersistedHealthStore` can read. Anything else is rejected
+ * rather than silently mis-parsed - see the coverage test that walks this list.
+ */
+export const SUPPORTED_PERSISTED_SCHEMA_VERSIONS = [1, 2, 4, 5, 6, 7, 8] as const;
+
 const sourceKind = z.enum([
   "health-connect", "manual-entry", "blood-test-csv", "observation-csv", "structured-upload",
   "blood-test-report", "body-composition-report", "derived"

@@ -128,7 +128,10 @@ function createDesktopUpdaterController({
     diagnostics.info("Preparing to restart for desktop update installation");
     schedule(async () => {
       try {
-        await prepareToInstall();
+        await prepareToInstall({
+          fromVersion: state.currentVersion,
+          toVersion: state.availableVersion
+        });
         updater.quitAndInstall(false, true);
       } catch (error) {
         installStarted = false;

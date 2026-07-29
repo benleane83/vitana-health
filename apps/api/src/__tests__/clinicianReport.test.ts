@@ -4,7 +4,7 @@ import { computeAnalytics, type HealthStoreData } from "@vitana/shared";
 
 function store(): HealthStoreData {
   return {
-    schemaVersion: 2,
+    schemaVersion: 8,
     profile: { id: "self", displayName: "Alex", units: "metric", updatedAt: "2026-01-01T00:00:00.000Z" },
     sourceImports: [{ id: "import-1", sourceKind: "blood-test-csv", fileName: "labs.csv", importedAt: "2026-01-02T00:00:00.000Z", parserVersion: "1", checksum: "private", rowCount: 1, status: "processed", diagnostics: [], rawContent: "private" }],
     dataSources: [], devices: [],

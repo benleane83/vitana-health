@@ -21,7 +21,9 @@ import {
   closeEncryptedDuckDbDatabase,
   createDuckDbSchema,
   initializeDuckDbRoot,
-  openEncryptedDuckDbDatabase
+  openEncryptedDuckDbDatabase,
+  restoreDatabaseBackup,
+  SchemaVersionTooNewError
 } from "../storage/duckdbRuntime.js";
 import { createDuckDbHealthStoreFixture } from "./support/duckdbFixture.js";
 import { DuckDbRepository, digestHealthStoreData } from "../storage/duckdbRepository.js";
@@ -1389,9 +1391,26 @@ describe("DuckDbRepository fidelity", () => {
     await execSql(futureHandle.connection, "CHECKPOINT;");
     await closeEncryptedDuckDbDatabase(futureHandle);
     const futureHash = hashFile(futurePath);
-    await expect(DuckDbRepository.open(root, futurePath, key, options)).rejects.toThrow("newer than supported");
+    await expect(DuckDbRepository.open(root, futurePath, key, options)).rejects.toThrow(SchemaVersionTooNewError);
+    // The message is shown verbatim in the desktop startup dialog, so it has to tell the user what
+    // to do rather than name an internal version check.
+    await expect(DuckDbRepository.open(root, futurePath, key, options)).rejects.toThrow(/newer version of Vitana/);
     expect(hashFile(futurePath)).toBe(futureHash);
   }, 30_000);
+
+  it("puts a pre-migration copy back and clears the stale write-ahead log", () => {
+    const databasePath = join(root, "databases", "health-store-restore.duckdb-poc");
+    const backupPath = `${databasePath}.pre-migration-test`;
+    writeFileSync(databasePath, "half-migrated");
+    writeFileSync(`${databasePath}.wal`, "stale");
+    writeFileSync(backupPath, "original");
+
+    restoreDatabaseBackup(backupPath, databasePath);
+
+    expect(readFileSync(databasePath, "utf8")).toBe("original");
+    expect(existsSync(`${databasePath}.wal`)).toBe(false);
+    expect(existsSync(backupPath)).toBe(false);
+  });
 });
 
 function execSql(connection: { exec(sql: string, callback: (error: Error | null) => void): unknown }, sql: string): Promise<void> {

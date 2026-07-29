@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import duckdb from "duckdb";
 import {
@@ -30,6 +30,45 @@ export interface EncryptedDuckDbDatabase {
    * connection the last committed snapshot, so it never observes a half-applied transaction.
    */
   readConnection: duckdb.Connection;
+  /** The attached database file, so recovery can copy or restore it without guessing. */
+  databasePath: string;
+}
+
+/** The handle before the caller knows which file it is about to attach. */
+type DuckDbConnections = Omit<EncryptedDuckDbDatabase, "databasePath">;
+
+/**
+ * A store written by a newer build. Opening it read-write would corrupt data the newer build
+ * understands and this one does not, so the message tells the user how to get back in.
+ */
+export class SchemaVersionTooNewError extends Error {
+  readonly code = "SCHEMA_VERSION_TOO_NEW";
+
+  constructor(readonly databaseVersion: number, readonly supportedVersion: number) {
+    super(
+      `This profile was written by a newer version of Vitana (database schema ${databaseVersion}, ` +
+      `this build supports ${supportedVersion}). Reinstall the newer version, or restore a backup.`
+    );
+    this.name = "SchemaVersionTooNewError";
+  }
+}
+
+/**
+ * A migration that failed part-way. `backupPath` is the pre-migration copy of the database file;
+ * the caller restores it once the handle is closed, since the file cannot be replaced while it is
+ * still attached.
+ */
+export class SchemaMigrationError extends Error {
+  readonly code = "SCHEMA_MIGRATION_FAILED";
+
+  constructor(
+    readonly version: number,
+    readonly backupPath: string | undefined,
+    options: { cause: unknown }
+  ) {
+    super(`Encrypted DuckDB schema migration to version ${version} failed.`, options);
+    this.name = "SchemaMigrationError";
+  }
 }
 
 export function initializeDuckDbRoot(root: string): string {
@@ -94,25 +133,67 @@ export async function migrateDuckDbSchema(
   }
   const currentVersion = versions.at(-1) ?? 0;
   if (currentVersion > schemaVersion) {
-    throw new Error(`Encrypted DuckDB schema version ${currentVersion} is newer than supported version ${schemaVersion}.`);
+    throw new SchemaVersionTooNewError(currentVersion, schemaVersion);
   }
-  if (currentVersion >= targetSchemaVersion) {
+  const pending = schemaMigrations.filter(
+    (migration) => migration.version > currentVersion && migration.version <= targetSchemaVersion
+  );
+  if (pending.length === 0) {
     return currentVersion;
   }
 
-  await exec(database.connection, "BEGIN TRANSACTION;");
-  try {
-    for (const migration of schemaMigrations) {
-      if (migration.version > currentVersion && migration.version <= targetSchemaVersion) {
-        await exec(database.connection, migration.sql);
-      }
+  // A file being bootstrapped has nothing worth preserving, so only a real upgrade pays for a copy.
+  const backupPath = currentVersion > 0 ? await backupDatabaseFile(database) : undefined;
+  let appliedVersion = currentVersion;
+  // Each version commits on its own so a failure halfway through a multi-step upgrade leaves the
+  // store at a version that actually exists rather than an unrecorded blend of two.
+  for (const migration of pending) {
+    await exec(database.connection, "BEGIN TRANSACTION;");
+    try {
+      await exec(database.connection, migration.sql);
+      await exec(database.connection, "COMMIT;");
+      appliedVersion = migration.version;
+    } catch (error) {
+      await exec(database.connection, "ROLLBACK;").catch(() => undefined);
+      throw new SchemaMigrationError(migration.version, backupPath, { cause: error });
     }
-    await exec(database.connection, "COMMIT;");
-    return targetSchemaVersion;
-  } catch (error) {
-    await exec(database.connection, "ROLLBACK;").catch(() => undefined);
-    throw error;
   }
+  if (backupPath) {
+    rmSync(backupPath, { force: true });
+  }
+  return appliedVersion;
+}
+
+function backupSuffix(): string {
+  return `.pre-migration-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+}
+
+/**
+ * Snapshots the attached database file before a migration touches it. The checkpoint first flushes
+ * the write-ahead log so the copy is a complete database on its own.
+ */
+async function backupDatabaseFile(database: EncryptedDuckDbDatabase): Promise<string | undefined> {
+  if (!existsSync(database.databasePath)) {
+    return undefined;
+  }
+  await exec(database.connection, "CHECKPOINT;");
+  const backupPath = `${database.databasePath}${backupSuffix()}`;
+  copyFileSync(database.databasePath, backupPath);
+  return backupPath;
+}
+
+/**
+ * Puts a pre-migration copy back. Only safe once the database has been closed, because the file is
+ * held open for as long as it is attached.
+ */
+export function restoreDatabaseBackup(backupPath: string, databasePath: string): void {
+  if (!existsSync(backupPath)) {
+    return;
+  }
+  copyFileSync(backupPath, databasePath);
+  // The stale write-ahead log belongs to the failed migration, not to the restored file.
+  rmSync(`${databasePath}.wal`, { force: true });
+  rmSync(backupPath, { force: true });
 }
 
 export async function openEncryptedDuckDbDatabase(
@@ -127,7 +208,8 @@ export async function openEncryptedDuckDbDatabase(
     throw new Error("Encrypted DuckDB databases must remain beneath the marked storage root.");
   }
   mkdirSync(dirname(resolvedDatabasePath), { recursive: true, mode: 0o700 });
-  const database = await openDatabase(duckDbRoot, options);
+  const connections = await openDatabase(duckDbRoot, options);
+  const database: EncryptedDuckDbDatabase = { ...connections, databasePath: resolvedDatabasePath };
   try {
     await attachEncrypted(database, resolvedDatabasePath, key, options.httpfsExtensionPath);
     return database;
@@ -144,7 +226,7 @@ export async function closeEncryptedDuckDbDatabase(database: EncryptedDuckDbData
 async function openDatabase(
   root: string,
   options: DuckDbOptions = {}
-): Promise<EncryptedDuckDbDatabase> {
+): Promise<DuckDbConnections> {
   const database = await new Promise<duckdb.Database>((resolvePromise, reject) => {
     const opened = new duckdb.Database(":memory:", {
       allow_community_extensions: "false",
@@ -180,7 +262,7 @@ async function openDatabase(
 }
 
 async function attachEncrypted(
-  database: EncryptedDuckDbDatabase,
+  database: DuckDbConnections,
   databasePath: string,
   key?: string,
   httpfsExtensionPath?: string
@@ -247,7 +329,7 @@ function all(connection: duckdb.Connection, sql: string): Promise<Array<Record<s
 }
 
 async function closeDatabase(
-  database: EncryptedDuckDbDatabase,
+  database: DuckDbConnections,
   attached: boolean
 ): Promise<void> {
   // The read connection has to let go of the attached database before it can be detached.

@@ -4,10 +4,12 @@ import {
   encryptBackup,
   decryptBackup,
   buildBackupProfileEntry,
+  UnsupportedBackupFormatError,
   verifyProfileDigest
 } from "../backupCrypto.js";
 import {
   BACKUP_DECRYPTION_ERROR,
+  BACKUP_UNSUPPORTED_FORMAT_ERROR,
   VITANA_BACKUP_MAGIC,
   VITANA_BACKUP_HEADER_LENGTH,
   type BackupPayload,
@@ -158,6 +160,84 @@ describe("backupCrypto", () => {
       const enc2 = await encryptBackup(payload, passphrase);
       // Salt differs (bytes 5-36)
       expect(enc1.subarray(5, 37).equals(enc2.subarray(5, 37))).toBe(false);
+    }, 30_000);
+  });
+
+  describe("older backup formats", () => {
+    it("restores a backup written by an older schema version", async () => {
+      const legacy = { ...createTestStoreData(), schemaVersion: 7 };
+      const payload = {
+        formatVersion: 1,
+        createdAt: "2024-06-01T00:00:00.000Z",
+        scope: "all",
+        profiles: [
+          {
+            profileId: "test-user",
+            displayName: "Test User",
+            data: legacy,
+            digest: computeCanonicalDigest(legacy as unknown as HealthStoreData)
+          }
+        ]
+      } as unknown as BackupPayload;
+
+      const passphrase = "legacy-backup-passphrase";
+      const decrypted = await decryptBackup(await encryptBackup(payload, passphrase), passphrase);
+
+      expect(decrypted.profiles[0].data.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+      expect(decrypted.profiles[0].data.observations).toHaveLength(1);
+      // Re-stamped against the migrated data so the restore path still has an integrity check.
+      expect(verifyProfileDigest(decrypted.profiles[0])).toBe(true);
+    }, 30_000);
+
+    it("keeps a tampered digest invalid across migration", async () => {
+      const legacy = { ...createTestStoreData(), schemaVersion: 7 };
+      const payload = {
+        formatVersion: 1,
+        createdAt: "2024-06-01T00:00:00.000Z",
+        scope: "all",
+        profiles: [
+          { profileId: "test-user", displayName: "Test User", data: legacy, digest: "0".repeat(64) }
+        ]
+      } as unknown as BackupPayload;
+
+      const passphrase = "legacy-backup-passphrase";
+      const decrypted = await decryptBackup(await encryptBackup(payload, passphrase), passphrase);
+      expect(verifyProfileDigest(decrypted.profiles[0])).toBe(false);
+    }, 30_000);
+
+    it("blames the format, not the passphrase, once the passphrase has decrypted the file", async () => {
+      const unreadable = { ...createTestStoreData(), schemaVersion: 99 };
+      const payload = {
+        formatVersion: 1,
+        createdAt: "2024-06-01T00:00:00.000Z",
+        scope: "all",
+        profiles: [
+          {
+            profileId: "test-user",
+            displayName: "Test User",
+            data: unreadable,
+            digest: computeCanonicalDigest(unreadable as unknown as HealthStoreData)
+          }
+        ]
+      } as unknown as BackupPayload;
+
+      const passphrase = "unsupported-format-pass";
+      const encrypted = await encryptBackup(payload, passphrase);
+      await expect(decryptBackup(encrypted, passphrase)).rejects.toThrow(UnsupportedBackupFormatError);
+      await expect(decryptBackup(encrypted, passphrase)).rejects.toThrow(BACKUP_UNSUPPORTED_FORMAT_ERROR);
+    }, 60_000);
+
+    it("still reports a wrong passphrase generically", async () => {
+      const payload: BackupPayload = {
+        formatVersion: 1,
+        createdAt: "2024-06-01T00:00:00.000Z",
+        scope: "all",
+        profiles: [buildBackupProfileEntry(createTestStoreData())]
+      };
+      const encrypted = await encryptBackup(payload, "the-right-passphrase!");
+      await expect(decryptBackup(encrypted, "the-wrong-passphrase")).rejects.not.toBeInstanceOf(
+        UnsupportedBackupFormatError
+      );
     }, 30_000);
   });
 

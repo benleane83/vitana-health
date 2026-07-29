@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { CURRENT_SCHEMA_VERSION, parsePersistedHealthStore } from "../storeSchema.js";
+import {
+  CURRENT_SCHEMA_VERSION,
+  SUPPORTED_PERSISTED_SCHEMA_VERSIONS,
+  parsePersistedHealthStore
+} from "../storeSchema.js";
 
 function store(overrides: Record<string, unknown> = {}) {
   return {
@@ -12,6 +16,19 @@ function store(overrides: Record<string, unknown> = {}) {
 }
 
 describe("persisted health store schema", () => {
+  it("has a parser branch for every advertised version, and rejects the rest", () => {
+    // A version in the list with no branch would fall through to the unsupported error, which is
+    // exactly the silent data loss this list exists to prevent.
+    for (const version of SUPPORTED_PERSISTED_SCHEMA_VERSIONS) {
+      expect(() => parsePersistedHealthStore(store({ schemaVersion: version })))
+        .not.toThrow(/Unsupported health store schema version/);
+    }
+    for (const version of [0, 3, 9, CURRENT_SCHEMA_VERSION + 1]) {
+      expect(() => parsePersistedHealthStore(store({ schemaVersion: version })))
+        .toThrow(/Unsupported health store schema version/);
+    }
+  });
+
   it("accepts the current persisted shape and rejects malformed collections", () => {
     expect(parsePersistedHealthStore(store()).data.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
     expect(() => parsePersistedHealthStore(store({ observations: {} }))).toThrow();

@@ -19,19 +19,37 @@ import {
   SCRYPT_KEY_LENGTH,
   BACKUP_DECRYPTION_ERROR,
   BACKUP_MAX_SIZE_BYTES,
-  healthStoreDataSchema,
+  BACKUP_UNSUPPORTED_FORMAT_ERROR,
+  backupPayloadSchema,
+  parsePersistedHealthStore,
   type BackupPayload,
   type BackupProfileEntry,
   type HealthStoreData
 } from "@vitana/shared";
 
 /**
+ * Raised only after the passphrase has already authenticated the file, so it is safe to tell the
+ * user their backup is from an unreadable format rather than blaming their passphrase.
+ */
+export class UnsupportedBackupFormatError extends Error {
+  readonly code = "BACKUP_UNSUPPORTED_FORMAT";
+
+  constructor(readonly detail?: string) {
+    super(BACKUP_UNSUPPORTED_FORMAT_ERROR);
+    this.name = "UnsupportedBackupFormatError";
+  }
+}
+
+/**
  * Compute canonical SHA-256 digest of a HealthStoreData object.
  * Uses deterministic JSON serialization (recursively sorted keys).
  */
 export function computeCanonicalDigest(data: HealthStoreData): string {
-  const canonical = canonicalStringify(data);
-  return createHash("sha256").update(canonical, "utf8").digest("hex");
+  return digestOf(data);
+}
+
+function digestOf(value: unknown): string {
+  return createHash("sha256").update(canonicalStringify(value), "utf8").digest("hex");
 }
 
 /** Recursively sort object keys for deterministic JSON output. */
@@ -124,46 +142,59 @@ export async function decryptBackup(buffer: Buffer, passphrase: string): Promise
 
   const key = await deriveKey(passphrase, Buffer.from(salt));
 
+  let json: string;
   try {
     const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(iv));
     const header = buffer.subarray(0, 5);
     decipher.setAAD(header);
     decipher.setAuthTag(Buffer.from(tag));
     const decrypted = Buffer.concat([decipher.update(Buffer.from(ciphertext)), decipher.final()]);
-    const json = gunzipSync(decrypted, { maxOutputLength: BACKUP_MAX_SIZE_BYTES }).toString("utf8");
-    return validateBackupPayload(JSON.parse(json));
+    json = gunzipSync(decrypted, { maxOutputLength: BACKUP_MAX_SIZE_BYTES }).toString("utf8");
   } catch {
+    // Everything up to here fails identically for a wrong passphrase and a corrupted file, so this
+    // is the one place that must stay a generic message.
     throw new Error(BACKUP_DECRYPTION_ERROR);
   }
 
+  // Past this point the passphrase is proven correct, so failures can name the real problem.
+  return validateBackupPayload(parseJson(json));
+
+  function parseJson(value: string): unknown {
+    try {
+      return JSON.parse(value);
+    } catch {
+      throw new UnsupportedBackupFormatError("Backup contents are not valid JSON.");
+    }
+  }
+
   function validateBackupPayload(value: unknown): BackupPayload {
-    if (!value || typeof value !== "object") throw new Error(BACKUP_DECRYPTION_ERROR);
-    const payload = value as Partial<BackupPayload>;
-    if (
-      payload.formatVersion !== 1 ||
-      typeof payload.createdAt !== "string" ||
-      (payload.scope !== "active" && payload.scope !== "all") ||
-      !Array.isArray(payload.profiles) ||
-      payload.profiles.length === 0
-    ) {
-      throw new Error(BACKUP_DECRYPTION_ERROR);
+    const envelope = backupPayloadSchema.safeParse(value);
+    if (!envelope.success) {
+      throw new UnsupportedBackupFormatError(envelope.error.issues[0]?.message);
     }
-    const ids = new Set<string>();
-    for (const profile of payload.profiles) {
-      if (
-        !profile ||
-        typeof profile.profileId !== "string" ||
-        typeof profile.displayName !== "string" ||
-        typeof profile.digest !== "string" ||
-        ids.has(profile.profileId) ||
-        !healthStoreDataSchema.safeParse(profile.data).success ||
-        profile.data.profile.id !== profile.profileId
-      ) {
-        throw new Error(BACKUP_DECRYPTION_ERROR);
+    const profiles = envelope.data.profiles.map((profile) => {
+      // The digest covers the bytes as written, so it has to be checked before any migration. When
+      // it holds, the entry is re-stamped against the migrated data so downstream checks still mean
+      // something; when it does not, the stale digest is left in place so the restore refuses.
+      const digestValid = digestOf(profile.data) === profile.digest;
+      let data: HealthStoreData;
+      try {
+        // A backup is the one artefact that legitimately crosses schema versions, so it is parsed
+        // through the migrating reader rather than the pinned current-version schema.
+        data = parsePersistedHealthStore(profile.data).data;
+      } catch (error) {
+        throw new UnsupportedBackupFormatError(error instanceof Error ? error.message : undefined);
       }
-      ids.add(profile.profileId);
-    }
-    return payload as BackupPayload;
+      if (data.profile.id !== profile.profileId) {
+        throw new UnsupportedBackupFormatError("Backup profile identifier does not match its data.");
+      }
+      return {
+        ...profile,
+        data,
+        digest: digestValid ? digestOf(data) : profile.digest
+      } satisfies BackupProfileEntry;
+    });
+    return { ...envelope.data, profiles };
   }
 }
 

@@ -548,7 +548,11 @@ export interface MeasurementPinState {
 }
 
 export interface HealthStoreData {
-  schemaVersion: 2 | 3 | 4 | 5 | 6 | 7 | 8;
+  /**
+   * Always the current version. Older persisted stores are upgraded by `parsePersistedHealthStore`
+   * before they ever become a `HealthStoreData`.
+   */
+  schemaVersion: 8;
   profile: Profile;
   sourceImports: SourceImport[];
   dataSources: DataSource[];

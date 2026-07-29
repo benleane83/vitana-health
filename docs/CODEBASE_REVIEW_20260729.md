@@ -53,7 +53,7 @@ Everything else on this list stays cheap to fix after users exist. These three d
 | 1 — Profile export tooling | (enabler for Phase 2) | Done |
 | 2 — Schema baseline, units, retention | P1-3, P1-4, P1-9 | Done |
 | 3 — Write and read path | P1-5, P1-6, P1-10 | Done |
-| 4 — Backups and recovery | P1-2, P1-12 | Not started |
+| 4 — Backups and recovery | P1-2, P1-12 | Done |
 | 5 — API contracts | P1-11 | Not started |
 | 6 — Web stability and performance | P1-13, P1-14, P1-15 | Not started |
 | 7 — Android core | P1-8, P1-19 | Not started |
@@ -108,6 +108,14 @@ The migration runner has two further gaps: it runs **all** pending migrations in
 2. Copy the database inside `migrateDuckDbSchema` before the first statement and restore it on failure.
 3. Commit per migration version rather than one transaction for all.
 4. Turn "schema newer than binary" into a distinct, user-facing error code with recovery guidance, not a raw throw.
+
+**Status — Resolved (Phase 4).** All four parts landed, though the schema baseline collapse in Phase 2 took the v14 chain down to a single v1, so parts 2 and 3 are now insurance for the next migration rather than a fix for an existing one.
+
+`apps/desktop/pre-update-backup.cjs` copies every `*.duckdb` and `*.duckdb.wal` from `<userData>/duckdb-storage/databases` into `<userData>/pre-update-backups/<from>-to-<to>-<timestamp>/`, keeping the newest three. It is called from `shutdownApiForUpdate` **after** the embedded API has closed — before that point the files are still attached and mid-checkpoint. `desktop-updater.cjs` now passes `{ fromVersion, toVersion }` through `prepareToInstall` so the directory name says what the update was. A backup failure is logged and swallowed: refusing to install an update because a copy failed would be a worse outcome than installing it.
+
+`migrateDuckDbSchema` takes a `CHECKPOINT`-flushed copy of the attached file before the first migration statement, but only when `currentVersion > 0` — a file being bootstrapped has nothing worth preserving. Each pending version now gets its own `BEGIN`/`COMMIT`, so a failure part-way through a multi-step upgrade leaves the store at a version that actually exists. The copy cannot be restored from inside the migrator because the file is still attached, so failure raises `SchemaMigrationError` carrying `backupPath` and `DuckDbRepository.open` restores it in the catch that already closes the handle. On success the copy is deleted.
+
+The future-version throw is now `SchemaVersionTooNewError` with `code: "SCHEMA_VERSION_TOO_NEW"` and a message written for a human — `This profile was written by a newer version of Vitana (database schema N, this build supports M). Reinstall the newer version, or restore a backup.` The desktop shell already surfaces startup failures verbatim through `dialog.showErrorBox`, so no extra plumbing was needed. `apps/api/src/storage/profileStoreManager.ts` also stamps `lastWrittenByAppVersion` and `lastWrittenAt` into the storage backend manifest on every write, which is the only record of which build last touched a store when a user reports a broken profile.
 
 ---
 
@@ -326,6 +334,14 @@ Two related problems:
 **Why hard later:** backups are the one artefact that legitimately crosses schema versions. Testers *will* restore an older file. Data loss plus a misleading error is the worst combination.
 
 **Action:** route restore through `parsePersistedHealthStore`; split `BACKUP_DECRYPTION_ERROR` into "wrong passphrase" vs "unsupported format"; define `backupPayloadSchema` and derive `BackupPayload` from it; fix or remove the `3` literal and add a test asserting every literal in the union has a branch.
+
+**Status — Resolved (Phase 4).** `decryptBackup` is now split at the point where the passphrase stops being in question. Only the AES-GCM decipher and gunzip sit inside the catch that raises the generic `BACKUP_DECRYPTION_ERROR`; everything after it runs on bytes the passphrase has already authenticated, so failures there raise `UnsupportedBackupFormatError` instead. That is not an oracle — an attacker cannot reach the format error without already knowing the passphrase. `backupRoutes.ts` maps the two onto distinct codes (`DECRYPT_FAILED` vs `BACKUP_UNSUPPORTED_FORMAT`) on both `/inspect` and `/restore`.
+
+`backupPayloadSchema` and `backupProfileEntrySchema` now live in `packages/shared/src/backup.ts` and replace the hand-written validation, including the duplicate-profile check. The envelope is validated by zod; `data` is deliberately left as a passthrough object, because pinning it to the current version is what caused this finding. Each profile's data goes through `parsePersistedHealthStore`, so a backup taken at schemaVersion 7 restores cleanly after the bump to 8.
+
+That migration would have invalidated the stored digest, since the digest covers the bytes as written. The digest is therefore checked *before* migration and, when it holds, re-stamped against the migrated data so the restore path keeps a real integrity check; when it does not hold the stale digest is left in place so `/restore` still refuses with `DIGEST_INVALID`.
+
+`HealthStoreData.schemaVersion` is now the literal `8` rather than a union spanning every historical version — a value only ever produced by the parser, never consumed by it. The `3` is gone rather than given a branch, since no v3 store exists outside the unreleased build. `SUPPORTED_PERSISTED_SCHEMA_VERSIONS` is exported from `storeSchema.ts` and a test walks it to assert every advertised version has a parser branch, and that unlisted versions are rejected.
 
 ---
 

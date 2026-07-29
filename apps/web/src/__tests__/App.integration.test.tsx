@@ -9,7 +9,7 @@ import { defaultMeasurementTypes, type HealthStoreData } from "@vitana/shared";
 
 function makeEmptyStore(): HealthStoreData {
   return {
-    schemaVersion: 2,
+    schemaVersion: 8,
     profile: { id: "self", displayName: "Local user", units: "metric", updatedAt: "2026-01-01T00:00:00.000Z" },
     sourceImports: [],
     dataSources: [],

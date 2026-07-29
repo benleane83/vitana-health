@@ -28,18 +28,43 @@ export const BACKUP_MAX_SIZE_BYTES = 100 * 1024 * 1024; // 100 MB hard limit
 
 // --- Payload types ---
 
-export interface BackupProfileEntry {
-  profileId: string;
-  displayName: string;
-  data: import("./types.js").HealthStoreData;
+/**
+ * The envelope is validated structurally here; `data` is left as an opaque object because a backup
+ * legitimately crosses schema versions and has to go through `parsePersistedHealthStore` rather
+ * than the pinned current-version schema.
+ */
+export const backupProfileEntrySchema = z.object({
+  profileId: z.string().min(1),
+  displayName: z.string(),
+  data: z.object({ schemaVersion: z.number().int() }).passthrough(),
   /** SHA-256 hex digest of canonical JSON of data (for integrity verification) */
-  digest: string;
+  digest: z.string().min(1)
+}).strict();
+
+export const backupPayloadSchema = z.object({
+  formatVersion: z.literal(1),
+  createdAt: z.string().min(1),
+  scope: z.enum(["active", "all"]),
+  profiles: z.array(backupProfileEntrySchema).min(1)
+}).strict().superRefine((payload, ctx) => {
+  const seen = new Set<string>();
+  for (const profile of payload.profiles) {
+    if (seen.has(profile.profileId)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["profiles"],
+        message: `Duplicate profile ${profile.profileId} in backup.`
+      });
+    }
+    seen.add(profile.profileId);
+  }
+});
+
+export interface BackupProfileEntry extends Omit<z.infer<typeof backupProfileEntrySchema>, "data"> {
+  data: import("./types.js").HealthStoreData;
 }
 
-export interface BackupPayload {
-  formatVersion: 1;
-  createdAt: string;
-  scope: "active" | "all";
+export interface BackupPayload extends Omit<z.infer<typeof backupPayloadSchema>, "profiles"> {
   profiles: BackupProfileEntry[];
 }
 
@@ -101,3 +126,13 @@ export type BackupRestoreResponse = z.infer<typeof backupRestoreResponseSchema>;
 
 // Generic error message for invalid passphrase/corruption (no oracle)
 export const BACKUP_DECRYPTION_ERROR = "Invalid passphrase or corrupted backup file.";
+
+/**
+ * Only reachable once the passphrase has already decrypted and authenticated the file, so telling
+ * the user their backup is too old for this build leaks nothing a wrong passphrase would.
+ */
+export const BACKUP_UNSUPPORTED_FORMAT_ERROR =
+  "This backup was written by a version of Vitana that this build cannot read.";
+
+export const BACKUP_WRONG_PASSPHRASE_CODE = "BACKUP_WRONG_PASSPHRASE";
+export const BACKUP_UNSUPPORTED_FORMAT_CODE = "BACKUP_UNSUPPORTED_FORMAT";

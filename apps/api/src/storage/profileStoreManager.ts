@@ -46,6 +46,13 @@ interface StorageBackendManifest {
   version: 1;
   backend: "duckdb";
   activatedAt: string;
+  /**
+   * Provenance for the store as a whole. When a user reports a broken profile this is the only
+   * record of which build last touched it, and it is what tells a downgraded build that it is
+   * looking at data from the future.
+   */
+  lastWrittenByAppVersion?: string;
+  lastWrittenAt?: string;
   profiles: Array<{ profileId: string; databaseFile: string }>;
 }
 
@@ -471,12 +478,28 @@ function loadStorageBackendManifest(): StorageBackendManifest | undefined {
     version: 1,
     backend: "duckdb",
     activatedAt: parsed.activatedAt,
+    ...(typeof parsed.lastWrittenByAppVersion === "string"
+      ? { lastWrittenByAppVersion: parsed.lastWrittenByAppVersion }
+      : {}),
+    ...(typeof parsed.lastWrittenAt === "string" ? { lastWrittenAt: parsed.lastWrittenAt } : {}),
     profiles: parsed.profiles.map(({ profileId, databaseFile }) => ({ profileId, databaseFile }))
   };
 }
 
 function persistStorageBackendManifest(manifest: StorageBackendManifest): void {
-  atomicWriteJson(storageBackendManifestPath(), manifest);
+  atomicWriteJson(storageBackendManifestPath(), {
+    ...manifest,
+    lastWrittenByAppVersion: currentAppVersion(),
+    lastWrittenAt: new Date().toISOString()
+  } satisfies StorageBackendManifest);
+}
+
+/**
+ * The desktop shell passes its own version through the environment; outside it the workspace
+ * version is the best available answer.
+ */
+function currentAppVersion(): string {
+  return process.env.VITANA_APP_VERSION ?? process.env.npm_package_version ?? "unknown";
 }
 
 function persistProfileRegistry(profiles: ProfileListEntry[]): void {

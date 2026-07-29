@@ -7,6 +7,7 @@ const { loadOrCreateSecureStoreKey, prepareSecureStoreKey } = require("./secure-
 const { createStartupDiagnostics } = require("./startup-diagnostics.cjs");
 const { createDesktopUpdaterController } = require("./desktop-updater.cjs");
 const { migrateUserDataDirectory } = require("./user-data-migration.cjs");
+const { createPreUpdateBackup } = require("./pre-update-backup.cjs");
 
 let apiServer;
 let mainWindow;
@@ -49,22 +50,35 @@ function requestQuit() {
   app.quit();
 }
 
-async function shutdownApiForUpdate() {
+async function shutdownApiForUpdate(versions = {}) {
   if (updateInstallPending) return;
   updateInstallPending = true;
   quitting = true;
   backgroundService.destroyTray();
-  if (!apiServer) return;
+  if (apiServer) {
+    try {
+      await Promise.race([
+        apiServer.shutdown(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Embedded API shutdown timed out.")), 10_000))
+      ]);
+      apiServer = undefined;
+    } catch (error) {
+      updateInstallPending = false;
+      quitting = false;
+      throw error;
+    }
+  }
+  // Only safe now that the API has closed and checkpointed the databases. A failure here must not
+  // block the update, so it is recorded and swallowed.
   try {
-    await Promise.race([
-      apiServer.shutdown(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("Embedded API shutdown timed out.")), 10_000))
-    ]);
-    apiServer = undefined;
+    const backupPath = createPreUpdateBackup({
+      userDataPath: app.getPath("userData"),
+      fromVersion: versions.fromVersion ?? app.getVersion(),
+      toVersion: versions.toVersion
+    });
+    if (backupPath) diagnostics.info(`Pre-update backup written to ${backupPath}`);
   } catch (error) {
-    updateInstallPending = false;
-    quitting = false;
-    throw error;
+    diagnostics.error("Pre-update backup failed.", error);
   }
 }
 
@@ -161,6 +175,7 @@ async function launch() {
   process.env.HOST = "0.0.0.0";
   process.env.PORT = process.env.PORT || "4317";
   process.env.VITANA_DATA_DIR = app.getPath("userData");
+  process.env.VITANA_APP_VERSION = app.getVersion();
   process.env.VITANA_LOG_FILE = path.join(app.getPath("userData"), "logs", "api.ndjson");
   process.env.VITANA_STORAGE_BACKEND = "duckdb";
   process.env.VITANA_WEB_ROOT = packaged
