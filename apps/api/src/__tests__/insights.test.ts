@@ -23,8 +23,8 @@ function analytics(): AnalyticsSummary {
       "No lab markers are outside supplied reference ranges."
     ],
     latestMetrics: [
-      { code: "hba1c", label: "HbA1c", value: 5.7, unit: "%", observedAt: "2026-07-23T00:00:00.000Z", status: "unknown" },
-      { code: "heart_rate", label: "Heart rate", value: 72, unit: "bpm", observedAt: "2026-07-22T00:00:00.000Z", status: "normal" }
+      { code: "hba1c", label: "HbA1c", value: 5.7, unit: "%", observedAt: "2026-07-23T00:00:00.000Z", status: "unknown", isPinned: false },
+      { code: "heart_rate", label: "Heart rate", value: 72, unit: "bpm", observedAt: "2026-07-22T00:00:00.000Z", status: "normal", isPinned: false }
     ],
     trendCards: [],
     labAlerts: []
@@ -55,7 +55,8 @@ describe("generateInsight", () => {
       value: index + 1,
       unit: "units",
       observedAt: "2026-07-23T00:00:00.000Z",
-      status: "normal" as const
+      status: "normal" as const,
+      isPinned: false
     }));
 
     const evidence = buildInsightEvidence({ ...analytics(), latestMetricsForInsight });

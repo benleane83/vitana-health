@@ -16,6 +16,7 @@ export function computeAnalytics(store: HealthStoreData): AnalyticsSummary {
     measurementTypes: store.measurementTypes,
     observations: store.observations,
     personalReferenceRanges: store.personalReferenceRanges,
+    pinnedMeasurements: store.pinnedMeasurements,
     units: store.profile.units,
     subjectKind: store.profile.subjectKind
   });
@@ -28,10 +29,12 @@ export interface AnalyticsInput {
   units?: UnitSystem;
   subjectKind?: SubjectKind;
   personalReferenceRanges?: PersonalReferenceRange[];
+  pinnedMeasurements?: HealthStoreData["pinnedMeasurements"];
 }
 
 export function computeAnalyticsFromInput(input: AnalyticsInput): AnalyticsSummary {
   const registry = new Map(input.measurementTypes.map((type) => [type.code, type]));
+  const pinnedCodes = new Set(input.pinnedMeasurements?.map((pin) => pin.measurementCode) ?? []);
   const observationsByCode = groupBy(input.observations, (observation) => observation.measurementCode);
   const latestMetricsForInsight = [...observationsByCode.entries()]
     .map(([code, observations]) => latestMetric(
@@ -40,11 +43,15 @@ export function computeAnalyticsFromInput(input: AnalyticsInput): AnalyticsSumma
       registry.get(code),
       input.units ?? "metric",
       input.subjectKind ?? "adult",
-      input.personalReferenceRanges?.find((range) => range.measurementCode === code)
+      input.personalReferenceRanges?.find((range) => range.measurementCode === code),
+      pinnedCodes.has(code)
     ))
     .filter((metric): metric is NonNullable<typeof metric> => metric !== undefined)
     .sort((a, b) => b.observedAt.localeCompare(a.observedAt));
-  const latestMetrics = latestMetricsForInsight.slice(0, 12);
+  const latestMetrics = [
+    ...latestMetricsForInsight.filter((metric) => metric.isPinned),
+    ...latestMetricsForInsight.filter((metric) => !metric.isPinned).slice(0, 12)
+  ];
 
   const trendCards = [...observationsByCode.entries()]
     .map(([code, observations]) => trendCard(code, observations, registry.get(code), input.units ?? "metric"))
@@ -69,8 +76,8 @@ export function computeAnalyticsFromInput(input: AnalyticsInput): AnalyticsSumma
 
   const evidenceDigest = [
     `Imported ${input.counts.imports} source file(s), ${input.counts.observations} observations, and ${input.counts.samples} tracker samples.`,
-    latestMetrics[0]
-      ? `Latest tracked metric is ${latestMetrics[0].label}: ${latestMetrics[0].value} ${latestMetrics[0].unit}.`
+    latestMetricsForInsight[0]
+      ? `Latest tracked metric is ${latestMetricsForInsight[0].label}: ${latestMetricsForInsight[0].value} ${latestMetricsForInsight[0].unit}.`
       : "No latest metric is available yet.",
     labAlerts.length > 0
       ? `${labAlerts.length} lab marker(s) are outside supplied reference ranges.`
@@ -93,7 +100,8 @@ function latestMetric(
   type: MeasurementType | undefined,
   units: UnitSystem,
   subjectKind: SubjectKind,
-  personalRange: PersonalReferenceRange | undefined
+  personalRange: PersonalReferenceRange | undefined,
+  isPinned: boolean
 ) {
   if (!type || observations.length === 0) return undefined;
   const latest = [...observations].sort((a, b) => b.observedAt.localeCompare(a.observedAt))[0];
@@ -104,6 +112,7 @@ function latestMetric(
     value: display.value,
     unit: display.unit,
     observedAt: latest.observedAt,
+    isPinned,
     status: classifyValueWithRange(
       latest.value,
       resolveReferenceRange(type, latest.unit, personalRange, subjectKind).effective

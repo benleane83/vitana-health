@@ -73,6 +73,7 @@ export function createDuckDbHealthStoreFixture(): HealthStoreData {
       unit: "kg",
       updatedAt: "2026-07-12T10:00:00.000Z"
     }],
+    pinnedMeasurements: [],
     observationGroups: [{
       id: "group-1",
       kind: "custom",

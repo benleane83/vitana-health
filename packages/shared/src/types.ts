@@ -529,19 +529,33 @@ export interface AuditEvent {
     | "care-item-deleted"
     | "personal-reference-range-set"
     | "personal-reference-range-removed"
+    | "measurement-pinned"
+    | "measurement-unpinned"
     | "profile-photo-replaced"
     | "profile-photo-deleted";
   detail: string;
 }
 
+export interface PinnedMeasurement {
+  measurementCode: string;
+  pinnedAt: string;
+}
+
+export interface MeasurementPinState {
+  measurementCode: string;
+  isPinned: boolean;
+  pinnedAt?: string;
+}
+
 export interface HealthStoreData {
-  schemaVersion: 2 | 3 | 4 | 5 | 6 | 7;
+  schemaVersion: 2 | 3 | 4 | 5 | 6 | 7 | 8;
   profile: Profile;
   sourceImports: SourceImport[];
   dataSources: DataSource[];
   devices: Device[];
   measurementTypes: MeasurementType[];
   personalReferenceRanges: PersonalReferenceRange[];
+  pinnedMeasurements: PinnedMeasurement[];
   observations: Observation[];
   observationGroups: ObservationGroup[];
   timeSeriesSamples: TimeSeriesSample[];
@@ -617,6 +631,7 @@ export interface LatestMetric {
     unit: string;
     observedAt: string;
     status: "low" | "normal" | "high" | "unknown";
+    isPinned: boolean;
 }
 
 export type BiologicalAgeModelStatus = "available" | "incomplete" | "not-implemented";
@@ -757,6 +772,7 @@ export interface HealthDataChartSeries {
 export interface HealthDataDetail {
   generatedAt: string;
   measurement: HealthDataSummaryTypeRow;
+  isPinned: boolean;
   referenceRange: ReferenceRangeState;
   entries: HealthDataDetailEntry[];
   chartPoints: HealthDataDetailChartPoint[];

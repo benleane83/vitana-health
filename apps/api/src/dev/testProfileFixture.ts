@@ -195,6 +195,7 @@ export function createTestProfileFixture(options: TestProfileFixtureOptions = {}
     }],
     measurementTypes: structuredClone(defaultMeasurementTypes),
     personalReferenceRanges: [],
+    pinnedMeasurements: [],
     observations,
     observationGroups,
     timeSeriesSamples,

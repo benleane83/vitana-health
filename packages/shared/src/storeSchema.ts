@@ -3,7 +3,7 @@ import { healthEventKindCodes } from "./types.js";
 import type { HealthStoreData, InsightModel } from "./types.js";
 import { defaultMeasurementTypes } from "./registry.js";
 
-export const CURRENT_SCHEMA_VERSION = 7 as const;
+export const CURRENT_SCHEMA_VERSION = 8 as const;
 
 const sourceKind = z.enum([
   "health-connect", "manual-entry", "blood-test-csv", "observation-csv", "structured-upload",
@@ -100,6 +100,10 @@ const storeFields = {
   }).strict()),
   measurementTypes: z.array(measurementTypeSchema),
   personalReferenceRanges: z.array(personalReferenceRangeSchema).default([]),
+  pinnedMeasurements: z.array(z.object({
+    measurementCode: z.string().trim().min(1),
+    pinnedAt: z.string().datetime({ offset: true })
+  }).strict()).default([]),
   observations: z.array(z.object({
     id: z.string(), measurementCode: z.string(), observedAt: z.string(), effectiveStart: z.string().optional(), effectiveEnd: z.string().optional(),
     value: z.number(), unit: z.string(), sourceId: z.string(), observationGroupId: z.string().optional(), deviceId: z.string().optional(),
@@ -148,7 +152,7 @@ const storeFields = {
   insights: z.array(insightSchema),
   auditEvents: z.array(z.object({
     id: z.string(), createdAt: z.string(),
-    eventType: z.enum(["store-created", "profile-updated", "migration-applied", "import-processed", "insight-generated", "export-created", "observation-updated", "observation-deleted", "observation-type-deleted", "daily-step-aggregates-deleted", "health-event-created", "health-event-updated", "health-event-deleted", "care-item-created", "care-item-updated", "care-item-completed", "care-item-cancelled", "care-item-deleted", "personal-reference-range-set", "personal-reference-range-removed", "profile-photo-replaced", "profile-photo-deleted"]),
+    eventType: z.enum(["store-created", "profile-updated", "migration-applied", "import-processed", "insight-generated", "export-created", "observation-updated", "observation-deleted", "observation-type-deleted", "daily-step-aggregates-deleted", "health-event-created", "health-event-updated", "health-event-deleted", "care-item-created", "care-item-updated", "care-item-completed", "care-item-cancelled", "care-item-deleted", "personal-reference-range-set", "personal-reference-range-removed", "measurement-pinned", "measurement-unpinned", "profile-photo-replaced", "profile-photo-deleted"]),
     detail: z.string()
   }).strict())
 };
@@ -243,6 +247,15 @@ export function parsePersistedHealthStore(data: unknown): { data: HealthStoreDat
     });
     return {
       data: healthStoreDataSchema.parse({ ...retired, measurementTypes }) as HealthStoreData,
+      migrated: true
+    };
+  }
+  if (version === 7) {
+    return {
+      data: healthStoreDataSchema.parse({
+        ...z.record(z.unknown()).parse(normalizedData),
+        schemaVersion: CURRENT_SCHEMA_VERSION
+      }) as HealthStoreData,
       migrated: true
     };
   }

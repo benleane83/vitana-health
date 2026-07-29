@@ -231,6 +231,16 @@ export function TrackRoute({
     }
   }
 
+  async function setPinned(isPinned: boolean) {
+    if (!detailCode || actionBusy) return;
+    await runAction(async () => {
+      if (isPinned) await api.pinMeasurement(detailCode);
+      else await api.unpinMeasurement(detailCode);
+      await refreshAfterMutation(detailCode);
+      onNotice(isPinned ? "Measurement pinned." : "Measurement unpinned.");
+    });
+  }
+
   async function loadMore() {
     if (!detailCode || !detail.data?.pagination.hasMore) return;
     setLoadMoreBusy(true);
@@ -291,6 +301,7 @@ export function TrackRoute({
           onAddManualObservation={addManualObservation}
           onSetPersonalReferenceRange={setPersonalReferenceRange}
           onRemovePersonalReferenceRange={removePersonalReferenceRange}
+          onSetPinned={setPinned}
           measurementType={measurementTypes.find((measurement) => measurement.code === detailCode)}
           defaultUnit={defaultUnit}
         />

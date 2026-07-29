@@ -17,6 +17,7 @@ import type {
   PersonalReferenceRangeInput
 } from "@vitana/shared";
 import { DetailTrendChart } from "../components/Charts.js";
+import { Pin } from "lucide-react";
 import { formatTimestamp, formatShortTimestamp, formatDetailValue } from "../utils.js";
 import type { SummarySort } from "../types.js";
 
@@ -280,6 +281,7 @@ export function ObservationTypeDetailPage({
   onAddManualObservation,
   onSetPersonalReferenceRange,
   onRemovePersonalReferenceRange,
+  onSetPinned,
   measurementType,
   defaultUnit
 }: {
@@ -303,6 +305,7 @@ export function ObservationTypeDetailPage({
   onAddManualObservation: (input: { observedAt: string; value: number; unit: string; note: string }) => void | Promise<void>;
   onSetPersonalReferenceRange: (input: PersonalReferenceRangeInput) => Promise<void>;
   onRemovePersonalReferenceRange: () => Promise<void>;
+  onSetPinned: (isPinned: boolean) => void | Promise<void>;
   measurementType?: MeasurementType;
   defaultUnit: string;
 }) {
@@ -433,6 +436,17 @@ export function ObservationTypeDetailPage({
             <p className="summary-detail-description">{detail.measurement.description}</p>
           ) : null}
         </div>
+        <button
+          type="button"
+          className="summary-pin-button"
+          aria-label={detail?.isPinned ? "Unpin measurement" : "Pin measurement"}
+          aria-pressed={detail?.isPinned ?? false}
+          title={detail?.isPinned ? "Unpin measurement" : "Pin measurement"}
+          disabled={!detail || actionBusy}
+          onClick={() => detail && void onSetPinned(!detail.isPinned)}
+        >
+          <Pin aria-hidden="true" fill={detail?.isPinned ? "currentColor" : "none"} size={20} />
+        </button>
       </div>
 
       {/* Live status region */}

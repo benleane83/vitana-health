@@ -230,6 +230,7 @@ export function summarizeMeasurementDetail(store: HealthStoreData, measurementCo
   const entries = listHealthDataDetailEntries(store, measurementCode);
   const type = measurementTypes.get(measurementCode);
   return summarizeMeasurementEntries(measurementCode, type, entries, {
+    isPinned: store.pinnedMeasurements.some((pin) => pin.measurementCode === measurementCode),
     referenceRange: type
       ? resolveReferenceRange(
           type,
@@ -250,6 +251,7 @@ export function summarizeMeasurementEntries(
     latestTimestamp?: string;
     pagination?: HealthDataDetail["pagination"];
     referenceRange?: HealthDataDetail["referenceRange"];
+    isPinned?: boolean;
   } = {}
 ): HealthDataDetail {
   const entryCounts = entries.reduce<HealthDataSummarySourceCounts & { total: number }>(
@@ -284,6 +286,7 @@ export function summarizeMeasurementEntries(
   return {
     generatedAt: new Date().toISOString(),
     measurement,
+    isPinned: options.isPinned ?? false,
     referenceRange: options.referenceRange ?? { source: "none" },
     entries,
     chartPoints,

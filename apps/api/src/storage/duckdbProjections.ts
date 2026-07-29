@@ -104,7 +104,7 @@ export async function appBootstrap(connection: duckdb.Connection): Promise<AppBo
 }
 
 export async function analyticsSummary(connection: duckdb.Connection): Promise<AnalyticsSummary> {
-  const [profileRows, measurementRows, observationRows, personalRangeRows, countRows] = await Promise.all([
+  const [profileRows, measurementRows, observationRows, personalRangeRows, pinnedRows, countRows] = await Promise.all([
     all(connection, "SELECT units, subject_kind FROM profile;"),
     all(connection, "SELECT * EXCLUDE (ordinal) FROM measurement_types ORDER BY ordinal;"),
     all(connection, `
@@ -124,6 +124,7 @@ export async function analyticsSummary(connection: duckdb.Connection): Promise<A
       ORDER BY ordinal;
     `),
     all(connection, "SELECT * FROM personal_reference_ranges ORDER BY measurement_code;"),
+    all(connection, "SELECT measurement_code, pinned_at FROM pinned_measurements ORDER BY pinned_at, measurement_code;"),
     all(connection, `
       SELECT
         (SELECT COUNT(*) FROM imports) AS imports,
@@ -153,7 +154,11 @@ export async function analyticsSummary(connection: duckdb.Connection): Promise<A
     observations: observationRows.map(observationFromRow),
     units: String(profileRows[0].units) as Profile["units"],
     subjectKind: String(profileRows[0].subject_kind ?? "adult") as Profile["subjectKind"],
-    personalReferenceRanges: personalRangeRows.map(personalReferenceRangeFromRow)
+    personalReferenceRanges: personalRangeRows.map(personalReferenceRangeFromRow),
+    pinnedMeasurements: pinnedRows.map((row) => ({
+      measurementCode: String(row.measurement_code),
+      pinnedAt: isoTimestamp(row.pinned_at)
+    }))
   });
 }
 
@@ -322,7 +327,7 @@ export async function measurementDetail(
   measurementCode: string,
   page: MeasurementDetailPage = { offset: 0, limit: 100 }
 ) {
-  const [typeRows, rows, countRows, profileRows, personalRows] = await Promise.all([
+  const [typeRows, rows, countRows, profileRows, personalRows, pinnedRows] = await Promise.all([
     allWithParams(connection, "SELECT * EXCLUDE (ordinal) FROM measurement_types WHERE code = ?;", measurementCode),
     allWithParams(connection, `
       SELECT * FROM (
@@ -374,7 +379,8 @@ export async function measurementDetail(
         (SELECT MAX(COALESCE(end_at, start_at)) FROM activities WHERE ? = 'activity_sessions') AS activity_latest;
     `, measurementCode, measurementCode, measurementCode, measurementCode, measurementCode, measurementCode),
     all(connection, "SELECT units, subject_kind FROM profile;"),
-    allWithParams(connection, "SELECT * FROM personal_reference_ranges WHERE measurement_code = ?;", measurementCode)
+    allWithParams(connection, "SELECT * FROM personal_reference_ranges WHERE measurement_code = ?;", measurementCode),
+    allWithParams(connection, "SELECT 1 AS found FROM pinned_measurements WHERE measurement_code = ?;", measurementCode)
   ]);
   const type = typeRows[0] ? measurementTypeFromRow(typeRows[0]) : undefined;
   const personalRange = personalRows[0] ? personalReferenceRangeFromRow(personalRows[0]) : undefined;
@@ -394,6 +400,7 @@ export async function measurementDetail(
     optionalTimestamp(countRow.activity_latest)
   ].reduce<string | undefined>((latest, candidate) => !latest || (candidate && candidate > latest) ? candidate : latest, undefined);
   return summarizeMeasurementEntries(measurementCode, type, entries, {
+    isPinned: pinnedRows.length > 0,
     counts: { ...counts, total },
     latestTimestamp,
     pagination: {

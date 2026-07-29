@@ -1401,7 +1401,30 @@ h3 {
 }
 
 .summary-detail-header {
+  align-items: flex-start;
+  display: flex;
+  gap: var(--space-4);
+  justify-content: space-between;
   margin-bottom: var(--space-6);
+}
+
+.summary-pin-button {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  color: var(--muted);
+  display: inline-flex;
+  flex: 0 0 44px;
+  height: 44px;
+  justify-content: center;
+  padding: 0;
+  width: 44px;
+}
+
+.summary-pin-button[aria-pressed="true"] {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  color: var(--primary-strong);
 }
 
 .summary-detail-header h1 {
@@ -3187,6 +3210,19 @@ button.stat {
   font-weight: 400;
   text-align: left;
   transform: none;
+}
+
+.metric-label {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.metric-pin-marker {
+  color: var(--primary);
+  display: inline-flex;
+  flex: 0 0 auto;
 }
 
 .metric-link::after {

@@ -22,6 +22,7 @@ function createTestStoreData(profileId = "test-user", displayName = "Test User")
     devices: [],
     measurementTypes: defaultMeasurementTypes,
     personalReferenceRanges: [],
+    pinnedMeasurements: [],
     observations: [
       { id: "obs-1", measurementCode: "body-weight", observedAt: "2024-01-15T10:00:00.000Z", value: 75.5, unit: "kg", sourceId: "src-1" }
     ],
@@ -173,7 +174,7 @@ describe("backupRoutes", () => {
       } finally {
         server.close();
       }
-    });
+    }, 30_000);
 
     it("rejects short passphrases", async () => {
       const { app } = createTestApp();

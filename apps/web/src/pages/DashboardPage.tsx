@@ -1,4 +1,5 @@
 import type { AnalyticsSummary, Profile } from "@vitana/shared";
+import { Pin } from "lucide-react";
 import { MiniChart } from "../components/Charts.js";
 import { formatBloodType, formatDetailValue, formatProfileSex, formatProfileType, formatShortTimestamp } from "../utils.js";
 
@@ -81,9 +82,16 @@ export function DashboardPage({
                       className="metric metric-link"
                       key={metric.code}
                       onClick={() => onNavigateMeasurement(metric.code)}
-                      aria-label={`View details for ${metric.label}, ${metric.value} ${metric.unit}, ${metric.status}`}
+                      aria-label={`View details for ${metric.label}, ${metric.value} ${metric.unit}, ${metric.status}${metric.isPinned ? ", pinned" : ""}`}
                     >
-                      <span>{metric.label}</span>
+                      <span className="metric-label">
+                        {metric.label}
+                        {metric.isPinned ? (
+                          <span className="metric-pin-marker" title="Pinned">
+                            <Pin aria-hidden="true" fill="currentColor" size={14} />
+                          </span>
+                        ) : null}
+                      </span>
                       <strong>{metric.value} {metric.unit}</strong>
                       <em data-status={metric.status}>{metric.status}</em>
                     </button>

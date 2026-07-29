@@ -137,6 +137,14 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
     return this.enqueueMutation(() => this.repository.deletePersonalReferenceRange(measurementCode));
   }
 
+  pinMeasurement(measurementCode: string) {
+    return this.enqueueMutation(() => this.repository.pinMeasurement(measurementCode));
+  }
+
+  unpinMeasurement(measurementCode: string) {
+    return this.enqueueMutation(() => this.repository.unpinMeasurement(measurementCode));
+  }
+
   replaceProfile(profile: HealthStoreData["profile"]): Promise<HealthStoreData["profile"]> {
     return this.enqueueMutation(async () => {
       return this.repository.replaceProfile(profile);

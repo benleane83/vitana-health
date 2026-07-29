@@ -1,11 +1,12 @@
 import { z } from "zod";
 
-export const COMPANION_REPLICA_PROTOCOL_VERSION = 1 as const;
+export const COMPANION_REPLICA_PROTOCOL_VERSION = 2 as const;
 export const COMPANION_REPLICA_PAGE_SIZE = 1_000;
 export const replicaEntityTypes = [
   "profile",
   "measurement-type",
   "personal-reference-range",
+  "pinned-measurement",
   "source-import",
   "data-source",
   "device",

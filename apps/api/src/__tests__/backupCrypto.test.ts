@@ -31,6 +31,7 @@ function createTestStoreData(profileId = "test-user", displayName = "Test User")
     devices: [],
     measurementTypes: defaultMeasurementTypes,
     personalReferenceRanges: [],
+    pinnedMeasurements: [],
     observations: [
       {
         id: "obs-1",

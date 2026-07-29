@@ -9,7 +9,7 @@ import {
 } from "../analyticalViews.js";
 
 const markerName = ".vitana-duckdb-poc";
-const schemaVersion = 13;
+const schemaVersion = 14;
 
 export interface DuckDbOptions {
   httpfsExtensionPath?: string;
@@ -461,6 +461,13 @@ const schemaVersion13Sql = `
   INSERT OR IGNORE INTO poc_metadata VALUES (13, CURRENT_TIMESTAMP, 'Read-only companion replica change log and snapshots');
 `;
 
+const schemaVersion14Sql = `
+  CREATE TABLE IF NOT EXISTS pinned_measurements (
+    measurement_code VARCHAR PRIMARY KEY, pinned_at TIMESTAMP NOT NULL
+  );
+  INSERT OR IGNORE INTO poc_metadata VALUES (14, CURRENT_TIMESTAMP, 'Profile-scoped pinned dashboard measurements');
+`;
+
 const schemaMigrations = [
   { version: 1, sql: schemaVersion1Sql },
   { version: 2, sql: schemaVersion2Sql },
@@ -474,5 +481,6 @@ const schemaMigrations = [
   { version: 10, sql: schemaVersion10Sql },
   { version: 11, sql: schemaVersion11Sql },
   { version: 12, sql: schemaVersion12Sql },
-  { version: 13, sql: schemaVersion13Sql }
+  { version: 13, sql: schemaVersion13Sql },
+  { version: 14, sql: schemaVersion14Sql }
 ] as const;
