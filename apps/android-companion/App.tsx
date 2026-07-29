@@ -7,6 +7,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-cont
 import { StatusBar } from "expo-status-bar";
 import { ChartNoAxesColumnIncreasing, HeartPulse, Home, MonitorSmartphone, Plus } from "lucide-react-native";
 import { MobileApiProvider, useMobileApi } from "./src/MobileApiProvider";
+import { AppErrorBoundary } from "./src/AppErrorBoundary";
 import { appBuildLabel } from "./src/appBuildInfo";
 import { EntitlementProvider } from "./src/EntitlementProvider";
 import { ELASTIC_LICENSE_2_0_DISPLAY_TEXT, SOFTWARE_COPYRIGHT } from "./src/legal";
@@ -26,24 +27,26 @@ const Tabs = createBottomTabNavigator<TabParamList>();
 export default function App() {
   return (
     <SafeAreaProvider>
-      <EntitlementProvider>
-        <MobileApiProvider>
-          <NavigationContainer>
-            <Stack.Navigator>
-              <Stack.Screen name="Main" component={MainTabs} options={{ headerShown: false }} />
-              <Stack.Screen name="Pair" component={PairRoute} options={{ presentation: "modal", title: "Pair this phone" }} />
-              <Stack.Screen name="Connection" component={ConnectionScreen} options={{ presentation: "modal", title: "Connection" }} />
-              <Stack.Screen name="License" component={LicenseScreen} options={{ title: "Software license" }} />
-              <Stack.Screen
-                name="TrackDetail"
-                component={TrackDetailScreen}
-                options={({ route }) => ({ title: route.params.displayName })}
-              />
-            </Stack.Navigator>
-          </NavigationContainer>
-          <StatusBar style="dark" />
-        </MobileApiProvider>
-      </EntitlementProvider>
+      <AppErrorBoundary>
+        <EntitlementProvider>
+          <MobileApiProvider>
+            <NavigationContainer>
+              <Stack.Navigator>
+                <Stack.Screen name="Main" component={MainTabs} options={{ headerShown: false }} />
+                <Stack.Screen name="Pair" component={PairRoute} options={{ presentation: "modal", title: "Pair this phone" }} />
+                <Stack.Screen name="Connection" component={ConnectionScreen} options={{ presentation: "modal", title: "Connection" }} />
+                <Stack.Screen name="License" component={LicenseScreen} options={{ title: "Software license" }} />
+                <Stack.Screen
+                  name="TrackDetail"
+                  component={TrackDetailScreen}
+                  options={({ route }) => ({ title: route.params.displayName })}
+                />
+              </Stack.Navigator>
+            </NavigationContainer>
+            <StatusBar style="dark" />
+          </MobileApiProvider>
+        </EntitlementProvider>
+      </AppErrorBoundary>
     </SafeAreaProvider>
   );
 }

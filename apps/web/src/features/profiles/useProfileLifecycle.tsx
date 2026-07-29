@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AnalyticsSummary, AppBootstrap, Profile, ProfileListEntry } from "@vitana/shared";
 import { api } from "../../api.js";
 import { ProfileEditDialog, ProfileManagerDialog } from "../../components/ProfileDialogs.js";
@@ -34,19 +34,29 @@ export function useProfileLifecycle(onNotice: (message: string) => void, confirm
     newProfileName: "",
     busy: false
   });
+  // `refresh` runs after every profile mutation, including switching. Without a generation token
+  // a slow response for the profile the user just left can resolve last and render one family
+  // member's health data under another's name. The token also aborts the superseded requests so
+  // they stop competing for the connection.
+  const load = useRef<{ generation: number; controller?: AbortController }>({ generation: 0 });
 
   useEffect(() => {
-    let cancelled = false;
-    void loadSnapshot().then((nextSnapshot) => {
-      if (!cancelled) setSnapshot(nextSnapshot);
-    }).catch((error: unknown) => {
-      if (!cancelled) onNotice(error instanceof Error ? error.message : "Unable to load local health data.");
-    });
-    return () => { cancelled = true; };
+    void refresh();
+    return () => { load.current.controller?.abort(); };
   }, []);
 
   async function refresh() {
-    setSnapshot(await loadSnapshot());
+    const generation = ++load.current.generation;
+    load.current.controller?.abort();
+    const controller = new AbortController();
+    load.current.controller = controller;
+    try {
+      const next = await loadSnapshot(controller.signal);
+      if (generation === load.current.generation) setSnapshot(next);
+    } catch (error: unknown) {
+      if (generation !== load.current.generation || controller.signal.aborted) return;
+      onNotice(error instanceof Error ? error.message : "Unable to load local health data.");
+    }
   }
 
   async function run(success: string, task: () => Promise<void>): Promise<boolean> {
@@ -233,11 +243,11 @@ export function ProfileLifecycleDialogs({ lifecycle }: { lifecycle: ProfileLifec
   );
 }
 
-async function loadSnapshot(): Promise<ProfileSnapshot> {
+async function loadSnapshot(signal?: AbortSignal): Promise<ProfileSnapshot> {
   const [bootstrap, analytics, profileList] = await Promise.all([
-    api.bootstrap(),
-    api.analytics(),
-    api.profiles.list()
+    api.bootstrap(signal),
+    api.analytics(signal),
+    api.profiles.list(signal)
   ]);
   return {
     bootstrap,

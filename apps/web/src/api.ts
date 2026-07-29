@@ -125,8 +125,8 @@ async function assertResponseOk(response: Response): Promise<void> {
   if (!response.ok) throw await apiErrorFromResponse(response);
 }
 
-const sharedApi = createApiClient(async ({ path, method, headers, body }) =>
-  fetchAsOwner(path, { method, headers, body }));
+const sharedApi = createApiClient(async ({ path, method, headers, body, signal }) =>
+  fetchAsOwner(path, { method, headers, body, signal }));
 
 /**
  * The one request pipeline: owner-token injection lives in the transport above, so endpoints this
@@ -283,7 +283,7 @@ export const api = {
     revoke: (id: string) => request(pairedDeviceSchema, `/api/pairing/revoke/${id}`, { method: "POST" })
   },
   profiles: {
-    list: () => request(profilesResponseSchema, "/api/profiles"),
+    list: (signal?: AbortSignal) => request(profilesResponseSchema, "/api/profiles", { signal }),
     create: (displayName: string) =>
       request(profileListEntrySchema, "/api/profiles", { method: "POST", body: { displayName } }),
     active: () => request(profileIdResponseSchema, "/api/profiles/active"),

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   calendarDateToUtcMidnight,
   compareSummaryRows,
@@ -60,9 +60,15 @@ function normalizeContextToken(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
+// Compiled once at module load. Building this inside the predicate recompiled the pattern for
+// every row rendered in the detail table.
+const isoTimestampPattern = String.raw`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z`;
+const transferWindowPattern = new RegExp(
+  `^${isoTimestampPattern}\\s*(?:→|->)\\s*${isoTimestampPattern}$`
+);
+
 function isTransferWindow(value: string): boolean {
-  const isoTimestamp = String.raw`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z`;
-  return new RegExp(`^${isoTimestamp}\\s*(?:→|->)\\s*${isoTimestamp}$`).test(value.trim());
+  return transferWindowPattern.test(value.trim());
 }
 
 function compactSourceLabel(entry: HealthDataDetailEntry): string | undefined {
@@ -154,6 +160,16 @@ export function SummaryPage({
   onToggleCategory: (key: string) => void;
   onSelectRow: (measurementCode: string) => void;
 }) {
+  // Sorting used to run inside the render map, so every unrelated re-render (expanding a
+  // category, a live-region update) re-sorted every row of every category.
+  const sortedCategories = useMemo(
+    () => (summary?.categories ?? []).map((category) => ({
+      ...category,
+      rows: [...category.rows].sort((a, b) => compareSummaryRows(a, b, sort))
+    })),
+    [summary, sort]
+  );
+
   return (
     <section className="panel summary-panel">
       <div className="summary-header">
@@ -203,11 +219,11 @@ export function SummaryPage({
             {summary.categories.length === 0 ? (
               <p className="empty" role="status">No measurements have been imported yet.</p>
             ) : null}
-            {summary.categories.map((category) => {
+            {sortedCategories.map((category) => {
               const expanded = expandedCategories.has(category.key);
               const panelId = `summary-panel-${category.key}`;
               const toggleId = `summary-toggle-${category.key}`;
-              const sortedRows = [...category.rows].sort((a, b) => compareSummaryRows(a, b, sort));
+              const sortedRows = category.rows;
               return (
                 <section className="summary-category" key={category.key}>
                   <button

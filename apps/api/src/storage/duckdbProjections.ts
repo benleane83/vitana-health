@@ -465,6 +465,11 @@ export async function measurementChartSeries(
   const rows = useWeeklyBuckets
     ? await aggregateChartPoints(connection, measurementCode, cutoff, "week", aggregation)
     : dailyRows;
+  // Weekly bucketing bounds most histories, but a decade of daily readings still exceeds it, and
+  // a subject with sparse-but-ancient data can produce more weekly buckets than the client will
+  // ever plot. Keep the most recent buckets and report the truncation honestly.
+  const truncatedBuckets = rows.length > maxAggregatedChartBuckets;
+  const visibleRows = truncatedBuckets ? rows.slice(rows.length - maxAggregatedChartBuckets) : rows;
   return {
     generatedAt: new Date().toISOString(),
     measurementCode,
@@ -472,9 +477,9 @@ export async function measurementChartSeries(
     requestedMode: options.mode,
     granularity: useWeeklyBuckets ? "weekly" : "daily",
     aggregation,
-    points: rows.map((row) => chartPointFromRow(row, type, personalRange, subjectKind)),
+    points: visibleRows.map((row) => chartPointFromRow(row, type, personalRange, subjectKind)),
     totalPoints: rows.length,
-    truncated: false
+    truncated: truncatedBuckets
   };
 }
 
@@ -1225,3 +1230,4 @@ export interface DuckDbActivityCount {
 const maxAnalyticalRows = 200;
 const maxRawChartPoints = 500;
 const maxDailyChartBuckets = 366;
+const maxAggregatedChartBuckets = 1000;

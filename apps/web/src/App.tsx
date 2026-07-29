@@ -3,6 +3,7 @@ import { defaultMeasurementTypes, safetyNotice } from "@vitana/shared";
 import type { AppRoute, ImportMode, InsightsTab, SettingsView } from "./types.js";
 import { ProfileLifecycleDialogs, useProfileLifecycle } from "./features/profiles/useProfileLifecycle.js";
 import { ConfirmDialog } from "./components/ConfirmDialog.js";
+import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import { ImportPage } from "./pages/ImportPage.js";
 import { SettingsPage } from "./pages/SettingsPage.js";
 import { InsightsRoute } from "./features/insights/InsightsRoute.js";
@@ -321,18 +322,24 @@ export function App() {
         hidden={route !== "dashboard"}
       >
         {route === "dashboard" ? (
-          <DashboardRoute
-            analytics={analytics}
-            profile={profile}
-            onEditProfile={profileLifecycle.openEditor}
-            onNavigateSummary={() => navigate("track")}
-            onNavigateMeasurement={navigateSummaryDetail}
-          />
+          <ErrorBoundary label="Dashboard">
+            <DashboardRoute
+              analytics={analytics}
+              profile={profile}
+              onEditProfile={profileLifecycle.openEditor}
+              onNavigateSummary={() => navigate("track")}
+              onNavigateMeasurement={navigateSummaryDetail}
+            />
+          </ErrorBoundary>
         ) : null}
       </div>
 
       <div id="route-panel-settings" role="tabpanel" aria-labelledby={navTabIds.settings} hidden={route !== "settings"}>
-        {route === "settings" ? <SettingsPage view={settingsView} onViewChange={navigateSettings} confirm={confirm} /> : null}
+        {route === "settings" ? (
+          <ErrorBoundary label="Settings">
+            <SettingsPage view={settingsView} onViewChange={navigateSettings} confirm={confirm} />
+          </ErrorBoundary>
+        ) : null}
       </div>
 
       <div
@@ -342,16 +349,18 @@ export function App() {
         hidden={route !== "import"}
       >
         {route === "import" ? (
-          <ImportPage
-            mode={importMode}
-            onModeChange={(mode) => navigate("import", mode)}
-            bootstrap={bootstrap}
-            onDataChanged={profileLifecycle.refresh}
-            onNotice={setMessage}
-            profiles={profiles}
-            activeProfileId={profile?.id}
-            units={profile?.units ?? "metric"}
-          />
+          <ErrorBoundary label="Import">
+            <ImportPage
+              mode={importMode}
+              onModeChange={(mode) => navigate("import", mode)}
+              bootstrap={bootstrap}
+              onDataChanged={profileLifecycle.refresh}
+              onNotice={setMessage}
+              profiles={profiles}
+              activeProfileId={profile?.id}
+              units={profile?.units ?? "metric"}
+            />
+          </ErrorBoundary>
         ) : null}
       </div>
 
@@ -362,41 +371,47 @@ export function App() {
         hidden={route !== "track"}
       >
         {route === "track" ? (
-          <TrackRoute
-            detailCode={summaryDetailCode}
-            activeProfileId={activeProfileId}
-            measurementTypes={recordedMeasurementTypes}
-            onBack={() => navigate("track")}
-            onSelectDetail={navigateSummaryDetail}
-            onDataChanged={profileLifecycle.refresh}
-            onNotice={setMessage}
-            confirm={confirm}
-          />
+          <ErrorBoundary label="Track">
+            <TrackRoute
+              detailCode={summaryDetailCode}
+              activeProfileId={activeProfileId}
+              measurementTypes={recordedMeasurementTypes}
+              onBack={() => navigate("track")}
+              onSelectDetail={navigateSummaryDetail}
+              onDataChanged={profileLifecycle.refresh}
+              onNotice={setMessage}
+              confirm={confirm}
+            />
+          </ErrorBoundary>
         ) : null}
       </div>
 
       <div id="route-panel-care" role="tabpanel" aria-labelledby={navTabIds.care} hidden={route !== "care"}>
         {route === "care" ? (
-          <CareRoute
-            view={careView}
-            activeProfileId={activeProfileId}
-            onViewChange={navigateCare}
-            onDataChanged={profileLifecycle.refresh}
-            onNotice={setMessage}
-            confirm={confirm}
-          />
+          <ErrorBoundary label="Care">
+            <CareRoute
+              view={careView}
+              activeProfileId={activeProfileId}
+              onViewChange={navigateCare}
+              onDataChanged={profileLifecycle.refresh}
+              onNotice={setMessage}
+              confirm={confirm}
+            />
+          </ErrorBoundary>
         ) : null}
       </div>
 
       <div id="route-panel-insights" role="tabpanel" aria-labelledby={navTabIds.insights} hidden={route !== "insights"}>
         {route === "insights" ? (
-          <InsightsRoute
-            tab={insightsTab}
-            bootstrap={bootstrap}
-            onTabChange={navigateInsights}
-            onDataChanged={profileLifecycle.refresh}
-            onNotice={setMessage}
-          />
+          <ErrorBoundary label="Insights">
+            <InsightsRoute
+              tab={insightsTab}
+              bootstrap={bootstrap}
+              onTabChange={navigateInsights}
+              onDataChanged={profileLifecycle.refresh}
+              onNotice={setMessage}
+            />
+          </ErrorBoundary>
         ) : null}
       </div>
 
@@ -407,7 +422,9 @@ export function App() {
         hidden={route !== "export"}
       >
         {route === "export" ? (
-          <ExportRoute bootstrap={bootstrap} onProfilesChanged={profileLifecycle.refresh} />
+          <ErrorBoundary label="Export">
+            <ExportRoute bootstrap={bootstrap} onProfilesChanged={profileLifecycle.refresh} />
+          </ErrorBoundary>
         ) : null}
       </div>
 

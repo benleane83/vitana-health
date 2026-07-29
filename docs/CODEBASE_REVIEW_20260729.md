@@ -55,7 +55,7 @@ Everything else on this list stays cheap to fix after users exist. These three d
 | 3 — Write and read path | P1-5, P1-6, P1-10 | Done |
 | 4 — Backups and recovery | P1-2, P1-12 | Done |
 | 5 — API contracts | P1-11 | Done |
-| 6 — Web stability and performance | P1-13, P1-14, P1-15 | Not started |
+| 6 — Web stability and performance | P1-13, P1-14, P1-15 | Done |
 | 7 — Android core | P1-8, P1-19 | Not started |
 | 8 — Health Connect sync | P1-7 | Not started |
 | 9 — Desktop lifecycle | P1-17 | Done (LAN bind deferred) |
@@ -376,6 +376,15 @@ The root cause is that cancellation is impossible app-wide: `ApiTransportRequest
 
 **Action:** add `signal?: AbortSignal` to `ApiTransportRequest` and thread it through `createApiClient`. Add a request-generation token to `refresh`, and apply the same treatment to [TrackRoute.tsx:111-123](apps/web/src/features/track/TrackRoute.tsx#L111).
 
+**Status — Resolved (Phase 6).**
+
+- `ApiTransportRequest` gained `signal?: AbortSignal`, and `createApiClient`'s internal `request` forwards it to the transport.
+- The read endpoints on the profile-switch hot path (`assignedProfiles`, `bootstrap`, `analytics`, `summary`, `healthDataDetail`, `healthDataChartSeries`, and the web-only `profiles.list`) now take an optional trailing signal.
+- Both transports forward it: the web one via `fetchAsOwner`, which already spreads `RequestInit` into `fetch`; the companion one via `pinnedFetch`, which forwards it on the plain-HTTP path. Cancelling the *pinned* native call is Phase 8 work.
+- `useProfileLifecycle` now holds a `{ generation, controller }` ref. `refresh()` increments the generation, aborts the previous controller, and only calls `setSnapshot` when its generation is still current; the mount effect aborts on unmount. Errors from a superseded or aborted load are swallowed rather than surfaced as a notice.
+- `TrackRoute`'s three effects were converted from `cancelled` booleans to real `AbortController`s, so a superseded summary/detail/chart request is cancelled rather than merely ignored.
+- Covered by `apps/web/src/features/profiles/useProfileLifecycle.test.tsx`: a slow load for profile A resolving after a switch does not overwrite profile B, and starting a new load aborts the in-flight one.
+
 ---
 
 <a id="p1-14"></a>
@@ -390,6 +399,13 @@ This compounds with P1-11 and P1-15: unvalidated `undefined` reaching `rawMin.to
 **Why hard later:** testers will report "it went blank" with no diagnostic, and you will never learn what actually broke in the field.
 
 **Action:** add a top-level boundary in `main.tsx` plus one per route panel in [App.tsx:315-415](apps/web/src/App.tsx#L315), and one in the mobile `App.tsx` with a "reset local data" escape hatch. Render the error text and log it.
+
+**Status — Resolved (Phase 6).**
+
+- New `apps/web/src/components/ErrorBoundary.tsx` — a class boundary that renders the error message in a `role="alert"` panel, logs the error and component stack to the console (health data never leaves the device, so nothing is reported anywhere), and offers a "Try again" reset with an optional `onReset` callback.
+- `main.tsx` wraps `<App/>`; `App.tsx` wraps each of the seven route panel bodies (Dashboard, Settings, Import, Track, Care, Insights, Export) so a failure is contained to that panel and the rest of the data stays reachable.
+- New `apps/android-companion/src/AppErrorBoundary.tsx` wraps the whole companion tree inside `SafeAreaProvider`. Its escape hatch calls `resetStandaloneStorage()` (platform-resolved to the SQLCipher reset on device, the in-memory reset on web preview) and `clearConnection()`, returning the app to first-run state without a reinstall. The copy is explicit that PC-side data is untouched.
+- Covered by `apps/web/src/components/ErrorBoundary.test.tsx` (3 tests: catches a throwing child, recovers on retry once the cause is gone, passes children through untouched).
 
 ---
 
@@ -411,6 +427,14 @@ const chartPoints = [...current.chartPoints, ...nextPage.chartPoints]
 **Why hard later:** both only misbehave once a user has real accumulated history — i.e. after your testers have been recording for weeks, at which point it is their data that is slow or crashing.
 
 **Action:** dedupe with a `Map` keyed on `chartPointKey`; replace the five spreads with a single `reduce` pass. Both are small, well-localised changes.
+
+**Status — Resolved (Phase 6).**
+
+- `mergeHealthDataDetail` now builds a `Map<string, HealthDataDetailChartPoint>` keyed on `chartPointKey` in a single pass over each page, then sorts once. Key construction dropped from ~(2n)² to exactly 2n.
+- New exported helper `finiteExtent(values)` in `mobileFeatures.ts` walks a sequence and skips non-finite entries. It replaces every `Math.min(...)`/`Math.max(...)` spread in `calculateChartDomain`, `MiniChart`, `QueryChart`, and `DetailTrendChart` (including the `Math.min(rawMin, ...referenceValues)` form). `DetailTrendChart` keeps a separate point-only extent so the aria label still describes the data rather than the reference range.
+- The aggregated chart path in `duckdbProjections.ts` is now capped by `maxAggregatedChartBuckets = 1000`, keeping the most recent buckets and reporting `truncated` honestly instead of the hard-coded `false`.
+- Also in this phase: `SummaryPage.tsx` hoists the transfer-window `RegExp` to module scope (it was recompiled per rendered row) and memoizes the per-category row sort with `useMemo` keyed on the summary and sort order (it re-sorted every category on every unrelated re-render).
+- Covered by `packages/shared/src/__tests__/mobileFeatures.test.ts`: a deterministic O(n) dedupe assertion that counts identity-key builds via a `value` getter, plus `finiteExtent` over 200,000 values (which the old spread form could not survive).
 
 ---
 
