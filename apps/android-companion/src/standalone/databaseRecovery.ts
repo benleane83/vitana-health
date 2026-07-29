@@ -3,10 +3,6 @@ interface DatabaseProbe {
   closeAsync(): Promise<void>;
 }
 
-export function isFileNotDatabaseError(error: unknown): boolean {
-  return error instanceof Error && error.message.toLowerCase().includes("file is not a database");
-}
-
 export async function deleteEmptyPlaintextDatabase(
   openDatabase: () => Promise<DatabaseProbe>,
   deleteDatabase: () => Promise<void>

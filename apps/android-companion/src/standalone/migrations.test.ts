@@ -1,57 +1,161 @@
 import { describe, expect, it, vi } from "vitest";
 import { LOCAL_SCHEMA_VERSION } from "./localStore";
-import { migrate, migrationSql, validateSchemaVersion, type MigrationDatabase } from "./migrations";
+import {
+  migrate,
+  migrationSql,
+  migrations,
+  validateSchemaVersion,
+  type MigrationDatabase
+} from "./migrations";
+
+/**
+ * A migration target that tracks `user_version` the way SQLite does, so the runner's
+ * set-then-assert contract is exercised rather than mocked away.
+ */
+function fakeDatabase(startVersion: number, options: { failAt?: number } = {}) {
+  let version = startVersion;
+  const executed: string[] = [];
+  const transactions: number[] = [];
+  const database = {
+    getFirstAsync: vi.fn(async (query: string) => {
+      if (query === "PRAGMA user_version") return { user_version: version };
+      return null;
+    }),
+    execAsync: vi.fn(async (query: string) => {
+      const bump = /PRAGMA user_version = (\d+);/.exec(query);
+      if (bump) {
+        if (options.failAt === Number(bump[1])) throw new Error("simulated migration failure");
+        version = Number(bump[1]);
+        return;
+      }
+      executed.push(query);
+    }),
+    withTransactionAsync: vi.fn(async (task: () => Promise<void>) => {
+      const snapshot = version;
+      transactions.push(snapshot);
+      try {
+        await task();
+      } catch (error) {
+        version = snapshot;
+        throw error;
+      }
+    })
+  };
+  return {
+    database: database as unknown as MigrationDatabase,
+    executed,
+    transactions,
+    currentVersion: () => version
+  };
+}
 
 describe("standalone schema migrations", () => {
+  it("declares a contiguous chain that ends at the supported schema version", () => {
+    expect(migrations.map((migration) => migration.version)).toEqual(
+      Array.from({ length: LOCAL_SCHEMA_VERSION }, (_, index) => index + 1)
+    );
+    for (const migration of migrations) {
+      expect(migration.sql).not.toContain("PRAGMA user_version");
+    }
+  });
+
   it("creates profile-isolated storage then adds explicit dataset metadata incrementally", () => {
     const initialSql = migrationSql(0);
     expect(initialSql).toContain("CREATE TABLE profiles");
     expect(initialSql).toContain("PRIMARY KEY (profile_id, id)");
     expect(initialSql).toContain("observations_measurement_time_idx");
-    expect(initialSql).toContain("PRAGMA user_version = 1");
     const incrementalSql = migrationSql(1);
     expect(incrementalSql).toContain("CREATE TABLE datasets");
     expect(incrementalSql).toContain("migration_receipt_json");
     expect(incrementalSql).toContain("SELECT COUNT(*) FROM profiles");
     expect(incrementalSql).not.toContain("COUNT(*) FROM observations");
-    expect(incrementalSql).toContain("PRAGMA user_version = 2");
     const replicaSql = migrationSql(2);
     expect(replicaSql).toContain("CREATE TABLE connected_replicas");
     expect(replicaSql).toContain("connected_replica_entities");
-    expect(replicaSql).toContain("PRAGMA user_version = 3");
     const resumableSql = migrationSql(3);
     expect(resumableSql).toContain("ADD COLUMN snapshot_cursor");
     expect(resumableSql).toContain("ADD COLUMN applied_at");
     expect(resumableSql).toContain("DROP INDEX IF EXISTS connected_replica_entities_type_idx");
-    expect(resumableSql).toContain(`PRAGMA user_version = ${LOCAL_SCHEMA_VERSION}`);
   });
 
-  it("rejects future, negative, and unsupported schema versions", () => {
-    expect(() => validateSchemaVersion(LOCAL_SCHEMA_VERSION + 1)).toThrow("newer than supported");
+  it("rejects impossible schema versions and unreachable migration paths", () => {
     expect(() => validateSchemaVersion(-1)).toThrow("Invalid database schema");
+    expect(() => validateSchemaVersion(1.5)).toThrow("Invalid database schema");
     expect(() => migrationSql(LOCAL_SCHEMA_VERSION)).toThrow("No migration path");
   });
 
   it("migrates on the existing keyed database connection", async () => {
-    const execAsync = vi.fn().mockResolvedValue(undefined);
-    const withTransactionAsync = vi.fn(async (task: () => Promise<void>) => task());
+    const { database, executed, transactions } = fakeDatabase(0);
     const withExclusiveTransactionAsync = vi.fn(() => {
       throw new Error("must not open a second SQLCipher connection");
     });
+    Object.assign(database, { withExclusiveTransactionAsync });
+
+    const outcome = await migrate(database);
+
+    expect(outcome).toEqual({
+      schemaVersion: LOCAL_SCHEMA_VERSION,
+      readOnly: false,
+      appliedVersions: migrations.map((migration) => migration.version)
+    });
+    expect(transactions).toHaveLength(LOCAL_SCHEMA_VERSION);
+    expect(withExclusiveTransactionAsync).not.toHaveBeenCalled();
+    expect(executed).toEqual(migrations.map((migration) => migration.sql));
+  });
+
+  // Each migration must apply cleanly to a database sitting at the version immediately below it,
+  // which is the only state a real upgrade ever encounters.
+  for (const migration of migrations) {
+    it(`applies migration ${migration.version} to a database at schema ${migration.version - 1}`, async () => {
+      const { database, executed, currentVersion } = fakeDatabase(migration.version - 1);
+
+      const outcome = await migrate(database);
+
+      expect(executed[0]).toBe(migration.sql);
+      expect(outcome.appliedVersions[0]).toBe(migration.version);
+      expect(currentVersion()).toBe(LOCAL_SCHEMA_VERSION);
+    });
+  }
+
+  it("bumps user_version inside the migration transaction so a failure rolls both back", async () => {
+    const { database, currentVersion, transactions } = fakeDatabase(0, { failAt: 2 });
+
+    await expect(migrate(database)).rejects.toThrow("simulated migration failure");
+
+    expect(currentVersion()).toBe(1);
+    expect(transactions).toEqual([0, 1]);
+  });
+
+  it("fails loudly when a version bump does not take effect", async () => {
     const database = {
-      getFirstAsync: vi.fn().mockResolvedValue({ user_version: 0 }),
-      execAsync,
-      withTransactionAsync,
-      withExclusiveTransactionAsync
+      getFirstAsync: vi.fn(async () => ({ user_version: 0 })),
+      execAsync: vi.fn(async () => undefined),
+      withTransactionAsync: vi.fn(async (task: () => Promise<void>) => task())
     } as unknown as MigrationDatabase;
 
-    await migrate(database);
+    await expect(migrate(database)).rejects.toThrow("did not take effect");
+  });
 
-    expect(withTransactionAsync).toHaveBeenCalledTimes(LOCAL_SCHEMA_VERSION);
-    expect(withExclusiveTransactionAsync).not.toHaveBeenCalled();
-    expect(execAsync).toHaveBeenCalledWith(expect.stringContaining("CREATE TABLE profiles"));
-    expect(execAsync).toHaveBeenCalledWith(expect.stringContaining("CREATE TABLE datasets"));
-    expect(execAsync).toHaveBeenCalledWith(expect.stringContaining("CREATE TABLE connected_replicas"));
-    expect(execAsync).toHaveBeenCalledWith(expect.stringContaining("ADD COLUMN snapshot_cursor"));
+  it("reports a read-only state instead of throwing when a newer build wrote the file", async () => {
+    const { database, executed } = fakeDatabase(LOCAL_SCHEMA_VERSION + 3);
+
+    const outcome = await migrate(database);
+
+    expect(outcome).toEqual({
+      schemaVersion: LOCAL_SCHEMA_VERSION + 3,
+      readOnly: true,
+      appliedVersions: []
+    });
+    expect(executed).toEqual([]);
+  });
+
+  it("is a no-op at the current schema version", async () => {
+    const { database, executed } = fakeDatabase(LOCAL_SCHEMA_VERSION);
+
+    const outcome = await migrate(database);
+
+    expect(outcome.readOnly).toBe(false);
+    expect(outcome.appliedVersions).toEqual([]);
+    expect(executed).toEqual([]);
   });
 });

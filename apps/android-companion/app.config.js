@@ -45,7 +45,10 @@ module.exports = {
       ["./plugins/withDevNetworkSecurity", { allowCleartext }],
       "react-native-iap",
       "expo-health-connect",
-      ["expo-secure-store", { configureAndroidBackup: true }],
+      // Android backup stays off (see android.allowBackup above): the encrypted database and the
+      // SecureStore key must never leave the device together, so the plugin is not allowed to add
+      // backup rules that would contradict that.
+      ["expo-secure-store", { configureAndroidBackup: false }],
       ["expo-sqlite", { useSQLCipher: true }],
       "@react-native-community/datetimepicker",
       ["expo-image-picker", {
@@ -63,7 +66,10 @@ module.exports = {
         }
       }]
     ],
-    runtimeVersion: { policy: "appVersion" },
+    // Bumped by hand whenever the native layer changes, independently of the marketing `version`
+    // above. An appVersion policy silently orphaned installs on every marketing bump.
+    // See docs/ANDROID_RELEASE.md for the bump rule.
+    runtimeVersion: "1",
     updates: {
       enabled: true,
       url: "https://u.expo.dev/2cc5cf1b-57e8-4e6f-8709-662259497a57",

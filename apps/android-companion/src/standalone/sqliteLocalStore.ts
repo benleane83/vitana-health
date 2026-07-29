@@ -13,8 +13,27 @@ import type {
   ReplicaPage,
   UpdateObservationInput
 } from "@vitana/shared";
-import { openWithDatabaseKey, type SecureKeyStore } from "./databaseKey";
-import { deleteEmptyPlaintextDatabase, isFileNotDatabaseError } from "./databaseRecovery";
+import {
+  generateDatabaseKeyHex,
+  openWithDatabaseKey,
+  rekeyDatabase,
+  type SecureKeyStore
+} from "./databaseKey";
+import { deleteEmptyPlaintextDatabase } from "./databaseRecovery";
+import {
+  assertDatabaseIntegrity,
+  assertRowCountsPreserved,
+  captureMigrationBackup,
+  countTrackedRows,
+  discardMigrationBackup,
+  expoDatabaseFileStore,
+  restoreMigrationBackup
+} from "./databaseBackup";
+import {
+  LocalDatabaseError,
+  type LocalDatabaseFailureReason,
+  type LocalDatabaseMode
+} from "./localDatabaseState";
 import {
   LOCAL_SCHEMA_VERSION,
   emptyCounts,
@@ -28,12 +47,18 @@ import {
 } from "./localStore";
 import type { HealthDataChartSeries, HealthDataChartSeriesOptions } from "@vitana/shared";
 import { chartRangeCutoff } from "../chartSeries";
-import { migrate } from "./migrations";
+import { migrate, readSchemaVersion } from "./migrations";
 
 const DATABASE_NAME = "standalone-health.db";
 const DATABASE_KEY_NAME = "vitana.standaloneDatabaseKey.v1";
 let sharedDatabase: Promise<SQLiteDatabase> | undefined;
 let databaseLeases = 0;
+let databaseMode: LocalDatabaseMode = "read-write";
+
+/** Whether the open database accepts writes, or is pinned read-only by a newer build's schema. */
+export function localDatabaseMode(): LocalDatabaseMode {
+  return databaseMode;
+}
 
 const secureKeyStore: SecureKeyStore = {
   get: () => SecureStore.getItemAsync(DATABASE_KEY_NAME),
@@ -62,7 +87,10 @@ async function openSqliteDatabase(): Promise<SQLiteDatabase> {
   try {
     return await openSqliteDatabaseOnce();
   } catch (error) {
-    if (!isFileNotDatabaseError(error)) throw error;
+    // Recovery is attempted for any open failure rather than only for a driver message containing
+    // "file is not a database". The gate that protects real data is the positive proof below - the
+    // file must open unencrypted and contain zero tables - not a substring match, which would risk
+    // destroying the key for a database that is merely temporarily unreadable.
     const removed = await deleteEmptyPlaintextDatabase(
       () => openDatabaseAsync(DATABASE_NAME),
       () => deleteDatabaseAsync(DATABASE_NAME)
@@ -75,8 +103,9 @@ async function openSqliteDatabase(): Promise<SQLiteDatabase> {
 }
 
 async function openSqliteDatabaseOnce(): Promise<SQLiteDatabase> {
+  const fileExisted = await expoDatabaseFileStore.exists(DATABASE_NAME).catch(() => false);
   let databaseReadable = false;
-  return openWithDatabaseKey(secureKeyStore, Crypto.getRandomBytesAsync, async (hexKey) => {
+  return openWithDatabaseKey(secureKeyStore, Crypto.getRandomBytesAsync, async (hexKey, created) => {
     const database = await openDatabaseAsync(DATABASE_NAME);
     let phase = "applying the encryption key";
     try {
@@ -84,7 +113,10 @@ async function openSqliteDatabaseOnce(): Promise<SQLiteDatabase> {
       phase = "checking SQLCipher availability";
       const cipher = await database.getFirstAsync<{ cipher_version: string }>("PRAGMA cipher_version");
       if (!cipher?.cipher_version) {
-        throw new Error("SQLCipher is unavailable. Reinstall the standalone test build with SQLCipher enabled.");
+        throw new LocalDatabaseError(
+          "sqlcipher-unavailable",
+          "SQLCipher is unavailable. Reinstall the standalone test build with SQLCipher enabled."
+        );
       }
 
       phase = "verifying the encrypted database";
@@ -98,15 +130,93 @@ async function openSqliteDatabaseOnce(): Promise<SQLiteDatabase> {
         PRAGMA secure_delete = ON;
       `);
       phase = "migrating the encrypted database";
-      await migrate(database);
+      databaseMode = await migrateWithBackup(database);
       return database;
     } catch (error) {
       await database.closeAsync().catch(() => undefined);
+      if (error instanceof LocalDatabaseError) throw error;
       const detail = error instanceof Error ? error.message : "Unknown database error";
-      throw new Error(`Unable to open the encrypted standalone database safely while ${phase}: ${detail}`);
+      throw new LocalDatabaseError(
+        failureReason(databaseReadable, created, fileExisted),
+        `Unable to open the encrypted standalone database safely while ${phase}: ${detail}`,
+        { cause: error }
+      );
     }
   }, () => !databaseReadable);
 }
+
+/**
+ * A freshly minted key against a database file that already existed means the key was lost, not
+ * that the data is damaged - the ciphertext is intact but no longer openable.
+ */
+function failureReason(
+  databaseReadable: boolean,
+  keyWasGenerated: boolean,
+  fileExisted: boolean
+): LocalDatabaseFailureReason {
+  if (databaseReadable) return "migration-failed";
+  if (keyWasGenerated && fileExisted) return "key-missing";
+  return "data-unreadable";
+}
+
+/**
+ * Runs pending migrations with the pre-migration file copied aside, so a migration that corrupts
+ * the database or loses rows can be rolled back instead of leaving unrecoverable health data.
+ */
+async function migrateWithBackup(database: SQLiteDatabase): Promise<LocalDatabaseMode> {
+  const fromVersion = await readSchemaVersion(database);
+  if (fromVersion >= LOCAL_SCHEMA_VERSION) {
+    const outcome = await migrate(database);
+    if (!outcome.readOnly) return "read-write";
+    // A newer build wrote this file. Refuse writes at the engine level rather than trusting every
+    // call site to check a flag, and let the user keep reading what is already there.
+    await database.execAsync("PRAGMA query_only = ON;");
+    return "read-only";
+  }
+
+  const countsBefore = await countTrackedRows(database);
+  await database.execAsync("PRAGMA wal_checkpoint(TRUNCATE);").catch(() => undefined);
+  const captured = await captureMigrationBackup(expoDatabaseFileStore, DATABASE_NAME, fromVersion);
+  try {
+    await migrate(database);
+    await assertDatabaseIntegrity(database);
+    assertRowCountsPreserved(countsBefore, await countTrackedRows(database));
+  } catch (error) {
+    await database.closeAsync().catch(() => undefined);
+    await restoreMigrationBackup(expoDatabaseFileStore, DATABASE_NAME, fromVersion, captured);
+    throw error;
+  }
+  await discardMigrationBackup(expoDatabaseFileStore, DATABASE_NAME, fromVersion, captured);
+  return "read-write";
+}
+
+/**
+ * Re-encrypts the standalone database under a freshly generated key.
+ *
+ * The new key is only persisted once `PRAGMA rekey` has succeeded and the database has been read
+ * back under it, so a failure part-way leaves the old key in SecureStore matching the old
+ * ciphertext.
+ */
+export async function rekeySqliteLocalStorage(
+  newKeyHex?: string
+): Promise<void> {
+  if (databaseLeases > 0) {
+    throw new Error("Close active local data operations before rotating the encryption key.");
+  }
+
+  const currentKey = await secureKeyStore.get();
+  if (currentKey === null) throw new LocalDatabaseError("key-missing", "There is no key to rotate.");
+  const replacement = newKeyHex ?? (await generateDatabaseKeyHex(Crypto.getRandomBytesAsync));
+
+  const database = await openDatabaseAsync(DATABASE_NAME);
+  try {
+    await rekeyDatabase(database, currentKey, replacement);
+  } finally {
+    await database.closeAsync().catch(() => undefined);
+  }
+  await secureKeyStore.set(replacement);
+}
+
 
 async function releaseSharedDatabase(): Promise<void> {
   databaseLeases = Math.max(0, databaseLeases - 1);
@@ -122,6 +232,7 @@ export async function resetSqliteLocalStorage(): Promise<void> {
   }
   await deleteDatabaseAsync(DATABASE_NAME);
   await secureKeyStore.remove();
+  databaseMode = "read-write";
 }
 
 export class SqliteLocalStore implements LocalStore {
@@ -848,7 +959,10 @@ export class SqliteLocalStore implements LocalStore {
   }
 
   async reset(): Promise<void> {
-    await this.database.closeAsync();
+    // Release this store's lease instead of closing the shared handle behind the accounting's back.
+    // Closing directly left `databaseLeases` above zero, so `resetSqliteLocalStorage` refused to run
+    // and the module kept caching a handle to a database that was already closed.
+    await this.close();
     await resetSqliteLocalStorage();
     this.profileId = undefined;
   }

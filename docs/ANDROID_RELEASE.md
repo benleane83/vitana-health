@@ -19,7 +19,18 @@ The release owner owns the user-visible application version in `apps/android-com
 - EAS owns the Android `versionCode` because `cli.appVersionSource` is `remote` in `apps/android-companion/eas.json`.
 - The production profile has `autoIncrement: true`; every production build receives a new, monotonically increasing Android version code. Do not set or reuse an Android version code locally.
 - Record the `expo.version`, EAS Android version code, EAS build URL, commit SHA, and Play release name in the release notes.
-- `runtimeVersion` follows `appVersion`. A new app version therefore requires a new binary before a production OTA update targeting that runtime version can be used.
+- `runtimeVersion` is an explicit string (currently `"1"`) that is **decoupled from `expo.version`**. It describes the native layer an OTA update can safely land on, not the marketing version.
+
+### The `runtimeVersion` bump rule
+
+Bump `expo.runtimeVersion` to the next integer **if and only if** the JavaScript bundle can no longer run on the previously shipped binary. In practice that means any of:
+
+- a native module added, removed, or upgraded to a version with a changed native interface;
+- an Expo SDK upgrade;
+- a change to `expo-build-properties`, permissions, or anything else under `expo.android` that alters the built APK/AAB;
+- a change to the standalone SQLite schema that an older binary could not read back.
+
+Do **not** bump it for JavaScript-only changes — that is the whole point of the explicit string. A bump means every existing install stops receiving OTA updates until it takes the new binary from the Play Store, so it must be a deliberate decision recorded in the release notes.
 
 ## Environment and update separation
 
@@ -82,6 +93,7 @@ Local-only use is separate from Demo mode. It stores the user's local profile an
 ### Every release
 
 - [ ] `apps/android-companion/app.config.js` has the intended new `expo.version` and the commit is merged/tagged.
+- [ ] `expo.runtimeVersion` has been reviewed against the bump rule under "Versioning" — bumped if the native layer changed, left alone if the change is JavaScript-only — and the decision is recorded in the release notes.
 - [ ] `PURCHASE_GATING_ENABLED` matches the intended release state, and that state is recorded in the release notes.
 - [ ] EAS project access and Play Console production-track access are limited to authorized release owners.
 - [ ] Play App Signing is enabled and no signing material is present in the repository or build logs.

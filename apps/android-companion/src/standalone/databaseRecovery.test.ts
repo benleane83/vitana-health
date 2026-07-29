@@ -1,14 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { deleteEmptyPlaintextDatabase, isFileNotDatabaseError } from "./databaseRecovery";
+import { deleteEmptyPlaintextDatabase } from "./databaseRecovery";
 
 describe("standalone database recovery", () => {
-  it("recognizes SQLCipher's unreadable database error", () => {
-    expect(isFileNotDatabaseError(new Error(
-      "Call to function 'NativeDatabase.execAsync' has been rejected. Caused by: file is not a database"
-    ))).toBe(true);
-    expect(isFileNotDatabaseError(new Error("migration interrupted"))).toBe(false);
-  });
-
   it("deletes a demonstrably empty plaintext database", async () => {
     const close = vi.fn(async () => undefined);
     const remove = vi.fn(async () => undefined);

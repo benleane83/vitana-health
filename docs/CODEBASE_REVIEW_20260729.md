@@ -56,7 +56,7 @@ Everything else on this list stays cheap to fix after users exist. These three d
 | 4 — Backups and recovery | P1-2, P1-12 | Done |
 | 5 — API contracts | P1-11 | Done |
 | 6 — Web stability and performance | P1-13, P1-14, P1-15 | Done |
-| 7 — Android core | P1-8, P1-19 | Not started |
+| 7 — Android core | P1-8, P1-19 | Done |
 | 8 — Health Connect sync | P1-7 | Not started |
 | 9 — Desktop lifecycle | P1-17 | Done (LAN bind deferred) |
 | 10 — Final validation and docs | — | Not started |
@@ -247,6 +247,14 @@ Two consequences:
 There is also **no backup or integrity check around migrations**: [sqliteLocalStore.ts:101](apps/android-companion/src/standalone/sqliteLocalStore.ts#L101) calls `migrate(database)` directly on the live file, and nothing runs `PRAGMA integrity_check` afterwards.
 
 And the migration loop trusts each SQL literal to bump `user_version` itself ([migrations.ts:13](apps/android-companion/src/standalone/migrations.ts#L13), with hand-written PRAGMAs at [L103](apps/android-companion/src/standalone/migrations.ts#L103), [L126](apps/android-companion/src/standalone/migrations.ts#L126), [L151](apps/android-companion/src/standalone/migrations.ts#L151), [L158](apps/android-companion/src/standalone/migrations.ts#L158)). Forget one and the loop "succeeds" while the version stays put — every launch replays the migration, and with `ALTER TABLE ... ADD COLUMN` steps ([L154-155](apps/android-companion/src/standalone/migrations.ts#L154)) the replay throws "duplicate column" and bricks the device.
+
+### Status — Resolved (Phase 7)
+
+- `runtimeVersion` is now the explicit string `"1"` in `app.config.js`, decoupled from `expo.version`. The bump rule (native module change, Expo SDK upgrade, `expo-build-properties`/permission change, or a schema an older binary cannot read) is documented under "Versioning" in `docs/ANDROID_RELEASE.md` and is a line item in the every-release checklist. `nativeConfig.test.ts` asserts the value is a string and differs from the marketing version.
+- `migrations.ts` is an ordered `migrations` array of `{ version, sql }`. The runner applies each step in its own transaction, sets `user_version` **inside that same transaction**, then reads it back and throws `did not take effect` if the bump did not stick. The hand-written `PRAGMA user_version` literals are gone, and a test asserts no migration SQL contains one.
+- A newer-than-supported schema no longer throws. `migrate` returns `{ schemaVersion, readOnly, appliedVersions }`; on downgrade it skips migrations, returns `readOnly: true`, and `sqliteLocalStore` pins the connection with `PRAGMA query_only = ON` so writes fail at the engine rather than relying on every call site checking a flag. `localDatabaseMode()` exposes the state.
+- Migrations now run behind a backup. `migrateWithBackup` checkpoints the WAL, copies `.db`/`-wal`/`-shm` to `<name>.pre-v{N}.bak`, then runs `PRAGMA integrity_check` and a per-table row-count assertion afterwards; any failure closes the connection, restores the captured files, and removes files the failed migration created. `databaseBackup.ts` keeps the decision logic behind an injectable `DatabaseFileStore` so it is unit-tested without a device.
+- Coverage: a per-migration test applying each step to a fixture at `N-1`, a transaction-rollback test, a bump-did-not-stick test, a downgrade test asserting read-only rather than a throw, and backup capture/restore/discard tests.
 
 **Action:**
 1. Bump `version` on every native or schema change so `runtimeVersion` isolates generations — or switch to an explicit `runtimeVersion` string you control independently of the marketing version. Make this a mandatory release-checklist item.
@@ -511,6 +519,17 @@ Worse, the recovery heuristic can destroy the key on an error-string match: [sql
 Config makes this ambiguous too: [app.config.js:13](apps/android-companion/app.config.js#L13) sets `allowBackup: false` while [app.config.js:48](apps/android-companion/app.config.js#L48) configures `["expo-secure-store", { configureAndroidBackup: true }]`. Two sources disagree about whether backup exists; flip one later and the key's backup semantics change silently — either the key is backed up while the DB is not (unreadable restore) or vice versa.
 
 **Action:** add a distinct "key missing / data unreadable" state instead of a generic open error; add a `rekey(oldKey, newKey)` path; add a user-visible export-then-reset flow; gate key deletion on positive proof the file is an empty plaintext DB rather than on an error string; pick one backup posture and set both flags consistently.
+
+### Status — Resolved (Phase 7)
+
+- `localDatabaseState.ts` introduces `LocalDatabaseError` with a `reason` of `key-missing`, `data-unreadable`, `sqlcipher-unavailable`, or `migration-failed`. `openSqliteDatabaseOnce` classifies failures: a freshly minted key against a database file that already existed is `key-missing` (ciphertext intact, key lost), a first-read failure without a generated key is `data-unreadable`, and a failure after the database read cleanly is `migration-failed`.
+- The string-matched destructive recovery is gone. `isFileNotDatabaseError` has been deleted; recovery is attempted for *any* open failure and the only gate on key deletion is the positive proof in `deleteEmptyPlaintextDatabase` — the file must open unencrypted and contain zero tables.
+- `rekeyDatabase(database, oldKeyHex, newKeyHex)` proves the current key with a read before issuing `PRAGMA rekey`, then reads again under the new key. `rekeySqliteLocalStorage()` wraps it, refuses to run while any store lease is open, and persists the replacement key only after the rotation succeeds.
+- Backup posture is now consistent: `configureAndroidBackup` is `false`, matching `android.allowBackup: false`, and `nativeConfig.test.ts` asserts it.
+- `SqliteLocalStore.reset()` releases its lease through `close()` instead of closing the shared handle behind the accounting's back. Previously the lease count stayed above zero, so `resetSqliteLocalStorage()` threw and the module kept caching a closed handle.
+- Coverage: rekey round-trip and wrong-old-key tests against a SQLCipher stand-in, malformed/unchanged key rejection, a reset lease-accounting test asserting the connection is torn down and a fresh one opened, and a test that reset is refused while a second store holds a lease.
+
+**Deferred:** the user-visible export-then-reset flow. The distinct failure reasons are its prerequisite and are now in place; surfacing them in the companion UI is UI work outside this phase.
 
 ---
 

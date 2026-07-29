@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Profile } from "@vitana/shared";
 import * as SecureStore from "expo-secure-store";
-import { openDatabaseAsync } from "expo-sqlite";
+import { deleteDatabaseAsync, openDatabaseAsync } from "expo-sqlite";
 
 vi.mock("expo-crypto", () => ({ getRandomBytesAsync: vi.fn() }));
 vi.mock("expo-secure-store", () => ({
@@ -14,7 +14,15 @@ vi.mock("expo-sqlite", () => ({
   deleteDatabaseAsync: vi.fn(),
   openDatabaseAsync: vi.fn()
 }));
-vi.mock("./migrations", () => ({ migrate: vi.fn() }));
+vi.mock("expo-file-system", () => ({
+  Directory: class {},
+  File: class {},
+  Paths: { document: "document" }
+}));
+vi.mock("./migrations", () => ({
+  migrate: vi.fn(async () => ({ schemaVersion: 4, readOnly: false, appliedVersions: [] })),
+  readSchemaVersion: vi.fn(async () => 4)
+}));
 
 import { LocalProfileRepository } from "./localRepository";
 import { openSqliteLocalStore, SqliteLocalStore } from "./sqliteLocalStore";
@@ -126,5 +134,50 @@ describe("SQLite local store connection ownership", () => {
 
     await connectedStore.close();
     expect(closeAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases its lease when reset so the shared connection is actually torn down", async () => {
+    const closeAsync = vi.fn();
+    const database = {
+      closeAsync,
+      execAsync: vi.fn(),
+      getFirstAsync: vi.fn(async (sql: string) =>
+        sql === "PRAGMA cipher_version" ? { cipher_version: "4.6.1" } : null)
+    };
+    vi.mocked(SecureStore.getItemAsync).mockResolvedValue("a".repeat(64));
+    vi.mocked(openDatabaseAsync).mockResolvedValue(database as never);
+
+    const store = await openSqliteLocalStore();
+    // Previously this closed the raw handle without touching the lease count, so the reset below
+    // threw "Close active local data operations..." and the module kept caching a closed handle.
+    await store.reset();
+
+    expect(closeAsync).toHaveBeenCalledTimes(1);
+    expect(deleteDatabaseAsync).toHaveBeenCalledWith("standalone-health.db");
+    expect(SecureStore.deleteItemAsync).toHaveBeenCalled();
+
+    // A fresh store must open a new connection rather than reuse the closed one.
+    vi.mocked(openDatabaseAsync).mockClear();
+    const reopened = await openSqliteLocalStore();
+    expect(openDatabaseAsync).toHaveBeenCalledTimes(1);
+    await reopened.close();
+  });
+
+  it("refuses to reset while another store still holds a lease", async () => {
+    const database = {
+      closeAsync: vi.fn(),
+      execAsync: vi.fn(),
+      getFirstAsync: vi.fn(async (sql: string) =>
+        sql === "PRAGMA cipher_version" ? { cipher_version: "4.6.1" } : null)
+    };
+    vi.mocked(SecureStore.getItemAsync).mockResolvedValue("a".repeat(64));
+    vi.mocked(openDatabaseAsync).mockResolvedValue(database as never);
+
+    const first = await openSqliteLocalStore();
+    const second = await openSqliteLocalStore();
+
+    await expect(first.reset()).rejects.toThrow("Close active local data operations");
+
+    await second.close();
   });
 });
