@@ -22,21 +22,14 @@ afterEach(() => {
 describe("encrypted DuckDB companion replica", () => {
   it.skipIf(!httpfsExtensionPath)("materializes a stable paginated snapshot then converges concurrent updates and tombstones", async () => {
     const fixture = createDuckDbHealthStoreFixture();
-    let replicaSnapshotCount = 0;
     const repository = await DuckDbRepository.hydrate(
       root,
       join(root, "databases", "replica.duckdb-poc"),
       key,
       fixture,
-      {
-        httpfsExtensionPath,
-        testHooks: {
-          beforeReplicaSnapshot: async () => { replicaSnapshotCount += 1; }
-        }
-      }
+      { httpfsExtensionPath }
     );
     try {
-      replicaSnapshotCount = 0;
       const snapshotHighWater = await repository.getReplicaHighWaterMark();
       const snapshotId = await repository.startReplicaSnapshot("pairing-1");
       const firstPage = await repository.replicaSnapshotPage("pairing-1", snapshotId, 0, 2);
@@ -119,7 +112,6 @@ describe("encrypted DuckDB companion replica", () => {
       ]));
       expect(deletePage.changes.find((change) => change.entityId === original.id)?.payload).toBeUndefined();
       expect(deletePage.changes.find((change) => change.entityId === createdCareItem.careItem.id)?.payload).toBeUndefined();
-      expect(replicaSnapshotCount).toBe(0);
     } finally {
       await repository.close();
     }

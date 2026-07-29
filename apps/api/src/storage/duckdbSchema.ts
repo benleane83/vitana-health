@@ -1,6 +1,7 @@
 import type duckdb from "duckdb";
 import { defaultMeasurementTypes } from "@vitana/shared";
 import { mergeDefaultMeasurementType } from "../measurementRegistry.js";
+import { replicaUpsert, type ReplicaChangeInput } from "./duckdbReplicaChanges.js";
 import {
   all,
   json,
@@ -16,7 +17,10 @@ export async function schemaVersions(connection: duckdb.Connection): Promise<num
 
 export async function reconcileDefaultMeasurementTypes(
   connection: duckdb.Connection,
-  runInTransaction: (operation: () => Promise<void>) => Promise<void>
+  runInTransaction: <T>(
+    operation: () => Promise<T>,
+    replicaChanges: (result: T) => ReplicaChangeInput[]
+  ) => Promise<T>
 ): Promise<void> {
   const profileRows = await all(connection, "SELECT COUNT(*) AS count FROM profile;");
   if (Number(profileRows[0]?.count ?? 0) === 0) {
@@ -54,11 +58,11 @@ export async function reconcileDefaultMeasurementTypes(
   if (missingTypes.length === 0 && updatedTypes.size === 0) {
     return;
   }
-  // The retired "metabolic" category no longer validates, so heal it before the tracked transaction below:
-  // that transaction snapshots and parses the whole store to capture companion replica changes.
+  // The retired "metabolic" category no longer validates, so heal it before the tracked transaction below.
   for (const type of retiredTypes) {
     await run(connection, "UPDATE measurement_types SET category = ? WHERE code = ?;", type.category, type.code);
   }
+  const touchedCodes = [...missingTypes.map((type) => type.code), ...updatedTypes.keys()];
   await runInTransaction(async () => {
     const ordinalRows = await all(connection, "SELECT COALESCE(MAX(ordinal), -1) + 1 AS ordinal FROM measurement_types;");
     let ordinal = Number(ordinalRows[0]?.ordinal ?? 0);
@@ -94,7 +98,13 @@ export async function reconcileDefaultMeasurementTypes(
         entry.code
       );
     }
-  });
+    const written = await all(
+      connection,
+      `SELECT * EXCLUDE (ordinal) FROM measurement_types WHERE code IN (${
+        touchedCodes.map((code) => `'${code.replace(/'/g, "''")}'`).join(", ")});`
+    );
+    return written.map((row) => measurementTypeFromRow(row));
+  }, (types) => types.map((type) => replicaUpsert("measurement-type", type.code, type)));
 }
 
 export interface MeasurementRegistryResetResult {
@@ -104,12 +114,15 @@ export interface MeasurementRegistryResetResult {
 
 export async function resetMeasurementTypeMetadataFromRegistry(
   connection: duckdb.Connection,
-  runInTransaction: <T>(operation: () => Promise<T>) => Promise<T>
+  runInTransaction: <T>(
+    operation: () => Promise<T>,
+    replicaChanges: (result: T) => ReplicaChangeInput[]
+  ) => Promise<T>
 ): Promise<MeasurementRegistryResetResult> {
   const existingRows = await all(connection, "SELECT code FROM measurement_types;");
   const existingCodes = new Set(existingRows.map((row) => String(row.code)));
 
-  return runInTransaction(async () => {
+  const result = await runInTransaction(async () => {
     const ordinalRows = await all(connection, "SELECT COALESCE(MAX(ordinal), -1) + 1 AS ordinal FROM measurement_types;");
     let ordinal = Number(ordinalRows[0]?.ordinal ?? 0);
     let refreshed = 0;
@@ -152,6 +165,18 @@ export async function resetMeasurementTypeMetadataFromRegistry(
       inserted += 1;
     }
 
-    return { refreshed, inserted };
-  });
+    // The registry rewrites every default type, so read the rows back once and replicate them from
+    // their persisted shape rather than from the in-memory registry entries.
+    const touchedCodes = new Set(defaultMeasurementTypes.map((entry) => entry.code));
+    const rows = await all(connection, "SELECT * EXCLUDE (ordinal) FROM measurement_types;");
+    const replicated = rows
+      .map((row) => measurementTypeFromRow(row))
+      .filter((type) => touchedCodes.has(type.code));
+
+    return { refreshed, inserted, replicated };
+  }, (operationResult) => operationResult.replicated.map(
+    (type) => replicaUpsert("measurement-type", type.code, type)
+  ));
+
+  return { refreshed: result.refreshed, inserted: result.inserted };
 }

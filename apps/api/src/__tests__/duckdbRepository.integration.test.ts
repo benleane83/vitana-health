@@ -42,6 +42,29 @@ afterEach(() => {
 });
 
 describe("DuckDbRepository fidelity", () => {
+  it.skipIf(!httpfsExtensionPath)("serves reads from a connection that never sees uncommitted writes", async () => {
+    const databasePath = join(root, "databases", "health-store-read-isolation.duckdb-poc");
+    const fixture = createDuckDbHealthStoreFixture();
+    let duringTransaction: string | undefined;
+    const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, {
+      httpfsExtensionPath,
+      testHooks: {
+        // Runs while the write transaction is still open, so a read here must see the old state.
+        beforeTransactionCommit: async () => {
+          duringTransaction = (await repository.getProfile()).displayName;
+        }
+      }
+    });
+    const original = (await repository.getProfile()).displayName;
+    try {
+      await repository.replaceProfile({ ...fixture.profile, displayName: "Renamed mid-transaction" });
+      expect(duringTransaction).toBe(original);
+      expect((await repository.getProfile()).displayName).toBe("Renamed mid-transaction");
+    } finally {
+      await repository.close();
+    }
+  }, 30_000);
+
   it.skipIf(!httpfsExtensionPath)("applies resumable migration batches with provenance-aware deduplication", async () => {
     const databasePath = join(root, "databases", "mobile-migration.duckdb-poc");
     const fixture = createDuckDbHealthStoreFixture();
@@ -410,21 +433,14 @@ describe("DuckDbRepository fidelity", () => {
 
   it.skipIf(!httpfsExtensionPath)("completes only open care items and preserves completion provenance", async () => {
     const databasePath = join(root, "databases", "health-store-care-completion.duckdb-poc");
-    let replicaSnapshotCount = 0;
     const repository = await DuckDbRepository.hydrate(
       root,
       databasePath,
       key,
       createDuckDbHealthStoreFixture(),
-      {
-        httpfsExtensionPath,
-        testHooks: {
-          beforeReplicaSnapshot: async () => { replicaSnapshotCount += 1; }
-        }
-      }
+      { httpfsExtensionPath }
     );
     try {
-      replicaSnapshotCount = 0;
       const initialReplicaMark = await repository.getReplicaHighWaterMark();
       const created = await repository.createCareItem({
         kind: "routine-checkup",
@@ -520,7 +536,6 @@ describe("DuckDbRepository fidelity", () => {
         "care-item-completed",
         "health-event-created"
       ]);
-      expect(replicaSnapshotCount).toBe(0);
     } finally {
       await repository.close();
     }
@@ -921,24 +936,15 @@ describe("DuckDbRepository fidelity", () => {
   it.skipIf(!httpfsExtensionPath)("provides slim transactional observation mutation primitives without snapshot responses", async () => {
     const databasePath = join(root, "databases", "health-store-slim-mutations.duckdb-poc");
     const fixture = createDuckDbHealthStoreFixture();
-    let replicaSnapshotCount = 0;
-    const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, {
-      httpfsExtensionPath,
-      testHooks: {
-        beforeReplicaSnapshot: async () => { replicaSnapshotCount += 1; }
-      }
-    });
+    const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
     const inserted = { ...fixture.observations[0], id: "slim-insert", value: 77 };
     try {
-      replicaSnapshotCount = 0;
       expect(await repository.insertObservationRecord(inserted)).toBe(true);
       expect(await repository.insertObservationRecord(inserted)).toBe(false);
       expect(await repository.deleteObservationRecord("slim-insert")).toBe(true);
       expect(await repository.deleteObservationRecord("slim-insert")).toBe(false);
-      expect(replicaSnapshotCount).toBe(0);
       expect(await repository.deleteObservationRecordsByMeasurementCode("weight")).toBe(2);
       expect(await repository.deleteObservationRecordsByMeasurementCode("weight")).toBe(0);
-      expect(replicaSnapshotCount).toBeGreaterThan(0);
       expect((await repository.snapshot()).observations).toEqual([]);
 
       const bulkImport = {
@@ -965,10 +971,8 @@ describe("DuckDbRepository fidelity", () => {
           { ...fixture.observations[1], id: "bulk-b", sourceId: "slim-source" }
         ]
       };
-      replicaSnapshotCount = 0;
       expect(await repository.importObservationRecords(bulkImport)).toBe(2);
       expect(await repository.importObservationRecords(bulkImport)).toBe(0);
-      expect(replicaSnapshotCount).toBe(0);
       expect((await repository.snapshot()).observations.map((entry) => entry.id)).toEqual(["bulk-a", "bulk-b"]);
     } finally {
       await repository.close();

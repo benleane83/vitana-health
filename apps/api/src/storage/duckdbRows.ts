@@ -49,30 +49,40 @@ export function orderedRows(connection: duckdb.Connection, table: PersistedTable
 export interface InsertOptions {
   /** Import paths tolerate re-submitted rows; export/restore paths want a hard failure instead. */
   ignoreDuplicates?: boolean;
+  /**
+   * Collect the `id` of every row the statement actually wrote. Duplicate rows suppressed by
+   * `ignoreDuplicates` are absent, which is what import accounting and replica change tracking
+   * need - and it costs one statement instead of a pair of `COUNT(*)` scans.
+   */
+  returningIds?: boolean;
 }
 
 /**
  * Bulk-inserts positional tuples against an explicit column list. Chunking keeps each statement
  * inside DuckDB's parameter budget, and the string-character cap stops a handful of very large
  * values (raw import payloads, source JSON) from producing an oversized statement.
+ *
+ * Returns the inserted ids when `returningIds` is set, otherwise an empty array.
  */
 export async function insertRows(
   connection: duckdb.Connection,
   table: PersistedTable,
   rows: readonly unknown[][],
   options: InsertOptions = {}
-): Promise<void> {
+): Promise<string[]> {
   if (rows.length === 0) {
-    return;
+    return [];
   }
   const columns = tableColumns[table] as readonly string[];
   if (rows.some((row) => row.length !== columns.length)) {
     throw new Error(`DuckDB bulk insert into ${table} expects ${columns.length} values per row.`);
   }
   const prefix = `INSERT${options.ignoreDuplicates ? " OR IGNORE" : ""} INTO ${table} (${columns.join(", ")}) VALUES `;
+  const suffix = options.returningIds ? " RETURNING id" : "";
   const rowPlaceholder = `(${columns.map(() => "?").join(", ")})`;
   const maxChunkRows = Math.max(1, Math.floor(3_000 / columns.length));
   const maxChunkStringChars = 2_000_000;
+  const insertedIds: string[] = [];
   for (let index = 0; index < rows.length;) {
     const chunk: unknown[][] = [];
     let chunkStringChars = 0;
@@ -89,17 +99,33 @@ export async function insertRows(
       chunkStringChars += rowStringChars;
       index += 1;
     }
-    await run(
-      connection,
-      `${prefix}${Array.from({ length: chunk.length }, () => rowPlaceholder).join(", ")};`,
-      ...chunk.flat()
-    );
+    const sql = `${prefix}${Array.from({ length: chunk.length }, () => rowPlaceholder).join(", ")}${suffix};`;
+    if (options.returningIds) {
+      const returned = await allWithParams(connection, sql, ...chunk.flat());
+      for (const row of returned) {
+        insertedIds.push(String(row.id));
+      }
+    } else {
+      await run(connection, sql, ...chunk.flat());
+    }
   }
+  return insertedIds;
 }
 
 export interface MeasurementInsertResult<T> {
+  /** Rows that survived canonicalization, in submission order. */
   accepted: T[];
+  /** Rows the database actually wrote - `accepted` minus anything suppressed as a duplicate. */
+  inserted: T[];
   rejections: string[];
+}
+
+function insertedSubset<T extends { id: string }>(accepted: T[], insertedIds: string[]): T[] {
+  if (insertedIds.length === accepted.length) {
+    return accepted;
+  }
+  const ids = new Set(insertedIds);
+  return accepted.filter((entry) => ids.has(entry.id));
 }
 
 export async function insertObservationRows(
@@ -135,8 +161,9 @@ export async function insertObservationRows(
       canonical.sourceUnit ?? null
     ]);
   }
-  await insertRows(connection, "observations", rows, { ignoreDuplicates: true });
-  return { accepted, rejections };
+  const insertedIds = await insertRows(
+    connection, "observations", rows, { ignoreDuplicates: true, returningIds: true });
+  return { accepted, inserted: insertedSubset(accepted, insertedIds), rejections };
 }
 
 export async function insertTimeSeriesSampleRows(
@@ -170,8 +197,12 @@ export async function insertTimeSeriesSampleRows(
       canonical.sourceUnit ?? null
     ]);
   }
-  await insertRows(connection, "time_series_samples", rows, options);
-  return { accepted, rejections };
+  const insertedIds = await insertRows(connection, "time_series_samples", rows, options);
+  return {
+    accepted,
+    inserted: options.returningIds ? insertedSubset(accepted, insertedIds) : accepted,
+    rejections
+  };
 }
 
 /**
@@ -183,8 +214,8 @@ export async function insertActivityRows(
   activities: readonly ActivitySession[],
   firstOrdinal: number,
   options: InsertOptions = {}
-): Promise<void> {
-  await insertRows(
+): Promise<ActivitySession[]> {
+  const insertedIds = await insertRows(
     connection,
     "activities",
     activities.map((entry, index) => [
@@ -202,6 +233,9 @@ export async function insertActivityRows(
     ]),
     options
   );
+  return options.returningIds
+    ? insertedSubset([...activities], insertedIds)
+    : [...activities];
 }
 
 export function json(value: unknown): string {

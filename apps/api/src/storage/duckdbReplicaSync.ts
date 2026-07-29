@@ -9,6 +9,9 @@ import {
 } from "@vitana/shared";
 import { all, allWithParams, insertRows, json, run } from "./duckdbRows.js";
 import { oldestRetainedChangeSequence, ReplicaDeltaGapError } from "./duckdbRetention.js";
+import { isReplicatedMeasurementCode, type ReplicaChangeInput } from "./duckdbReplicaChanges.js";
+
+export type { ReplicaChangeInput };
 
 export interface ReplicaEntity {
   entityType: ReplicaEntityType;
@@ -21,8 +24,6 @@ export interface StoredReplicaPage {
   highWaterMark: ReplicaHighWaterMark;
   nextOffset?: number;
 }
-
-export type ReplicaChangeInput = Omit<ReplicaChange, "revision" | "sequence">;
 
 const collections: Array<{
   entityType: ReplicaEntityType;
@@ -66,33 +67,7 @@ export function replicaEntities(data: HealthStoreData): ReplicaEntity[] {
 
 function includeInReplica(entityType: ReplicaEntityType, value: unknown): boolean {
   if (entityType !== "observation" && entityType !== "time-series-sample") return true;
-  return (value as { measurementCode?: unknown }).measurementCode !== "heart_rate";
-}
-
-export async function recordReplicaChanges(
-  connection: duckdb.Connection,
-  before: HealthStoreData,
-  after: HealthStoreData
-): Promise<void> {
-  const beforeByKey = new Map(replicaEntities(before).map((entity) => [entityKey(entity), entity]));
-  const afterByKey = new Map(replicaEntities(after).map((entity) => [entityKey(entity), entity]));
-  const changes: ReplicaChangeInput[] = [];
-  for (const [key, entity] of afterByKey) {
-    const previous = beforeByKey.get(key);
-    if (!previous || JSON.stringify(previous.payload) !== JSON.stringify(entity.payload)) {
-      changes.push({ ...entity, operation: "upsert" });
-    }
-  }
-  for (const [key, entity] of beforeByKey) {
-    if (!afterByKey.has(key)) {
-      changes.push({
-        entityType: entity.entityType,
-        entityId: entity.entityId,
-        operation: "tombstone"
-      });
-    }
-  }
-  await recordReplicaEntityChanges(connection, changes);
+  return isReplicatedMeasurementCode((value as { measurementCode?: string }).measurementCode);
 }
 
 export async function recordReplicaEntityChanges(

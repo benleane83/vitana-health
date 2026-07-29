@@ -30,9 +30,12 @@ import {
 import { selectColumns, tableColumns } from "./duckdbColumns.js";
 import { insertAudit } from "./duckdbCommands.js";
 
-export async function exportData(connection: duckdb.Connection): Promise<HealthStoreData> {
+/**
+ * Recording the export is the only write an export performs. It is kept separate from the snapshot
+ * so that reading a full store - which can take a while - does not occupy the mutation queue.
+ */
+export async function recordExportAudit(connection: duckdb.Connection): Promise<void> {
   await insertAudit(connection, "export-created", "Full local data export created.");
-  return snapshot(connection);
 }
 
 export async function snapshot(

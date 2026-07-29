@@ -43,6 +43,28 @@ Everything else on this list stays cheap to fix after users exist. These three d
 
 ---
 
+## Remediation progress
+
+**Branch:** `code-review-20260729`. Findings are being worked in phases, each verified before the next begins. Every finding below carries its own **Status** line; this table is the roll-up.
+
+| Phase | Findings | Status |
+|---|---|---|
+| 0 — CI and release gating | P1-1, P1-16, P1-18 | Done |
+| 1 — Profile export tooling | (enabler for Phase 2) | Done |
+| 2 — Schema baseline, units, retention | P1-3, P1-4, P1-9 | Done |
+| 3 — Write and read path | P1-5, P1-6, P1-10 | Done |
+| 4 — Backups and recovery | P1-2, P1-12 | Not started |
+| 5 — API contracts | P1-11 | Not started |
+| 6 — Web stability and performance | P1-13, P1-14, P1-15 | Not started |
+| 7 — Android core | P1-8, P1-19 | Not started |
+| 8 — Health Connect sync | P1-7 | Not started |
+| 9 — Desktop lifecycle | P1-17 | Not started |
+| 10 — Final validation and docs | — | Not started |
+
+Phase 1 added `npm run export:profiles` / `npm run import:profiles` (`apps/api/src/dev/`), a developer-only capture-and-replay pair used to rebuild the author's local test profiles onto the new baseline. It is not an end-user migration path.
+
+---
+
 # P1 — Fix before beta testers have data
 
 <a id="p1-1"></a>
@@ -63,6 +85,8 @@ Worse, the same workflow *rejects* a pre-existing draft release — [release-win
 **Why hard later:** once testers auto-update, a broken release is on their machines before you can react, and there is no rollback path (see P1-2 and P1-8).
 
 **Action:** insert `npm run validate:fast` before the packaging step. Publish with `--draft` and promote manually after reviewing the smoke evidence, and invert the draft check so a draft is expected rather than fatal.
+
+**Status: resolved (phase 0).** `release-windows.yml` runs `npm run validate:fast` plus the DuckDB-backed suites before packaging, `gh release create` now passes `--draft`, and the draft check was inverted so a pre-existing draft is expected rather than fatal.
 
 ---
 
@@ -104,6 +128,8 @@ Compounding this, the registry's unit alias coverage is limited to canonical + i
 
 **Action:** canonicalize at ingest. Apply the `convertMeasurementValue` path to `insertObservationRows` and the sample/activity inserts; store canonical value + canonical unit and keep the original in a separate `source_unit` column. Make an unrecognised unit a hard import error, not a silent pass-through. Move unit conversion into per-measurement declarative data (`units: [{ unit, aliases, toCanonical }]`) rather than a hardcoded code list.
 
+**Status: resolved (phase 2).** `canonicalizeMeasurement` in `packages/shared/src/measurementRegistry.ts` is now applied by `insertObservationRows`, `insertTimeSeriesSampleRows`, and `updateObservation`; `observations` and `time_series_samples` gained a `source_unit` column holding the original. A row whose unit cannot be converted is **rejected** rather than stored, counted in the new `rejected` field of the import outcome, and the reason is appended to `imports.diagnostics`. Codes with no registry entry — the synthetic `manual_*` / `body_comp_*` codes the manual-entry UI mints — pass through verbatim by design. The alias and conversion tables were widened (dimensional `mg/dL`↔`mg/L`, nmol↔µmol, body-water kg↔L, `L/L`↔`%`, and ~20 unit aliases), which relabelled 143,738 of the author's ~152,000 existing rows and left just 2 genuinely unconvertible. Migration v5's retroactive repair is gone with the rest of the chain (P1-4).
+
 ---
 
 <a id="p1-4"></a>
@@ -120,6 +146,13 @@ Compounding this, the registry's unit alias coverage is limited to canonical + i
 **Why hard later:** each fix is individually trivial, but each requires a migration that runs against every tester's existing database, on the largest tables you have, as a long blocking operation at startup with no progress reporting.
 
 **Action:** since you have no backwards-compatibility obligation, **collapse v1–v14 into a single clean v1 baseline** that includes indexes on `observations(measurement_code, observed_at)`, `time_series_samples(measurement_code, end_at)`, `activities(start_at)` and `imports(source_kind, checksum)`; foreign keys; `TIMESTAMPTZ`; canonical units (P1-3); and `raw_content` either dropped or moved to a sidecar file. Migrate your local test profiles once, by hand. This single change removes the majority of the "painful later" surface and makes migrations v5 and v10 disappear entirely.
+
+**Status: resolved (phase 2), with one deliberate deviation.** `duckdbRuntime.ts` is now a single `schemaVersion = 1` baseline with all 14 historical migrations deleted. It declares the four requested indexes plus the two pre-existing companion ones, 13 foreign keys, and `TIMESTAMPTZ` on every timestamp column. Analytical views moved out of the migration chain into `applyAnalyticalViews()`, which diffs definitions against a new `schema_objects` fingerprint table so reopening a database is a no-op. The five local test profiles were rebuilt through `npm run import:profiles` with exact row-count parity against the pre-collapse export.
+
+Two things were deliberately *not* done:
+
+- **`imports.raw_content` stays in the database.** Moving original import payloads to plaintext sidecar files beside an encrypted database is a privacy regression for a local-first health app. The blob-bloat concern is addressed instead by explicit column lists — `raw_content` is now only read when a caller names it, and the wildcard `SELECT *` on `imports` is gone. Wildcard selects on the remaining blob-free tables were left alone.
+- **`measurement_code` is not a foreign key onto `measurement_types`.** The manual-entry flows mint synthetic codes (`manual_*`, `body_comp_*`) that never get a measurement-type row, so the constraint would reject legitimate user data.
 
 ---
 
@@ -138,6 +171,8 @@ Nine callers use it: `replaceProfile` (L263), `resetMeasurementTypeMetadataFromR
 
 **Action:** the cheap path already exists. `transaction()` accepts a `(result) => ReplicaChangeInput[]` overload, which `updateObservation` ([duckdbRepository.ts:481](apps/api/src/storage/duckdbRepository.ts#L481)) already uses correctly. Convert all nine callers, then delete `recordReplicaChanges` and the whole-store diff path.
 
+**Status: resolved (phase 3).** `transaction()` now takes only the mapper form — the `boolean` overload, `replicaSnapshot()` and `recordReplicaChanges` are gone, as is the `beforeReplicaSnapshot` test hook that existed to police them. All nine callers declare the entities they touched. The shared constructors live in a new `duckdbReplicaChanges.ts`, so the import, migration and mutation paths build changes the same way. Because insert helpers now use `INSERT OR IGNORE … RETURNING id`, a change is emitted only for rows that were genuinely written rather than for everything that was attempted.
+
 ---
 
 <a id="p1-6"></a>
@@ -154,6 +189,12 @@ The whole batch is then wrapped in `transaction(..., true)` ([duckdbRepository.t
 Two related scan-per-write patterns should go at the same time:
 - `importObservationRecords` loads **every observation ID in the database** into a JS `Set` ([duckdbImportPersistence.ts:148](apps/api/src/storage/duckdbImportPersistence.ts#L148)) purely to filter incoming rows — despite `id VARCHAR PRIMARY KEY` and `INSERT OR IGNORE` already handling it.
 - `measureInsert` runs **12 full-table `COUNT(*)`** per import ([duckdbImportPersistence.ts:190-202](apps/api/src/storage/duckdbImportPersistence.ts#L190)) just to compute `accepted`/`duplicates`.
+
+**Status: resolved (phase 3).** `applyMobileMigrationBatch` now issues a fixed number of queries per batch rather than per row: the session's alias table is loaded once into a `Map`, existing rows are probed with one `id IN (…)` query per entity type, the duplicate-candidate JOIN became a single query over the batch's measurement codes and instants (matched in JS against the incoming source's provenance), accepted observations go in through one `insertObservationRows` call, and new aliases are written in one statement.
+
+`nextOrdinal` also changed shape. It now seeds a per-connection counter once and hands out reserved blocks in memory, so no insert path pays a `MAX(ordinal)` aggregate scan any more. The bounds only ever move outwards, so a rolled-back transaction or a retention prune leaves a harmless gap. `prependOrdinal` works the same way for the descending tables.
+
+Both related patterns are gone: the full observation-id preload was replaced by `INSERT OR IGNORE … RETURNING id`, and `measureInsert`'s 12 `COUNT(*)` scans were replaced by counting the returned ids.
 
 ---
 
@@ -217,6 +258,10 @@ And the migration loop trusts each SQL literal to bump `user_version` itself ([m
 
 **Action:** prune `companion_sync_changes` below `min(companion_sync_state.acknowledged_revision)` across pairings; cap `audit_events` by age or count; delete superseded `companion_sync_snapshots`. Run it as an on-open maintenance step.
 
+**Status: resolved (phase 2), by a different mechanism.** `duckdbRetention.ts` now runs `pruneRetention()` as an on-open maintenance step: `audit_events` are capped at 20,000 rows and 365 days, and snapshots abandoned for more than 24 hours are deleted along with their entries.
+
+Pruning `companion_sync_changes` below an acknowledged revision turned out to be impossible as written — **there is no server-side acknowledgement cursor.** `companion_sync_state` is a singleton with no per-device column, and the phone's cursor lives client-side in AsyncStorage. Retention is therefore a bounded window of the most recent 50,000 changes; a device that asks for a sequence older than the window gets a `ReplicaDeltaGapError`, surfaced as HTTP 409 *"The change log no longer covers this cursor. Restart from a snapshot."* — which mirrors the existing expired-snapshot-cursor behaviour the client already handles. A per-device acknowledgement cursor is worth adding when the sync protocol is next versioned, but it is not needed to make retention safe.
+
 ---
 
 <a id="p1-10"></a>
@@ -231,6 +276,12 @@ A concurrent HTTP read arriving mid-mutation therefore executes **inside the ope
 **Why hard later:** the fix is either a read connection or extending the queue to reads; both change the concurrency contract of every method in `duckdbHealthStore.ts`. Chasing "the chart briefly showed wrong data" from user reports is a heisenbug hunt.
 
 **Action:** open a second read-only `duckdb.Connection` per database for all read paths (DuckDB supports multiple connections per `Database`). This also removes reads from behind long imports.
+
+**Status: resolved (phase 3).** `EncryptedDuckDbDatabase` now carries a `readConnection` alongside the write connection. Both are opened before the database is attached, because `SET lock_configuration = true` closes the door on per-connection settings; `USE poc` is issued on the read connection in the same window. Every read method on the repository, plus `runCompiledQuery` and `snapshot`, go through `private get reader()`, while anything that reads its own writes — the bodies of `transaction` callbacks — deliberately stays on the write connection.
+
+`exportData` was split as part of this: the `"export-created"` audit row is now a small queued write, and the snapshot that follows is read off the read connection instead of holding the mutation queue for the length of a full-store read.
+
+An integration test covers the contract directly — a read taken from inside `beforeTransactionCommit` still sees the pre-transaction profile name.
 
 ---
 
@@ -352,6 +403,8 @@ Related CI gaps:
 - The Android test runner cannot see a single component test: [apps/android-companion/vitest.config.ts:6](apps/android-companion/vitest.config.ts#L6) uses `include: ["src/**/*.test.ts"]` with `environment: "node"` — `.test.tsx` is not matched and no `.test.tsx` files exist. `MobileApiProvider`, every screen, `TrendChart`, the lease/cleanup logic, and the staged-deletion timer all have **zero coverage** — precisely where the P1/P2 mobile fixes land.
 
 **Action:** ungate the PR jobs so pushes to `main` run them; move the storage job to `windows-2022` with the prepare step; make `findPreparedExtension()` throw rather than skip when `VITANA_REQUIRE_DUCKDB=1` (the pattern already exists at [server.integration.test.ts:31-33](apps/api/src/__tests__/server.integration.test.ts#L31)); switch `integration-tests.yml` to `windows-2022` and re-enable the PR trigger; run `desktop-smoke.yml` with `full`/`nsis` nightly and switch the release workflow to `-Scope Full` against the previous release tag; add `.tsx` to the Android include glob and switch to `@testing-library/react-native`.
+
+**Status: mostly resolved (phase 0).** The PR jobs are ungated so pushes to `main` run them, the storage-validation and integration jobs moved to `windows-2022` with the prepare step, the shared `findPreparedExtension()` / `requirePreparedExtension()` helper in `apps/api/src/__tests__/support/duckdbExtension.ts` fails rather than skips when `VITANA_REQUIRE_DUCKDB=1`, and the Android include glob now matches `.tsx`. Still outstanding and deferred to phase 10: running `desktop-smoke.yml` at `-Scope Full` against the previous release tag, and adding `@testing-library/react-native` with actual component tests — the glob matches, but no `.tsx` tests exist yet.
 
 ---
 

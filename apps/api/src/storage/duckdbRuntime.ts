@@ -17,7 +17,6 @@ export interface DuckDbOptions {
   memoryLimit?: "64MB" | "256MB";
   testHooks?: {
     beforeHydrationPromotion?: () => Promise<void>;
-    beforeReplicaSnapshot?: () => Promise<void>;
     beforeTransactionCommit?: () => Promise<void>;
   };
 }
@@ -25,6 +24,12 @@ export interface DuckDbOptions {
 export interface EncryptedDuckDbDatabase {
   database: duckdb.Database;
   connection: duckdb.Connection;
+  /**
+   * A second connection reserved for reads. Writes are serialized through a mutation queue, so
+   * without this a dashboard query would wait behind a multi-minute import. DuckDB gives this
+   * connection the last committed snapshot, so it never observes a half-applied transaction.
+   */
+  readConnection: duckdb.Connection;
 }
 
 export function initializeDuckDbRoot(root: string): string {
@@ -139,7 +144,7 @@ export async function closeEncryptedDuckDbDatabase(database: EncryptedDuckDbData
 async function openDatabase(
   root: string,
   options: DuckDbOptions = {}
-): Promise<{ database: duckdb.Database; connection: duckdb.Connection }> {
+): Promise<EncryptedDuckDbDatabase> {
   const database = await new Promise<duckdb.Database>((resolvePromise, reject) => {
     const opened = new duckdb.Database(":memory:", {
       allow_community_extensions: "false",
@@ -162,16 +167,20 @@ async function openDatabase(
     });
   });
   const connection = database.connect();
-  await exec(connection, "SET TimeZone = 'UTC';");
+  const readConnection = database.connect();
+  // Configuration is locked once the database is attached, so both connections are set up here.
+  for (const target of [connection, readConnection]) {
+    await exec(target, "SET TimeZone = 'UTC';");
+  }
   await exec(
     connection,
     `SET allowed_directories = ['${assertDatabasePath(resolve(root, "temp"))}'];`
   );
-  return { database, connection };
+  return { database, connection, readConnection };
 }
 
 async function attachEncrypted(
-  database: { connection: duckdb.Connection },
+  database: EncryptedDuckDbDatabase,
   databasePath: string,
   key?: string,
   httpfsExtensionPath?: string
@@ -184,8 +193,14 @@ async function attachEncrypted(
     : "";
   await exec(
     database.connection,
-    `ATTACH '${assertDatabasePath(databasePath)}' AS poc${options}; USE poc; ` +
-      "SET enable_external_access = false; SET lock_configuration = true;"
+    `ATTACH '${assertDatabasePath(databasePath)}' AS poc${options}; USE poc;`
+  );
+  // `USE` is per-connection, so the read connection has to be pointed at the attached database
+  // before the configuration lock closes the door on further settings.
+  await exec(database.readConnection, "USE poc;");
+  await exec(
+    database.connection,
+    "SET enable_external_access = false; SET lock_configuration = true;"
   );
 }
 
@@ -232,9 +247,13 @@ function all(connection: duckdb.Connection, sql: string): Promise<Array<Record<s
 }
 
 async function closeDatabase(
-  database: { database: duckdb.Database; connection: duckdb.Connection },
+  database: EncryptedDuckDbDatabase,
   attached: boolean
 ): Promise<void> {
+  // The read connection has to let go of the attached database before it can be detached.
+  await new Promise<void>((resolvePromise, reject) => {
+    database.readConnection.close((error) => error ? reject(error) : resolvePromise());
+  });
   if (attached) {
     await exec(database.connection, "USE memory; DETACH poc;");
   }

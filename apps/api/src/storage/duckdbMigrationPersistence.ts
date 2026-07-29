@@ -11,7 +11,19 @@ import type {
 } from "@vitana/shared";
 import { convertMeasurementValue, findMeasurementType, normalizeMeasurementUnit } from "@vitana/shared";
 import { nextOrdinal } from "./duckdbCommands.js";
-import { allWithParams, insertObservationRows, json, optionalJsonValue, run } from "./duckdbRows.js";
+import {
+  replicaObservationUpsert,
+  replicaUpsert,
+  type ReplicaChangeInput
+} from "./duckdbReplicaChanges.js";
+import {
+  allWithParams,
+  insertObservationRows,
+  insertRows,
+  json,
+  optionalJsonValue,
+  run
+} from "./duckdbRows.js";
 
 interface MigrationContext {
   pairingId: string;
@@ -66,11 +78,23 @@ export async function startMobileMigration(
   };
 }
 
+export interface MobileMigrationBatchResult extends MobileMigrationBatchAcknowledgement {
+  replicaChanges: ReplicaChangeInput[];
+}
+
+/**
+ * Applies one migration batch.
+ *
+ * Every lookup is batched: existing rows are probed once per entity type, the session's alias table
+ * is loaded once into memory, ordinals are allocated in JS from a single starting value, and the
+ * canonical-duplicate check runs as one query over the whole batch. The earlier per-row version
+ * issued roughly six queries per observation, which dominated the first thing a tester does.
+ */
 export async function applyMobileMigrationBatch(
   connection: duckdb.Connection,
   context: MigrationContext,
   batch: MobileMigrationBatch
-): Promise<MobileMigrationBatchAcknowledgement> {
+): Promise<MobileMigrationBatchResult> {
   const session = await requireSession(connection, context.pairingId, batch.sessionId);
   if (session.status === "completed") throw requestError(409, "This migration is already complete.");
   const prior = await allWithParams(
@@ -79,7 +103,12 @@ export async function applyMobileMigrationBatch(
     batch.sessionId,
     batch.batchId
   );
-  if (prior.length) return parseJson(prior[0]?.acknowledgement) as MobileMigrationBatchAcknowledgement;
+  if (prior.length) {
+    return {
+      ...(parseJson(prior[0]?.acknowledgement) as MobileMigrationBatchAcknowledgement),
+      replicaChanges: []
+    };
+  }
 
   const acknowledgement: MobileMigrationBatchAcknowledgement = {
     sessionId: batch.sessionId,
@@ -88,154 +117,172 @@ export async function applyMobileMigrationBatch(
     duplicates: [],
     conflicts: []
   };
+  const replicaChanges: ReplicaChangeInput[] = [];
+  const aliases = await loadAliases(connection, batch.sessionId);
+  const newAliases: unknown[][] = [];
+  const rememberAlias = (entityType: string, sourceId: string, destinationId: string): void => {
+    aliases.set(aliasKey(entityType, sourceId), destinationId);
+    newAliases.push([batch.sessionId, entityType, sourceId, destinationId]);
+  };
+  const resolveAlias = (entityType: string, sourceId: string): string | undefined =>
+    aliases.get(aliasKey(entityType, sourceId));
 
+  // Naming columns keeps the raw import payload - potentially megabytes - off the dedupe probe.
+  const existingImports = await rowsById(
+    connection,
+    `SELECT id, source_kind, file_name, imported_at, parser_version, checksum, row_count, status, diagnostics
+     FROM imports`,
+    batch.sourceImports.map((entry) => entry.id)
+  );
+  const importsByIdentity = await rowsByKey(
+    connection,
+    "SELECT id, source_kind, file_name, checksum FROM imports",
+    "checksum",
+    batch.sourceImports.map((entry) => entry.checksum),
+    (row) => importIdentityKey(String(row.source_kind), String(row.file_name), String(row.checksum))
+  );
+  let importOrdinal = await nextOrdinal(connection, "imports", batch.sourceImports.length);
+  const importRows: unknown[][] = [];
   for (const entry of batch.sourceImports) {
-    // Naming columns keeps the raw import payload - potentially megabytes - off this dedupe probe.
-    const byId = await allWithParams(
-      connection,
-      `SELECT id, source_kind, file_name, imported_at, parser_version, checksum, row_count, status, diagnostics
-       FROM imports WHERE id = ? LIMIT 1;`,
-      entry.id
-    );
-    if (byId.length && !sameSourceImport(byId[0]!, entry)) {
+    const byId = existingImports.get(entry.id);
+    if (byId && !sameSourceImport(byId, entry)) {
       addConflict(acknowledgement, "sourceImport", entry.id, "An existing source import has the same ID but different content.");
       continue;
     }
-    const byIdentity = byId.length ? byId : await allWithParams(
-      connection,
-      "SELECT id FROM imports WHERE source_kind = ? AND file_name = ? AND checksum = ? LIMIT 1;",
-      entry.sourceKind,
-      entry.fileName,
-      entry.checksum
-    );
-    if (byIdentity.length) {
-      addDuplicate(acknowledgement, "sourceImport", entry.id, byId.length ? "exact-id" : "source-import-identity");
-      await saveAlias(connection, batch.sessionId, "sourceImport", entry.id, String(byIdentity[0]?.id));
+    const identityMatch = byId
+      ?? importsByIdentity.get(importIdentityKey(entry.sourceKind, entry.fileName, entry.checksum));
+    if (identityMatch) {
+      addDuplicate(acknowledgement, "sourceImport", entry.id, byId ? "exact-id" : "source-import-identity");
+      rememberAlias("sourceImport", entry.id, String(identityMatch.id));
       continue;
     }
-    await run(
-      connection,
-      "INSERT INTO imports VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
-      await nextOrdinal(connection, "imports"), entry.id, entry.sourceKind, entry.fileName, entry.importedAt,
+    importRows.push([
+      importOrdinal++, entry.id, entry.sourceKind, entry.fileName, entry.importedAt,
       entry.parserVersion, entry.checksum, entry.rowCount, entry.status, json(entry.diagnostics), null
-    );
-    await saveAlias(connection, batch.sessionId, "sourceImport", entry.id, entry.id);
+    ]);
+    rememberAlias("sourceImport", entry.id, entry.id);
+    replicaChanges.push(replicaUpsert("source-import", entry.id, entry));
     acknowledgement.counts.accepted++;
   }
+  await insertRows(connection, "imports", importRows);
 
+  const existingSources = await rowsById(
+    connection, "SELECT * FROM sources", batch.dataSources.map((entry) => entry.id));
+  let sourceOrdinal = await nextOrdinal(connection, "sources", batch.dataSources.length);
+  const sourceRows: unknown[][] = [];
   for (const entry of batch.dataSources) {
-    const importId = entry.importId
-      ? await resolveAlias(connection, batch.sessionId, "sourceImport", entry.importId)
-      : undefined;
+    const importId = entry.importId ? resolveAlias("sourceImport", entry.importId) : undefined;
     if (entry.importId && !importId) {
       addConflict(acknowledgement, "dataSource", entry.id, "Its source import has not been accepted.");
       continue;
     }
-    const existing = await allWithParams(connection, "SELECT * FROM sources WHERE id = ? LIMIT 1;", entry.id);
-    if (existing.length) {
-      if (!sameDataSource(existing[0]!, entry, importId)) {
+    const existing = existingSources.get(entry.id);
+    if (existing) {
+      if (!sameDataSource(existing, entry, importId)) {
         addConflict(acknowledgement, "dataSource", entry.id, "An existing data source has the same ID but different content.");
         continue;
       }
       addDuplicate(acknowledgement, "dataSource", entry.id, "exact-id");
-      await saveAlias(connection, batch.sessionId, "dataSource", entry.id, entry.id);
+      rememberAlias("dataSource", entry.id, entry.id);
       continue;
     }
-    await run(
-      connection,
-      "INSERT INTO sources VALUES (?, ?, ?, ?, ?, ?);",
-      await nextOrdinal(connection, "sources"), entry.id, entry.sourceKind, entry.label, importId ?? null, entry.createdAt
-    );
-    await saveAlias(connection, batch.sessionId, "dataSource", entry.id, entry.id);
+    sourceRows.push([
+      sourceOrdinal++, entry.id, entry.sourceKind, entry.label, importId ?? null, entry.createdAt
+    ]);
+    rememberAlias("dataSource", entry.id, entry.id);
+    replicaChanges.push(replicaUpsert("data-source", entry.id, entry));
     acknowledgement.counts.accepted++;
   }
+  await insertRows(connection, "sources", sourceRows);
 
+  const existingGroups = await rowsById(
+    connection, "SELECT * FROM observation_groups", batch.observationGroups.map((entry) => entry.id));
+  let groupOrdinal = await nextOrdinal(connection, "observation_groups", batch.observationGroups.length);
+  const groupRows: unknown[][] = [];
   for (const entry of batch.observationGroups) {
-    const sourceId = entry.sourceId
-      ? await resolveAlias(connection, batch.sessionId, "dataSource", entry.sourceId)
-      : undefined;
-    const importId = entry.importId
-      ? await resolveAlias(connection, batch.sessionId, "sourceImport", entry.importId)
-      : undefined;
+    const sourceId = entry.sourceId ? resolveAlias("dataSource", entry.sourceId) : undefined;
+    const importId = entry.importId ? resolveAlias("sourceImport", entry.importId) : undefined;
     if ((entry.sourceId && !sourceId) || (entry.importId && !importId)) {
       addConflict(acknowledgement, "observationGroup", entry.id, "A source dependency has not been accepted.");
       continue;
     }
-    const existing = await allWithParams(connection, "SELECT * FROM observation_groups WHERE id = ? LIMIT 1;", entry.id);
-    if (existing.length) {
-      if (!sameObservationGroup(existing[0]!, entry, sourceId, importId)) {
+    const existing = existingGroups.get(entry.id);
+    if (existing) {
+      if (!sameObservationGroup(existing, entry, sourceId, importId)) {
         addConflict(acknowledgement, "observationGroup", entry.id, "An existing observation group has the same ID but different content.");
         continue;
       }
       addDuplicate(acknowledgement, "observationGroup", entry.id, "exact-id");
-      await saveAlias(connection, batch.sessionId, "observationGroup", entry.id, entry.id);
+      rememberAlias("observationGroup", entry.id, entry.id);
       continue;
     }
-    await run(
-      connection,
-      "INSERT INTO observation_groups VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
-      await nextOrdinal(connection, "observation_groups"), entry.id, entry.kind, entry.label, sourceId ?? null,
+    groupRows.push([
+      groupOrdinal++, entry.id, entry.kind, entry.label, sourceId ?? null,
       importId ?? null, entry.startAt ?? null, entry.endAt ?? null, entry.collectedAt ?? null,
       optionalJsonValue(entry.metadata)
-    );
-    await saveAlias(connection, batch.sessionId, "observationGroup", entry.id, entry.id);
+    ]);
+    rememberAlias("observationGroup", entry.id, entry.id);
+    replicaChanges.push(replicaUpsert("observation-group", entry.id, entry));
     acknowledgement.counts.accepted++;
   }
+  await insertRows(connection, "observation_groups", groupRows);
 
+  const existingObservations = await rowsById(
+    connection, "SELECT * FROM observations", batch.observations.map((entry) => entry.id));
+  const duplicateCandidates = await loadDuplicateCandidates(connection, batch.observations);
+  const sourceIdentities = await loadSourceIdentities(
+    connection,
+    batch.observations.map((entry) => resolveAlias("dataSource", entry.sourceId)).filter(isDefined)
+  );
+  const pendingObservations: Array<MobileMigrationBatch["observations"][number] & {
+    sourceId: string;
+    observationGroupId?: string;
+  }> = [];
   for (const entry of batch.observations) {
-    const sourceId = await resolveAlias(connection, batch.sessionId, "dataSource", entry.sourceId);
+    const sourceId = resolveAlias("dataSource", entry.sourceId);
     const groupId = entry.observationGroupId
-      ? await resolveAlias(connection, batch.sessionId, "observationGroup", entry.observationGroupId)
+      ? resolveAlias("observationGroup", entry.observationGroupId)
       : undefined;
     if (!sourceId || (entry.observationGroupId && !groupId)) {
       addConflict(acknowledgement, "observation", entry.id, "A source dependency has not been accepted.");
       continue;
     }
-    const existing = await allWithParams(connection, "SELECT * FROM observations WHERE id = ? LIMIT 1;", entry.id);
-    if (existing.length) {
-      if (!sameObservation(existing[0]!, entry, sourceId, groupId)) {
+    const existing = existingObservations.get(entry.id);
+    if (existing) {
+      if (!sameObservation(existing, entry, sourceId, groupId)) {
         addConflict(acknowledgement, "observation", entry.id, "An existing observation has the same ID but different content.");
         continue;
       }
       addDuplicate(acknowledgement, "observation", entry.id, "exact-id");
       continue;
     }
-    const duplicateCandidates = await allWithParams(
-      connection,
-      `SELECT o.id, o.value, o.unit
-       FROM observations o
-       JOIN sources s ON s.id = o.source_id
-       LEFT JOIN imports i ON i.id = s.import_id
-       JOIN sources incoming_s ON incoming_s.id = ?
-       LEFT JOIN imports incoming_i ON incoming_i.id = incoming_s.import_id
-       WHERE o.measurement_code = ? AND o.observed_at = ? AND
-         COALESCE(o.effective_start, TIMESTAMP '1970-01-01') = COALESCE(?, TIMESTAMP '1970-01-01') AND
-         COALESCE(o.effective_end, TIMESTAMP '1970-01-01') = COALESCE(?, TIMESTAMP '1970-01-01') AND
-         (
-           s.id = incoming_s.id OR (
-             i.id IS NOT NULL AND incoming_i.id IS NOT NULL AND
-             s.source_kind = incoming_s.source_kind AND
-             i.file_name = incoming_i.file_name AND i.checksum = incoming_i.checksum
-           )
-         )
-       ;`,
-      sourceId, entry.measurementCode, entry.observedAt, entry.effectiveStart ?? null,
-      entry.effectiveEnd ?? null
-    );
-    if (duplicateCandidates.some((candidate) => sameCanonicalMeasurement(
-      entry.measurementCode,
-      Number(candidate.value),
-      String(candidate.unit),
-      entry.value,
-      entry.unit
-    ))) {
+    const incomingIdentity = sourceIdentities.get(sourceId);
+    const isDuplicate = (duplicateCandidates.get(entry.measurementCode) ?? []).some((candidate) =>
+      sameInstant(candidate.observed_at, entry.observedAt) &&
+      sameOptionalInstant(candidate.effective_start, entry.effectiveStart) &&
+      sameOptionalInstant(candidate.effective_end, entry.effectiveEnd) &&
+      sameOriginatingSource(candidate, sourceId, incomingIdentity) &&
+      sameCanonicalMeasurement(
+        entry.measurementCode,
+        Number(candidate.value),
+        String(candidate.unit),
+        entry.value,
+        entry.unit
+      ));
+    if (isDuplicate) {
       addDuplicate(acknowledgement, "observation", entry.id, "canonical-observation");
       continue;
     }
-    await insertObservationRows(connection, [{ ...entry, sourceId, observationGroupId: groupId }], await nextOrdinal(connection, "observations"));
+    pendingObservations.push({ ...entry, sourceId, ...(groupId ? { observationGroupId: groupId } : {}) });
     acknowledgement.counts.accepted++;
   }
+  const { inserted } = await insertObservationRows(
+    connection, pendingObservations, await nextOrdinal(connection, "observations", pendingObservations.length));
+  for (const observation of inserted) {
+    replicaChanges.push(...replicaObservationUpsert(observation));
+  }
 
+  await saveAliases(connection, newAliases);
   await run(
     connection,
     `INSERT INTO companion_migration_batches
@@ -251,7 +298,7 @@ export async function applyMobileMigrationBatch(
       observations: batch.observations.length
     })
   );
-  return acknowledgement;
+  return { ...acknowledgement, replicaChanges };
 }
 
 export async function completeMobileMigration(
@@ -328,38 +375,162 @@ async function requireSession(connection: duckdb.Connection, pairingId: string, 
   return rows[0]!;
 }
 
-async function saveAlias(
-  connection: duckdb.Connection,
-  sessionId: string,
-  entityType: string,
-  sourceId: string,
-  destinationId: string
-): Promise<void> {
-  await run(
-    connection,
-    "INSERT OR REPLACE INTO companion_migration_aliases VALUES (?, ?, ?, ?);",
-    sessionId,
-    entityType,
-    sourceId,
-    destinationId
-  );
+/** Writes the batch's newly minted aliases in one statement rather than one per accepted row. */
+async function saveAliases(connection: duckdb.Connection, rows: readonly unknown[][]): Promise<void> {
+  for (let index = 0; index < rows.length; index += maxInListSize) {
+    const chunk = rows.slice(index, index + maxInListSize);
+    await run(
+      connection,
+      `INSERT OR REPLACE INTO companion_migration_aliases VALUES ${
+        chunk.map(() => "(?, ?, ?, ?)").join(", ")};`,
+      ...chunk.flat()
+    );
+  }
 }
 
-async function resolveAlias(
+function aliasKey(entityType: string, sourceId: string): string {
+  return `${entityType}\u0000${sourceId}`;
+}
+
+async function loadAliases(
   connection: duckdb.Connection,
-  sessionId: string,
-  entityType: string,
-  sourceId: string
-): Promise<string | undefined> {
+  sessionId: string
+): Promise<Map<string, string>> {
   const rows = await allWithParams(
     connection,
-    `SELECT destination_id FROM companion_migration_aliases
-     WHERE session_id = ? AND entity_type = ? AND source_id = ? LIMIT 1;`,
-    sessionId,
-    entityType,
-    sourceId
+    "SELECT entity_type, source_id, destination_id FROM companion_migration_aliases WHERE session_id = ?;",
+    sessionId
   );
-  return rows[0]?.destination_id ? String(rows[0].destination_id) : undefined;
+  return new Map(rows.map((row) =>
+    [aliasKey(String(row.entity_type), String(row.source_id)), String(row.destination_id)]));
+}
+
+/** One `id IN (...)` probe per entity type instead of one `LIMIT 1` query per row. */
+async function rowsById(
+  connection: duckdb.Connection,
+  selectClause: string,
+  ids: readonly string[]
+): Promise<Map<string, Record<string, unknown>>> {
+  return rowsByKey(connection, selectClause, "id", ids, (row) => String(row.id));
+}
+
+async function rowsByKey(
+  connection: duckdb.Connection,
+  selectClause: string,
+  column: string,
+  values: readonly string[],
+  key: (row: Record<string, unknown>) => string
+): Promise<Map<string, Record<string, unknown>>> {
+  const distinct = [...new Set(values)];
+  const found = new Map<string, Record<string, unknown>>();
+  for (let index = 0; index < distinct.length; index += maxInListSize) {
+    const chunk = distinct.slice(index, index + maxInListSize);
+    const rows = await allWithParams(
+      connection,
+      `${selectClause} WHERE ${column} IN (${chunk.map(() => "?").join(", ")});`,
+      ...chunk
+    );
+    for (const row of rows) {
+      found.set(key(row), row);
+    }
+  }
+  return found;
+}
+
+const maxInListSize = 500;
+
+function importIdentityKey(sourceKind: string, fileName: string, checksum: string): string {
+  return `${sourceKind}\u0000${fileName}\u0000${checksum}`;
+}
+
+/**
+ * Fetches every stored observation that could canonically duplicate something in this batch, keyed
+ * by measurement code. Filtering on `measurement_code` alone lets the batch reuse the
+ * `observations(measurement_code, observed_at)` index while keeping the query count at one.
+ */
+async function loadDuplicateCandidates(
+  connection: duckdb.Connection,
+  observations: MobileMigrationBatch["observations"]
+): Promise<Map<string, Array<Record<string, unknown>>>> {
+  const candidates = new Map<string, Array<Record<string, unknown>>>();
+  const codes = [...new Set(observations.map((entry) => entry.measurementCode))];
+  const observedAt = [...new Set(observations.map((entry) => entry.observedAt))];
+  if (codes.length === 0) {
+    return candidates;
+  }
+  for (let index = 0; index < observedAt.length; index += maxInListSize) {
+    const instants = observedAt.slice(index, index + maxInListSize);
+    const rows = await allWithParams(
+      connection,
+      `SELECT o.id, o.measurement_code, o.observed_at, o.effective_start, o.effective_end,
+              o.value, o.unit, o.source_id, s.source_kind, i.file_name, i.checksum
+       FROM observations o
+       JOIN sources s ON s.id = o.source_id
+       LEFT JOIN imports i ON i.id = s.import_id
+       WHERE o.measurement_code IN (${codes.map(() => "?").join(", ")})
+         AND o.observed_at IN (${instants.map(() => "?").join(", ")});`,
+      ...codes,
+      ...instants
+    );
+    for (const row of rows) {
+      const code = String(row.measurement_code);
+      const existing = candidates.get(code);
+      if (existing) {
+        existing.push(row);
+      } else {
+        candidates.set(code, [row]);
+      }
+    }
+  }
+  return candidates;
+}
+
+interface SourceIdentity {
+  sourceKind: string;
+  fileName?: string;
+  checksum?: string;
+}
+
+async function loadSourceIdentities(
+  connection: duckdb.Connection,
+  sourceIds: readonly string[]
+): Promise<Map<string, SourceIdentity>> {
+  const rows = await rowsByKey(
+    connection,
+    "SELECT s.id, s.source_kind, i.file_name, i.checksum FROM sources s LEFT JOIN imports i ON i.id = s.import_id",
+    "s.id",
+    sourceIds,
+    (row) => String(row.id)
+  );
+  return new Map([...rows].map(([id, row]) => [id, {
+    sourceKind: String(row.source_kind),
+    ...(row.file_name == null ? {} : { fileName: String(row.file_name) }),
+    ...(row.checksum == null ? {} : { checksum: String(row.checksum) })
+  }]));
+}
+
+/**
+ * A stored observation counts as originating from the same place when it shares the incoming
+ * source row outright, or when both sides came from the same import file of the same kind.
+ */
+function sameOriginatingSource(
+  candidate: Record<string, unknown>,
+  incomingSourceId: string,
+  incoming: SourceIdentity | undefined
+): boolean {
+  if (String(candidate.source_id) === incomingSourceId) {
+    return true;
+  }
+  if (!incoming?.fileName || !incoming.checksum) {
+    return false;
+  }
+  return String(candidate.source_kind) === incoming.sourceKind &&
+    candidate.file_name != null && String(candidate.file_name) === incoming.fileName &&
+    candidate.checksum != null && String(candidate.checksum) === incoming.checksum;
+}
+
+function isDefined<T>(value: T | undefined): value is T {
+  return value !== undefined;
 }
 
 function addConflict(
