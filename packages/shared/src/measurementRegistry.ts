@@ -138,6 +138,49 @@ export function normalizeMeasurementUnit(type: MeasurementType, unit: string): s
   return normalized;
 }
 
+export type MeasurementRejectionReason = "invalid-value" | "unconvertible-unit";
+
+export type CanonicalMeasurement =
+  | { rejected: false; value: number; unit: string; sourceUnit?: string }
+  | { rejected: true; reason: MeasurementRejectionReason; code: string; unit: string };
+
+/**
+ * Normalizes a measurement onto its registry canonical unit before it reaches storage.
+ *
+ * Codes that resolve to a measurement type must be convertible - an unconvertible unit rejects
+ * that single row rather than silently persisting a value in unknown units. Codes with no type
+ * (the manual_* and body_comp_* codes minted by custom entry) are stored verbatim, because there
+ * is no canonical unit to normalize onto.
+ */
+export function canonicalizeMeasurement(
+  code: string,
+  value: number,
+  unit: string,
+  registry = defaultMeasurementTypes
+): CanonicalMeasurement {
+  if (!Number.isFinite(value)) {
+    return { rejected: true, reason: "invalid-value", code, unit };
+  }
+  const type = findMeasurementType(code, registry);
+  if (!type) {
+    return { rejected: false, value, unit };
+  }
+  const converted = convertMeasurementValue(value, type, unit, type.canonicalUnit);
+  if (converted === undefined || !Number.isFinite(converted)) {
+    return { rejected: true, reason: "unconvertible-unit", code, unit };
+  }
+  const alreadyCanonical = normalizeMeasurementUnit(type, unit) === normalizeMeasurementUnit(type, type.canonicalUnit);
+  return alreadyCanonical
+    ? { rejected: false, value: converted, unit: type.canonicalUnit }
+    : { rejected: false, value: converted, unit: type.canonicalUnit, sourceUnit: unit };
+}
+
+export function describeMeasurementRejection(rejection: Extract<CanonicalMeasurement, { rejected: true }>): string {
+  return rejection.reason === "invalid-value"
+    ? `${rejection.code}: value is not a finite number`
+    : `${rejection.code}: unit "${rejection.unit}" cannot be converted to the canonical unit`;
+}
+
 function conversionFactor(code: string, from: string, to: string): ((value: number) => number) | undefined {
   const reciprocal = (factor: number) => (value: number) => value * factor;
   if (from === "kg" && to === "lb") return reciprocal(2.2046226218);
@@ -155,8 +198,33 @@ function conversionFactor(code: string, from: string, to: string): ((value: numb
   if (from === "mg/dl" && to === "mmol/l") return reciprocal(1 / mgPerDlFactor(code));
   if (code === "hba1c" && from === "mmol/mol" && to === "%") return (value) => value * 0.09148 + 2.152;
   if (code === "hba1c" && from === "%" && to === "mmol/mol") return (value) => (value - 2.152) / 0.09148;
-  if (code === "hemoglobin" && from === "g/l" && to === "g/dl") return reciprocal(0.1);
-  if (code === "hemoglobin" && from === "g/dl" && to === "g/l") return reciprocal(10);
+  if (bodyWaterCodes.has(code) && from === "kg" && to === "l") return reciprocal(1);
+  if (bodyWaterCodes.has(code) && from === "l" && to === "kg") return reciprocal(1);
+  // Decilitre/litre and SI prefix steps are pure dimensional scaling, so they apply to every
+  // analyte rather than being special-cased per code.
+  const decilitre = decilitreFactor(from, to);
+  if (decilitre) return decilitre;
+  if (from === "nmol/l" && to === "µmol/l") return reciprocal(0.001);
+  if (from === "µmol/l" && to === "nmol/l") return reciprocal(1000);
+  if (from === "pmol/l" && to === "nmol/l") return reciprocal(0.001);
+  if (from === "nmol/l" && to === "pmol/l") return reciprocal(1000);
+  if (from === "l/l" && to === "%") return reciprocal(100);
+  if (from === "%" && to === "l/l") return reciprocal(0.01);
+  if (from === "min" && to === "sec") return reciprocal(60);
+  if (from === "sec" && to === "min") return reciprocal(1 / 60);
+  if (from === "g" && to === "kg") return reciprocal(0.001);
+  if (from === "kg" && to === "g") return reciprocal(1000);
+  return undefined;
+}
+
+/** Water density is 1 kg/L, so body-water volumes and masses are interchangeable. */
+const bodyWaterCodes = new Set(["total_body_water", "intracellular_water", "extracellular_water"]);
+
+function decilitreFactor(from: string, to: string): ((value: number) => number) | undefined {
+  for (const prefix of ["g", "mg", "µg", "ng"]) {
+    if (from === `${prefix}/l` && to === `${prefix}/dl`) return (value) => value * 0.1;
+    if (from === `${prefix}/dl` && to === `${prefix}/l`) return (value) => value * 10;
+  }
   return undefined;
 }
 

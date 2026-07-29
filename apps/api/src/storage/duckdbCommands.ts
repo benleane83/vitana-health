@@ -2,10 +2,12 @@ import type duckdb from "duckdb";
 import { createHash } from "node:crypto";
 import {
   careItemSchema,
+  canonicalizeMeasurement,
   completeCareItemInputSchema,
   createCareItemInputSchema,
   createHealthEventInputSchema,
   convertMeasurementValue,
+  describeMeasurementRejection,
   isHealthEventKind,
   insightSchema,
   profileSchema,
@@ -40,6 +42,7 @@ import { storageCounts } from "./duckdbProjections.js";
 import {
   all,
   allWithParams,
+  insertObservationRows,
   json,
   measurementTypeFromRow,
   observationFromRow,
@@ -275,14 +278,10 @@ export async function insertObservationRecord(
     return false;
   }
   const ordinal = await nextOrdinal(connection, "observations");
-  await run(
-    connection,
-    "INSERT INTO observations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
-    ordinal, observation.id, observation.measurementCode, observation.observedAt,
-    observation.effectiveStart ?? null, observation.effectiveEnd ?? null, observation.value, observation.unit,
-    observation.sourceId, observation.observationGroupId ?? null, observation.deviceId ?? null,
-    observation.note ?? null, observation.sourceJson !== undefined, optionalJsonValue(observation.sourceJson)
-  );
+  const { accepted, rejections } = await insertObservationRows(connection, [observation], ordinal);
+  if (accepted.length === 0) {
+    throw new RepositoryValidationError(rejections[0] ?? "Observation could not be stored.");
+  }
   return true;
 }
 
@@ -338,13 +337,20 @@ export async function updateObservation(
   if (!rows[0]) {
     return undefined;
   }
+  // Manual edits go through the same canonicalization as imports, otherwise editing a row could
+  // reintroduce a unit the aggregation views cannot sum.
+  const canonical = canonicalizeMeasurement(input.measurementCode, input.value, input.unit);
+  if (canonical.rejected) {
+    throw new RepositoryValidationError(describeMeasurementRejection(canonical));
+  }
   await run(
     connection,
-    `UPDATE observations SET measurement_code = ?, observed_at = ?, value = ?, unit = ?, note = ? WHERE id = ?;`,
+    `UPDATE observations SET measurement_code = ?, observed_at = ?, value = ?, unit = ?, source_unit = ?, note = ? WHERE id = ?;`,
     input.measurementCode,
     input.observedAt,
-    input.value,
-    input.unit,
+    canonical.value,
+    canonical.unit,
+    canonical.sourceUnit ?? null,
     input.note ?? null,
     id
   );

@@ -255,7 +255,7 @@ export const importCategoryOutcomeSchema = z.object({
   attempted: z.number().int().nonnegative(),
   accepted: z.number().int().nonnegative(),
   duplicates: z.number().int().nonnegative(),
-  evicted: z.literal(0)
+  rejected: z.number().int().nonnegative()
 }).strict();
 
 export const importMutationResponseSchema = z.object({

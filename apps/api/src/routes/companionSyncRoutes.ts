@@ -9,6 +9,7 @@ import type { PairingStore } from "../pairing.js";
 import type { AuthorizationPrincipal } from "../requestPrincipal.js";
 import { resolvePrincipalStore } from "../requestPrincipal.js";
 import type { ProfileStoreManager } from "../storage/profileStoreManager.js";
+import { ReplicaDeltaGapError } from "../storage/duckdbRetention.js";
 
 const pageQuerySchema = z.object({
   cursor: z.string().max(500).optional(),
@@ -107,7 +108,9 @@ export function makeCompanionSyncRoutes(
             })
       ));
     } catch (error) {
-      next(error);
+      next(error instanceof ReplicaDeltaGapError
+        ? requestError(409, "The change log no longer covers this cursor. Restart from a snapshot.")
+        : error);
     }
   });
 

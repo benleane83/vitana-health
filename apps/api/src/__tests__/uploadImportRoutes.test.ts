@@ -12,7 +12,7 @@ const ownerAuthorizationHeader = "Bearer " + ownerToken;
 let dataDir: string;
 
 function outcome() {
-  const empty = { attempted: 0, accepted: 0, duplicates: 0, evicted: 0 };
+  const empty = { attempted: 0, accepted: 0, duplicates: 0, rejected: 0 };
   return {
     sourceImport: empty,
     dataSource: empty,

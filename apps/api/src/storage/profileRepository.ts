@@ -59,7 +59,8 @@ export interface ImportCategoryOutcome {
   attempted: number;
   accepted: number;
   duplicates: number;
-  evicted: 0;
+  /** Rows dropped because their unit could not be reconciled with the measurement registry. */
+  rejected: number;
 }
 
 export interface ImportOutcome {

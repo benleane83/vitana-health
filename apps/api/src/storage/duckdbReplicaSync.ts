@@ -8,6 +8,7 @@ import {
   type ReplicaHighWaterMark
 } from "@vitana/shared";
 import { all, allWithParams, insertRows, json, run } from "./duckdbRows.js";
+import { oldestRetainedChangeSequence, ReplicaDeltaGapError } from "./duckdbRetention.js";
 
 export interface ReplicaEntity {
   entityType: ReplicaEntityType;
@@ -107,9 +108,7 @@ export async function recordReplicaEntityChanges(
     left.entityType.localeCompare(right.entityType) || left.entityId.localeCompare(right.entityId));
   await insertRows(
     connection,
-    `INSERT INTO companion_sync_changes
-     (sequence, revision, entity_type, entity_id, operation, payload, changed_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?);`,
+    "companion_sync_changes",
     ordered.map((change, index) => [
       state.nextSequence + index,
       revision,
@@ -162,8 +161,7 @@ export async function createReplicaSnapshot(
   );
   await insertRows(
     connection,
-    `INSERT INTO companion_sync_snapshot_entries
-     (snapshot_id, entry_index, entity_type, entity_id, payload) VALUES (?, ?, ?, ?, ?);`,
+    "companion_sync_snapshot_entries",
     replicaEntities(data).map((entity, entryIndex) => [
       snapshotId,
       entryIndex,
@@ -226,6 +224,13 @@ export async function readReplicaDeltaPage(
   limit: number
 ): Promise<StoredReplicaPage> {
   const current = await replicaHighWaterMark(connection);
+  // Retention trims the tail of the change log, so a device that has been offline for a long time
+  // can ask for a sequence that no longer exists. Failing loudly sends it back to a snapshot
+  // instead of handing it a page that silently skips the pruned changes.
+  const oldestRetained = await oldestRetainedChangeSequence(connection);
+  if (afterSequence > 0 && oldestRetained > afterSequence + 1) {
+    throw new ReplicaDeltaGapError(oldestRetained);
+  }
   const highWaterMark = highWaterSequence === undefined
     ? current
     : {

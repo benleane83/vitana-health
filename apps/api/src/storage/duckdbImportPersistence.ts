@@ -11,8 +11,10 @@ import type {
 import {
   all,
   allWithParams,
+  insertActivityRows,
   insertObservationRows,
   insertRows,
+  insertTimeSeriesSampleRows,
   json,
   optionalJsonValue,
   run
@@ -23,24 +25,25 @@ export async function mergeImport(
   parsed: ProfileImport
 ): Promise<ImportMutationResult> {
   const sourceImport = parsed.sourceImport;
+  const rejections: string[] = [];
   const sourceImportOutcome = await measureInsert(connection, "imports", 1, () =>
     insertImportIfNew(connection, sourceImport).then(() => undefined));
 
   const dataSourceOutcome = await measureInsert(connection, "sources", 1, async () =>
-    insertRows(connection, "INSERT OR IGNORE INTO sources VALUES (?, ?, ?, ?, ?, ?);", [[
+    insertRows(connection, "sources", [[
       await nextOrdinal(connection, "sources"),
       parsed.dataSource.id,
       parsed.dataSource.sourceKind,
       parsed.dataSource.label,
       parsed.dataSource.importId ?? null,
       parsed.dataSource.createdAt
-    ]]));
+    ]], { ignoreDuplicates: true }));
   const groupFirstOrdinal = await nextOrdinal(connection, "observation_groups");
   const observationGroupsOutcome = await measureInsert(
     connection,
     "observation_groups",
     parsed.observationGroups.length,
-    () => insertRows(connection, "INSERT OR IGNORE INTO observation_groups VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+    () => insertRows(connection, "observation_groups",
       parsed.observationGroups.map((entry, index) => [
         groupFirstOrdinal + index,
         entry.id,
@@ -52,14 +55,19 @@ export async function mergeImport(
         entry.endAt ?? null,
         entry.collectedAt ?? null,
         optionalJsonValue(entry.metadata)
-      ]))
+      ]), { ignoreDuplicates: true })
   );
 
   const observationsOutcome = await measureInsert(
     connection,
     "observations",
     parsed.observations.length,
-    async () => insertObservationRows(connection, parsed.observations, await nextOrdinal(connection, "observations"))
+    async () => {
+      const result = await insertObservationRows(
+        connection, parsed.observations, await nextOrdinal(connection, "observations"));
+      rejections.push(...result.rejections);
+      return result.rejections.length;
+    }
   );
 
   const sampleFirstOrdinal = await nextOrdinal(connection, "time_series_samples");
@@ -67,20 +75,12 @@ export async function mergeImport(
     connection,
     "time_series_samples",
     parsed.timeSeriesSamples.length,
-    () => insertRows(connection, "INSERT OR IGNORE INTO time_series_samples VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
-      parsed.timeSeriesSamples.map((entry, index) => [
-        sampleFirstOrdinal + index,
-        entry.id,
-        entry.measurementCode,
-        entry.startAt,
-        entry.endAt,
-        entry.value,
-        entry.unit,
-        entry.sourceId,
-        entry.deviceId ?? null,
-        entry.sourceJson !== undefined,
-        optionalJsonValue(entry.sourceJson)
-      ]))
+    async () => {
+      const result = await insertTimeSeriesSampleRows(
+        connection, parsed.timeSeriesSamples, sampleFirstOrdinal, { ignoreDuplicates: true });
+      rejections.push(...result.rejections);
+      return result.rejections.length;
+    }
   );
 
   const activityFirstOrdinal = await nextOrdinal(connection, "activities");
@@ -88,20 +88,7 @@ export async function mergeImport(
     connection,
     "activities",
     parsed.activitySessions.length,
-    () => insertRows(connection, "INSERT OR IGNORE INTO activities VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
-      parsed.activitySessions.map((entry, index) => [
-        activityFirstOrdinal + index,
-        entry.id,
-        entry.activityType,
-        entry.startAt,
-        entry.endAt ?? null,
-        entry.durationMinutes ?? null,
-        entry.energyKcal ?? null,
-        entry.distanceMeters ?? null,
-        entry.sourceId,
-        entry.sourceJson !== undefined,
-        optionalJsonValue(entry.sourceJson)
-      ]))
+    () => insertActivityRows(connection, parsed.activitySessions, activityFirstOrdinal, { ignoreDuplicates: true })
   );
 
   const outcome: ImportOutcome = {
@@ -112,6 +99,9 @@ export async function mergeImport(
     timeSeriesSamples: timeSeriesSamplesOutcome,
     activitySessions: activitySessionsOutcome
   };
+  if (rejections.length > 0) {
+    await recordImportRejections(connection, sourceImport, rejections);
+  }
   const auditEvent = await insertAudit(
     connection,
     "import-processed",
@@ -119,6 +109,28 @@ export async function mergeImport(
   );
   return { counts: await storageCounts(connection), outcome, auditEvent };
 }
+
+/**
+ * Rejections are only known after the measurement rows have been pushed through canonicalization,
+ * so they are folded into the already-written import row rather than held back.
+ */
+async function recordImportRejections(
+  connection: duckdb.Connection,
+  sourceImport: SourceImport,
+  rejections: string[]
+): Promise<void> {
+  const summarized = rejections.length > maxStoredRejections
+    ? [...rejections.slice(0, maxStoredRejections), `... and ${rejections.length - maxStoredRejections} more`]
+    : rejections;
+  await run(
+    connection,
+    "UPDATE imports SET diagnostics = ? WHERE id = ?;",
+    json([...sourceImport.diagnostics, ...summarized.map((entry) => `rejected ${entry}`)]),
+    sourceImport.id
+  );
+}
+
+const maxStoredRejections = 50;
 
 export interface ObservationImportPersistenceResult {
   count: number;
@@ -137,22 +149,28 @@ export async function importObservationRecords(
   const existingSources = await allWithParams(connection, "SELECT 1 AS found FROM sources WHERE id = ? LIMIT 1;", parsed.dataSource.id);
   const dataSourceInserted = existingSources.length === 0;
   if (dataSourceInserted) {
-    await run(
-      connection,
-      "INSERT INTO sources VALUES (?, ?, ?, ?, ?, ?);",
-      await nextOrdinal(connection, "sources"), parsed.dataSource.id, parsed.dataSource.sourceKind, parsed.dataSource.label,
-      parsed.dataSource.importId ?? null, parsed.dataSource.createdAt
-    );
+    await insertRows(connection, "sources", [[
+      await nextOrdinal(connection, "sources"),
+      parsed.dataSource.id,
+      parsed.dataSource.sourceKind,
+      parsed.dataSource.label,
+      parsed.dataSource.importId ?? null,
+      parsed.dataSource.createdAt
+    ]]);
   }
 
   const currentRows = await all(connection, "SELECT id FROM observations;");
   const currentIds = new Set(currentRows.map((row) => String(row.id)));
   const incomingById = new Map(parsed.observations.map((entry) => [entry.id, entry]));
   const additions = [...incomingById.values()].filter((entry) => !currentIds.has(entry.id));
-  await insertObservationRows(connection, additions, await nextOrdinal(connection, "observations"));
+  const { accepted, rejections } = await insertObservationRows(
+    connection, additions, await nextOrdinal(connection, "observations"));
+  if (rejections.length > 0) {
+    await recordImportRejections(connection, sourceImport, rejections);
+  }
   return {
-    count: additions.length,
-    observations: additions,
+    count: accepted.length,
+    observations: accepted,
     ...(sourceImportInserted ? { sourceImport } : {}),
     ...(dataSourceInserted ? { dataSource: parsed.dataSource } : {})
   };
@@ -169,9 +187,7 @@ async function insertImportIfNew(connection: duckdb.Connection, sourceImport: So
   if (duplicateImports.length > 0) {
     return false;
   }
-  await run(
-    connection,
-    "INSERT INTO imports VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+  await insertRows(connection, "imports", [[
     await nextOrdinal(connection, "imports"),
     sourceImport.id,
     sourceImport.sourceKind,
@@ -183,7 +199,7 @@ async function insertImportIfNew(connection: duckdb.Connection, sourceImport: So
     sourceImport.status,
     json(sourceImport.diagnostics),
     sourceImport.rawContent ?? null
-  );
+  ]]);
   return true;
 }
 
@@ -191,12 +207,12 @@ async function measureInsert(
   connection: duckdb.Connection,
   table: "imports" | "sources" | "observations" | "observation_groups" | "time_series_samples" | "activities",
   attempted: number,
-  insert: () => Promise<void>
+  insert: () => Promise<number | void>
 ): Promise<ImportCategoryOutcome> {
   const before = await tableCount(connection, table);
-  await insert();
+  const rejected = (await insert()) ?? 0;
   const accepted = (await tableCount(connection, table)) - before;
-  return { attempted, accepted, duplicates: attempted - accepted, evicted: 0 };
+  return { attempted, accepted, rejected, duplicates: attempted - accepted - rejected };
 }
 
 async function tableCount(connection: duckdb.Connection, table: string): Promise<number> {
@@ -206,7 +222,8 @@ async function tableCount(connection: duckdb.Connection, table: string): Promise
 
 function importAuditDetail(sourceKind: string, outcome: ImportOutcome): string {
   const categories = Object.entries(outcome)
-    .map(([category, result]) => `${category}: ${result.accepted} accepted, ${result.duplicates} duplicate(s), 0 evicted`)
+    .map(([category, result]) =>
+      `${category}: ${result.accepted} accepted, ${result.duplicates} duplicate(s), ${result.rejected} rejected`)
     .join("; ");
   return `${sourceKind} import committed. ${categories}.`;
 }

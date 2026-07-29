@@ -16,11 +16,29 @@ describe("insertObservationRows", () => {
 
     expect(run).toHaveBeenCalledTimes(3);
     expect(run.mock.calls[0][0]).not.toContain("json_each");
-    expect(run.mock.calls[0]).toHaveLength(14 * 214 + 2);
-    expect(run.mock.calls[1]).toHaveLength(14 * 214 + 2);
-    expect(run.mock.calls[2]).toHaveLength(14 * 73 + 2);
+    expect(run.mock.calls[0]).toHaveLength(15 * 200 + 2);
+    expect(run.mock.calls[1]).toHaveLength(15 * 200 + 2);
+    expect(run.mock.calls[2]).toHaveLength(15 * 101 + 2);
     expect(run.mock.calls[0][1]).toBe(100);
-    expect(run.mock.calls[2][1]).toBe(528);
+    expect(run.mock.calls[2][1]).toBe(500);
+  });
+
+  it("canonicalizes units and rejects rows the registry cannot convert", async () => {
+    const run = vi.fn((...args: unknown[]) => {
+      const callback = args.at(-1) as (error: Error | null) => void;
+      callback(null);
+    });
+    const connection = { run } as unknown as duckdb.Connection;
+
+    const result = await insertObservationRows(connection, [
+      observation(0),
+      { ...observation(1), measurementCode: "body_fat_pct", unit: "unknown" },
+      { ...observation(2), measurementCode: "manual_grip_comfort", unit: "score" }
+    ], 0);
+
+    expect(result.accepted.map((entry) => entry.unit)).toEqual(["beats/min", "score"]);
+    expect(result.rejections).toHaveLength(1);
+    expect(result.rejections[0]).toContain("body_fat_pct");
   });
 });
 

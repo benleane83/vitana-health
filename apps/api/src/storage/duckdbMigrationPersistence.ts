@@ -90,7 +90,13 @@ export async function applyMobileMigrationBatch(
   };
 
   for (const entry of batch.sourceImports) {
-    const byId = await allWithParams(connection, "SELECT * FROM imports WHERE id = ? LIMIT 1;", entry.id);
+    // Naming columns keeps the raw import payload - potentially megabytes - off this dedupe probe.
+    const byId = await allWithParams(
+      connection,
+      `SELECT id, source_kind, file_name, imported_at, parser_version, checksum, row_count, status, diagnostics
+       FROM imports WHERE id = ? LIMIT 1;`,
+      entry.id
+    );
     if (byId.length && !sameSourceImport(byId[0]!, entry)) {
       addConflict(acknowledgement, "sourceImport", entry.id, "An existing source import has the same ID but different content.");
       continue;

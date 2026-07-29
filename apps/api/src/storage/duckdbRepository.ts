@@ -35,6 +35,7 @@ import {
 import type { MeasurementDetailPage } from "../summary.js";
 import type { ClinicianReportSourceImport } from "../clinicianReport.js";
 import {
+  applyAnalyticalViews,
   closeEncryptedDuckDbDatabase,
   createDuckDbSchema,
   migrateDuckDbSchema,
@@ -42,6 +43,7 @@ import {
   type DuckDbOptions,
   type EncryptedDuckDbDatabase
 } from "./duckdbRuntime.js";
+import { pruneRetention } from "./duckdbRetention.js";
 import type { ImportMutationResult, MeasurementRegistryResetResult, ProfileImport, ProfileRepository } from "./profileRepository.js";
 import {
   reconcileDefaultMeasurementTypes,
@@ -201,6 +203,8 @@ export class DuckDbRepository implements ProfileRepository {
     const handle = await openEncryptedDuckDbDatabase(root, databasePath, key, options);
     try {
       await migrateDuckDbSchema(handle);
+      await applyAnalyticalViews(handle.connection);
+      await pruneRetention(handle.connection);
       const repository = new DuckDbRepository(handle, options.testHooks);
       await repository.reconcileDefaultMeasurementTypes();
       return repository;

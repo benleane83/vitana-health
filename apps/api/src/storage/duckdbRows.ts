@@ -1,10 +1,15 @@
 import type duckdb from "duckdb";
-import type {
-  HealthStoreData,
-  MeasurementType,
-  Observation,
-  Profile
+import {
+  canonicalizeMeasurement,
+  describeMeasurementRejection,
+  type ActivitySession,
+  type HealthStoreData,
+  type MeasurementType,
+  type Observation,
+  type Profile,
+  type TimeSeriesSample
 } from "@vitana/shared";
+import { selectColumns, tableColumns, type PersistedTable } from "./duckdbColumns.js";
 
 export type DuckDbRow = Record<string, unknown>;
 
@@ -37,30 +42,42 @@ export function allWithParams(
   });
 }
 
-export function orderedRows(connection: duckdb.Connection, table: string): Promise<DuckDbRow[]> {
-  return all(connection, `SELECT * EXCLUDE (ordinal) FROM ${table} ORDER BY ordinal;`);
+export function orderedRows(connection: duckdb.Connection, table: PersistedTable): Promise<DuckDbRow[]> {
+  return all(connection, `SELECT ${selectColumns(table, { excludeOrdinal: true })} FROM ${table} ORDER BY ordinal;`);
 }
 
-export async function insertRows(connection: duckdb.Connection, sql: string, rows: unknown[][]): Promise<void> {
+export interface InsertOptions {
+  /** Import paths tolerate re-submitted rows; export/restore paths want a hard failure instead. */
+  ignoreDuplicates?: boolean;
+}
+
+/**
+ * Bulk-inserts positional tuples against an explicit column list. Chunking keeps each statement
+ * inside DuckDB's parameter budget, and the string-character cap stops a handful of very large
+ * values (raw import payloads, source JSON) from producing an oversized statement.
+ */
+export async function insertRows(
+  connection: duckdb.Connection,
+  table: PersistedTable,
+  rows: readonly unknown[][],
+  options: InsertOptions = {}
+): Promise<void> {
   if (rows.length === 0) {
     return;
   }
-  const match = /^\s*(INSERT(?: OR IGNORE)? INTO .+ VALUES\s*)\(([^;]+)\);\s*$/s.exec(sql);
-  if (!match) {
-    throw new Error("DuckDB bulk insert received an unsupported SQL shape.");
+  const columns = tableColumns[table] as readonly string[];
+  if (rows.some((row) => row.length !== columns.length)) {
+    throw new Error(`DuckDB bulk insert into ${table} expects ${columns.length} values per row.`);
   }
-  const columnCount = rows[0].length;
-  if (columnCount < 1 || rows.some((row) => row.length !== columnCount)) {
-    throw new Error("DuckDB bulk insert rows must have a consistent positive column count.");
-  }
-  const maxChunkRows = Math.max(1, Math.floor(3_000 / columnCount));
+  const prefix = `INSERT${options.ignoreDuplicates ? " OR IGNORE" : ""} INTO ${table} (${columns.join(", ")}) VALUES `;
+  const rowPlaceholder = `(${columns.map(() => "?").join(", ")})`;
+  const maxChunkRows = Math.max(1, Math.floor(3_000 / columns.length));
   const maxChunkStringChars = 2_000_000;
-  const rowPlaceholder = `(${match[2]})`;
   for (let index = 0; index < rows.length;) {
     const chunk: unknown[][] = [];
     let chunkStringChars = 0;
     while (index < rows.length && chunk.length < maxChunkRows) {
-      const row = rows[index];
+      const row = rows[index]!;
       const rowStringChars = row.reduce<number>(
         (total, value) => total + (typeof value === "string" ? value.length : 0),
         0
@@ -68,42 +85,122 @@ export async function insertRows(connection: duckdb.Connection, sql: string, row
       if (chunk.length > 0 && chunkStringChars + rowStringChars > maxChunkStringChars) {
         break;
       }
-      chunk.push(row);
+      chunk.push(row as unknown[]);
       chunkStringChars += rowStringChars;
       index += 1;
     }
     await run(
       connection,
-      `${match[1]}${Array.from({ length: chunk.length }, () => rowPlaceholder).join(", ")};`,
+      `${prefix}${Array.from({ length: chunk.length }, () => rowPlaceholder).join(", ")};`,
       ...chunk.flat()
     );
   }
 }
 
+export interface MeasurementInsertResult<T> {
+  accepted: T[];
+  rejections: string[];
+}
+
 export async function insertObservationRows(
   connection: duckdb.Connection,
-  observations: Observation[],
+  observations: readonly Observation[],
   firstOrdinal: number
-): Promise<void> {
-  await insertRows(
-    connection,
-    "INSERT OR IGNORE INTO observations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
-    observations.map((entry, index) => [
-      firstOrdinal + index,
+): Promise<MeasurementInsertResult<Observation>> {
+  const rejections: string[] = [];
+  const accepted: Observation[] = [];
+  const rows: unknown[][] = [];
+  for (const entry of observations) {
+    const canonical = canonicalizeMeasurement(entry.measurementCode, entry.value, entry.unit);
+    if (canonical.rejected) {
+      rejections.push(describeMeasurementRejection(canonical));
+      continue;
+    }
+    accepted.push({ ...entry, value: canonical.value, unit: canonical.unit });
+    rows.push([
+      firstOrdinal + rows.length,
       entry.id,
       entry.measurementCode,
       entry.observedAt,
       entry.effectiveStart ?? null,
       entry.effectiveEnd ?? null,
-      entry.value,
-      entry.unit,
+      canonical.value,
+      canonical.unit,
       entry.sourceId,
       entry.observationGroupId ?? null,
       entry.deviceId ?? null,
       entry.note ?? null,
       entry.sourceJson !== undefined,
+      optionalJsonValue(entry.sourceJson),
+      canonical.sourceUnit ?? null
+    ]);
+  }
+  await insertRows(connection, "observations", rows, { ignoreDuplicates: true });
+  return { accepted, rejections };
+}
+
+export async function insertTimeSeriesSampleRows(
+  connection: duckdb.Connection,
+  samples: readonly TimeSeriesSample[],
+  firstOrdinal: number,
+  options: InsertOptions = {}
+): Promise<MeasurementInsertResult<TimeSeriesSample>> {
+  const rejections: string[] = [];
+  const accepted: TimeSeriesSample[] = [];
+  const rows: unknown[][] = [];
+  for (const entry of samples) {
+    const canonical = canonicalizeMeasurement(entry.measurementCode, entry.value, entry.unit);
+    if (canonical.rejected) {
+      rejections.push(describeMeasurementRejection(canonical));
+      continue;
+    }
+    accepted.push({ ...entry, value: canonical.value, unit: canonical.unit });
+    rows.push([
+      firstOrdinal + rows.length,
+      entry.id,
+      entry.measurementCode,
+      entry.startAt,
+      entry.endAt,
+      canonical.value,
+      canonical.unit,
+      entry.sourceId,
+      entry.deviceId ?? null,
+      entry.sourceJson !== undefined,
+      optionalJsonValue(entry.sourceJson),
+      canonical.sourceUnit ?? null
+    ]);
+  }
+  await insertRows(connection, "time_series_samples", rows, options);
+  return { accepted, rejections };
+}
+
+/**
+ * Activity metrics have no unit column - duration is always minutes, energy always kcal and
+ * distance always metres - so there is nothing to canonicalize here.
+ */
+export async function insertActivityRows(
+  connection: duckdb.Connection,
+  activities: readonly ActivitySession[],
+  firstOrdinal: number,
+  options: InsertOptions = {}
+): Promise<void> {
+  await insertRows(
+    connection,
+    "activities",
+    activities.map((entry, index) => [
+      firstOrdinal + index,
+      entry.id,
+      entry.activityType,
+      entry.startAt,
+      entry.endAt ?? null,
+      entry.durationMinutes ?? null,
+      entry.energyKcal ?? null,
+      entry.distanceMeters ?? null,
+      entry.sourceId,
+      entry.sourceJson !== undefined,
       optionalJsonValue(entry.sourceJson)
-    ])
+    ]),
+    options
   );
 }
 

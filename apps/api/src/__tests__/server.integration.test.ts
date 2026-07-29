@@ -136,8 +136,8 @@ describe("POST /api/import/health-connect — auth middleware", () => {
       expect(manual.status).toBe(201);
       expect(manual.body).toMatchObject({
         outcome: {
-          observations: { attempted: 1, accepted: 1, duplicates: 0, evicted: 0 },
-          observationGroups: { attempted: 1, accepted: 1, duplicates: 0, evicted: 0 }
+          observations: { attempted: 1, accepted: 1, duplicates: 0, rejected: 0 },
+          observationGroups: { attempted: 1, accepted: 1, duplicates: 0, rejected: 0 }
         },
         import: { sourceKind: "manual-entry" }
       });
@@ -160,8 +160,8 @@ describe("POST /api/import/health-connect — auth middleware", () => {
       .send(minimalHealthConnectPayload);
     expect(first.status).toBe(201);
     expect(first.body.outcome).toMatchObject({
-      sourceImport: { attempted: 1, accepted: 1, duplicates: 0, evicted: 0 },
-      dataSource: { attempted: 1, accepted: 1, duplicates: 0, evicted: 0 }
+      sourceImport: { attempted: 1, accepted: 1, duplicates: 0, rejected: 0 },
+      dataSource: { attempted: 1, accepted: 1, duplicates: 0, rejected: 0 }
     });
 
     const repeated = await request(app)
@@ -170,8 +170,8 @@ describe("POST /api/import/health-connect — auth middleware", () => {
       .send(minimalHealthConnectPayload);
     expect(repeated.status).toBe(201);
     expect(repeated.body.outcome).toMatchObject({
-      sourceImport: { attempted: 1, accepted: 0, duplicates: 1, evicted: 0 },
-      dataSource: { attempted: 1, accepted: 0, duplicates: 1, evicted: 0 }
+      sourceImport: { attempted: 1, accepted: 0, duplicates: 1, rejected: 0 },
+      dataSource: { attempted: 1, accepted: 0, duplicates: 1, rejected: 0 }
     });
   });
 

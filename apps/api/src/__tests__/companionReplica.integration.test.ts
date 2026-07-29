@@ -53,7 +53,7 @@ describe("encrypted DuckDB companion replica", () => {
       const createdCareItem = await repository.createCareItem({
         title: "Book follow-up",
         kind: "follow-up",
-        dueStart: "2026-08-01",
+        dueStart: "2026-08-01T00:00:00.000Z",
         priority: "normal",
         status: "open"
       });

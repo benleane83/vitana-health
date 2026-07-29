@@ -1251,9 +1251,26 @@ function unitAliasesFor(type: MeasurementType): Record<string, string[]> {
       "mg/dL": ["mg/dl", "mg / dl"],
       "mmol/L": ["mmol/l", "mmol / l"],
       "µmol/L": ["μmol/l", "umol/l", "µmol/l"],
-      "g/dL": ["g/dl"],
+      "g/dL": ["g/dl", "g / dl"],
       "g/L": ["g/l"],
-      "%": ["percent"]
+      "%": ["percent"],
+      "beats/min": ["bpm", "beats per minute", "count/min"],
+      "breaths/min": ["breaths per minute"],
+      "kcal/day": ["kcal", "kcal/d", "cal/day"],
+      "µg/L": ["ug/L", "mcg/L", "ng/mL"],
+      "×10⁹/L": ["10^9/L", "10⁹/L", "x10^9/L", "10³/µL", "10^3/uL", "10³/uL", "10*3/uL", "K/uL"],
+      "×10¹²/L": ["10^12/L", "10¹²/L", "x10^12/L", "10⁶/µL", "10^6/uL", "10*6/uL", "M/uL"],
+      "U/L": ["IU/L"],
+      "mIU/L": ["µIU/mL", "uIU/mL"],
+      "kg/m2": ["kg/m²"],
+      cm2: ["cm²"],
+      "g/cm2": ["g/cm²"],
+      "mL/min/1.73m2": ["mL/min/1.73m²", "mL/min/1.73 m2"],
+      "L/L": ["l/l", "ratio"],
+      min: ["minute", "minutes", "mins"],
+      sec: ["s", "second", "seconds"],
+      m: ["meter", "meters", "metre", "metres"],
+      count: ["steps", "count/day"]
     };
     const preferred = type.preferredUnits?.imperial;
     return Object.fromEntries(
@@ -1268,6 +1285,6 @@ function imperialUnitFor(type: MeasurementType): string | undefined {
     if (type.canonicalUnit === "L" && type.category === "body") return "fl oz";
     if (type.code === "glucose" || type.code === "total_cholesterol" || type.code === "hdl_cholesterol" || type.code === "ldl_cholesterol" || type.code === "triglycerides" || type.code === "creatinine" || type.code === "uric_acid") return "mg/dL";
     if (type.code === "hba1c") return "%";
-    if (type.code === "hemoglobin") return "g/dL";
+    if (type.code === "haemoglobin") return "g/dL";
     return undefined;
 }

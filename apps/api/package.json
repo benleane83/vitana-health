@@ -16,6 +16,7 @@
     "test": "vitest run",
     "start": "node dist/server.js",
     "export:profiles": "tsx src/dev/exportProfiles.ts",
+    "import:profiles": "tsx src/dev/importProfiles.ts",
     "prepare:duckdb": "node ../../scripts/prepare-duckdb-httpfs.mjs --output ../desktop/build/duckdb-extensions"
   },
   "dependencies": {

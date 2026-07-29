@@ -153,7 +153,7 @@ describe("createApiClient", () => {
         },
         outcome: Object.fromEntries([
           "sourceImport", "dataSource", "observations", "observationGroups", "timeSeriesSamples", "activitySessions"
-        ].map((key) => [key, { attempted: 0, accepted: 0, duplicates: 0, evicted: 0 }]))
+        ].map((key) => [key, { attempted: 0, accepted: 0, duplicates: 0, rejected: 0 }]))
       });
     };
 
@@ -282,7 +282,7 @@ describe("createApiClient", () => {
         },
         outcome: Object.fromEntries([
           "sourceImport", "dataSource", "observations", "observationGroups", "timeSeriesSamples", "activitySessions"
-        ].map((key) => [key, { attempted: 0, accepted: 0, duplicates: 0, evicted: 0 }]))
+        ].map((key) => [key, { attempted: 0, accepted: 0, duplicates: 0, rejected: 0 }]))
       });
     };
     const client = createApiClient(transport);
