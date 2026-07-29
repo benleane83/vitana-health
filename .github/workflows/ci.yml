@@ -19,7 +19,6 @@ jobs:
   typecheck-and-build:
     name: Typecheck & build
     runs-on: ubuntu-latest
-    if: github.event_name != 'push'
     permissions:
       contents: read
 
@@ -50,7 +49,6 @@ jobs:
     name: Core tests
     runs-on: ubuntu-latest
     needs: typecheck-and-build
-    if: github.event_name != 'push'
     permissions:
       contents: read
 
@@ -82,12 +80,17 @@ jobs:
       - name: Run desktop tests
         run: npm run test:desktop
 
-  post-merge-storage-validation:
-    name: Post-merge storage validation
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push'
+  # ─── Storage validation (integration + durability, real encrypted DuckDB) ────
+  storage-validation:
+    name: Storage validation
+    # Windows is the only platform with a pinned httpfs extension SHA, so the
+    # encrypted-DuckDB suites can only run for real here.
+    runs-on: windows-2022
     permissions:
       contents: read
+    env:
+      # Turns a missing extension into a hard failure instead of a silent skip.
+      VITANA_REQUIRE_DUCKDB: "1"
 
     steps:
       - name: Checkout
@@ -105,14 +108,16 @@ jobs:
       - name: Install DuckDB native binding
         run: npm rebuild duckdb
 
+      - name: Prepare DuckDB encryption extension
+        run: npm run prepare:duckdb -w @vitana/api
+
       - name: Build shared packages (required by tests)
         run: |
           npm run build -w packages/shared
           npm run build -w packages/api-client
 
-      # Disabled integration tests - not working in CI currently due to DuckDB dependencies
-      # - name: Run integration tests
-      #   run: npm run test:integration
+      - name: Run integration tests
+        run: npm run test:integration
 
       - name: Run durability tests
         run: npm run test:durability
@@ -121,7 +126,6 @@ jobs:
   audit:
     name: Dependency audit
     runs-on: ubuntu-latest
-    if: github.event_name != 'push'
     permissions:
       contents: read
 

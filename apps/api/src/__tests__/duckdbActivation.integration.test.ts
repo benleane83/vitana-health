@@ -7,6 +7,7 @@ import { describeAnalyticsStorage, runAnalyticsQuery } from "../storage/analytic
 import { ProfileStoreManager } from "../storage/profileStoreManager.js";
 import { RestoreJournal } from "../storage/restoreJournal.js";
 import { createDuckDbHealthStoreFixture } from "./support/duckdbFixture.js";
+import { findPreparedExtension } from "./support/duckdbExtension.js";
 
 const httpfsExtensionPath = findPreparedExtension();
 let tempDir: string;
@@ -177,12 +178,4 @@ function openManager(): Promise<ProfileStoreManager> {
     storageBackend: "duckdb",
     duckdb: { httpfsExtensionPath: httpfsExtensionPath!, root: duckdbRoot }
   });
-}
-
-function findPreparedExtension(): string | undefined {
-  return [
-    process.env.VITANA_DUCKDB_HTTPFS_EXTENSION,
-    resolve(process.cwd(), "apps", "desktop", "build", "duckdb-extensions", "httpfs.duckdb_extension"),
-    resolve(process.cwd(), "..", "desktop", "build", "duckdb-extensions", "httpfs.duckdb_extension")
-  ].find((candidate): candidate is string => Boolean(candidate && existsSync(candidate)));
 }

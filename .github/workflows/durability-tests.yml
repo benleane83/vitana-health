@@ -13,6 +13,8 @@ jobs:
     runs-on: windows-2022
     permissions:
       contents: read
+    env:
+      VITANA_REQUIRE_DUCKDB: "1"
 
     steps:
       - name: Checkout

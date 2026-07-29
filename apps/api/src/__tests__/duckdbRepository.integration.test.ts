@@ -28,6 +28,7 @@ import { createDuckDbHealthStoreFixture } from "./support/duckdbFixture.js";
 import { DuckDbRepository, digestHealthStoreData } from "../storage/duckdbRepository.js";
 import { all } from "../storage/duckdbRows.js";
 import { buildClinicianReport } from "../clinicianReport.js";
+import { findPreparedExtension } from "./support/duckdbExtension.js";
 
 const httpfsExtensionPath = findPreparedExtension();
 const key = Buffer.alloc(32, 7).toString("base64");
@@ -1442,14 +1443,6 @@ function querySql(
   return new Promise((resolvePromise, reject) => {
     connection.all(sql, (error, rows) => error ? reject(error) : resolvePromise((rows ?? []) as Array<Record<string, unknown>>));
   });
-}
-
-function findPreparedExtension(): string | undefined {
-  return [
-    process.env.VITANA_DUCKDB_HTTPFS_EXTENSION,
-    resolve(process.cwd(), "apps", "desktop", "build", "duckdb-extensions", "httpfs.duckdb_extension"),
-    resolve(process.cwd(), "..", "desktop", "build", "duckdb-extensions", "httpfs.duckdb_extension")
-  ].find((candidate): candidate is string => Boolean(candidate && existsSync(candidate)));
 }
 
 function hashFile(path: string): string {

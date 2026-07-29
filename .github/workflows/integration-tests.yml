@@ -1,24 +1,18 @@
+# Integration tests also run on every push/PR via the `storage-validation` job in
+# ci.yml. This workflow stays as a manual escape hatch for re-running them alone.
 name: Integration tests
 
 on:
- # push:
- #   branches: [main]
- # pull_request:
- #   paths:
- #     - "apps/api/**"
- #     - "apps/web/**"
- #     - "packages/shared/**"
- #     - "package.json"
- #     - "package-lock.json"
- #     - "vitest*.config.ts"
- #     - ".github/workflows/integration-tests.yml"
   workflow_dispatch:
 
 jobs:
   integration:
-    runs-on: ubuntu-latest
+    # Windows is the only platform with a pinned httpfs extension SHA.
+    runs-on: windows-2022
     permissions:
       contents: read
+    env:
+      VITANA_REQUIRE_DUCKDB: "1"
 
     steps:
       - name: Checkout
@@ -40,7 +34,9 @@ jobs:
         run: npm run prepare:duckdb -w @vitana/api
 
       - name: Build shared package
-        run: npm run build -w packages/shared
+        run: |
+          npm run build -w packages/shared
+          npm run build -w packages/api-client
 
       - name: Run integration tests
         run: npm run test:integration

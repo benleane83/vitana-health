@@ -29,12 +29,24 @@ test("Windows smoke health waits use a wall-clock deadline and bounded requests"
   assert.doesNotMatch(script, /for \(\$elapsedSeconds = 0; \$elapsedSeconds -lt \$effectiveHealthTimeoutSeconds/);
 });
 
-test("Windows releases use fast smoke coverage and retain failure evidence", () => {
+test("Windows releases are gated on tests, use full smoke coverage, and stage a draft", () => {
   const workflow = readFileSync(new URL("../.github/workflows/release-windows.yml", import.meta.url), "utf8");
 
-  assert.match(workflow, /-Scope Fast/);
+  // A release must never be cut from a red tree.
+  assert.match(workflow, /run: npm run validate:fast/);
+  assert.match(workflow, /npm run test:integration/);
+  assert.match(workflow, /npm run test:durability/);
+  assert.match(workflow, /npm run prepare:duckdb -w @vitana\/api/);
+
+  // Full scope exercises the upgrade-over-existing-data path.
+  assert.match(workflow, /-Scope Full/);
+  assert.doesNotMatch(workflow, /-Scope Fast/);
   assert.match(workflow, /-HealthTimeoutSeconds 60/);
   assert.match(workflow, /- name: Upload preview update assets and evidence\s+if: always\(\)/);
+
+  // Publishing is a deliberate manual step, and a live release is never clobbered.
+  assert.match(workflow, /gh release create \$env:GITHUB_REF_NAME \$files --draft/);
+  assert.match(workflow, /if \(-not \$release\.isDraft\)/);
 });
 
 test("Store smoke uses AppX package lifecycle and captures package diagnostics", () => {

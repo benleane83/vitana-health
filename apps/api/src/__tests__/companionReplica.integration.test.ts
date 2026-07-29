@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DuckDbRepository } from "../storage/duckdbRepository.js";
 import { initializeDuckDbRoot } from "../storage/duckdbRuntime.js";
 import { createDuckDbHealthStoreFixture } from "./support/duckdbFixture.js";
+import { findPreparedExtension } from "./support/duckdbExtension.js";
 
 const httpfsExtensionPath = findPreparedExtension();
 const key = Buffer.alloc(32, 19).toString("base64");
@@ -161,11 +162,3 @@ describe("encrypted DuckDB companion replica", () => {
     }
   });
 });
-
-function findPreparedExtension(): string | undefined {
-  const candidates = [
-    process.env.DUCKDB_EXTENSION_PATH,
-    resolve("data", "duckdb-poc", "extensions", "httpfs.duckdb_extension")
-  ];
-  return candidates.find((candidate): candidate is string => Boolean(candidate && existsSync(candidate)));
-}

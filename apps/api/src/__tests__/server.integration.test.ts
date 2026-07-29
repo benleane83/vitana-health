@@ -7,6 +7,7 @@ import { ProfileStoreManager } from "../storage/profileStoreManager.js";
 import { PairingStore } from "../pairing.js";
 import { createApp } from "../createApp.js";
 import { buildManualLabEntryImport, defaultMeasurementTypes } from "@vitana/shared";
+import { requirePreparedExtension } from "./support/duckdbExtension.js";
 
 let tempDir: string;
 let storeManager: ProfileStoreManager;
@@ -16,11 +17,7 @@ let app: any;
 const ownerToken = "test-owner-token-for-server-tests";
 const ownerAuthorization = "Bearer " + ownerToken;
 
-const httpfsExtensionPath = [
-  process.env.VITANA_DUCKDB_HTTPFS_EXTENSION,
-  resolve(process.cwd(), "apps", "desktop", "build", "duckdb-extensions", "httpfs.duckdb_extension"),
-  resolve(process.cwd(), "..", "desktop", "build", "duckdb-extensions", "httpfs.duckdb_extension")
-].find((candidate): candidate is string => Boolean(candidate && existsSync(candidate)));
+const httpfsExtensionPath = requirePreparedExtension();
 
 beforeEach(async () => {
   tempDir = mkdtempSync(join(tmpdir(), "vitana-server-test-"));
@@ -28,9 +25,6 @@ beforeEach(async () => {
   process.env.VITANA_SECRET = "test-secret-for-server-tests-1234";
   process.env.VITANA_OWNER_TOKEN = ownerToken;
 
-  if (!httpfsExtensionPath) {
-    throw new Error("Prepared DuckDB httpfs extension is required for API tests.");
-  }
   storeManager = await ProfileStoreManager.open({
     storageBackend: "duckdb",
     duckdb: { httpfsExtensionPath, root: join(tempDir, "duckdb-storage") }

@@ -15,6 +15,7 @@
     "pretest": "npm run build -w @vitana/shared",
     "test": "vitest run",
     "start": "node dist/server.js",
+    "export:profiles": "tsx src/dev/exportProfiles.ts",
     "prepare:duckdb": "node ../../scripts/prepare-duckdb-httpfs.mjs --output ../desktop/build/duckdb-extensions"
   },
   "dependencies": {

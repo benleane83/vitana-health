@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { initializeDuckDbRoot } from "../storage/duckdbRuntime.js";
 import { DuckDbRepository } from "../storage/duckdbRepository.js";
 import { createDuckDbHealthStoreFixture } from "./support/duckdbFixture.js";
+import { findPreparedExtension } from "./support/duckdbExtension.js";
 
 const httpfsExtensionPath = findPreparedExtension();
 const workerPath = fileURLToPath(new URL("./support/duckdbCrashWorker.ts", import.meta.url));
@@ -80,11 +81,4 @@ function terminate(child: ChildProcess): Promise<void> {
     child.once("exit", () => resolvePromise());
     if (!child.kill()) reject(new Error("Failed to terminate DuckDB crash worker."));
   });
-}
-
-function findPreparedExtension(): string | undefined {
-  return [
-    process.env.VITANA_DUCKDB_HTTPFS_EXTENSION,
-    resolve(process.cwd(), "apps", "desktop", "build", "duckdb-extensions", "httpfs.duckdb_extension")
-  ].find((candidate): candidate is string => Boolean(candidate && existsSync(candidate)));
 }
