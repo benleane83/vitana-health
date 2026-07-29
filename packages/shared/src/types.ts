@@ -210,7 +210,7 @@ export interface HealthEventReference {
 }
 export interface CareItem {
   id: string;
-  kind: string;
+  kind: CareItemKind;
   code?: string;
   title: string;
   dueStart?: string;
@@ -235,50 +235,10 @@ export interface PaginatedResult<T> extends CarePagination {
   items: T[];
 }
 
-export interface HealthEventListQuery {
-  limit?: number;
-  offset?: number;
-  search?: string;
-  kind?: HealthEventKind;
-  status?: HealthEventStatus;
-  occurredFrom?: string;
-  occurredTo?: string;
-  includeId?: string;
-}
-
-export interface CareItemListQuery {
-  limit?: number;
-  offset?: number;
-  search?: string;
-  kind?: CareItemKind;
-  status?: CareItemStatus;
-  priority?: CareItemPriority;
-  dueFrom?: string;
-  dueTo?: string;
-  includeId?: string;
-}
-
-export interface CreateHealthEventInput {
-  kind: HealthEventKind;
-  status: HealthEventStatus;
-  occurredAt: string;
-  provider?: string;
-  notes?: string;
-}
-
-export type UpdateHealthEventInput = CreateHealthEventInput;
-
-export interface CreateCareItemInput {
-  title: string;
-  kind: CareItemKind;
-  dueStart?: string;
-  reminderAt?: string;
-  priority: CareItemPriority;
-  status: CareItemStatus;
-  notes?: string;
-}
-
-export type UpdateCareItemInput = CreateCareItemInput;
+/**
+ * Query and mutation input shapes live with their zod schemas in `apiContract.ts` and are derived
+ * from them with `z.infer`, so the validator and the type cannot drift apart.
+ */
 
 export interface HealthEventMutationResponse {
   healthEvent: HealthEvent;
@@ -288,11 +248,6 @@ export interface HealthEventMutationResponse {
 export interface CareItemMutationResponse {
   careItem: CareItem;
   counts: AppBootstrap["counts"];
-}
-
-export interface CompleteCareItemInput {
-  occurredAt: string;
-  kind: HealthEventKind;
 }
 
 export interface CompleteCareItemResponse {
@@ -453,14 +408,6 @@ export interface Observation {
   deviceId?: string;
   note?: string;
   sourceJson?: unknown;
-}
-
-export interface UpdateObservationInput {
-  measurementCode: string;
-  observedAt: string;
-  value: number;
-  unit: string;
-  note?: string;
 }
 
 export interface UpdateObservationResponse {

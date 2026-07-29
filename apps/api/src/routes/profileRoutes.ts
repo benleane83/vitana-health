@@ -1,7 +1,22 @@
 import express from "express";
 import { z } from "zod";
 import type { ProfileStoreManager } from "../storage/profileStoreManager.js";
-import { profilePhotoUploadSchema, type MeasurementRegistryResetResponse, type Profile } from "@vitana/shared";
+import {
+  assignedProfilesResponseSchema,
+  cloudAiConsentResponseSchema,
+  measurementRegistryResetResponseSchema,
+  profileDeleteResponseSchema,
+  profileIdResponseSchema,
+  profileListEntrySchema,
+  profilePhotoDeleteResponseSchema,
+  profilePhotoResponseSchema,
+  profilePhotoUploadSchema,
+  profileResponseSchema,
+  profilesResponseSchema,
+  type MeasurementRegistryResetResponse,
+  type Profile
+} from "@vitana/shared";
+import { sendJson } from "./sendJson.js";
 import type { PairingStore } from "../pairing.js";
 import type { AuthorizationPrincipal } from "../createApp.js";
 import { resolvePrincipalStore } from "../requestPrincipal.js";
@@ -93,7 +108,7 @@ export function makeProfileRoutes(storeManager: ProfileStoreManager): express.Ro
         response.status(404).json({ error: "Profile photo not found.", code: "PROFILE_PHOTO_NOT_FOUND" });
         return;
       }
-      response.json({
+      sendJson(response, profilePhotoResponseSchema, {
         contentType: photo.contentType,
         contentBase64: photo.bytes.toString("base64"),
         revision: photo.revision,
@@ -113,7 +128,7 @@ export function makeProfileRoutes(storeManager: ProfileStoreManager): express.Ro
       const store = storeManager.getActiveStore();
       const photo = await store.replaceProfilePhoto(payload.contentType, bytes);
       storeManager.syncProfilePhotoMetadata(store.profileId, photo);
-      response.json({
+      sendJson(response, profilePhotoResponseSchema, {
         contentType: photo.contentType,
         contentBase64: photo.bytes.toString("base64"),
         revision: photo.revision,
@@ -134,7 +149,7 @@ export function makeProfileRoutes(storeManager: ProfileStoreManager): express.Ro
         return;
       }
       storeManager.syncProfilePhotoMetadata(store.profileId);
-      response.json({ deleted: true });
+      sendJson(response, profilePhotoDeleteResponseSchema, { deleted: true });
     } catch (error) {
       next(error);
     }
@@ -142,7 +157,7 @@ export function makeProfileRoutes(storeManager: ProfileStoreManager): express.Ro
 
   router.get("/", async (_request, response, next) => {
     try {
-      response.json(await storeManager.getActiveStore().getProfile());
+      sendJson(response, profileResponseSchema, await storeManager.getActiveStore().getProfile());
     } catch (error) {
       next(error);
     }
@@ -161,7 +176,7 @@ export function makeProfileRoutes(storeManager: ProfileStoreManager): express.Ro
       };
       const saved = await store.replaceProfile(profile);
       storeManager.syncProfileEntry(saved);
-      response.json(saved);
+      sendJson(response, profileResponseSchema, saved);
     } catch (error) {
       next(error);
     }
@@ -174,7 +189,7 @@ export function makeProfileRoutes(storeManager: ProfileStoreManager): express.Ro
         profileId: store.profileId,
         ...await store.resetMeasurementTypeMetadataFromRegistry()
       };
-      response.json(result);
+      sendJson(response, measurementRegistryResetResponseSchema, result);
     } catch (error) {
       next(error);
     }
@@ -183,7 +198,9 @@ export function makeProfileRoutes(storeManager: ProfileStoreManager): express.Ro
   router.get("/cloud-ai-consent", async (_request, response, next) => {
     try {
       const profile = await storeManager.getActiveStore().getProfile();
-      response.json(
+      sendJson(
+        response,
+        cloudAiConsentResponseSchema,
         profile.cloudAiConsent ?? {
           enabled: false,
           providerScopeAccepted: false,
@@ -222,7 +239,7 @@ export function makeProfileRoutes(storeManager: ProfileStoreManager): express.Ro
         updatedAt: new Date().toISOString()
       });
       storeManager.syncProfileEntry(saved);
-      response.json(saved.cloudAiConsent);
+      sendJson(response, cloudAiConsentResponseSchema, saved.cloudAiConsent);
     } catch (error) {
       next(error);
     }
@@ -270,10 +287,12 @@ export function makeProfilesRoutes(storeManager: ProfileStoreManager, pairingSto
     const principal = response.locals.principal as AuthorizationPrincipal;
     if (principal.kind === "companion") {
       const profile = storeManager.listProfiles().find((entry) => entry.id === principal.allowedProfileIds[0]);
-      response.json({ profiles: profile ? [{ id: profile.id, displayName: profile.displayName }] : [] });
+      sendJson(response, assignedProfilesResponseSchema, {
+        profiles: profile ? [{ id: profile.id, displayName: profile.displayName }] : []
+      });
       return;
     }
-    response.json({
+    sendJson(response, profilesResponseSchema, {
       profiles: storeManager.listProfiles(),
       activeProfileId: storeManager.getActiveProfileId()
     });
@@ -283,20 +302,20 @@ export function makeProfilesRoutes(storeManager: ProfileStoreManager, pairingSto
     try {
       const parsed = createProfileSchema.parse(request.body ?? {});
       const created = await storeManager.createProfile(parsed.displayName);
-      response.status(201).json(created);
+      sendJson(response.status(201), profileListEntrySchema, created);
     } catch (error) {
       next(error);
     }
   });
 
   router.get("/active", (_request, response) => {
-    response.json({ profileId: storeManager.getActiveProfileId() });
+    sendJson(response, profileIdResponseSchema, { profileId: storeManager.getActiveProfileId() });
   });
 
   router.put("/active", (request, response) => {
     const parsed = setActiveProfileSchema.parse(request.body ?? {});
     const profileId = storeManager.setActiveProfile(parsed.profileId);
-    response.json({ profileId });
+    sendJson(response, profileIdResponseSchema, { profileId });
   });
 
   router.delete("/:id", async (request, response, next) => {
@@ -304,7 +323,7 @@ export function makeProfilesRoutes(storeManager: ProfileStoreManager, pairingSto
       const profileId = profileIdSchema.parse(request.params.id);
       const result = await storeManager.deleteProfile(profileId);
       pairingStore.revokeProfile(profileId);
-      response.json({
+      sendJson(response, profileDeleteResponseSchema, {
         deletedProfileId: profileId,
         activeProfileId: result.activeProfileId,
         profiles: storeManager.listProfiles()

@@ -21,6 +21,7 @@ import type {
   HealthEventListQuery,
   HealthEventMutationResponse,
   HealthStoreData,
+  ImportCategoryOutcome,
   LinkedCareItemConflict,
   MeasurementPinState,
   MobileMigrationBatch,
@@ -55,13 +56,7 @@ export interface ProfileImport {
   activitySessions: HealthStoreData["activitySessions"];
 }
 
-export interface ImportCategoryOutcome {
-  attempted: number;
-  accepted: number;
-  duplicates: number;
-  /** Rows dropped because their unit could not be reconciled with the measurement registry. */
-  rejected: number;
-}
+export type { ImportCategoryOutcome };
 
 export interface ImportOutcome {
   sourceImport: ImportCategoryOutcome;

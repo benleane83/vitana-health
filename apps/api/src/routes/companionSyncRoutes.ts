@@ -1,10 +1,16 @@
 import { Router } from "express";
 import { z } from "zod";
 import {
+  COMPANION_REPLICA_MAX_PROTOCOL_VERSION,
+  COMPANION_REPLICA_MIN_PROTOCOL_VERSION,
   COMPANION_REPLICA_PAGE_SIZE,
   COMPANION_REPLICA_PROTOCOL_VERSION,
+  negotiateReplicaProtocolVersion,
+  replicaHandshakeSchema,
+  replicaPageSchema,
   type ReplicaPage
 } from "@vitana/shared";
+import { sendJson } from "./sendJson.js";
 import type { PairingStore } from "../pairing.js";
 import type { AuthorizationPrincipal } from "../requestPrincipal.js";
 import { resolvePrincipalStore } from "../requestPrincipal.js";
@@ -16,6 +22,15 @@ const pageQuerySchema = z.object({
   afterSequence: z.coerce.number().int().nonnegative().optional(),
   pageSize: z.coerce.number().int().min(1).max(COMPANION_REPLICA_PAGE_SIZE).default(COMPANION_REPLICA_PAGE_SIZE)
 }).strict();
+
+/**
+ * A client that predates version negotiation sends no range at all; treat it as speaking exactly the
+ * version that existed when the handshake was a literal.
+ */
+const handshakeQuerySchema = z.object({
+  minProtocolVersion: z.coerce.number().int().positive().default(COMPANION_REPLICA_PROTOCOL_VERSION),
+  maxProtocolVersion: z.coerce.number().int().positive().default(COMPANION_REPLICA_PROTOCOL_VERSION)
+}).strip();
 
 type SnapshotCursor = {
   kind: "snapshot";
@@ -35,14 +50,28 @@ export function makeCompanionSyncRoutes(
 ): Router {
   const router = Router();
 
-  router.get("/handshake", async (_request, response, next) => {
+  router.get("/handshake", async (request, response, next) => {
     try {
       const principal = requireCompanion(response.locals.principal as AuthorizationPrincipal);
+      const client = handshakeQuerySchema.parse(request.query);
+      if (client.minProtocolVersion > client.maxProtocolVersion) {
+        throw requestError(400, "minProtocolVersion cannot exceed maxProtocolVersion.");
+      }
+      const protocolVersion = negotiateReplicaProtocolVersion(client);
+      if (protocolVersion === undefined) {
+        throw requestError(
+          409,
+          `This desktop speaks replica protocol ${COMPANION_REPLICA_MIN_PROTOCOL_VERSION}-${COMPANION_REPLICA_MAX_PROTOCOL_VERSION}; the companion needs ${client.minProtocolVersion}-${client.maxProtocolVersion}. Update whichever side is older.`,
+          "REPLICA_PROTOCOL_UNSUPPORTED"
+        );
+      }
       const store = resolvePrincipalStore(storeManager, principal);
       response.setHeader("cache-control", "no-store");
-      response.json({
+      sendJson(response, replicaHandshakeSchema, {
         ...identity(pairingStore, principal),
-        protocolVersion: COMPANION_REPLICA_PROTOCOL_VERSION,
+        protocolVersion,
+        minProtocolVersion: COMPANION_REPLICA_MIN_PROTOCOL_VERSION,
+        maxProtocolVersion: COMPANION_REPLICA_MAX_PROTOCOL_VERSION,
         highWaterMark: await store.getReplicaHighWaterMark()
       });
     } catch (error) {
@@ -65,7 +94,7 @@ export function makeCompanionSyncRoutes(
       );
       if (!page) throw requestError(409, "The snapshot cursor is expired or belongs to another pairing.");
       response.setHeader("cache-control", "no-store");
-      response.json(toPage(
+      sendJson(response, replicaPageSchema, toPage(
         pairingStore,
         principal,
         "snapshot",
@@ -94,7 +123,7 @@ export function makeCompanionSyncRoutes(
         input.pageSize
       );
       response.setHeader("cache-control", "no-store");
-      response.json(toPage(
+      sendJson(response, replicaPageSchema, toPage(
         pairingStore,
         principal,
         "delta",
@@ -175,6 +204,6 @@ function decodeCursor<T extends SnapshotCursor | DeltaCursor>(value: string, kin
   }
 }
 
-function requestError(status: number, message: string): Error {
-  return Object.assign(new Error(message), { status });
+function requestError(status: number, message: string, code?: string): Error {
+  return Object.assign(new Error(message), code ? { status, code } : { status });
 }

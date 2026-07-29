@@ -7,6 +7,7 @@ import {
   type ClinicianReportLatestMeasurement,
   computeAnalyticsFromInput,
   isHealthEventKind,
+  normalizedCareItemKind,
   type HealthEvent,
   type HealthEventReference,
   type HealthEventListQuery,
@@ -987,7 +988,7 @@ function careItemFromRow(row: Record<string, unknown>): CareItem {
   const completedHealthEventId = optionalString(row.completed_health_event_id);
   return {
     id: String(row.id),
-    kind: String(row.kind),
+    kind: normalizedCareItemKind(String(row.kind)),
     code: optionalString(row.code),
     title: String(row.title),
     dueStart: optionalTimestamp(row.due_start),

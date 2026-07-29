@@ -32,7 +32,7 @@ describe("local profile repository", () => {
     const state = createMemoryLocalStoreState();
     const first = new LocalProfileRepository(new MemoryLocalStore(state), profile("profile-a"));
     const imported = await first.importManualObservations(reading);
-    expect(imported.outcome.observations).toEqual({ attempted: 1, accepted: 1, duplicates: 0 });
+    expect(imported.outcome.observations).toEqual({ attempted: 1, accepted: 1, duplicates: 0, rejected: 0 });
     expect((await first.analytics()).latestMetrics[0]).toMatchObject({ code: "weight", value: 72.5, unit: "kg" });
     expect((await first.summary()).totals).toMatchObject({ observations: 1, total: 1, types: 1 });
     expect((await first.healthDataDetail("weight")).entries[0]).toMatchObject({
@@ -41,7 +41,7 @@ describe("local profile repository", () => {
     });
 
     const duplicate = await first.importManualObservations(reading);
-    expect(duplicate.outcome.observations).toEqual({ attempted: 1, accepted: 0, duplicates: 1 });
+    expect(duplicate.outcome.observations).toEqual({ attempted: 1, accepted: 0, duplicates: 1, rejected: 0 });
 
     const reopened = new LocalProfileRepository(new MemoryLocalStore(state), profile("profile-a"));
     expect((await reopened.bootstrap()).counts.observations).toBe(1);

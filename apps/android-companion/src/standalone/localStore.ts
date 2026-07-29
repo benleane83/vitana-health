@@ -1,4 +1,5 @@
 import type {
+  MobileImportEntityOutcome,
   MobileImportResult,
   MobileMigrationBatch,
   MobileMigrationManifest,
@@ -125,6 +126,6 @@ export function emptyCounts(): LocalStoreCounts {
   };
 }
 
-export function entityOutcome(attempted: number, accepted: number) {
-  return { attempted, accepted, duplicates: attempted - accepted };
+export function entityOutcome(attempted: number, accepted: number): MobileImportEntityOutcome {
+  return { attempted, accepted, duplicates: attempted - accepted, rejected: 0 };
 }

@@ -28,7 +28,7 @@ function makeEmptyStore(): HealthStoreData {
 
 function makeEmptyAnalytics() {
   return {
-    counts: { imports: 0, observations: 0, samples: 0, activities: 0, insights: 0 },
+    counts: { imports: 0, observations: 0, samples: 0, activities: 0, healthEvents: 0, careItems: 0, insights: 0 },
     latestMetrics: [],
     trendCards: [],
     labAlerts: [],
@@ -72,7 +72,9 @@ function makeBootstrap(store: ReturnType<typeof makeEmptyStore>) {
       imports: store.sourceImports.length,
       observations: store.observations.length,
       samples: store.timeSeriesSamples.length,
-      activities: store.activitySessions.length
+      activities: store.activitySessions.length,
+      healthEvents: 0,
+      careItems: 0
     }
   };
 }
@@ -680,7 +682,7 @@ describe("App — measurement detail", () => {
       generatedAt: "2026-07-14T00:00:00.000Z",
       isPinned: false,
       measurement: {
-        code: "glucose", displayName: "Glucose", category: "lab", canonicalUnit: "mmol/L",
+        code: "glucose", displayName: "Glucose", category: "lab",
         counts: { observations: 0, samples: 0, activities: 0, total: 0 }
       },
       entries: [], chartPoints: [], referenceRange: { source: "none" },
@@ -724,7 +726,7 @@ describe("App — measurement detail", () => {
       "/api/summary/steps": {
         generatedAt: "2026-07-14T00:00:00.000Z",
         measurement: {
-          code: "steps", displayName: "Steps", category: "activity", canonicalUnit: "count",
+          code: "steps", displayName: "Steps", category: "activity",
           counts: { observations: 0, samples: 0, activities: 1, total: 1 },
           lastMeasuredAt: "2026-07-14T08:30:00.000Z"
         },
@@ -736,6 +738,7 @@ describe("App — measurement detail", () => {
           note: "2026-07-14T08:00:00.000Z → 2026-07-14T09:00:00.000Z", canDelete: false
         }],
         chartPoints: [{ kind: "activity", timestamp: "2026-07-14T08:30:00.000Z", value: 8400, unit: "count" }],
+        isPinned: false,
         referenceRange: { source: "none" },
         counts: { observations: 0, samples: 0, activities: 1, total: 1 },
         deletion: { observationEntries: 0, deletableEntries: 0 },
@@ -764,7 +767,7 @@ describe("App — measurement detail", () => {
       "/api/summary/glucose": {
         generatedAt: "2026-07-14T00:00:00.000Z",
         measurement: {
-          code: "glucose", displayName: "Glucose", category: "lab", canonicalUnit: "mmol/L",
+          code: "glucose", displayName: "Glucose", category: "lab",
           counts: { observations: 1, samples: 0, activities: 0, total: 1 },
           lastMeasuredAt: "2026-07-14T00:00:00.000Z"
         },
@@ -775,6 +778,7 @@ describe("App — measurement detail", () => {
           importFileName: "lab-2026-07-14.manual-entry", note: "Manual observation from Lab", canDelete: true
         }],
         chartPoints: [{ kind: "observation", timestamp: "2026-07-14T00:00:00.000Z", value: 5.2, unit: "mmol/L" }],
+        isPinned: false,
         referenceRange: { source: "none" },
         counts: { observations: 1, samples: 0, activities: 0, total: 1 },
         deletion: { observationEntries: 1, deletableEntries: 1 },
@@ -800,11 +804,12 @@ describe("App — measurement detail", () => {
       generatedAt: "2026-07-14T00:00:00.000Z",
       measurement: {
         code: "glucose", displayName: "Glucose", category: "lab",
-        canonicalUnit: "mmol/L",
+       
         counts: { observations: 0, samples: 0, activities: 0, total: 0 }
       },
       entries: [],
       chartPoints: [],
+      isPinned: false,
       referenceRange: { source: "none" },
       counts: { observations: 0, samples: 0, activities: 0, total: 0 },
       deletion: { observationEntries: 0, deletableEntries: 0 },
@@ -845,7 +850,7 @@ describe("App — measurement detail", () => {
     const detail = {
       generatedAt: "2026-07-14T00:00:00.000Z",
       measurement: {
-        code: "glucose", displayName: "Glucose", category: "lab", canonicalUnit: "mmol/L",
+        code: "glucose", displayName: "Glucose", category: "lab",
         counts: { observations: 1, samples: 0, activities: 0, total: 1 },
         lastMeasuredAt: "2026-07-14T00:00:00.000Z"
       },
@@ -855,6 +860,7 @@ describe("App — measurement detail", () => {
         sourceLabel: "Manual observations: Lab", sourceKind: "manual-entry", note: "Fasting", canDelete: true
       }],
       chartPoints: [{ kind: "observation", timestamp: "2026-07-14T08:30:00.000Z", value: 5.2, unit: "mmol/L" }],
+      isPinned: false,
       referenceRange: { source: "none" },
       counts: { observations: 1, samples: 0, activities: 0, total: 1 },
       deletion: { observationEntries: 1, deletableEntries: 1 },
@@ -875,7 +881,17 @@ describe("App — measurement detail", () => {
         totals: { types: 1, observations: 1, samples: 0, activities: 0, total: 1 },
         categories: []
       },
-      "/api/observations/glucose-edit-1": { updatedObservation: { id: "glucose-edit-1" } }
+      "/api/observations/glucose-edit-1": {
+        updatedObservation: {
+          id: "glucose-edit-1",
+          measurementCode: "glucose",
+          observedAt: "2026-07-14T00:00:00.000Z",
+          value: 5.2,
+          unit: "mmol/L",
+          sourceId: "manual"
+        },
+        counts: { imports: 0, observations: 1, samples: 0, activities: 0, healthEvents: 0, careItems: 0 }
+      }
     });
 
     render(<App />);

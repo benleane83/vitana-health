@@ -1,20 +1,24 @@
 import express from "express";
 import { z } from "zod";
 import {
+  bodyCompositionDraftResponseSchema,
   buildBodyCompositionImportFromDraft,
   buildBloodTestImportFromDraft,
   buildManualLabEntryImport,
   buildManualObservationImport,
   buildStructuredUploadImportFromDraft,
+  importMutationResponseSchema,
   parseBloodTestCsv,
   parseBloodTestScanText,
   parseObservationCsv,
   parseStructuredUpload,
+  uploadImportDraftResponseSchema,
   type BodyCompositionDraftRow,
   type UploadDraftRow
 } from "@vitana/shared";
 import type { ProfileStoreManager } from "../storage/profileStoreManager.js";
 import { healthConnectImportRequestSchema, parseHealthConnectImport } from "../healthConnectImport.js";
+import { sendJson } from "./sendJson.js";
 import { describeAnalyticsStorage } from "../storage/analyticsBackend.js";
 import { extractBodyCompositionText } from "../bodyCompositionExtract.js";
 import { parseBodyCompositionText } from "@vitana/shared";
@@ -168,7 +172,7 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
       const imported = parseBloodTestCsv(parsed.fileName, parsed.content);
       const store = activeStore();
       const merged = await store.mergeImport(imported);
-      response.status(201).json(compactImportResponse(imported, merged));
+      sendJson(response.status(201), importMutationResponseSchema, compactImportResponse(imported, merged));
     } catch (error) {
       next(error);
     }
@@ -180,7 +184,7 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
       const imported = parseObservationCsv(parsed.fileName, parsed.content);
       const store = activeStore();
       const merged = await store.mergeImport(imported);
-      response.status(201).json(compactImportResponse(imported, merged));
+      sendJson(response.status(201), importMutationResponseSchema, compactImportResponse(imported, merged));
     } catch (error) {
       next(error);
     }
@@ -192,7 +196,7 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
       const imported = buildManualObservationImport(parsed);
       const store = requestStore(response);
       const merged = await store.mergeImport(imported);
-      response.status(201).json(compactImportResponse(imported, merged));
+      sendJson(response.status(201), importMutationResponseSchema, compactImportResponse(imported, merged));
     } catch (error) {
       next(error);
     }
@@ -204,7 +208,7 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
       const imported = buildManualLabEntryImport(parsed);
       const store = activeStore();
       const merged = await store.mergeImport(imported);
-      response.status(201).json(compactImportResponse(imported, merged));
+      sendJson(response.status(201), importMutationResponseSchema, compactImportResponse(imported, merged));
     } catch (error) {
       next(error);
     }
@@ -227,7 +231,10 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
       const draft = parseBloodTestScanText(parsed.fileName, extracted.text, undefined, {
         excludedDates: profile.birthDate ? [profile.birthDate] : []
       });
-      response.json({ ...draft, diagnostics: [...extracted.diagnostics, ...draft.diagnostics].slice(0, 75) });
+      sendJson(response, bodyCompositionDraftResponseSchema, {
+        ...draft,
+        diagnostics: [...extracted.diagnostics, ...draft.diagnostics].slice(0, 75)
+      });
     } catch (error) {
       next(error);
     }
@@ -240,7 +247,7 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
       const store = requestStore(response);
       const merged = await store.mergeImport(imported);
       const analyticsStorage = describeAnalyticsStorage(storeManager, merged.counts, store.profileId);
-      response.status(201).json({ ...compactImportResponse(imported, merged), analyticsStorage });
+      sendJson(response.status(201), importMutationResponseSchema, { ...compactImportResponse(imported, merged), analyticsStorage });
     } catch (error) {
       next(error);
     }
@@ -260,7 +267,7 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
       }
       const extracted = await extractBodyCompositionText(buffer, parsed.mimeType);
       const draft = parseBodyCompositionText(parsed.fileName, extracted.text);
-      response.json({
+      sendJson(response, bodyCompositionDraftResponseSchema, {
         ...draft,
         diagnostics: [...extracted.diagnostics, ...draft.diagnostics].slice(0, 75)
       });
@@ -302,7 +309,7 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
         format: parsed.format,
         mapping: parsed.mapping
       });
-      response.json(draft);
+      sendJson(response, uploadImportDraftResponseSchema, draft);
     } catch (error) {
       next(error);
     }
@@ -320,7 +327,7 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
       const store = activeStore();
       const merged = await store.mergeImport(imported);
       const analyticsStorage = describeAnalyticsStorage(storeManager, merged.counts, store.profileId);
-      response.status(201).json({ ...compactImportResponse(imported, merged), analyticsStorage });
+      sendJson(response.status(201), importMutationResponseSchema, { ...compactImportResponse(imported, merged), analyticsStorage });
     } catch (error) {
       next(error);
     }
@@ -343,7 +350,7 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
       const imported = parseHealthConnectImport(parsed);
       const merged = await targetStore.mergeImport(imported);
       const analyticsStorage = describeAnalyticsStorage(storeManager, merged.counts, targetProfileId);
-      response.status(201).json({
+      sendJson(response.status(201), importMutationResponseSchema, {
         ...compactImportResponse(imported, merged),
         analyticsStorage
       });

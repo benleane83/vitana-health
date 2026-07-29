@@ -1,76 +1,18 @@
 import { createHash } from "node:crypto";
-import { checksum, type ActivitySession, type Observation, type ParsedImport, type TimeSeriesSample } from "@vitana/shared";
-import { z } from "zod";
+import {
+  checksum,
+  healthConnectImportRequestSchema,
+  type ActivitySession,
+  type HealthConnectImportRequest,
+  type Observation,
+  type ParsedImport,
+  type TimeSeriesSample
+} from "@vitana/shared";
 
-const isoDateString = z.string().datetime({ offset: true });
 const DAILY_AGGREGATE_MIN_DURATION_MS = 23 * 60 * 60 * 1000;
 
-const stepSchema = z.object({
-  startTime: isoDateString,
-  endTime: isoDateString,
-  count: z.number().int().nonnegative()
-});
-
-const intervalSampleSchema = z.object({
-  startTime: isoDateString,
-  endTime: isoDateString,
-  value: z.number().finite().nonnegative(),
-  provenance: z.record(z.unknown()).optional()
-});
-
-const sleepSessionSchema = z.object({
-  startTime: isoDateString,
-  endTime: isoDateString,
-  durationMinutes: z.number().finite().nonnegative(),
-  stages: z.array(z.unknown()).optional(),
-  title: z.string().max(500).optional(),
-  notes: z.string().max(4000).optional(),
-  provenance: z.record(z.unknown()).optional()
-});
-
-const pointSampleSchema = z.object({
-  time: isoDateString,
-  value: z.number().finite(),
-  provenance: z.record(z.unknown()).optional()
-});
-
-const exerciseSchema = z.object({
-  startTime: isoDateString,
-  endTime: isoDateString,
-  activityType: z.string().min(1).max(120),
-  energyKcal: z.number().finite().nonnegative().optional(),
-  distanceMeters: z.number().finite().nonnegative().optional(),
-  title: z.string().max(500).optional(),
-  notes: z.string().max(4000).optional(),
-  details: z.record(z.unknown()).optional(),
-  provenance: z.record(z.unknown()).optional()
-});
-
-export const healthConnectImportRequestSchema = z.object({
-  profileId: z.string().trim().toLowerCase().min(1).max(64).regex(/^[a-z0-9][a-z0-9_-]{0,63}$/).optional(),
-  syncedAt: isoDateString,
-  rangeStart: isoDateString,
-  rangeEnd: isoDateString,
-  deviceLabel: z.string().min(1).max(120).optional(),
-  batchId: z.string().min(1).max(160).optional(),
-  steps: z.array(stepSchema.extend({ provenance: z.record(z.unknown()).optional() })).default([]),
-  heartRate: z.array(pointSampleSchema).default([]),
-  oxygenSaturation: z.array(pointSampleSchema).default([]),
-  hrvRmssd: z.array(pointSampleSchema).default([]),
-  basalMetabolicRateKcalDay: z.array(pointSampleSchema).default([]),
-  heightCm: z.array(pointSampleSchema).default([]),
-  skinTemperatureC: z.array(pointSampleSchema).default([]),
-  vo2MaxMlKgMin: z.array(pointSampleSchema).default([]),
-  weightKg: z.array(pointSampleSchema).default([]),
-  exerciseSessions: z.array(exerciseSchema).default([]),
-  distanceMeters: z.array(intervalSampleSchema).default([]),
-  activeCaloriesKcal: z.array(intervalSampleSchema).default([]),
-  totalCaloriesKcal: z.array(intervalSampleSchema).default([]),
-  sleepSessions: z.array(sleepSessionSchema).default([]),
-  bodyFatPct: z.array(pointSampleSchema).default([])
-});
-
-export type HealthConnectImportRequest = z.infer<typeof healthConnectImportRequestSchema>;
+export { healthConnectImportRequestSchema };
+export type { HealthConnectImportRequest };
 
 export function parseHealthConnectImport(payload: HealthConnectImportRequest): ParsedImport {
   const importedAt = normalizeIso(payload.syncedAt) ?? new Date().toISOString();

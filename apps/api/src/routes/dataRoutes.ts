@@ -1,6 +1,9 @@
 import express from "express";
 import { z } from "zod";
 import {
+  analyticsSummaryResponseSchema,
+  appBootstrapResponseSchema,
+  biologicalAgeResponseSchema,
   calculateBiologicalAge,
   careItemListQuerySchema,
   careItemMutationResponseSchema,
@@ -10,18 +13,24 @@ import {
   createHealthEventInputSchema,
   deleteCareItemResponseSchema,
   deleteHealthEventResponseSchema,
+  deleteObservationResponseSchema,
+  deleteObservationsByTypeResponseSchema,
+  healthDataChartSeriesResponseSchema,
+  healthDataDetailResponseSchema,
+  healthDataSummaryResponseSchema,
   healthEventListQuerySchema,
   healthEventMutationResponseSchema,
+  insightResponseSchema,
   linkedHealthEventConflictSchema,
   measurementPinStateResponseSchema,
   paginatedCareItemsResponseSchema,
   paginatedHealthEventsResponseSchema,
   personalReferenceRangeInputSchema,
   referenceRangeStateResponseSchema,
-  type DeleteObservationResponse,
-  type DeleteObservationsByTypeResponse,
-  type UpdateObservationResponse
+  updateObservationInputSchema,
+  updateObservationResponseSchema
 } from "@vitana/shared";
+import { sendJson } from "./sendJson.js";
 import type { ProfileStoreManager } from "../storage/profileStoreManager.js";
 import { describeAnalyticsStorage } from "../storage/analyticsBackend.js";
 import { generateInsight } from "../insights.js";
@@ -55,37 +64,7 @@ const chartSeriesQuerySchema = z.object({
   mode: z.enum(["auto", "raw"]).default("auto")
 });
 
-const updateObservationBodySchema = z.object({
-  measurementCode: measurementCodeParamSchema,
-  observedAt: z.string().datetime({ offset: true }),
-  value: z.number().finite(),
-  unit: z.string().trim().min(1).max(40),
-  note: z.string().trim().max(1000).optional()
-}).strict();
-
-function buildDeleteObservationResponse(
-  deleted: DeleteObservationResponse,
-  analyticsStorage: unknown
-): unknown {
-  return {
-    ...deleted,
-    analyticsStorage
-  };
-}
-
-function buildUpdateObservationResponse(updated: UpdateObservationResponse, analyticsStorage: unknown): unknown {
-  return { ...updated, analyticsStorage };
-}
-
-function buildDeleteObservationsByTypeResponse(
-  deleted: DeleteObservationsByTypeResponse,
-  analyticsStorage: unknown
-): unknown {
-  return {
-    ...deleted,
-    analyticsStorage
-  };
-}
+const updateObservationBodySchema = updateObservationInputSchema;
 
 function reportFilename(displayName: string): string {
   const safeStem = displayName
@@ -109,7 +88,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.get("/bootstrap", async (_request, response, next) => {
     try {
-      response.json(await requestStore(response).appBootstrap());
+      sendJson(response, appBootstrapResponseSchema, await requestStore(response).appBootstrap());
     } catch (error) {
       next(error);
     }
@@ -117,7 +96,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.get("/analytics", async (_request, response, next) => {
     try {
-      response.json(await requestStore(response).analyticsSummary());
+      sendJson(response, analyticsSummaryResponseSchema, await requestStore(response).analyticsSummary());
     } catch (error) {
       next(error);
     }
@@ -125,7 +104,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.get("/biological-age", async (_request, response, next) => {
     try {
-      response.json(calculateBiologicalAge(await activeStore().biologicalAgeSource()));
+      sendJson(response, biologicalAgeResponseSchema, calculateBiologicalAge(await activeStore().biologicalAgeSource()));
     } catch (error) {
       next(error);
     }
@@ -133,7 +112,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.get("/summary", async (_request, response, next) => {
     try {
-      response.json(await requestStore(response).summary());
+      sendJson(response, healthDataSummaryResponseSchema, await requestStore(response).summary());
     } catch (error) {
       next(error);
     }
@@ -143,7 +122,11 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
     try {
       const measurementCode = measurementCodeParamSchema.parse(request.params.measurementCode);
       const options = chartSeriesQuerySchema.parse(request.query);
-      response.json(await requestStore(response).measurementChartSeries(measurementCode, options));
+      sendJson(
+        response,
+        healthDataChartSeriesResponseSchema,
+        await requestStore(response).measurementChartSeries(measurementCode, options)
+      );
     } catch (error) {
       next(error);
     }
@@ -153,9 +136,11 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
     try {
       const measurementCode = measurementCodeParamSchema.parse(request.params.measurementCode);
       const input = personalReferenceRangeInputSchema.parse(request.body);
-      response.json(referenceRangeStateResponseSchema.parse(
+      sendJson(
+        response,
+        referenceRangeStateResponseSchema,
         await requestStore(response).upsertPersonalReferenceRange(measurementCode, input)
-      ));
+      );
     } catch (error) {
       next(error);
     }
@@ -164,9 +149,11 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
   router.delete("/summary/:measurementCode/reference-range", async (request, response, next) => {
     try {
       const measurementCode = measurementCodeParamSchema.parse(request.params.measurementCode);
-      response.json(referenceRangeStateResponseSchema.parse(
+      sendJson(
+        response,
+        referenceRangeStateResponseSchema,
         await requestStore(response).deletePersonalReferenceRange(measurementCode)
-      ));
+      );
     } catch (error) {
       next(error);
     }
@@ -175,9 +162,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
   router.put("/summary/:measurementCode/pin", async (request, response, next) => {
     try {
       const measurementCode = measurementCodeParamSchema.parse(request.params.measurementCode);
-      response.json(measurementPinStateResponseSchema.parse(
-        await requestStore(response).pinMeasurement(measurementCode)
-      ));
+      sendJson(response, measurementPinStateResponseSchema, await requestStore(response).pinMeasurement(measurementCode));
     } catch (error) {
       next(error);
     }
@@ -186,9 +171,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
   router.delete("/summary/:measurementCode/pin", async (request, response, next) => {
     try {
       const measurementCode = measurementCodeParamSchema.parse(request.params.measurementCode);
-      response.json(measurementPinStateResponseSchema.parse(
-        await requestStore(response).unpinMeasurement(measurementCode)
-      ));
+      sendJson(response, measurementPinStateResponseSchema, await requestStore(response).unpinMeasurement(measurementCode));
     } catch (error) {
       next(error);
     }
@@ -198,7 +181,11 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
     try {
       const measurementCode = measurementCodeParamSchema.parse(request.params.measurementCode);
       const page = detailPageQuerySchema.parse(request.query);
-      response.json(await requestStore(response).measurementDetail(measurementCode, page));
+      sendJson(
+        response,
+        healthDataDetailResponseSchema,
+        await requestStore(response).measurementDetail(measurementCode, page)
+      );
     } catch (error) {
       next(error);
     }
@@ -206,9 +193,11 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.get("/care/health-events", async (request, response, next) => {
     try {
-      response.json(paginatedHealthEventsResponseSchema.parse(
+      sendJson(
+        response,
+        paginatedHealthEventsResponseSchema,
         await requestStore(response).listHealthEvents(healthEventListQuerySchema.parse(request.query))
-      ));
+      );
     } catch (error) {
       next(error);
     }
@@ -216,9 +205,11 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.post("/care/health-events", async (request, response, next) => {
     try {
-      response.status(201).json(healthEventMutationResponseSchema.parse(
+      sendJson(
+        response.status(201),
+        healthEventMutationResponseSchema,
         await requestStore(response).createHealthEvent(createHealthEventInputSchema.parse(request.body))
-      ));
+      );
     } catch (error) {
       next(error);
     }
@@ -232,7 +223,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
         response.status(404).json({ error: "Health event not found.", code: "HEALTH_EVENT_NOT_FOUND" });
         return;
       }
-      response.json(healthEventMutationResponseSchema.parse(updated));
+      sendJson(response, healthEventMutationResponseSchema, updated);
     } catch (error) {
       next(error);
     }
@@ -246,14 +237,14 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
         response.status(404).json({ error: "Health event not found.", code: "HEALTH_EVENT_NOT_FOUND" });
         return;
       }
-      response.json(deleteHealthEventResponseSchema.parse(deleted));
+      sendJson(response, deleteHealthEventResponseSchema, deleted);
     } catch (error) {
       if (error instanceof HealthEventDeleteConflictError) {
-        response.status(409).json(linkedHealthEventConflictSchema.parse({
+        sendJson(response.status(409), linkedHealthEventConflictSchema, {
           error: error.message,
           code: error.code,
           linkedCareItems: error.linkedCareItems
-        }));
+        });
         return;
       }
       next(error);
@@ -262,9 +253,11 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.get("/care/items", async (request, response, next) => {
     try {
-      response.json(paginatedCareItemsResponseSchema.parse(
+      sendJson(
+        response,
+        paginatedCareItemsResponseSchema,
         await requestStore(response).listCareItems(careItemListQuerySchema.parse(request.query))
-      ));
+      );
     } catch (error) {
       next(error);
     }
@@ -272,9 +265,11 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.post("/care/items", async (request, response, next) => {
     try {
-      response.status(201).json(careItemMutationResponseSchema.parse(
+      sendJson(
+        response.status(201),
+        careItemMutationResponseSchema,
         await requestStore(response).createCareItem(createCareItemInputSchema.parse(request.body))
-      ));
+      );
     } catch (error) {
       next(error);
     }
@@ -288,7 +283,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
         response.status(404).json({ error: "Care item not found.", code: "CARE_ITEM_NOT_FOUND" });
         return;
       }
-      response.json(careItemMutationResponseSchema.parse(updated));
+      sendJson(response, careItemMutationResponseSchema, updated);
     } catch (error) {
       next(error);
     }
@@ -302,7 +297,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
         response.status(404).json({ error: "Care item not found.", code: "CARE_ITEM_NOT_FOUND" });
         return;
       }
-      response.json(completeCareItemResponseSchema.parse(completed));
+      sendJson(response, completeCareItemResponseSchema, completed);
     } catch (error) {
       if (error instanceof CareItemCompletionConflictError) {
         response.status(409).json({ error: error.message, code: error.code });
@@ -320,7 +315,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
         response.status(404).json({ error: "Care item not found.", code: "CARE_ITEM_NOT_FOUND" });
         return;
       }
-      response.json(deleteCareItemResponseSchema.parse(deleted));
+      sendJson(response, deleteCareItemResponseSchema, deleted);
     } catch (error) {
       next(error);
     }
@@ -337,7 +332,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
         return;
       }
       const analyticsStorage = describeAnalyticsStorage(storeManager, updated.counts);
-      response.json(buildUpdateObservationResponse(updated, analyticsStorage));
+      sendJson(response, updateObservationResponseSchema, { ...updated, analyticsStorage });
     } catch (error) {
       next(error);
     }
@@ -353,7 +348,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
         return;
       }
       const analyticsStorage = describeAnalyticsStorage(storeManager, deleted.counts);
-      response.json(buildDeleteObservationResponse(deleted, analyticsStorage));
+      sendJson(response, deleteObservationResponseSchema, { ...deleted, analyticsStorage });
     } catch (error) {
       next(error);
     }
@@ -365,7 +360,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
       const store = activeStore();
       const deleted = await store.deleteObservationsByMeasurementCode(measurementCode);
       const analyticsStorage = describeAnalyticsStorage(storeManager, deleted.counts);
-      response.json(buildDeleteObservationsByTypeResponse(deleted, analyticsStorage));
+      sendJson(response, deleteObservationsByTypeResponseSchema, { ...deleted, analyticsStorage });
     } catch (error) {
       next(error);
     }
@@ -376,7 +371,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
       const store = activeStore();
       const deleted = await store.deleteDailyAggregateStepSamples();
       const analyticsStorage = describeAnalyticsStorage(storeManager, deleted.counts);
-      response.json(buildDeleteObservationsByTypeResponse(deleted, analyticsStorage));
+      sendJson(response, deleteObservationsByTypeResponseSchema, { ...deleted, analyticsStorage });
     } catch (error) {
       next(error);
     }
@@ -396,7 +391,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
       const store = activeStore();
       const [profile, analytics] = await Promise.all([store.getProfile(), store.analyticsSummary()]);
       const insight = await generateInsight({ profile, analytics });
-      response.status(201).json(await store.addInsight(insight));
+      sendJson(response.status(201), insightResponseSchema, await store.addInsight(insight));
     } catch (error) {
       next(error);
     }

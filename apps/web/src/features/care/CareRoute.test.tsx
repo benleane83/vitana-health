@@ -7,7 +7,7 @@ import { CareRoute } from "./CareRoute.js";
 const openCareItem = {
   id: "care-1",
   title: "Annual check-up",
-  kind: "routine-checkup",
+  kind: "routine-checkup" as const,
   priority: "normal" as const,
   status: "open" as const,
   dueStart: "2026-08-18T14:00:00.000Z"

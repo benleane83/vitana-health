@@ -54,7 +54,7 @@ Everything else on this list stays cheap to fix after users exist. These three d
 | 2 — Schema baseline, units, retention | P1-3, P1-4, P1-9 | Done |
 | 3 — Write and read path | P1-5, P1-6, P1-10 | Done |
 | 4 — Backups and recovery | P1-2, P1-12 | Done |
-| 5 — API contracts | P1-11 | Not started |
+| 5 — API contracts | P1-11 | Done |
 | 6 — Web stability and performance | P1-13, P1-14, P1-15 | Not started |
 | 7 — Android core | P1-8, P1-19 | Not started |
 | 8 — Health Connect sync | P1-7 | Not started |
@@ -317,6 +317,16 @@ Related contract gaps in the same package:
 **Why hard later:** every shipped client assumes the shape holds. After beta, a server-side field rename produces silent `undefined` propagation into charts rather than a loud parse error, diagnosed from user reports instead of a stack trace.
 
 **Action:** replace `objectResponseSchema` with real `z.object({...}).strict()` schemas and derive TS types via `z.infer` so type and validator cannot diverge. Validate on the server response path with a single `res.json(schema.parse(payload))` helper. Make `kind` a `z.enum(careItemKindCodes)`. Replace the `z.literal` handshake with min/max supported-version negotiation **before any client is published**.
+
+**Status — Resolved (Phase 5).** `objectResponseSchema` is deleted. All 21 call sites are now real `z.object({...}).strict()` schemas, and every response type that was previously hand-written twice is derived once — query and input types come from `z.infer`/`z.input` on the contract schemas, and the duplicated interface blocks in `types.ts` and `apps/web/src/types.ts` are gone. `{}` is now rejected as an `AppBootstrap`, which a shared-package test asserts directly.
+
+The server validates its own responses. `apps/api/src/routes/sendJson.ts` exposes `sendJson(response, schema, payload)`, which `safeParse`s and throws a `ResponseContractError` (HTTP 500) on drift — deliberately a server fault rather than a 400 blaming the caller. It is applied on every JSON route across `dataRoutes`, `companionSyncRoutes`, `importRoutes`, `profileRoutes`, `pairingRoutes`, `settingsRoutes`, `backupRoutes`, `companionMigrationRoutes`, and `queryRoutes`. Three routes stay raw by design: `GET /export` (a whole-store dump where re-validating every row on the way out is pure cost), `GET /analytics/storage` (a diagnostic blob with no stable shape), and the binary/HTML responses in `backupRoutes` and the OpenRouter callback, which are not JSON.
+
+`healthEventSchema` is now a genuine `z.discriminatedUnion("kind", …)`, so the `.transform(v => v as HealthEvent)` cast is gone. `CareItem.kind` is `CareItemKind` in the TS type and `z.enum(careItemKindCodes)` in both wire schemas, and `completedHealthEvent` was added to the `.strict()` persisted schema so it round-trips to disk. One deliberate deviation: the *persisted* schema normalizes `kind` through `normalizedCareItemKind` rather than rejecting outright, so a store written by an earlier prototype still opens; the wire schemas remain strict.
+
+Replica sync gained real negotiation. `COMPANION_REPLICA_MIN_PROTOCOL_VERSION`/`MAX` describe what this build speaks, the phone sends its own range on `/handshake`, and `negotiateReplicaProtocolVersion` picks the highest mutually supported version or fails with a 409 `REPLICA_PROTOCOL_UNSUPPORTED`. Legacy clients that send no range are treated as `{2,2}`. Payloads are no longer `z.record(z.unknown())` — each of the 13 entity types validates against its real schema via `superRefine`, using `.passthrough()` variants so a newer peer's extra fields survive version skew instead of being rejected.
+
+Two related cleanups rode along: the duplicate request pipeline in `apps/web/src/api.ts` was deleted in favour of the shared `@vitana/api-client` transport, and `importHealthConnect`'s request body is now typed (the Health Connect request schema moved into `packages/shared`, with `apps/api` re-exporting it).
 
 ---
 

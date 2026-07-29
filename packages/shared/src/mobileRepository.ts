@@ -4,9 +4,9 @@ import type {
   DeleteObservationResponse,
   HealthDataDetail,
   HealthDataSummary,
-  UpdateObservationInput,
   UpdateObservationResponse
 } from "./types.js";
+import type { ImportCategoryOutcome, UpdateObservationInput } from "./apiContract.js";
 import type { ManualObservationPayload, ParsedImport } from "./parserTypes.js";
 
 export interface MobileDetailPage {
@@ -14,11 +14,8 @@ export interface MobileDetailPage {
   offset?: number;
 }
 
-export interface MobileImportEntityOutcome {
-  attempted: number;
-  accepted: number;
-  duplicates: number;
-}
+/** The phone reports the same import outcome shape the API does. */
+export type MobileImportEntityOutcome = ImportCategoryOutcome;
 
 export interface MobileImportResult {
   importId: string;

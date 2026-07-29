@@ -414,9 +414,14 @@ export function createApp(
               ? "An internal error occurred."
               : error.message;
 
+        // A route may attach a specific code (e.g. REPLICA_PROTOCOL_UNSUPPORTED) that clients branch
+        // on; only fall back to the generic buckets when it has not.
+        const explicitCode =
+          status < 500 && "code" in error && typeof error.code === "string" ? error.code : undefined;
+
         response.status(status).json({
           error: publicMessage,
-          code: status === 413 ? "PAYLOAD_TOO_LARGE" : status >= 500 ? "INTERNAL_ERROR" : "REQUEST_ERROR",
+          code: explicitCode ?? (status === 413 ? "PAYLOAD_TOO_LARGE" : status >= 500 ? "INTERNAL_ERROR" : "REQUEST_ERROR"),
           correlationId
         });
         return;

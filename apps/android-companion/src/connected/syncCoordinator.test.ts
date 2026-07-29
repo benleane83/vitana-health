@@ -58,9 +58,9 @@ describe("connected replica sync coordinator", () => {
     let releaseHandshake!: () => void;
     const gate = new Promise<void>((resolve) => { releaseHandshake = resolve; });
     const get = vi.fn(async (path: string) => {
-      if (path.endsWith("/handshake")) {
+      if (path.includes("/handshake")) {
         await gate;
-        return { protocolVersion: 2, ...identity, highWaterMark: { revision: 0, sequence: 0 } };
+        return { protocolVersion: 2, minProtocolVersion: 2, maxProtocolVersion: 2, ...identity, highWaterMark: { revision: 0, sequence: 0 } };
       }
       if (path.includes("/snapshot")) {
         return page("snapshot", true, [{
@@ -132,6 +132,8 @@ describe("connected replica sync coordinator", () => {
       new ReplicaClient({
         get: async () => ({
           protocolVersion: 2,
+          minProtocolVersion: 2,
+          maxProtocolVersion: 2,
           ...identity,
           serverInstanceId: "f60e92e9-f145-449e-ad3b-22dca8bc8ac7",
           highWaterMark: { revision: 0, sequence: 0 }
@@ -151,8 +153,8 @@ describe("connected replica sync coordinator", () => {
     let secondPageFails = true;
     const get = vi.fn(async (path: string) => {
       requested.push(path);
-      if (path.endsWith("/handshake")) {
-        return { protocolVersion: 2, ...identity, highWaterMark: { revision: 1, sequence: 1 } };
+      if (path.includes("/handshake")) {
+        return { protocolVersion: 2, minProtocolVersion: 2, maxProtocolVersion: 2, ...identity, highWaterMark: { revision: 1, sequence: 1 } };
       }
       if (path.includes("/snapshot")) {
         if (!path.includes("cursor=")) return page("snapshot", false, [profileChange]);
@@ -185,8 +187,8 @@ describe("connected replica sync coordinator", () => {
     const requested: string[] = [];
     const get = vi.fn(async (path: string) => {
       requested.push(path);
-      if (path.endsWith("/handshake")) {
-        return { protocolVersion: 2, ...identity, highWaterMark: { revision: 1, sequence: 1 } };
+      if (path.includes("/handshake")) {
+        return { protocolVersion: 2, minProtocolVersion: 2, maxProtocolVersion: 2, ...identity, highWaterMark: { revision: 1, sequence: 1 } };
       }
       if (path.includes("/snapshot")) return page("snapshot", true, [profileChange]);
       return page("delta", true, []);

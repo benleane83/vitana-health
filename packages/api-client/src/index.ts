@@ -48,6 +48,7 @@ import type {
   CreateCareItemInput,
   CreateHealthEventInput,
   HealthEventListQuery,
+  HealthConnectImportPayload,
   ManualObservationPayload,
   PersonalReferenceRangeInput,
   UpdateObservationInput,
@@ -113,6 +114,12 @@ export function createApiClient(transport: ApiTransport) {
   }
 
   return {
+    /**
+     * Escape hatch for callers that need an endpoint this client does not wrap yet. It shares the
+     * transport, error mapping and schema parsing, so there is never a second request pipeline to
+     * keep in sync.
+     */
+    request,
     health: () => request(healthResponseSchema, "/api/health"),
     desktopUpdates: {
       get: () => request(desktopUpdateStateSchema, "/api/settings/updates"),
@@ -193,7 +200,7 @@ export function createApiClient(transport: ApiTransport) {
       request(uploadImportDraftResponseSchema, "/api/import/upload/preview", { method: "POST", body: payload }),
     commitStructuredUpload: (payload: UploadImportCommitPayload) =>
       request(importMutationResponseSchema, "/api/import/upload/commit", { method: "POST", body: payload }),
-    importHealthConnect: (payload: Record<string, unknown>) =>
+    importHealthConnect: (payload: HealthConnectImportPayload) =>
       request(importMutationResponseSchema, "/api/import/health-connect", { method: "POST", body: payload }),
     mobileMigration: {
       start: (payload: MobileMigrationStartRequest) =>
@@ -267,7 +274,8 @@ function chartQuery(options?: { range?: "all" | "1y" | "3m" | "1m"; mode?: "auto
   return values.length ? `?${values.join("&")}` : "";
 }
 
-async function apiErrorFromResponse(response: ApiTransportResponse): Promise<ApiError> {
+/** Exported so callers doing raw (non-JSON) fetches can still surface consistent `ApiError`s. */
+export async function apiErrorFromResponse(response: ApiTransportResponse): Promise<ApiError> {
   let payload: unknown;
   let text = "";
   try {

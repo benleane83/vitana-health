@@ -39,7 +39,6 @@ import {
   aiQueryResponseSchema,
   aiSettingsResponseSchema,
   analyticsSummaryResponseSchema,
-  apiErrorResponseSchema,
   appBootstrapResponseSchema,
   backupInspectResponseSchema,
   backupRestoreResponseSchema,
@@ -72,7 +71,7 @@ import {
   profilesResponseSchema,
   updateObservationResponseSchema
 } from "@vitana/shared";
-import { ApiError, createApiClient } from "@vitana/api-client";
+import { ApiError, apiErrorFromResponse, createApiClient } from "@vitana/api-client";
 export { ApiError } from "@vitana/api-client";
 
 const ownerTokenKey = "vitana.ownerToken";
@@ -122,41 +121,18 @@ async function promptForOwnerToken(): Promise<string | null> {
   return ownerTokenPromptInFlight;
 }
 
-interface ResponseSchema<T> {
-  parse(value: unknown): T;
-}
-
-async function apiErrorFromResponse(response: Response): Promise<ApiError> {
-  const text = await response.text();
-  const headerCorrelationId = response.headers.get("x-correlation-id") ?? undefined;
-  let payload: unknown;
-  try {
-    payload = JSON.parse(text);
-  } catch {
-    payload = undefined;
-  }
-  const parsed = apiErrorResponseSchema.safeParse(payload);
-  return new ApiError(
-    parsed.success ? parsed.data.error : text || response.statusText || "API request failed.",
-    response.status,
-    parsed.success ? parsed.data.code : "HTTP_ERROR",
-    parsed.success ? parsed.data.correlationId ?? headerCorrelationId : headerCorrelationId,
-    parsed.success ? parsed.data : undefined
-  );
-}
-
 async function assertResponseOk(response: Response): Promise<void> {
   if (!response.ok) throw await apiErrorFromResponse(response);
 }
 
-async function request<T>(schema: ResponseSchema<T>, path: string, options?: RequestInit): Promise<T> {
-  const response = await fetchAsOwner(path, options);
-  await assertResponseOk(response);
-  return schema.parse(await response.json());
-}
-
 const sharedApi = createApiClient(async ({ path, method, headers, body }) =>
   fetchAsOwner(path, { method, headers, body }));
+
+/**
+ * The one request pipeline: owner-token injection lives in the transport above, so endpoints this
+ * client does not wrap yet reuse the same error mapping and schema parsing instead of a second copy.
+ */
+const request = sharedApi.request;
 
 export type AiQueryResult = SharedAiQueryResponse;
 export type AiQueryRow = SharedAiQueryResponse["rows"][number];
@@ -189,7 +165,7 @@ export const api = {
     replace: (payload: { contentType: "image/jpeg"; contentBase64: string }) =>
       request(profilePhotoResponseSchema, "/api/profile/photo", {
         method: "PUT",
-        body: JSON.stringify(profilePhotoUploadSchema.parse(payload))
+        body: profilePhotoUploadSchema.parse(payload)
       }),
     remove: () => request(profilePhotoDeleteResponseSchema, "/api/profile/photo", { method: "DELETE" })
   },
@@ -215,21 +191,26 @@ export const api = {
         filename: response.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "backup.vitana-backup"
       };
     },
-    inspect: (file: Blob, passphrase: string): Promise<BackupInspectResponse> =>
-      request(backupInspectResponseSchema, "/api/backups/inspect", {
+    inspect: async (file: Blob, passphrase: string): Promise<BackupInspectResponse> => {
+      // Binary upload with out-of-band headers, so it stays on the raw transport rather than the
+      // JSON request pipeline.
+      const response = await fetchAsOwner("/api/backups/inspect", {
         method: "POST",
         headers: {
           "content-type": "application/octet-stream",
           "x-backup-passphrase": passphrase
         },
         body: file
-      }),
-    restore: (file: Blob, passphrase: string, decisions: Array<{
+      });
+      await assertResponseOk(response);
+      return backupInspectResponseSchema.parse(await response.json());
+    },
+    restore: async (file: Blob, passphrase: string, decisions: Array<{
       profileId: string;
       decision: RestoreDecision;
       acknowledgeReplacement?: string;
-    }>): Promise<BackupRestoreResponse> =>
-      request(backupRestoreResponseSchema, "/api/backups/restore", {
+    }>): Promise<BackupRestoreResponse> => {
+      const response = await fetchAsOwner("/api/backups/restore", {
         method: "POST",
         headers: {
           "content-type": "application/octet-stream",
@@ -237,7 +218,10 @@ export const api = {
           "x-restore-decisions": JSON.stringify(decisions)
         },
         body: file
-      })
+      });
+      await assertResponseOk(response);
+      return backupRestoreResponseSchema.parse(await response.json());
+    }
   },
   summary: sharedApi.summary,
   healthDataDetail: sharedApi.healthDataDetail,
@@ -260,17 +244,17 @@ export const api = {
   updateObservation: (id: string, input: UpdateObservationInput) =>
     request(updateObservationResponseSchema, `/api/observations/${encodeURIComponent(id)}`, {
       method: "PATCH",
-      body: JSON.stringify(input)
+      body: input
     }),
   deleteObservation: (id: string) => request(deleteObservationResponseSchema, `/api/observations/${encodeURIComponent(id)}`, { method: "DELETE" }),
   deleteObservationsByType: (measurementCode: string) =>
     request(deleteObservationsByTypeResponseSchema, `/api/observations/by-type/${encodeURIComponent(measurementCode)}`, { method: "DELETE" }),
   saveProfile: (profile: Omit<Profile, "id" | "updatedAt">) =>
-    request(profileResponseSchema, "/api/profile", { method: "PUT", body: JSON.stringify(profile) }),
+    request(profileResponseSchema, "/api/profile", { method: "PUT", body: profile }),
   cloudAiConsent: {
     get: () => request(cloudAiConsentResponseSchema, "/api/profile/cloud-ai-consent"),
     set: (payload: { enabled: boolean; providerScopeAccepted: boolean; consentVersion?: string }) =>
-      request(cloudAiConsentResponseSchema, "/api/profile/cloud-ai-consent", { method: "PUT", body: JSON.stringify(payload) })
+      request(cloudAiConsentResponseSchema, "/api/profile/cloud-ai-consent", { method: "PUT", body: payload })
   },
   measurementTypes: {
     resetFromRegistry: () => request(measurementRegistryResetResponseSchema, "/api/profile/measurement-types/reset", { method: "POST" })
@@ -282,7 +266,7 @@ export const api = {
   previewStructuredUpload: (payload: UploadImportPreviewPayload) => sharedApi.previewStructuredUpload(payload),
   commitStructuredUpload: (payload: UploadImportCommitPayload) => sharedApi.commitStructuredUpload(payload),
   importManualLabEntry: (payload: ManualLabEntryPayload) =>
-    request(importMutationResponseSchema, "/api/import/labs/manual", { method: "POST", body: JSON.stringify(payload) }),
+    request(importMutationResponseSchema, "/api/import/labs/manual", { method: "POST", body: payload }),
   importManualObservations: (payload: ManualObservationPayload) => sharedApi.importManualObservations(payload),
   generateInsight: () => request(insightResponseSchema, "/api/insights/generate", { method: "POST" }),
   pairing: {
@@ -294,17 +278,17 @@ export const api = {
     pending: () => request(pendingPairingsResponseSchema, "/api/pairing/pending"),
     devices: () => request(pairedDevicesResponseSchema, "/api/pairing/devices"),
     approve: (id: string, profileId: string) =>
-      request(pairingMutationResponseSchema, `/api/pairing/approve/${id}`, { method: "POST", body: JSON.stringify({ profileId }) }),
+      request(pairingMutationResponseSchema, `/api/pairing/approve/${id}`, { method: "POST", body: { profileId } }),
     deny: (id: string) => request(pairingMutationResponseSchema, `/api/pairing/deny/${id}`, { method: "POST" }),
     revoke: (id: string) => request(pairedDeviceSchema, `/api/pairing/revoke/${id}`, { method: "POST" })
   },
   profiles: {
     list: () => request(profilesResponseSchema, "/api/profiles"),
     create: (displayName: string) =>
-      request(profileListEntrySchema, "/api/profiles", { method: "POST", body: JSON.stringify({ displayName }) }),
+      request(profileListEntrySchema, "/api/profiles", { method: "POST", body: { displayName } }),
     active: () => request(profileIdResponseSchema, "/api/profiles/active"),
     setActive: (profileId: string) =>
-      request(profileIdResponseSchema, "/api/profiles/active", { method: "PUT", body: JSON.stringify({ profileId }) }),
+      request(profileIdResponseSchema, "/api/profiles/active", { method: "PUT", body: { profileId } }),
     remove: (profileId: string) =>
       request(profileDeleteResponseSchema, `/api/profiles/${encodeURIComponent(profileId)}`, { method: "DELETE" })
   },
@@ -312,7 +296,7 @@ export const api = {
     ai: (question: string, options?: { timezone?: string; debug?: boolean }) =>
       request(aiQueryResponseSchema, "/api/query/ai", {
         method: "POST",
-        body: JSON.stringify({ question, ...options })
+        body: { question, ...options }
       })
   },
   llm: {
@@ -324,7 +308,7 @@ export const api = {
       save: (payload: DesktopRuntimeSettingsUpdate) =>
         request(desktopRuntimeSettingsResponseSchema, "/api/settings/desktop", {
           method: "PUT",
-          body: JSON.stringify(payload)
+          body: payload
         })
     },
     updates: {
@@ -336,7 +320,7 @@ export const api = {
     ai: {
       get: () => request(aiSettingsResponseSchema, "/api/settings/ai"),
       save: (payload: { provider: "ollama" | "openai"; endpoint: string; apiKey?: string; model: string; timeoutMs: number }) =>
-        request(aiSettingsResponseSchema, "/api/settings/ai", { method: "PUT", body: JSON.stringify(payload) }),
+        request(aiSettingsResponseSchema, "/api/settings/ai", { method: "PUT", body: payload }),
       validate: () => request(modelValidationResponseSchema, "/api/settings/ai/validate", { method: "POST" })
     }
   }
