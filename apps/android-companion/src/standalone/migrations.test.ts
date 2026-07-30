@@ -78,6 +78,19 @@ describe("standalone schema migrations", () => {
     expect(resumableSql).toContain("DROP INDEX IF EXISTS connected_replica_entities_type_idx");
   });
 
+  it("evicts the replica cache from the durable database and never rebuilds it there", () => {
+    // Versions 3 and 4 created and altered the cache in this file; version 5 is the eviction. The
+    // history stays so databases already at 4 have a path forward, but nothing after it may put a
+    // cache table back - that would undo the split.
+    const evictionSql = migrationSql(4);
+    expect(evictionSql).toContain("DROP TABLE IF EXISTS connected_replicas");
+    expect(evictionSql).toContain("DROP TABLE IF EXISTS connected_replica_entities");
+    const afterEviction = migrations.filter((migration) => migration.version > 5);
+    for (const migration of afterEviction) {
+      expect(migration.sql).not.toMatch(/CREATE TABLE\s+(IF NOT EXISTS\s+)?connected_replica/i);
+    }
+  });
+
   it("rejects impossible schema versions and unreachable migration paths", () => {
     expect(() => validateSchemaVersion(-1)).toThrow("Invalid database schema");
     expect(() => validateSchemaVersion(1.5)).toThrow("Invalid database schema");

@@ -12,6 +12,8 @@ import java.security.cert.X509Certificate
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLHandshakeException
+import javax.net.ssl.SSLPeerUnverifiedException
 import javax.net.ssl.X509TrustManager
 import okhttp3.Call
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -22,6 +24,9 @@ import okhttp3.RequestBody.Companion.toRequestBody
 /**
  * Carries a stable machine-readable code alongside the user-facing message so the JS retry policy
  * can decide what is worth retrying without pattern-matching on prose.
+ *
+ * The permitted codes are defined once in `packages/shared/src/pinnedHttp.ts`, which is also what
+ * an iOS implementation of this module has to satisfy.
  */
 private class PinnedHttpException(code: String, message: String) : CodedException(code, message, null)
 
@@ -87,6 +92,18 @@ class VitanaPinnedHttpModule : Module() {
         throw PinnedHttpException("network-unreachable", "Could not find your paired PC on the local network. Check its connection and try again.")
       } catch (error: ConnectException) {
         throw PinnedHttpException("network-connect-failed", "Could not connect to your paired PC. Check that it is running and reachable, then try again.")
+      } catch (error: SSLPeerUnverifiedException) {
+        // Must be caught ahead of IOException. A failed pin is not a flaky hop: retrying it would
+        // hammer whatever is answering, and reporting it as a network blip would hide the one
+        // failure the user has to act on.
+        throw PinnedHttpException("tls-pinning-failed", "Your paired PC did not match the identity you scanned. Pair again from the PC to be sure you are connecting to the right machine.")
+      } catch (error: SSLHandshakeException) {
+        val pinningFailure = generateSequence<Throwable>(error, Throwable::cause)
+          .any { it is java.security.cert.CertificateException }
+        if (pinningFailure) {
+          throw PinnedHttpException("tls-pinning-failed", "Your paired PC did not match the identity you scanned. Pair again from the PC to be sure you are connecting to the right machine.")
+        }
+        throw PinnedHttpException("tls-handshake-failed", "Could not establish a secure connection to your paired PC. Pair again from the PC, then try once more.")
       } catch (error: IOException) {
         if (call.isCanceled()) {
           throw PinnedHttpException("cancelled", "The request was cancelled.")

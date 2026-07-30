@@ -9,6 +9,11 @@ import {
   measurementTypeProperties,
   run
 } from "./duckdbRows.js";
+import { selectColumns } from "./duckdbColumns.js";
+
+// Named column lists, not `SELECT * EXCLUDE (...)`: that syntax is DuckDB-only, and `*` silently
+// widens every DTO the moment the schema gains a column.
+const measurementTypeColumns = selectColumns("measurement_types", { excludeOrdinal: true });
 
 export async function schemaVersions(connection: duckdb.Connection): Promise<number[]> {
   const rows = await all(connection, "SELECT schema_version FROM poc_metadata ORDER BY schema_version;");
@@ -27,7 +32,7 @@ export async function reconcileDefaultMeasurementTypes(
     return;
   }
   const [existingRows, referencedRows] = await Promise.all([
-    all(connection, "SELECT * EXCLUDE (ordinal) FROM measurement_types;"),
+    all(connection, `SELECT ${measurementTypeColumns} FROM measurement_types;`),
     all(connection, `
       SELECT measurement_code FROM observations
       UNION
@@ -100,7 +105,7 @@ export async function reconcileDefaultMeasurementTypes(
     }
     const written = await all(
       connection,
-      `SELECT * EXCLUDE (ordinal) FROM measurement_types WHERE code IN (${
+      `SELECT ${measurementTypeColumns} FROM measurement_types WHERE code IN (${
         touchedCodes.map((code) => `'${code.replace(/'/g, "''")}'`).join(", ")});`
     );
     return written.map((row) => measurementTypeFromRow(row));
@@ -168,7 +173,7 @@ export async function resetMeasurementTypeMetadataFromRegistry(
     // The registry rewrites every default type, so read the rows back once and replicate them from
     // their persisted shape rather than from the in-memory registry entries.
     const touchedCodes = new Set(defaultMeasurementTypes.map((entry) => entry.code));
-    const rows = await all(connection, "SELECT * EXCLUDE (ordinal) FROM measurement_types;");
+    const rows = await all(connection, `SELECT ${measurementTypeColumns} FROM measurement_types;`);
     const replicated = rows
       .map((row) => measurementTypeFromRow(row))
       .filter((type) => touchedCodes.has(type.code));

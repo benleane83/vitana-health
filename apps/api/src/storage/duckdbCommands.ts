@@ -55,6 +55,14 @@ import {
 } from "./duckdbRows.js";
 import { CareItemCompletionConflictError, HealthEventDeleteConflictError, RepositoryValidationError } from "./profileRepository.js";
 import type { StoredProfilePhoto } from "./profileRepository.js";
+import { selectColumns } from "./duckdbColumns.js";
+
+// Named column lists, not `SELECT * EXCLUDE (...)`: that syntax is DuckDB-only, and `*` silently
+// widens every DTO the moment the schema gains a column.
+const measurementTypeColumns = selectColumns("measurement_types", { excludeOrdinal: true });
+const observationColumns = selectColumns("observations", { excludeOrdinal: true });
+const healthEventColumns = selectColumns("health_events", { excludeOrdinal: true });
+const careItemColumns = selectColumns("care_items", { excludeOrdinal: true });
 
 /**
  * Bulk deletes report the identifiers they removed so callers can emit one replica tombstone per
@@ -204,7 +212,7 @@ export async function upsertPersonalReferenceRange(
   }
   const typeRows = await allWithParams(
     connection,
-    "SELECT * EXCLUDE (ordinal) FROM measurement_types WHERE code = ?;",
+    `SELECT ${measurementTypeColumns} FROM measurement_types WHERE code = ?;`,
     measurementCode
   );
   if (!typeRows[0]) {
@@ -332,7 +340,7 @@ export async function deleteObservation(
   connection: duckdb.Connection,
   id: string
 ): Promise<DeleteObservationResponse | undefined> {
-  const rows = await allWithParams(connection, "SELECT * EXCLUDE (ordinal) FROM observations WHERE id = ?;", id);
+  const rows = await allWithParams(connection, `SELECT ${observationColumns} FROM observations WHERE id = ?;`, id);
   if (!rows[0]) {
     return undefined;
   }
@@ -372,7 +380,7 @@ export async function updateObservation(
     input.note ?? null,
     id
   );
-  const updatedRows = await allWithParams(connection, "SELECT * EXCLUDE (ordinal) FROM observations WHERE id = ?;", id);
+  const updatedRows = await allWithParams(connection, `SELECT ${observationColumns} FROM observations WHERE id = ?;`, id);
   const updatedObservation = observationFromRow(updatedRows[0]);
   await insertAudit(connection, "observation-updated", `${updatedObservation.measurementCode} observation updated for ${updatedObservation.observedAt}.`);
   return { updatedObservation, counts: await storageCounts(connection) };
@@ -461,7 +469,7 @@ export async function updateHealthEvent(
   id: string,
   input: UpdateHealthEventInput
 ): Promise<HealthEventMutationResponse | undefined> {
-  const rows = await allWithParams(connection, "SELECT * EXCLUDE (ordinal) FROM health_events WHERE id = ?;", id);
+  const rows = await allWithParams(connection, `SELECT ${healthEventColumns} FROM health_events WHERE id = ?;`, id);
   if (!rows[0]) {
     return undefined;
   }
@@ -499,7 +507,7 @@ export async function deleteHealthEvent(
   connection: duckdb.Connection,
   id: string
 ): Promise<DeleteHealthEventResponse | undefined> {
-  const rows = await allWithParams(connection, "SELECT * EXCLUDE (ordinal) FROM health_events WHERE id = ?;", id);
+  const rows = await allWithParams(connection, `SELECT ${healthEventColumns} FROM health_events WHERE id = ?;`, id);
   if (!rows[0]) {
     return undefined;
   }
@@ -554,7 +562,7 @@ export async function updateCareItem(
   id: string,
   input: UpdateCareItemInput
 ): Promise<CareItemMutationResponse | undefined> {
-  const rows = await allWithParams(connection, "SELECT * EXCLUDE (ordinal) FROM care_items WHERE id = ?;", id);
+  const rows = await allWithParams(connection, `SELECT ${careItemColumns} FROM care_items WHERE id = ?;`, id);
   if (!rows[0]) {
     return undefined;
   }
@@ -598,7 +606,7 @@ export async function completeCareItem(
   id: string,
   input: CompleteCareItemInput
 ): Promise<CompleteCareItemResponse | undefined> {
-  const rows = await allWithParams(connection, "SELECT * EXCLUDE (ordinal) FROM care_items WHERE id = ?;", id);
+  const rows = await allWithParams(connection, `SELECT ${careItemColumns} FROM care_items WHERE id = ?;`, id);
   if (!rows[0]) {
     return undefined;
   }
@@ -642,7 +650,7 @@ export async function deleteCareItem(
   connection: duckdb.Connection,
   id: string
 ): Promise<DeleteCareItemResponse | undefined> {
-  const rows = await allWithParams(connection, "SELECT * EXCLUDE (ordinal) FROM care_items WHERE id = ?;", id);
+  const rows = await allWithParams(connection, `SELECT ${careItemColumns} FROM care_items WHERE id = ?;`, id);
   if (!rows[0]) {
     return undefined;
   }

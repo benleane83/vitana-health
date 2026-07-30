@@ -13,6 +13,7 @@ import { configureRuntimeSecurity } from "./security.js";
 import { validateEnv } from "./env.js";
 import { getLanIp } from "./netutil.js";
 import { log } from "./logger.js";
+import { supportedHostPlatform, supportedHostPlatformsDescription } from "@vitana/shared";
 import type { DesktopRuntimeSettingsResponse, DesktopRuntimeSettingsUpdate, DesktopUpdateState } from "@vitana/shared";
 
 export { configureAiCredentialProtector } from "./aiSettings.js";
@@ -51,8 +52,11 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
     throw new Error("Could not configure HTTPS for non-loopback API access.");
   }
 
-  if (process.platform !== "win32" || process.arch !== "x64") {
-    throw new Error("DuckDB storage productionization is currently approved only for Windows x64.");
+  if (!supportedHostPlatform(process.platform, process.arch)) {
+    throw new Error(
+      `DuckDB storage is not approved for ${process.platform}/${process.arch}. `
+        + `Approved hosts: ${supportedHostPlatformsDescription()}.`
+    );
   }
   if (!env.VITANA_DUCKDB_HTTPFS_EXTENSION) {
     throw new Error("VITANA_DUCKDB_HTTPFS_EXTENSION is required for DuckDB storage.");

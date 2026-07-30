@@ -80,10 +80,12 @@ describe.skipIf(!httpfsExtensionPath)("ProfileStoreManager DuckDB runtime", () =
       engine: "duckdb",
       counts: { observations: 1 }
     });
-    expect(await runAnalyticsQuery(
-      manager,
-      "SELECT measurement_code, n FROM v_daily_metrics ORDER BY measurement_code LIMIT 10"
-    )).toEqual(expect.arrayContaining([expect.objectContaining({ measurement_code: "weight" })]));
+    expect(await runAnalyticsQuery(manager, {
+      dialect: "duckdb",
+      sql: "SELECT measurement_code, n FROM v_daily_metrics ORDER BY measurement_code LIMIT 10",
+      resolvedTimeRange: { start: "1970-01-01", end: "2100-01-01", label: "all time" },
+      appliedLimit: 10
+    })).toEqual(expect.arrayContaining([expect.objectContaining({ measurement_code: "weight" })]));
 
     const created = await manager.createProfile("Pilot profile");
     manager.setActiveProfile(created.id);

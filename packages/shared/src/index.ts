@@ -17,4 +17,6 @@ export * from "./replicaSync.js";
 export * from "./duckdbPin.js";
 export * from "./healthConnectImport.js";
 export * from "./healthConnectSync.js";
+export * from "./healthSource.js";
+export * from "./pinnedHttp.js";
 export * from "./networkRetry.js";

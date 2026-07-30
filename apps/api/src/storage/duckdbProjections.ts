@@ -50,6 +50,18 @@ import {
   optionalTimestamp,
   profileFromRow
 } from "./duckdbRows.js";
+import { qualifiedColumns, selectColumns } from "./duckdbColumns.js";
+
+// Named column lists, not `SELECT * EXCLUDE (...)`: that syntax is DuckDB-only, and `*` silently
+// widens every DTO the moment the schema gains a column.
+const measurementTypeColumns = selectColumns("measurement_types", { excludeOrdinal: true });
+const healthEventColumns = selectColumns("health_events", { excludeOrdinal: true });
+const careItemColumns = selectColumns("care_items", { excludeOrdinal: true });
+const observationColumns = selectColumns("observations", { excludeOrdinal: true });
+const qualifiedObservationColumns = qualifiedColumns("o", "observations", { excludeOrdinal: true });
+// Shape of the `measurement_entries` CTE that unions observations, samples and activities.
+const latestMeasurementColumns =
+  "measurement_code, measured_at, value, unit, id, activity_type, duration_minutes";
 
 export async function appBootstrap(connection: duckdb.Connection): Promise<AppBootstrap> {
   const [profileRows, measurementRows, templateRows, insightRows, photoRows, counts] = await Promise.all([
@@ -107,11 +119,11 @@ export async function appBootstrap(connection: duckdb.Connection): Promise<AppBo
 export async function analyticsSummary(connection: duckdb.Connection): Promise<AnalyticsSummary> {
   const [profileRows, measurementRows, observationRows, personalRangeRows, pinnedRows, countRows] = await Promise.all([
     all(connection, "SELECT units, subject_kind FROM profile;"),
-    all(connection, "SELECT * EXCLUDE (ordinal) FROM measurement_types ORDER BY ordinal;"),
+    all(connection, `SELECT ${measurementTypeColumns} FROM measurement_types ORDER BY ordinal;`),
     all(connection, `
-      SELECT * EXCLUDE (measurement_rank, category) FROM (
+      SELECT ${observationColumns} FROM (
         SELECT
-          o.* EXCLUDE (ordinal),
+          ${qualifiedObservationColumns},
           o.ordinal,
           m.category,
           ROW_NUMBER() OVER (
@@ -167,9 +179,9 @@ export async function biologicalAgeSource(connection: duckdb.Connection): Promis
   const [profileRows, observationRows] = await Promise.all([
     all(connection, "SELECT * FROM profile;"),
     allWithParams(connection, `
-      SELECT * EXCLUDE (measurement_rank) FROM (
+      SELECT ${observationColumns} FROM (
         SELECT
-          o.* EXCLUDE (ordinal),
+          ${qualifiedObservationColumns},
           ROW_NUMBER() OVER (
             PARTITION BY o.measurement_code
             ORDER BY o.observed_at DESC, o.id DESC
@@ -225,7 +237,7 @@ export async function clinicianReportLatestMeasurements(
           NULL::DOUBLE AS value, NULL::VARCHAR AS unit, id, activity_type, duration_minutes
         FROM activities
       )
-      SELECT * EXCLUDE (measurement_rank) FROM (
+      SELECT ${latestMeasurementColumns} FROM (
         SELECT
           entries.*,
           ROW_NUMBER() OVER (
@@ -329,7 +341,7 @@ export async function measurementDetail(
   page: MeasurementDetailPage = { offset: 0, limit: 100 }
 ) {
   const [typeRows, rows, countRows, profileRows, personalRows, pinnedRows] = await Promise.all([
-    allWithParams(connection, "SELECT * EXCLUDE (ordinal) FROM measurement_types WHERE code = ?;", measurementCode),
+    allWithParams(connection, `SELECT ${measurementTypeColumns} FROM measurement_types WHERE code = ?;`, measurementCode),
     allWithParams(connection, `
       SELECT * FROM (
         SELECT
@@ -427,7 +439,7 @@ export async function measurementChartSeries(
   options: HealthDataChartSeriesOptions
 ): Promise<HealthDataChartSeries> {
   const [typeRows, profileRows, personalRows] = await Promise.all([
-    allWithParams(connection, "SELECT * EXCLUDE (ordinal) FROM measurement_types WHERE code = ?;", measurementCode),
+    allWithParams(connection, `SELECT ${measurementTypeColumns} FROM measurement_types WHERE code = ?;`, measurementCode),
     all(connection, "SELECT subject_kind FROM profile;"),
     allWithParams(connection, "SELECT * FROM personal_reference_ranges WHERE measurement_code = ?;", measurementCode)
   ]);
@@ -713,7 +725,7 @@ export async function listHealthEvents(
   const { whereSql, params } = buildHealthEventWhere(normalized);
   const rows = await allWithParams(
     connection,
-    `SELECT * EXCLUDE (ordinal)
+    `SELECT ${healthEventColumns}
       FROM health_events
       ${whereSql}
       ORDER BY occurred_at DESC, id DESC
@@ -731,7 +743,7 @@ export async function listHealthEvents(
   if (normalized.includeId && !items.some((event) => event.id === normalized.includeId)) {
     const includedRows = await allWithParams(
       connection,
-      "SELECT * EXCLUDE (ordinal) FROM health_events WHERE id = ?;",
+      `SELECT ${healthEventColumns} FROM health_events WHERE id = ?;`,
       normalized.includeId
     );
     if (includedRows[0]) {
@@ -756,7 +768,7 @@ export async function listCareItems(
   const { whereSql, params } = buildCareItemWhere(normalized);
   const rows = await allWithParams(
     connection,
-    `SELECT * EXCLUDE (ordinal),
+    `SELECT ${careItemColumns},
         (SELECT kind FROM health_events WHERE id = care_items.completed_health_event_id) AS completed_event_kind,
         (SELECT occurred_at FROM health_events WHERE id = care_items.completed_health_event_id) AS completed_event_occurred_at,
         (SELECT provider FROM health_events WHERE id = care_items.completed_health_event_id) AS completed_event_provider
@@ -780,7 +792,7 @@ export async function listCareItems(
   if (normalized.includeId && !items.some((item) => item.id === normalized.includeId)) {
     const includedRows = await allWithParams(
       connection,
-      `SELECT * EXCLUDE (ordinal),
+      `SELECT ${careItemColumns},
         (SELECT kind FROM health_events WHERE id = care_items.completed_health_event_id) AS completed_event_kind,
         (SELECT occurred_at FROM health_events WHERE id = care_items.completed_health_event_id) AS completed_event_occurred_at,
         (SELECT provider FROM health_events WHERE id = care_items.completed_health_event_id) AS completed_event_provider
@@ -890,7 +902,7 @@ export async function referenceRangeState(
   measurementCode: string
 ): Promise<ReferenceRangeState> {
   const [typeRows, profileRows, personalRows] = await Promise.all([
-    allWithParams(connection, "SELECT * EXCLUDE (ordinal) FROM measurement_types WHERE code = ?;", measurementCode),
+    allWithParams(connection, `SELECT ${measurementTypeColumns} FROM measurement_types WHERE code = ?;`, measurementCode),
     all(connection, "SELECT units, subject_kind FROM profile;"),
     allWithParams(connection, "SELECT * FROM personal_reference_ranges WHERE measurement_code = ?;", measurementCode)
   ]);

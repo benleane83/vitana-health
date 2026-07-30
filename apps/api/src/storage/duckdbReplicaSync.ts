@@ -10,19 +10,15 @@ import {
 import { all, allWithParams, insertRows, json, run } from "./duckdbRows.js";
 import { oldestRetainedChangeSequence, ReplicaDeltaGapError } from "./duckdbRetention.js";
 import { isReplicatedMeasurementCode, type ReplicaChangeInput } from "./duckdbReplicaChanges.js";
+import type { StoredReplicaPage } from "./types.js";
 
 export type { ReplicaChangeInput };
+export type { StoredReplicaPage };
 
 export interface ReplicaEntity {
   entityType: ReplicaEntityType;
   entityId: string;
   payload: Record<string, unknown>;
-}
-
-export interface StoredReplicaPage {
-  changes: ReplicaChange[];
-  highWaterMark: ReplicaHighWaterMark;
-  nextOffset?: number;
 }
 
 const collections: Array<{

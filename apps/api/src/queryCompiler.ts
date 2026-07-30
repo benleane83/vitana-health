@@ -154,6 +154,22 @@ export interface CompileError {
 
 export type CompileOutcome = { ok: true } & CompileResult | { ok: false } & CompileError;
 
+export type AnalyticsSqlDialect = "duckdb" | "sqlite";
+
+/**
+ * A compiled plan, not a bare SQL string.
+ *
+ * The SQL is dialect-specific - `date_trunc`, `EXCLUDE`, and the interval syntax all differ - so
+ * carrying the dialect with it lets the store that executes it refuse a plan compiled for a
+ * different engine. Passing a string instead made that mismatch unrepresentable, which is exactly
+ * the failure mode a SQLite backend would introduce.
+ */
+export interface CompiledQuery extends CompileResult {
+  readonly dialect: AnalyticsSqlDialect;
+}
+
+export type CompiledQueryOutcome = { ok: true } & CompiledQuery | { ok: false } & CompileError;
+
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
 function capLimit(requested: number): number {
@@ -598,13 +614,16 @@ export function validateCompiledSql(sql: string): SqlValidationResult {
 }
 
 export interface AnalyticsQueryCompiler {
-  readonly dialect: "duckdb" | "sqlite";
-  compile(dsl: QueryDSL): CompileOutcome;
+  readonly dialect: AnalyticsSqlDialect;
+  compile(dsl: QueryDSL): CompiledQueryOutcome;
   validate(sql: string): SqlValidationResult;
 }
 
 export const duckDbAnalyticsQueryCompiler: AnalyticsQueryCompiler = {
   dialect: "duckdb",
-  compile: compileQueryDSL,
+  compile: (dsl) => {
+    const outcome = compileQueryDSL(dsl);
+    return outcome.ok ? { ...outcome, dialect: "duckdb" } : outcome;
+  },
   validate: validateCompiledSql
 };

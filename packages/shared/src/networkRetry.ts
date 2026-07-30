@@ -6,14 +6,19 @@
  * only as a fallback for errors raised before the native module is reached (plain-HTTP dev builds,
  * fetch polyfills).
  */
-export const retryableNetworkErrorCodes = [
-  "network-timeout",
-  "network-unreachable",
-  "network-connect-failed",
-  "network-interrupted"
-] as const;
+import {
+  isPinnedHttpErrorCode,
+  retryablePinnedHttpErrorCodes,
+  type PinnedHttpErrorCode
+} from "./pinnedHttp.js";
 
-export type RetryableNetworkErrorCode = (typeof retryableNetworkErrorCodes)[number];
+/**
+ * Derived from the transport contract rather than restated, so adding a code there cannot leave
+ * this list behind - which previously meant an unclassified failure silently became non-retryable.
+ */
+export const retryableNetworkErrorCodes = retryablePinnedHttpErrorCodes;
+
+export type RetryableNetworkErrorCode = PinnedHttpErrorCode;
 
 const retryableCodes = new Set<string>(retryableNetworkErrorCodes);
 
@@ -28,7 +33,10 @@ export function networkErrorCode(error: unknown): string | undefined {
 
 export function isRetryableNetworkError(error: unknown): boolean {
   const code = networkErrorCode(error);
-  if (code) return retryableCodes.has(code);
+  // Only a code the transport contract knows about is authoritative. An unrecognised one - a
+  // library's own code, or a native build newer than this bundle - falls through to the message
+  // check rather than being silently treated as fatal.
+  if (code && isPinnedHttpErrorCode(code)) return retryableCodes.has(code);
   if (isAbortError(error)) return false;
   const message = error instanceof Error ? error.message : String(error);
   return retryableMessagePattern.test(message);

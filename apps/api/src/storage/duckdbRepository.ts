@@ -37,6 +37,7 @@ import {
 } from "@vitana/shared";
 import type { MeasurementDetailPage } from "../summary.js";
 import type { ClinicianReportSourceImport } from "../clinicianReport.js";
+import type { CompiledQuery } from "../queryCompiler.js";
 import {
   applyAnalyticalViews,
   closeEncryptedDuckDbDatabase,
@@ -697,9 +698,14 @@ export class DuckDbRepository implements ProfileRepository {
     return readActivityCounts(this.reader, options);
   }
 
-  async runCompiledQuery(sql: string): Promise<Array<Record<string, unknown>>> {
+  async runCompiledQuery(query: CompiledQuery): Promise<Array<Record<string, unknown>>> {
     this.assertOpen();
-    return all(this.reader, sql);
+    // A plan compiled for another engine would either fail with a parser error or, worse, parse
+    // and mean something subtly different. Refuse it where the mismatch is still legible.
+    if (query.dialect !== "duckdb") {
+      throw new Error(`This profile runs on DuckDB and cannot execute a ${query.dialect} query plan.`);
+    }
+    return all(this.reader, query.sql);
   }
 
   async checkpoint(): Promise<void> {

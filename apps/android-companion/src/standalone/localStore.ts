@@ -15,7 +15,18 @@ import type {
   UpdateObservationInput
 } from "@vitana/shared";
 
-export const LOCAL_SCHEMA_VERSION = 4;
+/** Schema version of the durable database, which holds data only this phone has. */
+export const LOCAL_SCHEMA_VERSION = 5;
+
+/**
+ * Schema version of the disposable replica cache.
+ *
+ * It is tracked separately because it is not migrated. Every row in `replica.db` is a copy of
+ * something the PC still holds, so a shape change is answered by dropping the file and re-syncing.
+ * Bumping this number is the whole migration.
+ */
+export const REPLICA_SCHEMA_VERSION = 1;
+
 
 export interface LocalDatasetMetadata {
   datasetId: string;

@@ -215,5 +215,53 @@ export const migrations: readonly Migration[] = [
     UPDATE connected_replicas SET applied_at = cached_at WHERE applied_at IS NULL;
     DROP INDEX IF EXISTS connected_replica_entities_type_idx;
   `
+  },
+  {
+    version: 5,
+    sql: `
+    DROP TABLE IF EXISTS connected_replica_entities;
+    DROP TABLE IF EXISTS connected_replicas;
+  `
   }
 ];
+
+/**
+ * The replica cache schema, stated in full rather than as a chain of ALTERs.
+ *
+ * Migrations 3 and 4 above are the reason this exists: both were pure cache-shape changes, but
+ * because the cache shared a file with the user's own records they had to go through the durable
+ * migration machinery - file backups, row-count assertions, rollback - to change a table whose
+ * every row could have been re-fetched from the PC in seconds. Here a shape change is a version
+ * bump and a `DROP`.
+ */
+export const replicaSchemaSql = `
+  CREATE TABLE IF NOT EXISTS connected_replicas (
+    replica_id TEXT PRIMARY KEY NOT NULL,
+    server_instance_id TEXT NOT NULL,
+    profile_id TEXT NOT NULL,
+    pairing_id TEXT NOT NULL,
+    cursor_sequence INTEGER NOT NULL DEFAULT 0,
+    revision INTEGER NOT NULL DEFAULT 0,
+    initial_snapshot_completed INTEGER NOT NULL DEFAULT 0 CHECK (initial_snapshot_completed IN (0, 1)),
+    cached_at TEXT,
+    applied_at TEXT,
+    snapshot_cursor TEXT,
+    UNIQUE (server_instance_id, profile_id, pairing_id)
+  );
+  CREATE TABLE IF NOT EXISTS connected_replica_entities (
+    replica_id TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    PRIMARY KEY (replica_id, entity_type, entity_id),
+    FOREIGN KEY (replica_id) REFERENCES connected_replicas(replica_id) ON DELETE CASCADE
+  );
+`;
+
+/** Discards the cache wholesale. Safe by construction: the PC is the source of truth for all of it. */
+export const replicaResetSql = `
+  DROP TABLE IF EXISTS connected_replica_entities;
+  DROP TABLE IF EXISTS connected_replicas;
+`;
+

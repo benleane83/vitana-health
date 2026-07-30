@@ -48,10 +48,17 @@ import {
 import type { HealthDataChartSeries, HealthDataChartSeriesOptions } from "@vitana/shared";
 import { chartRangeCutoff } from "../chartSeries";
 import { migrate, readSchemaVersion } from "./migrations";
+import { prepareReplicaCache } from "./replicaCache";
 
 const DATABASE_NAME = "standalone-health.db";
+// A separate file on purpose. `standalone-health.db` holds records that exist nowhere else and are
+// migrated with backups and row-count assertions; `replica.db` holds copies of data the paired PC
+// still has, and is rebuilt rather than migrated. Keeping them together made every cache-shape
+// change a user-data migration.
+const REPLICA_DATABASE_NAME = "replica.db";
 const DATABASE_KEY_NAME = "vitana.standaloneDatabaseKey.v1";
 let sharedDatabase: Promise<SQLiteDatabase> | undefined;
+let sharedReplicaDatabase: Promise<SQLiteDatabase> | undefined;
 let databaseLeases = 0;
 let databaseMode: LocalDatabaseMode = "read-write";
 
@@ -69,18 +76,50 @@ const secureKeyStore: SecureKeyStore = {
 };
 
 export async function openSqliteLocalStore(): Promise<SqliteLocalStore> {
-  const database = await acquireSharedDatabase();
-  return new SqliteLocalStore(database, releaseSharedDatabase);
+  const { database, replicaDatabase } = await acquireSharedDatabase();
+  return new SqliteLocalStore(database, releaseSharedDatabase, replicaDatabase);
 }
 
-async function acquireSharedDatabase(): Promise<SQLiteDatabase> {
+async function acquireSharedDatabase(): Promise<{ database: SQLiteDatabase; replicaDatabase: SQLiteDatabase }> {
   sharedDatabase ??= openSqliteDatabase().catch((error) => {
     sharedDatabase = undefined;
     throw error;
   });
   const database = await sharedDatabase;
+  sharedReplicaDatabase ??= openReplicaDatabase().catch((error) => {
+    sharedReplicaDatabase = undefined;
+    throw error;
+  });
+  const replicaDatabase = await sharedReplicaDatabase;
   databaseLeases += 1;
-  return database;
+  return { database, replicaDatabase };
+}
+
+/**
+ * Opens the cache under the same key as the durable database - it holds real health readings, just
+ * borrowed ones - but with none of the migration ceremony. A cache that will not open is deleted
+ * and refilled, which is why this has no recovery path of its own.
+ */
+async function openReplicaDatabase(): Promise<SQLiteDatabase> {
+  return openWithDatabaseKey(secureKeyStore, Crypto.getRandomBytesAsync, async (hexKey) => {
+    let database = await openDatabaseAsync(REPLICA_DATABASE_NAME);
+    try {
+      await database.execAsync(`PRAGMA key = "x'${hexKey}'";`);
+      await database.getFirstAsync("PRAGMA user_version");
+    } catch {
+      await database.closeAsync().catch(() => undefined);
+      await deleteDatabaseAsync(REPLICA_DATABASE_NAME).catch(() => undefined);
+      database = await openDatabaseAsync(REPLICA_DATABASE_NAME);
+      await database.execAsync(`PRAGMA key = "x'${hexKey}'";`);
+    }
+    await database.execAsync(`
+      PRAGMA foreign_keys = ON;
+      PRAGMA journal_mode = WAL;
+      PRAGMA secure_delete = ON;
+    `);
+    await prepareReplicaCache(database);
+    return database;
+  }, () => false);
 }
 
 async function openSqliteDatabase(): Promise<SQLiteDatabase> {
@@ -214,13 +253,22 @@ export async function rekeySqliteLocalStorage(
   } finally {
     await database.closeAsync().catch(() => undefined);
   }
+  // The cache shares the key but is not worth rotating: dropping it costs one re-sync, and it means
+  // a half-finished rotation can never leave a file no key opens.
+  await deleteDatabaseAsync(REPLICA_DATABASE_NAME).catch(() => undefined);
   await secureKeyStore.set(replacement);
 }
 
 
 async function releaseSharedDatabase(): Promise<void> {
   databaseLeases = Math.max(0, databaseLeases - 1);
-  if (databaseLeases !== 0 || !sharedDatabase) return;
+  if (databaseLeases !== 0) return;
+  if (sharedReplicaDatabase) {
+    const replica = await sharedReplicaDatabase;
+    sharedReplicaDatabase = undefined;
+    await replica.closeAsync().catch(() => undefined);
+  }
+  if (!sharedDatabase) return;
   const database = await sharedDatabase;
   sharedDatabase = undefined;
   await database.closeAsync();
@@ -231,6 +279,7 @@ export async function resetSqliteLocalStorage(): Promise<void> {
     throw new Error("Close active local data operations before resetting encrypted storage.");
   }
   await deleteDatabaseAsync(DATABASE_NAME);
+  await deleteDatabaseAsync(REPLICA_DATABASE_NAME).catch(() => undefined);
   await secureKeyStore.remove();
   databaseMode = "read-write";
 }
@@ -241,7 +290,9 @@ export class SqliteLocalStore implements LocalStore {
 
   constructor(
     private readonly database: SQLiteDatabase,
-    private readonly release: () => Promise<void> = () => database.closeAsync()
+    private readonly release: () => Promise<void> = () => database.closeAsync(),
+    /** Defaults to the durable handle so existing single-database tests keep working. */
+    private readonly replicaDatabase: SQLiteDatabase = database
   ) {}
 
   async initialize(defaultProfile: Profile): Promise<void> {
@@ -815,7 +866,7 @@ export class SqliteLocalStore implements LocalStore {
   }
 
   async replicaMetadata(identity: ReplicaIdentity) {
-    const row = await this.database.getFirstAsync<{
+    const row = await this.replicaDatabase.getFirstAsync<{
       server_instance_id: string;
       profile_id: string;
       pairing_id: string;
@@ -848,8 +899,8 @@ export class SqliteLocalStore implements LocalStore {
     const identity = replicaIdentity(page);
     const id = replicaId(identity);
     const appliedAt = new Date().toISOString();
-    await this.database.withTransactionAsync(async () => {
-      await this.database.runAsync(
+    await this.replicaDatabase.withTransactionAsync(async () => {
+      await this.replicaDatabase.runAsync(
         `INSERT OR IGNORE INTO connected_replicas
          (replica_id, server_instance_id, profile_id, pairing_id)
          VALUES (?, ?, ?, ?)`,
@@ -871,7 +922,7 @@ export class SqliteLocalStore implements LocalStore {
             : Math.max(metadata.cursorSequence, ...page.changes.map((change) => change.sequence)));
       const initialSnapshotCompleted = metadata.initialSnapshotCompleted ||
         (page.kind === "snapshot" && page.complete);
-      await this.database.runAsync(
+      await this.replicaDatabase.runAsync(
         `UPDATE connected_replicas SET cursor_sequence = ?, revision = ?,
          initial_snapshot_completed = ?, cached_at = ?, applied_at = ?, snapshot_cursor = ?
          WHERE replica_id = ?`,
@@ -892,7 +943,7 @@ export class SqliteLocalStore implements LocalStore {
    */
   private async writeReplicaChanges(id: string, changes: ReplicaPage["changes"]): Promise<void> {
     if (changes.length === 0) return;
-    const upsert = await this.database.prepareAsync(
+    const upsert = await this.replicaDatabase.prepareAsync(
       `INSERT INTO connected_replica_entities
        (replica_id, entity_type, entity_id, payload_json, revision)
        VALUES (?, ?, ?, ?, ?)
@@ -901,7 +952,7 @@ export class SqliteLocalStore implements LocalStore {
          revision = excluded.revision
        WHERE excluded.revision >= connected_replica_entities.revision`
     );
-    const tombstone = await this.database.prepareAsync(
+    const tombstone = await this.replicaDatabase.prepareAsync(
       `DELETE FROM connected_replica_entities
        WHERE replica_id = ? AND entity_type = ? AND entity_id = ? AND revision <= ?`
     );
@@ -931,7 +982,7 @@ export class SqliteLocalStore implements LocalStore {
     if (!metadata?.initialSnapshotCompleted) {
       throw new Error("Connected data is unavailable offline until the first snapshot completes.");
     }
-    const rows = await this.database.getAllAsync<{ entity_type: string; payload_json: string }>(
+    const rows = await this.replicaDatabase.getAllAsync<{ entity_type: string; payload_json: string }>(
       `SELECT entity_type, payload_json FROM connected_replica_entities
        WHERE replica_id = ? ORDER BY entity_type, entity_id`,
       replicaId(identity)
@@ -946,9 +997,9 @@ export class SqliteLocalStore implements LocalStore {
     const id = replicaId(identity);
     // Deleted explicitly rather than through the foreign-key cascade: this is the "forget my synced
     // health data" path, and orphaned entity rows would be unreachable health data.
-    await this.database.withTransactionAsync(async () => {
-      await this.database.runAsync("DELETE FROM connected_replica_entities WHERE replica_id = ?", id);
-      await this.database.runAsync("DELETE FROM connected_replicas WHERE replica_id = ?", id);
+    await this.replicaDatabase.withTransactionAsync(async () => {
+      await this.replicaDatabase.runAsync("DELETE FROM connected_replica_entities WHERE replica_id = ?", id);
+      await this.replicaDatabase.runAsync("DELETE FROM connected_replicas WHERE replica_id = ?", id);
     });
   }
 
@@ -958,10 +1009,10 @@ export class SqliteLocalStore implements LocalStore {
     if (stagingId === targetId) return;
     // Ordered so no entity row is ever parentless: seed the new parent, move the children, then drop
     // the old parent.
-    await this.database.withTransactionAsync(async () => {
-      await this.database.runAsync("DELETE FROM connected_replica_entities WHERE replica_id = ?", targetId);
-      await this.database.runAsync("DELETE FROM connected_replicas WHERE replica_id = ?", targetId);
-      await this.database.runAsync(
+    await this.replicaDatabase.withTransactionAsync(async () => {
+      await this.replicaDatabase.runAsync("DELETE FROM connected_replica_entities WHERE replica_id = ?", targetId);
+      await this.replicaDatabase.runAsync("DELETE FROM connected_replicas WHERE replica_id = ?", targetId);
+      await this.replicaDatabase.runAsync(
         `INSERT INTO connected_replicas
          (replica_id, server_instance_id, profile_id, pairing_id, cursor_sequence, revision,
           initial_snapshot_completed, cached_at, applied_at, snapshot_cursor)
@@ -974,12 +1025,12 @@ export class SqliteLocalStore implements LocalStore {
         target.pairingId,
         stagingId
       );
-      await this.database.runAsync(
+      await this.replicaDatabase.runAsync(
         "UPDATE connected_replica_entities SET replica_id = ? WHERE replica_id = ?",
         targetId,
         stagingId
       );
-      await this.database.runAsync("DELETE FROM connected_replicas WHERE replica_id = ?", stagingId);
+      await this.replicaDatabase.runAsync("DELETE FROM connected_replicas WHERE replica_id = ?", stagingId);
     });
   }
 

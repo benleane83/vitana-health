@@ -77,3 +77,15 @@ export function selectColumns(table: PersistedTable, options: { excludeOrdinal?:
   const columns = tableColumns[table] as readonly string[];
   return (options.excludeOrdinal ? columns.filter((column) => column !== "ordinal") : columns).join(", ");
 }
+
+/**
+ * The same list qualified with a table alias, for joins where an unqualified name would be
+ * ambiguous. Replaces `o.* EXCLUDE (...)`, which only DuckDB understands.
+ */
+export function qualifiedColumns(
+  alias: string,
+  table: PersistedTable,
+  options: { excludeOrdinal?: boolean } = {}
+): string {
+  return selectColumns(table, options).split(", ").map((column) => `${alias}.${column}`).join(", ");
+}

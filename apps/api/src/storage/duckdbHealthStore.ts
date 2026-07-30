@@ -22,12 +22,13 @@ import type {
   UpdateObservationInput,
   UpdateObservationResponse
 } from "@vitana/shared";
-import type { StoreSecurityMode } from "./profileStoreManager.js";
+import type { StoreSecurityMode } from "./types.js";
 import {
   DuckDbRepository
 } from "./duckdbRepository.js";
 import type { DuckDbOptions } from "./duckdbRuntime.js";
 import type { MeasurementDetailPage } from "../summary.js";
+import type { CompiledQuery } from "../queryCompiler.js";
 import { deriveProfileStorageKey } from "./profileKey.js";
 import type {
   ImportMutationResult,
@@ -36,7 +37,7 @@ import type {
   ProfileImport,
   ProfileRepository
 } from "./profileRepository.js";
-import type { HealthConnectSyncSessionStart } from "./duckdbHealthConnectSync.js";
+import type { HealthConnectSyncSessionStart } from "./types.js";
 
 export interface DuckDbHealthStoreOptions {
   root: string;
@@ -282,8 +283,8 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
     return this.enqueueMutation(async () => this.repository.deleteCareItem(id));
   }
 
-  runCompiledQuery(sql: string): Promise<Array<Record<string, unknown>>> {
-    return this.repository.runCompiledQuery(sql);
+  runCompiledQuery(query: CompiledQuery): Promise<Array<Record<string, unknown>>> {
+    return this.repository.runCompiledQuery(query);
   }
 
   async close(): Promise<void> {

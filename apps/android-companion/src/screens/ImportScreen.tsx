@@ -22,7 +22,6 @@ import {
 import { createCompanionApi } from "../api";
 import { useEntitlement } from "../EntitlementProvider";
 import {
-  HEALTH_CONNECT_CATEGORIES,
   HEALTH_CONNECT_SYNC_WINDOW_OPTIONS,
   saveConnection,
   updateHealthSourceCursors,
@@ -31,9 +30,9 @@ import {
   type HealthSourceCursors
 } from "../endpointStore";
 import { healthSourceSyncCoordinator } from "../healthSourceSyncCoordinator";
+import { activeHealthSourceProvider } from "../healthSourceProvider";
 import { useMobileApi } from "../MobileApiProvider";
 import type { RootStackParamList, TabParamList } from "../navigationTypes";
-import { syncHealthConnect } from "../syncHealthConnect";
 import { LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS } from "../pinnedFetch";
 import { userFacingError } from "../userFacingError";
 import { Button, Card, Message, Screen } from "../ui/components";
@@ -593,6 +592,9 @@ function HealthConnectImport() {
   const [syncProgress, setSyncProgress] = useState("");
   const [updating, setUpdating] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  // Rendered from the provider rather than a constant, so a device with no health source shows an
+  // empty picker instead of offering categories nothing can read.
+  const providerCategories = activeHealthSourceProvider()?.categories ?? [];
   useKeepAwake(syncing ? "health-connect-sync" : undefined);
   // Leaving the app abandons the read rather than letting the OS kill it mid-batch; the persisted
   // session key means the next sync resumes from the last acknowledged chunk.
@@ -645,10 +647,16 @@ function HealthConnectImport() {
 
   async function sync() {
     if (syncing || updating || healthSourceSyncCoordinator.busy) return;
+    const provider = activeHealthSourceProvider();
+    if (!provider) {
+      setStatusTone("danger");
+      setStatus("This device has no supported health data source.");
+      return;
+    }
     setSyncing(true);
-    setSyncProgress("Checking Health Connect on this phone…");
+    setSyncProgress(`Checking ${provider.label} on this phone…`);
     try {
-      const result = await healthSourceSyncCoordinator.run((signal) => syncHealthConnect(
+      const result = await healthSourceSyncCoordinator.run((signal) => provider.sync(
         currentConnection.url,
         currentConnection.token,
         bootstrap?.profile.id ?? null,
@@ -693,7 +701,7 @@ function HealthConnectImport() {
       <Card>
         <Text style={styles.heading}>Data to sync</Text>
         <View style={styles.chips}>
-          {HEALTH_CONNECT_CATEGORIES.map((category) => (
+          {providerCategories.map((category) => (
             <Chip
               key={category}
               label={category}

@@ -124,7 +124,9 @@ describe("POST /api/query/ai domain sources", () => {
       chart: { type: "bar", series: [{ label: "2026-07-01", value: 2 }] },
       model: "deterministic-fallback"
     });
-    expect(runActiveCompiledQuery).toHaveBeenCalledWith(expect.stringContaining("FROM v_ai_health_events"));
+    expect(runActiveCompiledQuery).toHaveBeenCalledWith(
+      expect.objectContaining({ dialect: "duckdb", sql: expect.stringContaining("FROM v_ai_health_events") })
+    );
   });
 
   it("runs grouped care item counts with the existing response envelope", async () => {
@@ -151,7 +153,9 @@ describe("POST /api/query/ai domain sources", () => {
       rows: [{ priority: "high", count: 3 }],
       chart: { type: "bar", series: [{ label: "high", value: 3 }] }
     });
-    expect(runActiveCompiledQuery).toHaveBeenCalledWith(expect.stringContaining("FROM v_ai_care_items"));
+    expect(runActiveCompiledQuery).toHaveBeenCalledWith(
+      expect.objectContaining({ dialect: "duckdb", sql: expect.stringContaining("FROM v_ai_care_items") })
+    );
   });
 });
 
@@ -166,6 +170,7 @@ function queryApp(rows: Array<Record<string, unknown>>) {
         updatedAt: "2026-07-01T00:00:00.000Z"
       })
     }),
+    getStorageBackend: () => "duckdb",
     runActiveCompiledQuery
   } as unknown as ProfileStoreManager;
   const app = express();

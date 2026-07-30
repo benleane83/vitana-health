@@ -13,8 +13,10 @@ vi.mock("expo-crypto", () => ({ getRandomBytesAsync: vi.fn() }));
 vi.mock("expo-secure-store", () => ({}));
 vi.mock("./pinnedFetch", () => ({ pinnedFetch: vi.fn() }));
 
+import { HEALTH_SOURCE_CATEGORIES } from "@vitana/shared";
 import { HEALTH_CONNECT_CATEGORIES } from "./endpointStore";
 import { HEALTH_CONNECT_DESCRIPTORS } from "./syncHealthConnect";
+import { healthConnectProvider } from "./healthSourceProvider";
 
 describe("Health Connect collection descriptors", () => {
   it("defines exactly one descriptor for every selectable category", () => {
@@ -23,6 +25,15 @@ describe("Health Connect collection descriptors", () => {
     expect(descriptorCategories).toHaveLength(HEALTH_CONNECT_CATEGORIES.length);
     expect(new Set(descriptorCategories).size).toBe(descriptorCategories.length);
     expect([...descriptorCategories].sort()).toEqual([...HEALTH_CONNECT_CATEGORIES].sort());
+  });
+
+  it("offers only categories from the shared vocabulary through the provider", () => {
+    // A provider that invented its own spelling would sync data the PC cannot classify, and the
+    // mismatch would only show up as silently dropped readings on the receiving end.
+    expect(healthConnectProvider.categories.length).toBeGreaterThan(0);
+    for (const category of healthConnectProvider.categories) {
+      expect(HEALTH_SOURCE_CATEGORIES).toContain(category);
+    }
   });
 
   it("keeps oxygen saturation in the percentage units returned by Health Connect", () => {

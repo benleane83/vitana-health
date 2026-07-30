@@ -22,7 +22,37 @@ export const PINNED_DUCKDB_HTTPFS_SHA256: Readonly<Record<string, string>> = Obj
   windows_amd64: "21eea4547cf5aa5231f4838906e8935067c956f56a5efd09035a51189af8a77b"
 });
 
-/** Maps Node's `process.platform`/`process.arch` onto DuckDB's extension platform identifiers. */
+/**
+ * Hosts this build is approved to run encrypted DuckDB storage on, keyed by
+ * `${process.platform}-${process.arch}` and valued with DuckDB's extension platform identifier.
+ *
+ * The approval gate reads this table rather than comparing against a hard-coded `"win32"`/`"x64"`
+ * pair, so bringing up Linux or macOS is one row plus a prepared extension digest - not a hunt for
+ * scattered platform checks that each have to be found and widened by hand.
+ */
+export const SUPPORTED_HOST_PLATFORMS: Readonly<Record<string, string>> = Object.freeze({
+  "win32-x64": "windows_amd64"
+});
+
+/** DuckDB extension platform for an approved host, or `undefined` when the host is not approved. */
+export function supportedHostPlatform(
+  nodePlatform: string,
+  nodeArchitecture: string
+): string | undefined {
+  return SUPPORTED_HOST_PLATFORMS[`${nodePlatform}-${nodeArchitecture}`];
+}
+
+/** Human-readable list of approved hosts, for the error a rejected host sees. */
+export function supportedHostPlatformsDescription(): string {
+  return Object.keys(SUPPORTED_HOST_PLATFORMS).join(", ");
+}
+
+/**
+ * Maps Node's `process.platform`/`process.arch` onto DuckDB's extension platform identifiers.
+ *
+ * Deliberately broader than `SUPPORTED_HOST_PLATFORMS`: the packaging script needs to name a
+ * download for a platform we are preparing but have not yet approved at runtime.
+ */
 export function duckDbPlatform(nodePlatform: string, nodeArchitecture: string): string {
   const operatingSystem = { darwin: "osx", linux: "linux", win32: "windows" }[nodePlatform];
   const architecture = { arm64: "arm64", x64: "amd64" }[nodeArchitecture];
@@ -32,7 +62,8 @@ export function duckDbPlatform(nodePlatform: string, nodeArchitecture: string): 
   return `${operatingSystem}_${architecture}`;
 }
 
-/** Digest for the current host, or `undefined` when this platform has no pinned build. */
+/** Digest for the given host, or `undefined` when this host has no pinned build. */
 export function pinnedHttpfsSha256(nodePlatform: string, nodeArchitecture: string): string | undefined {
-  return PINNED_DUCKDB_HTTPFS_SHA256[duckDbPlatform(nodePlatform, nodeArchitecture)];
+  const platform = supportedHostPlatform(nodePlatform, nodeArchitecture);
+  return platform === undefined ? undefined : PINNED_DUCKDB_HTTPFS_SHA256[platform];
 }

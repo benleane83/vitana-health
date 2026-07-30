@@ -15,6 +15,8 @@ import {
   CURRENT_SCHEMA_VERSION,
   defaultMeasurementTypes,
   pinnedHttpfsSha256,
+  supportedHostPlatform,
+  supportedHostPlatformsDescription,
   type HealthStoreData,
   type Profile,
   type ProfilePhotoMetadata,
@@ -23,30 +25,29 @@ import {
 import { initializeDuckDbRoot, type DuckDbOptions } from "./duckdbRuntime.js";
 import { DuckDbHealthStore } from "./duckdbHealthStore.js";
 import type { ManagedProfileRepository } from "./profileRepository.js";
+import type { CompiledQuery } from "../queryCompiler.js";
+import type { StorageBackend, StoreSecurityConfig, StoreSecurityMode } from "./types.js";
 import { RestoreJournal } from "./restoreJournal.js";
 import { sweepOrphanedTempFiles } from "./orphanedTempFiles.js";
-
-export type StoreSecurityMode = "env-secret" | "generated-local-key" | "os-secure-storage";
-
-export interface StoreSecurityConfig {
-  passphrase: string;
-  securityMode: StoreSecurityMode;
-}
 
 export interface DuckDbActivationOptions {
   httpfsExtensionPath: string;
   root?: string;
 }
 
+// Defined in the neutral module and re-exported here, which is where callers have always found
+// them. A second engine has to satisfy the same security contract, so it is not DuckDB's to own.
+export type { StorageBackend, StoreSecurityConfig, StoreSecurityMode };
+
 export interface OpenProfileStoreManagerOptions {
   security?: StoreSecurityConfig;
-  storageBackend: "duckdb";
+  storageBackend: StorageBackend;
   duckdb: DuckDbActivationOptions;
 }
 
 interface StorageBackendManifest {
   version: 1;
-  backend: "duckdb";
+  backend: StorageBackend;
   activatedAt: string;
   /**
    * Provenance for the store as a whole. When a user reports a broken profile this is the only
@@ -71,8 +72,6 @@ export interface RestoreProfileResult {
   newProfileId?: string;
   success: true;
 }
-
-const windowsX64HttpfsSha256 = pinnedHttpfsSha256("win32", "x64");
 
 /**
  * A caller asked for a profile that does not exist. Carries `status` so the centralized error
@@ -149,12 +148,12 @@ export class ProfileStoreManager {
     return store;
   }
 
-  getStorageBackend(): "duckdb" {
+  getStorageBackend(): StorageBackend {
     return "duckdb";
   }
 
-  runActiveCompiledQuery(sql: string): Promise<Array<Record<string, unknown>>> {
-    return this.getActiveStore().runCompiledQuery(sql);
+  runActiveCompiledQuery(query: CompiledQuery): Promise<Array<Record<string, unknown>>> {
+    return this.getActiveStore().runCompiledQuery(query);
   }
 
   async createProfile(displayName: string): Promise<ProfileListEntry> {
@@ -473,14 +472,18 @@ function createInitialManifest(): StorageBackendManifest {
 }
 
 function validateDuckDbRuntime(options: DuckDbActivationOptions): void {
-  if (process.platform !== "win32" || process.arch !== "x64") {
-    throw new Error("DuckDB storage productionization is currently approved only for Windows x64.");
+  if (!supportedHostPlatform(process.platform, process.arch)) {
+    throw new Error(
+      `DuckDB storage is not approved for ${process.platform}/${process.arch}. `
+        + `Approved hosts: ${supportedHostPlatformsDescription()}.`
+    );
   }
   if (!existsSync(options.httpfsExtensionPath)) {
     throw new Error(`Pinned DuckDB extension is unavailable at ${options.httpfsExtensionPath}.`);
   }
   const digest = createHash("sha256").update(readFileSync(options.httpfsExtensionPath)).digest("hex");
-  if (!windowsX64HttpfsSha256 || digest !== windowsX64HttpfsSha256) {
+  const expected = pinnedHttpfsSha256(process.platform, process.arch);
+  if (!expected || digest !== expected) {
     throw new Error("Pinned DuckDB extension failed SHA-256 verification.");
   }
 }

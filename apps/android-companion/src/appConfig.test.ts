@@ -7,6 +7,7 @@ const configPath = require.resolve("../app.config.js");
 function loadConfig(env: Record<string, string | undefined>): {
   expo: {
     android: { usesCleartextTraffic: boolean };
+    ios: { infoPlist: { NSAppTransportSecurity: { NSAllowsArbitraryLoads: boolean } } };
     extra: { allowCleartext: boolean };
   };
 } {
@@ -46,5 +47,17 @@ describe("cleartext build policy", () => {
     const config = loadConfig({ VITANA_ALLOW_CLEARTEXT: "0", EAS_BUILD_PROFILE: "production" });
     expect(config.expo.extra.allowCleartext).toBe(false);
     expect(config.expo.android.usesCleartextTraffic).toBe(false);
+  });
+
+  it("keeps both platform transports on the same switch", () => {
+    // A per-platform drift here would ship a build that is secure on Android and downgraded on
+    // iOS, which no single-platform test would catch.
+    const permitted = loadConfig({ VITANA_ALLOW_CLEARTEXT: "1", EAS_BUILD_PROFILE: "development" });
+    expect(permitted.expo.ios.infoPlist.NSAppTransportSecurity.NSAllowsArbitraryLoads).toBe(true);
+    expect(permitted.expo.android.usesCleartextTraffic).toBe(true);
+
+    const distributable = loadConfig({ VITANA_ALLOW_CLEARTEXT: "0", EAS_BUILD_PROFILE: "production" });
+    expect(distributable.expo.ios.infoPlist.NSAppTransportSecurity.NSAllowsArbitraryLoads).toBe(false);
+    expect(distributable.expo.android.usesCleartextTraffic).toBe(false);
   });
 });

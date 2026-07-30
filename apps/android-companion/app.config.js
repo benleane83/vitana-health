@@ -59,6 +59,30 @@ module.exports = {
     web: {
       favicon: "./assets/favicon.png"
     },
+    // iOS is not shipped yet. This block exists so `expo run:ios` and `eas build -p ios` fail on
+    // real, nameable problems (a missing native module, an unsigned capability) instead of on a
+    // missing bundle identifier, which tells us nothing about how far the port actually is.
+    ios: {
+      bundleIdentifier: "app.vitanahealth",
+      supportsTablet: true,
+      infoPlist: {
+        // Mirrors android.usesCleartextTraffic. Both transports are driven by the same switch so a
+        // profile can never end up secure on one platform and downgraded on the other, and the
+        // build-profile assertion at the top of this file guards both.
+        NSAppTransportSecurity: {
+          NSAllowsArbitraryLoads: allowCleartext,
+          NSAllowsLocalNetworking: true
+        },
+        // The companion discovers the paired PC over the LAN, which iOS treats as a privacy-
+        // sensitive capability and will otherwise deny without an explanation.
+        NSLocalNetworkUsageDescription:
+          "Allow Vitana to find and connect to your paired PC on your local network.",
+        NSCameraUsageDescription:
+          "Allow Vitana to access your camera for QR pairing and health-report capture.",
+        NSPhotoLibraryUsageDescription:
+          "Allow Vitana to select a health report for private processing on your paired PC."
+      }
+    },
     plugins: [
       ["./plugins/withDevNetworkSecurity", { allowCleartext }],
       "react-native-iap",

@@ -3,11 +3,11 @@ import type duckdb from "duckdb";
 import type {
   HealthConnectSyncBatchAcknowledgement,
   HealthConnectSyncCounts,
-  HealthConnectSyncSessionRequest,
   HealthConnectSyncSessionResponse
 } from "@vitana/shared";
 import { HEALTH_CONNECT_SYNC_PROTOCOL_VERSION } from "@vitana/shared";
 import type { ImportOutcome } from "./profileRepository.js";
+import type { HealthConnectSyncSessionStart } from "./types.js";
 import { allWithParams, json, run } from "./duckdbRows.js";
 
 /**
@@ -16,14 +16,7 @@ import { allWithParams, json, run } from "./duckdbRows.js";
  * record that turns a re-uploaded chunk into a replayed answer rather than a second import.
  */
 
-/**
- * Idempotent: a phone that lost its session id (app killed mid-sync) sends the same session key and
- * gets the original session back, together with the batches already applied.
- */
-export type HealthConnectSyncSessionStart = Pick<
-  HealthConnectSyncSessionRequest,
-  "sessionKey" | "deviceLabel" | "rangeStart" | "rangeEnd"
->;
+export type { HealthConnectSyncSessionStart };
 
 export async function startHealthConnectSyncSession(
   connection: duckdb.Connection,

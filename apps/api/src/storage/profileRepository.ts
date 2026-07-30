@@ -47,10 +47,10 @@ import type {
   HealthConnectSyncBatchAcknowledgement,
   HealthConnectSyncSessionResponse
 } from "@vitana/shared";
-import type { HealthConnectSyncSessionStart } from "./duckdbHealthConnectSync.js";
+import type { HealthConnectSyncSessionStart, StoredReplicaPage } from "./types.js";
 import type { MeasurementDetailPage } from "../summary.js";
 import type { ClinicianReportSourceImport } from "../clinicianReport.js";
-import type { StoredReplicaPage } from "./duckdbReplicaSync.js";
+import type { CompiledQuery } from "../queryCompiler.js";
 
 export interface ProfileImport {
   sourceImport: SourceImport;
@@ -170,7 +170,7 @@ export interface ProfileRepository {
   deletePersonalReferenceRange(measurementCode: string): Promise<ReferenceRangeState>;
   pinMeasurement(measurementCode: string): Promise<MeasurementPinState>;
   unpinMeasurement(measurementCode: string): Promise<MeasurementPinState>;
-  runCompiledQuery(sql: string): Promise<Array<Record<string, unknown>>>;
+  runCompiledQuery(query: CompiledQuery): Promise<Array<Record<string, unknown>>>;
   close(): Promise<void>;
 }
 

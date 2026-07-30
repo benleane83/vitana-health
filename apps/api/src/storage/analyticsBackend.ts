@@ -4,11 +4,13 @@ import type {
   DeleteObservationsByTypeResponse,
   UpdateObservationResponse
 } from "@vitana/shared";
-import type { ProfileStoreManager } from "./profileStoreManager.js";
+import type { ProfileStoreManager, StorageBackend } from "./profileStoreManager.js";
 import type { QueryDSL } from "../aiQueryPlanner.js";
 import {
   duckDbAnalyticsQueryCompiler,
-  type CompileOutcome,
+  type AnalyticsQueryCompiler,
+  type CompiledQuery,
+  type CompiledQueryOutcome,
   type SqlValidationResult
 } from "../queryCompiler.js";
 
@@ -37,15 +39,15 @@ export function describeAnalyticsStorage(
 
 export function runAnalyticsQuery(
   storeManager: ProfileStoreManager,
-  sql: string
+  query: CompiledQuery
 ): Promise<Array<Record<string, unknown>>> {
-  return storeManager.runActiveCompiledQuery(sql);
+  return storeManager.runActiveCompiledQuery(query);
 }
 
 export function compileAnalyticsQuery(
   storeManager: ProfileStoreManager,
   dsl: QueryDSL
-): CompileOutcome {
+): CompiledQueryOutcome {
   return analyticsQueryCompilerFor(storeManager).compile(dsl);
 }
 
@@ -56,6 +58,21 @@ export function validateAnalyticsQuery(
   return analyticsQueryCompilerFor(storeManager).validate(sql);
 }
 
-function analyticsQueryCompilerFor(_storeManager: ProfileStoreManager) {
-  return duckDbAnalyticsQueryCompiler;
+/**
+ * One compiler per storage backend.
+ *
+ * Typed exhaustively on purpose: adding `"sqlite"` to the backend union will fail to compile here
+ * until a SQLite compiler exists, rather than quietly handing DuckDB SQL to a SQLite connection.
+ */
+const analyticsQueryCompilers: Record<StorageBackend, AnalyticsQueryCompiler> = {
+  duckdb: duckDbAnalyticsQueryCompiler
+};
+
+export function analyticsQueryCompilerFor(storeManager: ProfileStoreManager): AnalyticsQueryCompiler {
+  const backend = storeManager.getStorageBackend();
+  const compiler = analyticsQueryCompilers[backend] as AnalyticsQueryCompiler | undefined;
+  if (!compiler) {
+    throw new Error(`No analytics query compiler is registered for the ${backend} storage backend.`);
+  }
+  return compiler;
 }

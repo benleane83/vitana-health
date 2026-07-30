@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Crypto from "expo-crypto";
 import * as SecureStore from "expo-secure-store";
+import { HEALTH_SOURCE_CATEGORIES, type HealthSourceCategory, type HealthSourceCursors } from "@vitana/shared";
 
 const CONNECTION_KEY = "vitana.connection";
 const CORRUPT_CONNECTION_KEY = "vitana.connection.corrupt";
@@ -9,25 +10,13 @@ const TOKEN_KEY = "vitana.companionToken";
 const PENDING_REVOCATION_KEY = "vitana.pendingRevocation";
 const SELECTED_PROFILE_ID_KEY = "vitana.selectedProfileId";
 
-export const HEALTH_CONNECT_CATEGORIES = [
-  "Steps",
-  "HeartRate",
-  "OxygenSaturation",
-  "HeartRateVariabilityRmssd",
-  "BasalMetabolicRate",
-  "Height",
-  "Vo2Max",
-  "Weight",
-  "ExerciseSession",
-  "Distance",
-  "ActiveCaloriesBurned",
-  "TotalCaloriesBurned",
-  "SleepSession",
-  "BodyFat"
-] as const;
+// The category vocabulary is protocol-level, not Android-level, so it lives in `@vitana/shared`
+// alongside the `HealthSourceProvider` contract. Re-exported here under the old names because the
+// stored connection record is keyed by them.
+export const HEALTH_CONNECT_CATEGORIES = HEALTH_SOURCE_CATEGORIES;
 
-export type HealthConnectCategory = (typeof HEALTH_CONNECT_CATEGORIES)[number];
-export type HealthSourceCursors = Partial<Record<HealthConnectCategory, string>>;
+export type HealthConnectCategory = HealthSourceCategory;
+export type { HealthSourceCursors };
 export const DEFAULT_HEALTH_CONNECT_SYNC_WINDOW_DAYS = 30;
 export const HEALTH_CONNECT_SYNC_WINDOW_OPTIONS = [30, 60, 90, 180, 365] as const;
 
