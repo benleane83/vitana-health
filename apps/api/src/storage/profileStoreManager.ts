@@ -4,7 +4,7 @@ import type { FileHandle } from "node:fs/promises";
 import { createHash, randomBytes } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import {
-  CURRENT_SCHEMA_VERSION,
+  EXPORT_FORMAT_VERSION,
   defaultMeasurementTypes,
   pinnedHttpfsSha256,
   supportedHostPlatform,
@@ -488,7 +488,7 @@ export class ProfileStoreManager {
 
 function createEmptyStore(profileId = "self", displayName = "Local user"): HealthStoreData {
   return {
-    schemaVersion: CURRENT_SCHEMA_VERSION,
+    schemaVersion: EXPORT_FORMAT_VERSION,
     profile: {
       id: normalizeProfileId(profileId),
       displayName,

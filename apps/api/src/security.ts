@@ -1,5 +1,5 @@
 import { createHash, randomBytes, X509Certificate } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import selfsigned from "selfsigned";
@@ -79,9 +79,9 @@ async function loadOrCreateCertificate(dataDir: string): Promise<{ certPath: str
   const tlsDir = path.join(dataDir, "tls");
   const certPath = path.join(tlsDir, "vitana.crt");
   const keyPath = path.join(tlsDir, "vitana.key");
-  const legacyCertPath = path.join(tlsDir, "local-fitness-advisor.crt");
-  const legacyKeyPath = path.join(tlsDir, "local-fitness-advisor.key");
-  migrateLegacyTlsFiles({ certPath, keyPath, legacyCertPath, legacyKeyPath });
+  if (existsSync(certPath) !== existsSync(keyPath)) {
+    throw new Error("The Vitana TLS certificate and key are incomplete. Restore the matching file from backup.");
+  }
   if (existsSync(certPath) && existsSync(keyPath)) return { certPath, keyPath };
 
   mkdirSync(tlsDir, { recursive: true });
@@ -110,24 +110,4 @@ async function loadOrCreateCertificate(dataDir: string): Promise<{ certPath: str
   writeFileSync(keyPath, certificate.private, { encoding: "utf8", mode: 0o600 });
   writeFileSync(certPath, certificate.cert, { encoding: "utf8", mode: 0o600 });
   return { certPath, keyPath };
-}
-
-function migrateLegacyTlsFiles(paths: {
-  certPath: string;
-  keyPath: string;
-  legacyCertPath: string;
-  legacyKeyPath: string;
-}): void {
-  for (const [legacyPath, currentPath] of [
-    [paths.legacyCertPath, paths.certPath],
-    [paths.legacyKeyPath, paths.keyPath]
-  ] as const) {
-    if (existsSync(legacyPath) && existsSync(currentPath)) {
-      throw new Error("Both legacy and Vitana TLS files exist. Remove one complete pair after safeguarding the files.");
-    }
-    if (existsSync(legacyPath)) renameSync(legacyPath, currentPath);
-  }
-  if (existsSync(paths.certPath) !== existsSync(paths.keyPath)) {
-    throw new Error("The Vitana TLS certificate and key are incomplete. Restore the matching file from backup.");
-  }
 }

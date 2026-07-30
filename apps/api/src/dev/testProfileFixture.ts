@@ -1,5 +1,5 @@
 import {
-  CURRENT_SCHEMA_VERSION,
+  EXPORT_FORMAT_VERSION,
   careItemKindCodes,
   defaultMeasurementTypes,
   healthEventKindCodes,
@@ -136,7 +136,7 @@ export function createTestProfileFixture(options: TestProfileFixtureOptions = {}
 
   const rowCount = observations.length + timeSeriesSamples.length + activitySessions.length;
   return {
-    schemaVersion: CURRENT_SCHEMA_VERSION,
+    schemaVersion: EXPORT_FORMAT_VERSION,
     profile: {
       id: TEST_PROFILE_ID,
       displayName: TEST_PROFILE_NAME,

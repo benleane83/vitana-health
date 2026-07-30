@@ -14,27 +14,23 @@ import {
   type SqlValidationResult
 } from "../queryCompiler.js";
 
+/**
+ * The storage-facing part of a mutation response. It carries counts only: the engine name and a
+ * synthetic `encrypted-profile:<id>` path used to be included, but neither is a real path nor
+ * something a client should branch on, and the storage engine is deliberately swappable.
+ */
+export type AnalyticsStorageCounts =
+  | AppBootstrap["counts"]
+  | UpdateObservationResponse["counts"]
+  | DeleteObservationResponse["counts"]
+  | DeleteObservationsByTypeResponse["counts"];
+
 export interface AnalyticsStorageDescription {
-  databasePath: string;
-  engine: "duckdb";
-  counts: {
-    imports: number;
-    observations: number;
-    samples: number;
-    activities: number;
-  };
+  counts: AnalyticsStorageCounts;
 }
 
-export function describeAnalyticsStorage(
-  storeManager: ProfileStoreManager,
-  counts: AppBootstrap["counts"] | UpdateObservationResponse["counts"] | DeleteObservationResponse["counts"] | DeleteObservationsByTypeResponse["counts"],
-  profileId = storeManager.getActiveProfileId()
-): AnalyticsStorageDescription {
-  return {
-    databasePath: `encrypted-profile:${profileId}`,
-    engine: "duckdb",
-    counts
-  };
+export function describeAnalyticsStorage(counts: AnalyticsStorageCounts): AnalyticsStorageDescription {
+  return { counts };
 }
 
 export function runAnalyticsQuery(

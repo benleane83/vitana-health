@@ -21,23 +21,45 @@ export interface ReplicaEntity {
   payload: Record<string, unknown>;
 }
 
-const collections: Array<{
+/** Every `HealthStoreData` field that holds a collection of replicable entities. */
+type ReplicaCollectionKey = {
+  [K in keyof HealthStoreData]-?: NonNullable<HealthStoreData[K]> extends readonly unknown[] ? K : never
+}[keyof HealthStoreData];
+
+type ReplicaCollectionItem<K extends ReplicaCollectionKey> = NonNullable<HealthStoreData[K]>[number];
+
+interface ReplicaCollection {
   entityType: ReplicaEntityType;
-  key: keyof HealthStoreData;
-  id: (value: any) => string;
-}> = [
-  { entityType: "measurement-type", key: "measurementTypes", id: (value) => value.code },
-  { entityType: "personal-reference-range", key: "personalReferenceRanges", id: (value) => value.measurementCode },
-  { entityType: "pinned-measurement", key: "pinnedMeasurements", id: (value) => value.measurementCode },
-  { entityType: "source-import", key: "sourceImports", id: (value) => value.id },
-  { entityType: "data-source", key: "dataSources", id: (value) => value.id },
-  { entityType: "device", key: "devices", id: (value) => value.id },
-  { entityType: "observation-group", key: "observationGroups", id: (value) => value.id },
-  { entityType: "observation", key: "observations", id: (value) => value.id },
-  { entityType: "time-series-sample", key: "timeSeriesSamples", id: (value) => value.id },
-  { entityType: "activity-session", key: "activitySessions", id: (value) => value.id },
-  { entityType: "health-event", key: "healthEvents", id: (value) => value.id },
-  { entityType: "care-item", key: "careItems", id: (value) => value.id }
+  key: ReplicaCollectionKey;
+  id: (value: unknown) => string;
+}
+
+/**
+ * Binds an id accessor to the element type of the collection it reads, so `value.code` versus
+ * `value.measurementCode` versus `value.id` is checked rather than assumed. The single cast is
+ * the erasure back to the heterogeneous list below.
+ */
+function collection<K extends ReplicaCollectionKey>(
+  entityType: ReplicaEntityType,
+  key: K,
+  id: (value: ReplicaCollectionItem<K>) => string
+): ReplicaCollection {
+  return { entityType, key, id: id as (value: unknown) => string };
+}
+
+const collections: readonly ReplicaCollection[] = [
+  collection("measurement-type", "measurementTypes", (value) => value.code),
+  collection("personal-reference-range", "personalReferenceRanges", (value) => value.measurementCode),
+  collection("pinned-measurement", "pinnedMeasurements", (value) => value.measurementCode),
+  collection("source-import", "sourceImports", (value) => value.id),
+  collection("data-source", "dataSources", (value) => value.id),
+  collection("device", "devices", (value) => value.id),
+  collection("observation-group", "observationGroups", (value) => value.id),
+  collection("observation", "observations", (value) => value.id),
+  collection("time-series-sample", "timeSeriesSamples", (value) => value.id),
+  collection("activity-session", "activitySessions", (value) => value.id),
+  collection("health-event", "healthEvents", (value) => value.id),
+  collection("care-item", "careItems", (value) => value.id)
 ];
 
 export function replicaEntities(data: HealthStoreData): ReplicaEntity[] {

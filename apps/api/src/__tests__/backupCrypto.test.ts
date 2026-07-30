@@ -14,13 +14,13 @@ import {
   VITANA_BACKUP_HEADER_LENGTH,
   type BackupPayload,
   type HealthStoreData,
-  CURRENT_SCHEMA_VERSION,
+  EXPORT_FORMAT_VERSION,
   defaultMeasurementTypes
 } from "@vitana/shared";
 
 function createTestStoreData(profileId = "test-user", displayName = "Test User"): HealthStoreData {
   return {
-    schemaVersion: CURRENT_SCHEMA_VERSION,
+    schemaVersion: EXPORT_FORMAT_VERSION,
     profile: {
       id: profileId,
       displayName,
@@ -164,7 +164,9 @@ describe("backupCrypto", () => {
   });
 
   describe("older backup formats", () => {
-    it("restores a backup written by an older schema version", async () => {
+    it("refuses a backup written at an older export format rather than guessing at it", async () => {
+      // The migration chain was removed with the pre-release schema history: the only readable
+      // shape is EXPORT_FORMAT_VERSION, and anything else must fail loudly instead of half-loading.
       const legacy = { ...createTestStoreData(), schemaVersion: 7 };
       const payload = {
         formatVersion: 1,
@@ -181,26 +183,22 @@ describe("backupCrypto", () => {
       } as unknown as BackupPayload;
 
       const passphrase = "legacy-backup-passphrase";
-      const decrypted = await decryptBackup(await encryptBackup(payload, passphrase), passphrase);
+      const encrypted = await encryptBackup(payload, passphrase);
+      await expect(decryptBackup(encrypted, passphrase)).rejects.toThrow(UnsupportedBackupFormatError);
+    }, 60_000);
 
-      expect(decrypted.profiles[0].data.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
-      expect(decrypted.profiles[0].data.observations).toHaveLength(1);
-      // Re-stamped against the migrated data so the restore path still has an integrity check.
-      expect(verifyProfileDigest(decrypted.profiles[0])).toBe(true);
-    }, 30_000);
-
-    it("keeps a tampered digest invalid across migration", async () => {
-      const legacy = { ...createTestStoreData(), schemaVersion: 7 };
+    it("keeps a tampered digest invalid", async () => {
+      const current = createTestStoreData();
       const payload = {
         formatVersion: 1,
         createdAt: "2024-06-01T00:00:00.000Z",
         scope: "all",
         profiles: [
-          { profileId: "test-user", displayName: "Test User", data: legacy, digest: "0".repeat(64) }
+          { profileId: "test-user", displayName: "Test User", data: current, digest: "0".repeat(64) }
         ]
       } as unknown as BackupPayload;
 
-      const passphrase = "legacy-backup-passphrase";
+      const passphrase = "tampered-digest-passphrase";
       const decrypted = await decryptBackup(await encryptBackup(payload, passphrase), passphrase);
       expect(verifyProfileDigest(decrypted.profiles[0])).toBe(false);
     }, 30_000);

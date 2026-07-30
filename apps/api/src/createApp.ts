@@ -17,6 +17,8 @@ import { timingSafeEqual } from "node:crypto";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { PairingStore } from "./pairing.js";
+import type { CompanionCapability } from "./pairing.js";
+import { companionCapabilityFor as lookupCompanionCapability } from "./companionRouteCapabilities.js";
 import { ProfileStoreManager } from "./storage/profileStoreManager.js";
 import { isLoopbackAddress } from "./netutil.js";
 import { log, generateCorrelationId } from "./logger.js";
@@ -65,55 +67,8 @@ function isOpenRouterCallback(request: express.Request): boolean {
   return request.method === "GET" && request.path === "/settings/ai/openrouter/callback";
 }
 
-function companionCapabilityFor(request: express.Request): import("./pairing.js").CompanionCapability | null {
-  const route = `${request.method} ${request.path}`;
-  switch (route) {
-    case "GET /profiles":
-      return "profiles:list-minimal";
-    case "GET /bootstrap":
-    case "GET /profile/photo":
-    case "GET /analytics":
-    case "GET /summary":
-      return "assigned-profile:read";
-    case "GET /companion/sync/handshake":
-    case "GET /companion/sync/snapshot":
-    case "GET /companion/sync/deltas":
-      return "replica:read";
-    case "GET /care/health-events":
-    case "GET /care/items":
-      return "care:read";
-    case "POST /care/health-events":
-    case "PATCH /care/health-events":
-    case "DELETE /care/health-events":
-    case "POST /care/items":
-    case "PATCH /care/items":
-    case "DELETE /care/items":
-      return "care:write";
-    case "POST /import/observations/manual":
-      return "observations:import-manual";
-    case "POST /import/body-composition/preview":
-    case "POST /import/blood-test/preview":
-      return "reports:preview";
-    case "POST /import/body-composition/commit":
-    case "POST /import/blood-test/commit":
-      return "reports:commit";
-    case "POST /import/health-connect":
-      return "health-connect:import";
-    case "POST /pairing/revoke-self":
-      return "pairing:self-revoke";
-    default:
-      return request.method === "GET" && /^\/summary\/[^/]+$/.test(request.path)
-        ? "assigned-profile:read"
-        : request.method === "POST" && /^\/companion\/migrations(?:\/[^/]+\/(?:batches|complete))?$/.test(request.path)
-          ? "standalone:migrate"
-        : /^\/care\/health-events\/[^/]+$/.test(request.path)
-          ? "care:write"
-          : /^\/care\/items\/[^/]+(?:\/complete)?$/.test(request.path)
-            ? "care:write"
-           : /^(PATCH|DELETE) \/observations\/[^/]+$/.test(route)
-             ? "observations:write"
-        : null;
-  }
+function companionCapabilityFor(request: express.Request): CompanionCapability | null {
+  return lookupCompanionCapability(request.method, request.path);
 }
 
 export function createApp(

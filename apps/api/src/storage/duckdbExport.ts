@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type duckdb from "duckdb";
 import {
-  CURRENT_SCHEMA_VERSION,
+  EXPORT_FORMAT_VERSION,
   healthStoreDataSchema,
   isHealthEventKind,
   type HealthEvent,
@@ -191,7 +191,7 @@ export async function snapshot(
   }));
 
   return healthStoreDataSchema.parse({
-    schemaVersion: CURRENT_SCHEMA_VERSION,
+    schemaVersion: EXPORT_FORMAT_VERSION,
     profile,
     sourceImports,
     dataSources,

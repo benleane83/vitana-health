@@ -46,7 +46,8 @@ import {
   openEncryptedDuckDbDatabase,
   restoreDatabaseBackup,
   SchemaMigrationError,
-  type DuckDbOptions,
+  type DuckDbOptionsWithTestHooks,
+  type DuckDbTestHooks,
   type EncryptedDuckDbDatabase
 } from "./duckdbRuntime.js";
 import { pruneRetention } from "./duckdbRetention.js";
@@ -170,7 +171,7 @@ export class DuckDbRepository implements ProfileRepository {
 
   private constructor(
     private readonly handle: EncryptedDuckDbDatabase,
-    private readonly testHooks: NonNullable<DuckDbOptions["testHooks"]> = {}
+    private readonly testHooks: DuckDbTestHooks = {}
   ) {}
 
   static async hydrate(
@@ -178,7 +179,7 @@ export class DuckDbRepository implements ProfileRepository {
     databasePath: string,
     key: string,
     store: HealthStoreData,
-    options: DuckDbOptions = {}
+    options: DuckDbOptionsWithTestHooks = {}
   ): Promise<DuckDbRepository> {
     if (existsSync(databasePath)) {
       throw new Error("DuckDB hydration requires a new database path.");
@@ -217,7 +218,7 @@ export class DuckDbRepository implements ProfileRepository {
     root: string,
     databasePath: string,
     key: string,
-    options: DuckDbOptions = {}
+    options: DuckDbOptionsWithTestHooks = {}
   ): Promise<DuckDbRepository> {
     if (!existsSync(databasePath)) {
       throw new Error("DuckDB repository refuses to create an empty database while opening.");

@@ -27,6 +27,7 @@ import {
   mobileMigrationCompletionRequestSchema,
   mobileMigrationReceiptSchema,
   mobileMigrationStartRequestSchema,
+  healthConnectImportRequestSchema,
   mobileMigrationStartResponseSchema,
   measurementPinStateResponseSchema,
   paginatedCareItemsResponseSchema,
@@ -221,8 +222,13 @@ export function createApiClient(transport: ApiTransport) {
       request(uploadImportDraftResponseSchema, "/api/import/upload/preview", { method: "POST", body: payload }),
     commitStructuredUpload: (payload: UploadImportCommitPayload) =>
       request(importMutationResponseSchema, "/api/import/upload/commit", { method: "POST", body: payload }),
+    // Validated before it leaves the device: a malformed sync payload should fail loudly here
+    // rather than be partially accepted or rejected with an opaque 400 after a large upload.
     importHealthConnect: (payload: HealthConnectImportPayload) =>
-      request(importMutationResponseSchema, "/api/import/health-connect", { method: "POST", body: payload }),
+      request(importMutationResponseSchema, "/api/import/health-connect", {
+        method: "POST",
+        body: healthConnectImportRequestSchema.parse(payload)
+      }),
     mobileMigration: {
       start: (payload: MobileMigrationStartRequest) =>
         request(mobileMigrationStartResponseSchema, "/api/companion/migrations", {

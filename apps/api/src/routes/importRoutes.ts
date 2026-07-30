@@ -277,7 +277,7 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
       const imported = buildBloodTestImportFromDraft({ ...parsed, rows: parsed.rows as BodyCompositionDraftRow[] });
       const store = requestStore(response);
       const merged = await store.mergeImport(imported);
-      const analyticsStorage = describeAnalyticsStorage(storeManager, merged.counts, store.profileId);
+      const analyticsStorage = describeAnalyticsStorage(merged.counts);
       sendJson(response.status(201), importMutationResponseSchema, { ...compactImportResponse(imported, merged), analyticsStorage });
     } catch (error) {
       next(error);
@@ -316,7 +316,7 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
       });
       const store = requestStore(response);
       const merged = await store.mergeImport(imported);
-      const analyticsStorage = describeAnalyticsStorage(storeManager, merged.counts, store.profileId);
+      const analyticsStorage = describeAnalyticsStorage(merged.counts);
       response.status(201).json({
         ...compactImportResponse(imported, merged),
         analyticsStorage
@@ -357,7 +357,7 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
       const imported = buildStructuredUploadImportFromDraft({ ...parsed, rows: parsed.rows as UploadDraftRow[] });
       const store = activeStore();
       const merged = await store.mergeImport(imported);
-      const analyticsStorage = describeAnalyticsStorage(storeManager, merged.counts, store.profileId);
+      const analyticsStorage = describeAnalyticsStorage(merged.counts);
       sendJson(response.status(201), importMutationResponseSchema, { ...compactImportResponse(imported, merged), analyticsStorage });
     } catch (error) {
       next(error);
@@ -426,7 +426,7 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
         : resolvePrincipalStore(storeManager, principal);
       const imported = parseHealthConnectImport(parsed);
       const merged = await targetStore.mergeImport(imported);
-      const analyticsStorage = describeAnalyticsStorage(storeManager, merged.counts, targetProfileId);
+      const analyticsStorage = describeAnalyticsStorage(merged.counts);
       sendJson(response.status(201), importMutationResponseSchema, {
         ...compactImportResponse(imported, merged),
         analyticsStorage

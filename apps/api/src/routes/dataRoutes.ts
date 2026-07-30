@@ -331,7 +331,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
         response.status(404).json({ error: "Observation not found.", code: "OBSERVATION_NOT_FOUND" });
         return;
       }
-      const analyticsStorage = describeAnalyticsStorage(storeManager, updated.counts);
+      const analyticsStorage = describeAnalyticsStorage(updated.counts);
       sendJson(response, updateObservationResponseSchema, { ...updated, analyticsStorage });
     } catch (error) {
       next(error);
@@ -347,7 +347,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
         response.status(404).json({ error: "Observation not found.", code: "OBSERVATION_NOT_FOUND" });
         return;
       }
-      const analyticsStorage = describeAnalyticsStorage(storeManager, deleted.counts);
+      const analyticsStorage = describeAnalyticsStorage(deleted.counts);
       sendJson(response, deleteObservationResponseSchema, { ...deleted, analyticsStorage });
     } catch (error) {
       next(error);
@@ -359,7 +359,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
       const measurementCode = measurementCodeParamSchema.parse(request.params.measurementCode);
       const store = activeStore();
       const deleted = await store.deleteObservationsByMeasurementCode(measurementCode);
-      const analyticsStorage = describeAnalyticsStorage(storeManager, deleted.counts);
+      const analyticsStorage = describeAnalyticsStorage(deleted.counts);
       sendJson(response, deleteObservationsByTypeResponseSchema, { ...deleted, analyticsStorage });
     } catch (error) {
       next(error);
@@ -370,7 +370,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
     try {
       const store = activeStore();
       const deleted = await store.deleteDailyAggregateStepSamples();
-      const analyticsStorage = describeAnalyticsStorage(storeManager, deleted.counts);
+      const analyticsStorage = describeAnalyticsStorage(deleted.counts);
       sendJson(response, deleteObservationsByTypeResponseSchema, { ...deleted, analyticsStorage });
     } catch (error) {
       next(error);
@@ -379,7 +379,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.get("/analytics/storage", async (_request, response, next) => {
     try {
-      const result = describeAnalyticsStorage(storeManager, await activeStore().storageCounts());
+      const result = describeAnalyticsStorage(await activeStore().storageCounts());
       response.json(result);
     } catch (error) {
       next(error);

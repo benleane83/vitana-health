@@ -86,16 +86,14 @@ describe("query endpoint lifecycle", () => {
     expect(aiResponse.headers["x-vitana-lifecycle"]).toBe("supported");
   });
 
-  it("reports active DuckDB analytics storage without rebuilding data", async () => {
+  it("reports active analytics storage counts without rebuilding data", async () => {
     const response = await request(app)
       .get("/api/analytics/storage")
       .set("authorization", ownerAuthorization);
 
     expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({
-      databasePath: "encrypted-profile:self",
-      engine: "duckdb",
-      counts: { imports: 0, observations: 0, samples: 0, activities: 0 }
+    expect(response.body).toEqual({
+      counts: { imports: 0, observations: 0, samples: 0, activities: 0, healthEvents: 0, careItems: 0 }
     });
   });
 });

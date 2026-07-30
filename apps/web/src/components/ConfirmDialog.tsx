@@ -7,7 +7,7 @@
  * - Escape key and the Cancel button both cancel the action.
  * - Destructive actions are visually and semantically distinguished.
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface ConfirmDialogProps {
   /** Whether the dialog is currently visible */
@@ -22,7 +22,16 @@ interface ConfirmDialogProps {
   confirmLabel?: string;
   /** When true, the confirm button is styled as a destructive action */
   destructive?: boolean;
-  onConfirm: () => void;
+  /**
+   * When set, the dialog renders a labelled text field and passes its value to `onConfirm`. This
+   * is the replacement for `window.prompt`, which blocks the renderer and cannot be styled or
+   * focus-managed.
+   */
+  promptLabel?: string;
+  /** Input type for the prompt field. Use "password" for secrets so they are not shoulder-read. */
+  promptType?: "text" | "password";
+  /** Receives the prompt field value, or the empty string when the dialog has no prompt. */
+  onConfirm: (value: string) => void;
   onCancel: () => void;
 }
 
@@ -36,12 +45,16 @@ export function ConfirmDialog({
   cancelLabel = "Cancel",
   confirmLabel = "Confirm",
   destructive = false,
+  promptLabel,
+  promptType = "text",
   onConfirm,
   onCancel
 }: ConfirmDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const promptInputRef = useRef<HTMLInputElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
+  const [promptValue, setPromptValue] = useState("");
 
   // Open / close the native <dialog> element and manage focus
   useEffect(() => {
@@ -52,14 +65,16 @@ export function ConfirmDialog({
         returnFocusRef.current = document.activeElement;
       }
       if (!dialog.open) dialog.showModal();
-      // Move focus to the safe (cancel) button
-      cancelButtonRef.current?.focus();
+      // A prompt needs the field focused to be usable; otherwise start on the safe (cancel) button.
+      if (promptLabel) promptInputRef.current?.focus();
+      else cancelButtonRef.current?.focus();
     } else {
       if (dialog.open) dialog.close();
+      setPromptValue("");
       returnFocusRef.current?.focus();
       returnFocusRef.current = null;
     }
-  }, [open]);
+  }, [open, promptLabel]);
 
   // Close on native cancel event (Escape key)
   useEffect(() => {
@@ -75,6 +90,11 @@ export function ConfirmDialog({
 
   // Trap focus within the dialog
   function handleKeyDown(event: React.KeyboardEvent<HTMLDialogElement>) {
+    if (promptLabel && event.key === "Enter" && document.activeElement === promptInputRef.current) {
+      event.preventDefault();
+      onConfirm(promptValue);
+      return;
+    }
     if (event.key !== "Tab") return;
     const dialog = dialogRef.current;
     if (!dialog) return;
@@ -101,6 +121,18 @@ export function ConfirmDialog({
     >
       <h2 id="confirm-dialog-title">{title}</h2>
       <p id="confirm-dialog-desc">{description}</p>
+      {promptLabel ? (
+        <label className="confirm-dialog-prompt">
+          {promptLabel}
+          <input
+            ref={promptInputRef}
+            type={promptType}
+            value={promptValue}
+            autoComplete="off"
+            onChange={(event) => setPromptValue(event.target.value)}
+          />
+        </label>
+      ) : null}
       <div className="confirm-dialog-actions">
         <button
           ref={cancelButtonRef}
@@ -113,7 +145,8 @@ export function ConfirmDialog({
         <button
           type="button"
           className={destructive ? "confirm-dialog-confirm confirm-dialog-destructive" : "confirm-dialog-confirm"}
-          onClick={onConfirm}
+          disabled={promptLabel ? promptValue.trim().length === 0 : false}
+          onClick={() => onConfirm(promptValue)}
         >
           {confirmLabel}
         </button>

@@ -10,16 +10,34 @@ import {
 } from "../analyticalViews.js";
 
 const markerName = ".vitana-duckdb-poc";
-const schemaVersion = 1;
+/**
+ * Version of the *physical* DuckDB table layout, advanced by the `migrations` list below and
+ * recorded in the `schema_metadata` table of every profile database.
+ *
+ * Not to be confused with `EXPORT_FORMAT_VERSION` in `@vitana/shared`, which versions the
+ * document shape written into exports and backup envelopes. A storage-only change (a new index,
+ * a widened column) bumps this and leaves the export format alone; a new field on a health record
+ * bumps the export format and may leave this alone. Backup/restore correctness depends on the
+ * distinction — a restore validates the export format and is indifferent to the engine version.
+ */
+const DB_SCHEMA_VERSION = 1;
 
 export interface DuckDbOptions {
   httpfsExtensionPath?: string;
   memoryLimit?: "64MB" | "256MB";
-  testHooks?: {
-    beforeHydrationPromotion?: () => Promise<void>;
-    beforeTransactionCommit?: () => Promise<void>;
-  };
 }
+
+/**
+ * Fault-injection points for the durability and integration suites. Deliberately kept out of
+ * `DuckDbOptions` so production call sites cannot reach them: only the repository factories widen
+ * their parameter to this intersection.
+ */
+export interface DuckDbTestHooks {
+  beforeHydrationPromotion?: () => Promise<void>;
+  beforeTransactionCommit?: () => Promise<void>;
+}
+
+export type DuckDbOptionsWithTestHooks = DuckDbOptions & { testHooks?: DuckDbTestHooks };
 
 export interface EncryptedDuckDbDatabase {
   database: duckdb.Database;
@@ -97,7 +115,7 @@ export async function createDuckDbSchema(
   databasePath: string,
   key: string,
   options: DuckDbOptions = {},
-  targetSchemaVersion = schemaVersion
+  targetSchemaVersion = DB_SCHEMA_VERSION
 ): Promise<void> {
   const database = await openEncryptedDuckDbDatabase(root, databasePath, key, options);
   try {
@@ -111,10 +129,10 @@ export async function createDuckDbSchema(
 
 export async function migrateDuckDbSchema(
   database: EncryptedDuckDbDatabase,
-  targetSchemaVersion = schemaVersion,
+  targetSchemaVersion = DB_SCHEMA_VERSION,
   allowBootstrap = false
 ): Promise<number> {
-  if (!Number.isInteger(targetSchemaVersion) || targetSchemaVersion < 1 || targetSchemaVersion > schemaVersion) {
+  if (!Number.isInteger(targetSchemaVersion) || targetSchemaVersion < 1 || targetSchemaVersion > DB_SCHEMA_VERSION) {
     throw new Error(`Encrypted DuckDB schema target version ${targetSchemaVersion} is unsupported.`);
   }
   const metadataRows = await all(database.connection, `SELECT COUNT(*) AS count
@@ -132,8 +150,8 @@ export async function migrateDuckDbSchema(
     throw new Error("Encrypted DuckDB schema metadata history is malformed.");
   }
   const currentVersion = versions.at(-1) ?? 0;
-  if (currentVersion > schemaVersion) {
-    throw new SchemaVersionTooNewError(currentVersion, schemaVersion);
+  if (currentVersion > DB_SCHEMA_VERSION) {
+    throw new SchemaVersionTooNewError(currentVersion, DB_SCHEMA_VERSION);
   }
   const pending = schemaMigrations.filter(
     (migration) => migration.version > currentVersion && migration.version <= targetSchemaVersion
@@ -471,10 +489,19 @@ const baselineSchemaSql = `
     measurement_code VARCHAR PRIMARY KEY, pinned_at TIMESTAMPTZ NOT NULL
   );
 
+  /*
+   * media_kind is the row key, so the table already holds more than one image per profile once
+   * callers use distinct kinds (a pet gallery, a before/after pair). It is deliberately not pinned
+   * to the single literal 'profile-photo', and the content type accepts the formats a browser file
+   * picker actually produces rather than JPEG alone. Relaxed in the baseline rather than by a
+   * migration because the app is unreleased: a developer database created before this still
+   * carries the stricter CHECKs until it is recreated, which is harmless while the write path is
+   * JPEG-only.
+   */
   CREATE TABLE IF NOT EXISTS profile_media (
     media_kind VARCHAR PRIMARY KEY, content_type VARCHAR NOT NULL, content BLOB NOT NULL,
     revision VARCHAR NOT NULL, updated_at TIMESTAMPTZ NOT NULL,
-    CHECK (media_kind = 'profile-photo'), CHECK (content_type = 'image/jpeg')
+    CHECK (content_type IN ('image/jpeg', 'image/png', 'image/webp'))
   );
 
   CREATE TABLE IF NOT EXISTS companion_migration_sessions (

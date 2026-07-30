@@ -583,39 +583,42 @@ export class SqliteLocalStore implements LocalStore {
     }
 
     let index = 0;
-    for await (const rows of pages<any>(
+    for await (const rows of pages<SourceImportRow>(
       `SELECT id, source_kind AS sourceKind, file_name AS fileName, imported_at AS importedAt,
         parser_version AS parserVersion, checksum, row_count AS rowCount, status, diagnostics_json AS diagnostics
        FROM source_imports WHERE profile_id = ? ORDER BY id`
     )) {
       yield {
         ...emptyBatch("source-imports", index++),
-        sourceImports: rows.map((row) => ({ ...row, diagnostics: JSON.parse(row.diagnostics) }))
+        sourceImports: rows.map((row) => ({ ...row, diagnostics: JSON.parse(row.diagnostics) as string[] }))
       };
     }
 
     index = 0;
-    for await (const rows of pages<any>(
+    for await (const rows of pages<DataSourceRow>(
       `SELECT id, source_kind AS sourceKind, label, import_id AS importId, created_at AS createdAt
        FROM data_sources WHERE profile_id = ? ORDER BY id`
     )) {
-      yield { ...emptyBatch("data-sources", index++), dataSources: rows.map(withUndefinedNulls) };
+      yield { ...emptyBatch("data-sources", index++), dataSources: rows.map((row) => withUndefinedNulls(row)) };
     }
 
     index = 0;
-    for await (const rows of pages<any>(
+    for await (const rows of pages<ObservationGroupRow>(
       `SELECT id, kind, label, source_id AS sourceId, import_id AS importId, start_at AS startAt,
         end_at AS endAt, collected_at AS collectedAt, metadata_json AS metadata
        FROM observation_groups WHERE profile_id = ? ORDER BY id`
     )) {
       yield {
         ...emptyBatch("observation-groups", index++),
-        observationGroups: rows.map((row) => withUndefinedNulls({ ...row, metadata: JSON.parse(row.metadata) }))
+        observationGroups: rows.map((row) => withUndefinedNulls({
+          ...row,
+          metadata: JSON.parse(row.metadata) as Record<string, unknown>
+        }))
       };
     }
 
     index = 0;
-    for await (const rows of pages<any>(
+    for await (const rows of pages<ObservationRow>(
       `SELECT id, measurement_code AS measurementCode, observed_at AS observedAt,
         effective_start AS effectiveStart, effective_end AS effectiveEnd, value, unit, source_id AS sourceId,
         observation_group_id AS observationGroupId, device_id AS deviceId, note, source_json AS sourceJson
@@ -625,7 +628,7 @@ export class SqliteLocalStore implements LocalStore {
         ...emptyBatch("observations", index++),
         observations: rows.map((row) => withUndefinedNulls({
           ...row,
-          sourceJson: row.sourceJson ? JSON.parse(row.sourceJson) : undefined
+          sourceJson: row.sourceJson ? (JSON.parse(row.sourceJson) as unknown) : undefined
         }))
       };
     }
@@ -1168,6 +1171,61 @@ function resumableSnapshotCursor(
   return current ?? null;
 }
 
-function withUndefinedNulls<T extends Record<string, unknown>>(value: T): T {
-  return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, entry ?? undefined])) as T;
+/**
+ * Row shapes for the migration export. These mirror the `AS` aliases in the queries below and the
+ * element schemas in `mobileMigrationBatchSchema`: a renamed column or a dropped alias becomes a
+ * compile error here instead of a field that silently arrives as `undefined` on the desktop.
+ */
+type SourceImportRow = {
+  id: string;
+  sourceKind: MobileMigrationBatch["sourceImports"][number]["sourceKind"];
+  fileName: string;
+  importedAt: string;
+  parserVersion: string;
+  checksum: string;
+  rowCount: number;
+  status: MobileMigrationBatch["sourceImports"][number]["status"];
+  diagnostics: string;
+}
+
+type DataSourceRow = {
+  id: string;
+  sourceKind: MobileMigrationBatch["dataSources"][number]["sourceKind"];
+  label: string;
+  importId: string | null;
+  createdAt: string;
+}
+
+type ObservationGroupRow = {
+  id: string;
+  kind: MobileMigrationBatch["observationGroups"][number]["kind"];
+  label: string;
+  sourceId: string | null;
+  importId: string | null;
+  startAt: string | null;
+  endAt: string | null;
+  collectedAt: string | null;
+  metadata: string;
+}
+
+type ObservationRow = {
+  id: string;
+  measurementCode: string;
+  observedAt: string;
+  effectiveStart: string | null;
+  effectiveEnd: string | null;
+  value: number;
+  unit: string;
+  sourceId: string;
+  observationGroupId: string | null;
+  deviceId: string | null;
+  note: string | null;
+  sourceJson: string | null;
+}
+
+/** Strips SQLite `NULL`s so optional fields are absent rather than explicitly null. */
+type NullsToUndefined<T> = { [K in keyof T]: null extends T[K] ? Exclude<T[K], null> | undefined : T[K] };
+
+function withUndefinedNulls<T extends Record<string, unknown>>(value: T): NullsToUndefined<T> {
+  return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, entry ?? undefined])) as NullsToUndefined<T>;
 }

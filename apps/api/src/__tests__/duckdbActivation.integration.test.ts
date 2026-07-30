@@ -75,9 +75,7 @@ describe.skipIf(!httpfsExtensionPath)("ProfileStoreManager DuckDB runtime", () =
       panelName: "DuckDB fixture",
       markers: [{ markerName: "Weight", value: 81, unit: "kg" }]
     }));
-    expect(describeAnalyticsStorage(manager, await manager.getActiveStore().storageCounts())).toMatchObject({
-      databasePath: "encrypted-profile:self",
-      engine: "duckdb",
+    expect(describeAnalyticsStorage(await manager.getActiveStore().storageCounts())).toMatchObject({
       counts: { observations: 1 }
     });
     expect(await runAnalyticsQuery(manager, {

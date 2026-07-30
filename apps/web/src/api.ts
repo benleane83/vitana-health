@@ -110,11 +110,25 @@ async function fetchAsOwner(path: string, options?: RequestInit, retry = true): 
   return response;
 }
 
+/**
+ * Asks the user for the owner token. Registered by the app shell so the request pipeline can reach
+ * the accessible `ConfirmDialog` without importing React; when nothing is registered (tests, or a
+ * failure before mount) the request simply surfaces its 401 rather than blocking the renderer on a
+ * native `window.prompt`.
+ */
+export type OwnerTokenPrompt = () => Promise<string | null>;
+
+let ownerTokenPrompt: OwnerTokenPrompt | undefined;
+
+export function setOwnerTokenPrompt(handler: OwnerTokenPrompt | undefined): void {
+  ownerTokenPrompt = handler;
+}
+
 async function promptForOwnerToken(): Promise<string | null> {
+  if (!ownerTokenPrompt) return null;
+  // Coalesced so a burst of parallel 401s raises one dialog rather than one per request.
   if (!ownerTokenPromptInFlight) {
-    ownerTokenPromptInFlight = Promise.resolve(
-      window.prompt("Enter the Vitana owner token shown by the API at startup:")
-    ).finally(() => {
+    ownerTokenPromptInFlight = ownerTokenPrompt().finally(() => {
       ownerTokenPromptInFlight = undefined;
     });
   }

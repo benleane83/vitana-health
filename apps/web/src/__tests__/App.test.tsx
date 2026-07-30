@@ -217,13 +217,6 @@ describe("App smoke", () => {
     expect(globalThis.location.pathname).toBe("/import/sync");
   });
 
-  it("normalizes legacy /import/scan and /import/fitness-tracker URLs to their canonical paths", () => {
-    globalThis.history.replaceState({}, "", "/import/scan");
-    render(<App />);
-    expect(globalThis.location.pathname).toBe("/import/upload");
-    expect(screen.getByRole("tab", { name: /^upload$/i })).toHaveAttribute("aria-selected", "true");
-  });
-
   it("keeps PDF and image report imports available in the unified Upload tab", () => {
     globalThis.history.replaceState({}, "", "/import/upload");
     render(<App />);

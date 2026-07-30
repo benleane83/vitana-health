@@ -3,7 +3,7 @@ import express from "express";
 import { makeBackupRoutes, isInMaintenanceMode } from "../routes/backupRoutes.js";
 import {
   BACKUP_DECRYPTION_ERROR,
-  CURRENT_SCHEMA_VERSION,
+  EXPORT_FORMAT_VERSION,
   VITANA_BACKUP_MAGIC,
   defaultMeasurementTypes,
   type HealthStoreData,
@@ -15,7 +15,7 @@ import type { PairingStore } from "../pairing.js";
 
 function createTestStoreData(profileId = "test-user", displayName = "Test User"): HealthStoreData {
   return {
-    schemaVersion: CURRENT_SCHEMA_VERSION,
+    schemaVersion: EXPORT_FORMAT_VERSION,
     profile: { id: profileId, displayName, subjectKind: "adult", units: "metric", updatedAt: "2024-01-01T00:00:00.000Z" },
     sourceImports: [],
     dataSources: [],

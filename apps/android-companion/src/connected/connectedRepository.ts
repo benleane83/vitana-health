@@ -1,5 +1,5 @@
 import {
-  CURRENT_SCHEMA_VERSION,
+  EXPORT_FORMAT_VERSION,
   classifyValueWithRange,
   computeAnalytics,
   analyticsCountsFromStore,
@@ -289,7 +289,7 @@ export class ConnectedReplicaRepository {
     const profile = values<Profile>("profile")[0];
     if (!profile) throw new Error("The connected snapshot does not contain its assigned profile.");
     return {
-      schemaVersion: CURRENT_SCHEMA_VERSION,
+      schemaVersion: EXPORT_FORMAT_VERSION,
       profile,
       sourceImports: values<SourceImport>("source-import"),
       dataSources: values<DataSource>("data-source"),

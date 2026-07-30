@@ -173,15 +173,15 @@ export async function decryptBackup(buffer: Buffer, passphrase: string): Promise
       throw new UnsupportedBackupFormatError(envelope.error.issues[0]?.message);
     }
     const profiles = envelope.data.profiles.map((profile) => {
-      // The digest covers the bytes as written, so it has to be checked before any migration. When
-      // it holds, the entry is re-stamped against the migrated data so downstream checks still mean
+      // The digest covers the bytes as written, so it has to be checked before any repair. When
+      // it holds, the entry is re-stamped against the parsed data so downstream checks still mean
       // something; when it does not, the stale digest is left in place so the restore refuses.
       const digestValid = digestOf(profile.data) === profile.digest;
       let data: HealthStoreData;
       try {
-        // A backup is the one artefact that legitimately crosses schema versions, so it is parsed
-        // through the migrating reader rather than the pinned current-version schema.
-        data = parsePersistedHealthStore(profile.data).data;
+        // The envelope leaves `data` as a passthrough object, so this is where a backup written
+        // at a different EXPORT_FORMAT_VERSION is rejected rather than silently mis-read.
+        data = parsePersistedHealthStore(profile.data);
       } catch (error) {
         throw new UnsupportedBackupFormatError(error instanceof Error ? error.message : undefined);
       }

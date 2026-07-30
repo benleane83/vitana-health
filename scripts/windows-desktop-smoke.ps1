@@ -214,10 +214,9 @@ try {
     throw "The desktop API did not enable background service mode."
   }
   Close-DesktopMainWindow $firstLaunch
-  Start-Sleep -Seconds 2
-  if (-not (Test-HealthEndpoint $activeHealthUri)) {
-    throw "Desktop health stopped after closing the window with background service mode enabled."
-  }
+  # Poll rather than sleeping a fixed two seconds: the assertion is that health survives the
+  # window closing, and Wait-ForHealth already captures diagnostics when it does not.
+  Wait-ForHealth "background service mode"
   $loginCommand = Get-LoginStartupCommand
   if (-not $loginCommand -or $loginCommand -notlike "*--background*") {
     throw "Per-user login registration does not include --background."

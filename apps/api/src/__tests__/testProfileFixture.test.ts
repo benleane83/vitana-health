@@ -13,7 +13,7 @@ import {
 describe("test profile fixture", () => {
   it("creates schema-valid data for every registered measurement type", () => {
     const store = createTestProfileFixture();
-    expect(parsePersistedHealthStore(store).data.profile.id).toBe("vitana-test-profile");
+    expect(parsePersistedHealthStore(store).profile.id).toBe("vitana-test-profile");
 
     const populatedCodes = new Set([
       ...store.observations.map((entry) => entry.measurementCode),
