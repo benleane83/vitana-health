@@ -952,6 +952,37 @@ export class SqliteLocalStore implements LocalStore {
     });
   }
 
+  async promoteReplica(staging: ReplicaIdentity, target: ReplicaIdentity): Promise<void> {
+    const stagingId = replicaId(staging);
+    const targetId = replicaId(target);
+    if (stagingId === targetId) return;
+    // Ordered so no entity row is ever parentless: seed the new parent, move the children, then drop
+    // the old parent.
+    await this.database.withTransactionAsync(async () => {
+      await this.database.runAsync("DELETE FROM connected_replica_entities WHERE replica_id = ?", targetId);
+      await this.database.runAsync("DELETE FROM connected_replicas WHERE replica_id = ?", targetId);
+      await this.database.runAsync(
+        `INSERT INTO connected_replicas
+         (replica_id, server_instance_id, profile_id, pairing_id, cursor_sequence, revision,
+          initial_snapshot_completed, cached_at, applied_at, snapshot_cursor)
+         SELECT ?, ?, ?, ?, cursor_sequence, revision, initial_snapshot_completed, cached_at,
+           applied_at, snapshot_cursor
+         FROM connected_replicas WHERE replica_id = ?`,
+        targetId,
+        target.serverInstanceId,
+        target.profileId,
+        target.pairingId,
+        stagingId
+      );
+      await this.database.runAsync(
+        "UPDATE connected_replica_entities SET replica_id = ? WHERE replica_id = ?",
+        targetId,
+        stagingId
+      );
+      await this.database.runAsync("DELETE FROM connected_replicas WHERE replica_id = ?", stagingId);
+    });
+  }
+
   close(): Promise<void> {
     if (this.closed) return Promise.resolve();
     this.closed = true;

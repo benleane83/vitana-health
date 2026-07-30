@@ -74,6 +74,29 @@ export interface RestoreProfileResult {
 
 const windowsX64HttpfsSha256 = pinnedHttpfsSha256("win32", "x64");
 
+/**
+ * A caller asked for a profile that does not exist. Carries `status` so the centralized error
+ * handler answers 404 rather than burying a routine typo in an opaque 500.
+ */
+export class ProfileNotFoundError extends Error {
+  readonly status = 404;
+  readonly code = "PROFILE_NOT_FOUND";
+  constructor(message: string) {
+    super(message);
+    this.name = "ProfileNotFoundError";
+  }
+}
+
+/** The request was understood but conflicts with the current profile state (for example, deleting the last profile). */
+export class ProfileConflictError extends Error {
+  readonly status = 409;
+  readonly code = "PROFILE_CONFLICT";
+  constructor(message: string) {
+    super(message);
+    this.name = "ProfileConflictError";
+  }
+}
+
 export class ProfileStoreManager {
   readonly securityMode: StoreSecurityMode;
 
@@ -121,7 +144,7 @@ export class ProfileStoreManager {
     const normalizedId = normalizeProfileId(profileId);
     const store = this.stores.get(normalizedId);
     if (!store) {
-      throw new Error(`DuckDB profile ${normalizedId} is not registered.`);
+      throw new ProfileNotFoundError(`DuckDB profile ${normalizedId} is not registered.`);
     }
     return store;
   }
@@ -280,7 +303,7 @@ export class ProfileStoreManager {
   setActiveProfile(profileId: string): string {
     const normalizedId = normalizeProfileId(profileId);
     if (!this.profiles.some((entry) => entry.id === normalizedId)) {
-      throw new Error("Profile not found.");
+      throw new ProfileNotFoundError("Profile not found.");
     }
     this.activeProfileId = normalizedId;
     this.persistActiveProfile();
@@ -290,13 +313,13 @@ export class ProfileStoreManager {
   async deleteProfile(profileId: string): Promise<{ activeProfileId: string }> {
     const normalizedId = normalizeProfileId(profileId);
     if (this.profiles.length <= 1) {
-      throw new Error("Cannot delete the last remaining profile.");
+      throw new ProfileConflictError("Cannot delete the last remaining profile.");
     }
     const manifest = this.requireOpenStorage();
     const manifestEntry = manifest.profiles.find((entry) => entry.profileId === normalizedId);
     const store = this.stores.get(normalizedId);
     if (!manifestEntry || !store) {
-      throw new Error("Profile not found.");
+      throw new ProfileNotFoundError("Profile not found.");
     }
 
     const nextProfiles = this.profiles.filter((entry) => entry.id !== normalizedId);
@@ -327,15 +350,22 @@ export class ProfileStoreManager {
     const normalizedId = normalizeProfileId(profile.id);
     const index = this.profiles.findIndex((entry) => entry.id === normalizedId);
     if (index < 0) {
-      throw new Error(`DuckDB profile ${normalizedId} is not registered.`);
+      throw new ProfileNotFoundError(`DuckDB profile ${normalizedId} is not registered.`);
     }
     this.profiles[index] = profileListEntryFromProfile(profile, this.profiles[index].profilePhoto);
     persistProfileRegistry(this.profiles);
   }
 
   async closeAll(): Promise<void> {
-    await Promise.all([...this.stores.values()].map((store) => store.close()));
+    // `allSettled`, not `all`: a single store that fails to check point must not abort shutdown and
+    // leave every other store open with an unflushed WAL.
+    const results = await Promise.allSettled([...this.stores.values()].map((store) => store.close()));
     this.stores.clear();
+    for (const result of results) {
+      if (result.status === "rejected") {
+        console.error("Failed to close a profile store during shutdown.", result.reason);
+      }
+    }
   }
 
   private async openDuckDb(options: DuckDbActivationOptions): Promise<void> {

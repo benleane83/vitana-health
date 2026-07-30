@@ -131,6 +131,65 @@ describe("connected replica repository", () => {
       pagination: { loaded: 2, total: 2, hasMore: false }
     });
   });
+
+  it("keeps a short chart range dense even when the replica holds years of readings", async () => {
+    const store = new MemoryLocalStore();
+    const days = 1500;
+    const changes: ReplicaPage["changes"] = [
+      upsert("profile", "profile-1", {
+        id: "profile-1",
+        displayName: "Cached profile",
+        subjectKind: "adult",
+        units: "metric",
+        updatedAt: "2026-07-25T13:00:00.000Z"
+      }),
+      upsert("measurement-type", "weight", {
+        code: "weight",
+        display: "Weight",
+        category: "body",
+        kind: "point",
+        canonicalUnit: "kg",
+        preferredUnits: { metric: "kg", imperial: "lb" },
+        unitAliases: { kg: ["kg"], lb: ["lb"] },
+        aliases: [],
+        aggregation: "latest"
+      }),
+      upsert("data-source", "source-1", {
+        id: "source-1",
+        sourceKind: "manual-entry",
+        label: "Phone entry",
+        createdAt: "2026-07-20T10:00:00.000Z"
+      })
+    ];
+    for (let day = 0; day < days; day++) {
+      const observedAt = new Date(Date.now() - day * 86_400_000).toISOString();
+      changes.push(upsert("observation", `observation-${day}`, {
+        id: `observation-${day}`,
+        measurementCode: "weight",
+        observedAt,
+        value: 70 + (day % 5),
+        unit: "kg",
+        sourceId: "source-1"
+      }));
+    }
+    await store.applyReplicaPage({
+      protocolVersion: 2,
+      ...identity,
+      kind: "snapshot",
+      changes,
+      highWaterMark: { revision: 1, sequence: changes.length },
+      complete: true,
+      cachedAt: "2026-07-25T14:00:00.000Z"
+    });
+    const repository = new ConnectedReplicaRepository(store, identity);
+
+    // Downsampling to 500 points across all four years used to leave roughly eight inside "1m",
+    // which reads to a user as data loss.
+    const month = await repository.healthDataChartSeries("weight", { range: "1m", mode: "raw" });
+    expect(month.points.length).toBeGreaterThan(25);
+    const all = await repository.healthDataChartSeries("weight", { range: "all", mode: "raw" });
+    expect(all.points.length).toBeLessThanOrEqual(500);
+  });
 });
 
 function upsert(

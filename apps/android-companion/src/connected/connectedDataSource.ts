@@ -1,6 +1,5 @@
 import type { ReplicaIdentity } from "@vitana/shared";
 import { createCompanionApi } from "../api";
-import { chartSeriesFromDetail } from "../chartSeries";
 import type { CompanionLifecycleService, DetailPage } from "../companionDataSource";
 import { saveConnection, type ConnectionDetails } from "../endpointStore";
 import { LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS } from "../pinnedFetch";
@@ -34,6 +33,19 @@ export async function retainConnectedStore(): Promise<() => Promise<void>> {
   };
 }
 
+/**
+ * The mutation reached the PC but this phone could not refresh its local copy afterwards. It is
+ * deliberately distinct from a failed write: retrying the write would duplicate the record, so the
+ * UI has to say "saved, not yet visible here" rather than inviting a re-submit.
+ */
+export class ReplicaRefreshFailedError extends Error {
+  constructor(cause: unknown) {
+    super("Your change was saved on your PC, but this phone could not refresh its copy yet. Pull to refresh in a moment.");
+    this.name = "ReplicaRefreshFailedError";
+    this.cause = cause;
+  }
+}
+
 export function createConnectedDataSource(
   connection: ConnectionDetails
 ): ReturnType<typeof createCompanionApi> & CompanionLifecycleService & ConnectedReplicaMaintenance {
@@ -45,6 +57,9 @@ export function createConnectedDataSource(
   const connectionErrors = new WeakMap<object, unknown>();
   const storedIdentity = connectionIdentity(connection);
   let lastConnectionError: unknown;
+  // Set when a write landed on the PC but the follow-up sync did not. Until it clears, every read
+  // forces a sync, so the user is never shown a copy that is known to be behind their own change.
+  let refreshPending = false;
 
   const localRepository = async () => {
     if (repository) return repository;
@@ -77,6 +92,10 @@ export function createConnectedDataSource(
   };
 
   const cachedRead = async <T>(read: (current: ConnectedReplicaRepository) => Promise<T>): Promise<T> => {
+    if (refreshPending) {
+      // Best effort: still serve the stale copy if the PC is unreachable, but never skip the attempt.
+      await synchronizeConnectedReplica({ force: true }).catch(() => undefined);
+    }
     const result = await read(await localRepository());
     if (typeof result === "object" && result !== null && lastConnectionError) {
       connectionErrors.set(result, lastConnectionError);
@@ -94,6 +113,7 @@ export function createConnectedDataSource(
         if (Number.isFinite(appliedAt) && Date.now() - appliedAt < REPLICA_STALE_AFTER_MS) return false;
       }
       await synchronize();
+      refreshPending = false;
       return true;
     } catch (caught) {
       lastConnectionError = caught;
@@ -103,7 +123,14 @@ export function createConnectedDataSource(
 
   const liveMutation = async <T>(mutation: () => Promise<T>): Promise<T> => {
     const result = await mutation();
-    await synchronizeConnectedReplica({ force: true });
+    // The write already landed on the PC. Letting the refresh failure propagate as-is reads to the
+    // user as "the save failed", they re-submit, and now there are two records.
+    refreshPending = true;
+    try {
+      await synchronizeConnectedReplica({ force: true });
+    } catch (caught) {
+      throw new ReplicaRefreshFailedError(caught);
+    }
     return result;
   };
 
@@ -115,8 +142,8 @@ export function createConnectedDataSource(
     healthDataDetail: (measurementCode: string, page?: DetailPage) =>
       cachedRead((current) => current.healthDataDetail(measurementCode, page)),
     healthDataChartSeries: (measurementCode, options) =>
-      cachedRead(async (current) => chartSeriesFromDetail(
-        await current.healthDataDetail(measurementCode),
+      cachedRead((current) => current.healthDataChartSeries(
+        measurementCode,
         { range: options?.range ?? "all", mode: options?.mode ?? "auto" }
       )),
     listHealthEvents: (query) => cachedRead((current) => current.listHealthEvents(query)),

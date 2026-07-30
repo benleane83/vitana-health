@@ -1,6 +1,12 @@
-import type { MeasurementType, UnitSystem } from "./types.js";
+import type { MeasurementType, ReferenceRange, UnitSystem } from "./types.js";
 
-export const defaultMeasurementTypes: MeasurementType[] = [
+/**
+ * The hand-authored registry. Derived fields (`preferredUnits`, `unitAliases`, `referenceRanges`)
+ * are computed once into the frozen `defaultMeasurementTypes` below rather than assigned back onto
+ * these objects, because the exported array is shared by reference across web, mobile, API, and
+ * desktop — an in-place mutation by any one consumer would corrupt the registry process-wide.
+ */
+const measurementTypeDefinitions: MeasurementType[] = [
   {
     code: "steps",
     display: "Steps",
@@ -1216,17 +1222,27 @@ const normalRangeSources: Readonly<Record<string, string>> = {
   sodium: "Spasovski et al., European Clinical Practice Guideline on Hyponatraemia, 2014"
 };
 
-for (const type of defaultMeasurementTypes) {
-  type.preferredUnits = preferredUnitsFor(type);
-  type.unitAliases = unitAliasesFor(type);
-  if (type.normalLow !== undefined || type.normalHigh !== undefined) {
-    type.referenceRanges = [{
-      ...(type.normalLow === undefined ? {} : { low: type.normalLow }),
-      ...(type.normalHigh === undefined ? {} : { high: type.normalHigh }),
-      unit: type.canonicalUnit,
-      ...(normalRangeSources[type.code] === undefined ? {} : { source: normalRangeSources[type.code] })
-    }];
-  }
+export const defaultMeasurementTypes: MeasurementType[] = Object.freeze(
+  measurementTypeDefinitions.map((definition) => {
+    // `unitAliasesFor` reads `preferredUnits.imperial`, so the units have to be resolved first.
+    const withUnits: MeasurementType = { ...definition, preferredUnits: preferredUnitsFor(definition) };
+    const referenceRange = referenceRangeFor(withUnits);
+    return Object.freeze({
+      ...withUnits,
+      unitAliases: unitAliasesFor(withUnits),
+      ...(referenceRange === undefined ? {} : { referenceRanges: [Object.freeze(referenceRange)] })
+    });
+  })
+) as MeasurementType[];
+
+function referenceRangeFor(type: MeasurementType): ReferenceRange | undefined {
+  if (type.normalLow === undefined && type.normalHigh === undefined) return undefined;
+  return {
+    ...(type.normalLow === undefined ? {} : { low: type.normalLow }),
+    ...(type.normalHigh === undefined ? {} : { high: type.normalHigh }),
+    unit: type.canonicalUnit,
+    ...(normalRangeSources[type.code] === undefined ? {} : { source: normalRangeSources[type.code] })
+  };
 }
 
 export const MANUAL_LAB_MARKER_CATALOG = defaultMeasurementTypes

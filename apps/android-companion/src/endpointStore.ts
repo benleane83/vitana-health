@@ -3,6 +3,7 @@ import * as Crypto from "expo-crypto";
 import * as SecureStore from "expo-secure-store";
 
 const CONNECTION_KEY = "vitana.connection";
+const CORRUPT_CONNECTION_KEY = "vitana.connection.corrupt";
 const DEVICE_ID_KEY = "vitana.deviceId";
 const TOKEN_KEY = "vitana.companionToken";
 const PENDING_REVOCATION_KEY = "vitana.pendingRevocation";
@@ -74,32 +75,65 @@ export async function getDeviceId(): Promise<string> {
 export async function loadConnection(): Promise<ConnectionDetails | null> {
   const raw = await AsyncStorage.getItem(CONNECTION_KEY);
   if (!raw) return null;
+  let stored: StoredConnection;
   try {
-    const stored = JSON.parse(raw) as StoredConnection;
-    const [deviceId, token] = await Promise.all([getDeviceId(), SecureStore.getItemAsync(TOKEN_KEY)]);
-    const healthSourceCategories = normalizeHealthConnectCategories(
-      stored.healthSourceCategories ?? stored.healthConnectCategories
-    );
-    return {
-      ...stored,
-      deviceId,
-      token,
-      healthSourceCursors: migrateHealthSourceCursors(stored, healthSourceCategories),
-      healthSourceSessionKey: stored.healthSourceSessionKey ?? null,
-      pairingId: stored.pairingId ?? null,
-      serverInstanceId: stored.serverInstanceId ?? null,
-      profileId: stored.profileId ?? null,
-      healthConnectSyncWindowDays: normalizeSyncWindowDays(stored.healthConnectSyncWindowDays),
-      healthSourceCategories,
-      healthConnectDisclosureAcknowledged: stored.healthConnectDisclosureAcknowledged === true
-    };
+    stored = JSON.parse(raw) as StoredConnection;
   } catch {
-    return null;
+    // A record we cannot parse is not the same as "never paired". Preserve the original bytes so a
+    // later save cannot silently destroy the pairing, and report it as unavailable rather than absent.
+    await AsyncStorage.setItem(CORRUPT_CONNECTION_KEY, raw);
+    throw new ConnectionRecordUnreadableError();
+  }
+  const [deviceId, token] = await Promise.all([getDeviceId(), SecureStore.getItemAsync(TOKEN_KEY)]);
+  const healthSourceCategories = normalizeHealthConnectCategories(
+    stored.healthSourceCategories ?? stored.healthConnectCategories
+  );
+  return {
+    ...stored,
+    deviceId,
+    token,
+    healthSourceCursors: migrateHealthSourceCursors(stored, healthSourceCategories),
+    healthSourceSessionKey: stored.healthSourceSessionKey ?? null,
+    pairingId: stored.pairingId ?? null,
+    serverInstanceId: stored.serverInstanceId ?? null,
+    profileId: stored.profileId ?? null,
+    healthConnectSyncWindowDays: normalizeSyncWindowDays(stored.healthConnectSyncWindowDays),
+    healthSourceCategories,
+    healthConnectDisclosureAcknowledged: stored.healthConnectDisclosureAcknowledged === true
+  };
+}
+
+/** The stored pairing exists but could not be decoded. Distinct from "this phone is not paired". */
+export class ConnectionRecordUnreadableError extends Error {
+  constructor() {
+    super("The saved pairing could not be read. Re-pair this phone with your PC.");
+    this.name = "ConnectionRecordUnreadableError";
   }
 }
 
-export async function saveConnection(patch: Partial<ConnectionDetails> & { url: string }): Promise<ConnectionDetails> {
-  const existing = await loadConnection();
+/**
+ * Every mutation of the connection record is a read-modify-write across two stores, so they are
+ * chained: a cursor update landing at the same time as a category save used to drop one of them.
+ */
+let connectionWrites: Promise<unknown> = Promise.resolve();
+
+function withConnectionLock<T>(operation: () => Promise<T>): Promise<T> {
+  const next = connectionWrites.then(operation, operation);
+  connectionWrites = next.catch(() => undefined);
+  return next;
+}
+
+export function saveConnection(patch: Partial<ConnectionDetails> & { url: string }): Promise<ConnectionDetails> {
+  return withConnectionLock(() => writeConnection(patch));
+}
+
+async function writeConnection(patch: Partial<ConnectionDetails> & { url: string }): Promise<ConnectionDetails> {
+  // Re-pairing over an unreadable record must still work; `loadConnection` has already preserved the
+  // original bytes, so there is nothing left to lose by starting from a blank slate here.
+  const existing = await loadConnection().catch((caught: unknown) => {
+    if (caught instanceof ConnectionRecordUnreadableError) return null;
+    throw caught;
+  });
   const deviceId = await getDeviceId();
   const token = patch.token !== undefined ? patch.token : (existing?.token ?? null);
   const updated: ConnectionDetails = {
@@ -134,27 +168,33 @@ export async function saveConnection(patch: Partial<ConnectionDetails> & { url: 
   return updated;
 }
 
-export async function updateLastSyncAt(url: string): Promise<void> {
-  const existing = await loadConnection();
-  if (!existing || existing.url !== url) return;
-  await saveConnection({ ...existing, lastSyncAt: new Date().toISOString() });
-}
-
-export async function updateHealthSourceCursors(url: string, cursors: HealthSourceCursors): Promise<void> {
-  const existing = await loadConnection();
-  if (!existing || existing.url !== url) return;
-  await saveConnection({
-    ...existing,
-    healthSourceCursors: cursors,
-    healthSourceSessionKey: null,
-    lastSyncAt: new Date().toISOString()
+export function updateLastSyncAt(url: string): Promise<void> {
+  return withConnectionLock(async () => {
+    const existing = await loadConnection();
+    if (!existing || existing.url !== url) return;
+    await writeConnection({ ...existing, lastSyncAt: new Date().toISOString() });
   });
 }
 
-export async function updateHealthSourceSessionKey(url: string, sessionKey: string | null): Promise<void> {
-  const existing = await loadConnection();
-  if (!existing || existing.url !== url) return;
-  await saveConnection({ ...existing, healthSourceSessionKey: sessionKey });
+export function updateHealthSourceCursors(url: string, cursors: HealthSourceCursors): Promise<void> {
+  return withConnectionLock(async () => {
+    const existing = await loadConnection();
+    if (!existing || existing.url !== url) return;
+    await writeConnection({
+      ...existing,
+      healthSourceCursors: cursors,
+      healthSourceSessionKey: null,
+      lastSyncAt: new Date().toISOString()
+    });
+  });
+}
+
+export function updateHealthSourceSessionKey(url: string, sessionKey: string | null): Promise<void> {
+  return withConnectionLock(async () => {
+    const existing = await loadConnection();
+    if (!existing || existing.url !== url) return;
+    await writeConnection({ ...existing, healthSourceSessionKey: sessionKey });
+  });
 }
 
 /**
@@ -171,8 +211,14 @@ function migrateHealthSourceCursors(
   return Object.fromEntries(categories.map((category) => [category, legacy])) as HealthSourceCursors;
 }
 
-export async function clearConnection(): Promise<void> {
-  await Promise.all([AsyncStorage.removeItem(CONNECTION_KEY), SecureStore.deleteItemAsync(TOKEN_KEY)]);
+export function clearConnection(): Promise<void> {
+  return withConnectionLock(async () => {
+    await Promise.all([
+      AsyncStorage.removeItem(CONNECTION_KEY),
+      AsyncStorage.removeItem(CORRUPT_CONNECTION_KEY),
+      SecureStore.deleteItemAsync(TOKEN_KEY)
+    ]);
+  });
 }
 
 export async function loadPendingRevocation(): Promise<PendingRevocation | null> {

@@ -30,6 +30,8 @@ type CareView = "items" | "health-events";
 type EditorMode = "closed" | "create" | "edit" | "complete";
 type Feedback = { detail: string; tone: "success" | "danger" };
 
+const CARE_PAGE_SIZE = 30;
+
 const defaultHealthEvent: CreateHealthEventInput = {
   kind: "other",
   status: "completed",
@@ -69,6 +71,9 @@ export function CareScreen() {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<CareItem[]>([]);
   const [events, setEvents] = useState<HealthEvent[]>([]);
+  const [itemsHasMore, setItemsHasMore] = useState(false);
+  const [eventsHasMore, setEventsHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [careItemKindFilter, setCareItemKindFilter] = useState<"" | CareItemKind>("");
   const [healthEventKindFilter, setHealthEventKindFilter] = useState<"" | HealthEventKind>("");
   const [editorMode, setEditorMode] = useState<EditorMode>("closed");
@@ -83,6 +88,8 @@ export function CareScreen() {
     if (standaloneMode) {
       setItems([]);
       setEvents([]);
+      setItemsHasMore(false);
+      setEventsHasMore(false);
       setLoading(false);
       setFeedback(undefined);
       return;
@@ -91,17 +98,40 @@ export function CareScreen() {
     try {
       if (synchronize) await synchronizeConnectedData(true);
       const [nextItems, nextEvents] = await Promise.all([
-        listCareItems({ limit: 30, kind: careItemKindFilter || undefined }),
-        listHealthEvents({ limit: 30, kind: healthEventKindFilter || undefined })
+        listCareItems({ limit: CARE_PAGE_SIZE, kind: careItemKindFilter || undefined }),
+        listHealthEvents({ limit: CARE_PAGE_SIZE, kind: healthEventKindFilter || undefined })
       ]);
       setItems(nextItems.items);
       setEvents(nextEvents.items);
+      setItemsHasMore(nextItems.hasMore);
+      setEventsHasMore(nextEvents.hasMore);
     } catch (caught) {
       setFeedback({ detail: userFacingError(caught, "Unable to load care data. Try again."), tone: "danger" });
     } finally {
       setLoading(false);
     }
   }, [careItemKindFilter, healthEventKindFilter, listCareItems, listHealthEvents, standaloneMode, synchronizeConnectedData]);
+
+  // Without this the list silently stopped at the first page, which reads to a user as data loss.
+  async function loadMore() {
+    if (loadingMore) return;
+    setLoadingMore(true);
+    try {
+      if (view === "health-events") {
+        const next = await listHealthEvents({ limit: CARE_PAGE_SIZE, offset: events.length, kind: healthEventKindFilter || undefined });
+        setEvents((current) => [...current, ...next.items]);
+        setEventsHasMore(next.hasMore);
+      } else {
+        const next = await listCareItems({ limit: CARE_PAGE_SIZE, offset: items.length, kind: careItemKindFilter || undefined });
+        setItems((current) => [...current, ...next.items]);
+        setItemsHasMore(next.hasMore);
+      }
+    } catch (caught) {
+      setFeedback({ detail: userFacingError(caught, "Unable to load more care records. Try again."), tone: "danger" });
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
@@ -300,6 +330,11 @@ export function CareScreen() {
             ) : null}
           </Card>
         ))}
+        {(view === "health-events" ? eventsHasMore : itemsHasMore) ? (
+          <Button disabled={loadingMore} secondary onPress={() => { void loadMore(); }}>
+            {loadingMore ? "Loading…" : "Load more"}
+          </Button>
+        ) : null}
         </> : null}
         {editorMode !== "closed" ? (
           <Card>

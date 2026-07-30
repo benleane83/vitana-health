@@ -10,6 +10,8 @@ import {
   type CareItem,
   type CareItemListQuery,
   type DataSource,
+  type HealthDataChartSeries,
+  type HealthDataChartSeriesOptions,
   type HealthDataDetail,
   type HealthDataDetailEntry,
   type HealthDataSummary,
@@ -27,6 +29,7 @@ import {
   type SourceImport,
   type TimeSeriesSample
 } from "@vitana/shared";
+import { chartRangeCutoff, chartSeriesFromPoints } from "../chartSeries";
 import type { LocalStore, LocalReplicaMetadata } from "../standalone/localStore";
 
 const ACTIVITY_SESSIONS_CODE = "activity_sessions";
@@ -127,6 +130,23 @@ export class ConnectedReplicaRepository {
         hasMore: offset + entries.length < allEntries.length
       }
     };
+  }
+
+  /**
+   * Applies the range cutoff before downsampling. Deriving the series from `healthDataDetail`'s
+   * already-downsampled `chartPoints` meant a short range over a long history returned a handful of
+   * points — five years of daily readings collapsed to 500, of which only ~8 fell inside "1M".
+   */
+  async healthDataChartSeries(
+    measurementCode: string,
+    options: HealthDataChartSeriesOptions
+  ): Promise<HealthDataChartSeries> {
+    const projection = await this.readProjection();
+    const cutoff = chartRangeCutoff(options.range);
+    const entries = detailEntries(projection, measurementCode)
+      .filter((entry) => !cutoff || entry.timestamp >= cutoff);
+    const aggregation = projection.types.get(measurementCode)?.aggregation ?? "none";
+    return chartSeriesFromPoints(measurementCode, aggregation, chartPoints(entries), options);
   }
 
   async listHealthEvents(query: HealthEventListQuery = {}) {

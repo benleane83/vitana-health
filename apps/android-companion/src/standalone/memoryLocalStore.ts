@@ -395,6 +395,16 @@ export class MemoryLocalStore implements LocalStore {
     this.replicas.delete(replicaId(identity));
   }
 
+  async promoteReplica(staging: ReplicaIdentity, target: ReplicaIdentity): Promise<void> {
+    const stagingId = replicaId(staging);
+    const targetId = replicaId(target);
+    if (stagingId === targetId) return;
+    const replica = this.replicas.get(stagingId);
+    if (!replica) throw new Error("The staging replica is missing.");
+    this.replicas.delete(stagingId);
+    this.replicas.set(targetId, { ...replica, metadata: { ...replica.metadata, ...target } });
+  }
+
   async reset(): Promise<void> {
     const profileId = this.requireProfileId();
     this.state.profiles.delete(profileId);

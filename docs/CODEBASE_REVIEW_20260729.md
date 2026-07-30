@@ -766,19 +766,21 @@ These gate the *distribution*, not the code, and each one is cheap now and awkwa
 
 ### Tier 1 — Before testers accumulate data (data-trust and crash class)
 
-7. **Staged deletion on mobile is cancelled by unmount after telling the user it succeeded** — navigate back within six seconds and the reading survives. This is the single most damaging item left: testers will report it as "deleted readings come back."
-8. **`SqliteLocalStore.reset()` bypasses lease accounting**, leaving `acquireSharedDatabase()` memoizing a closed handle and reset permanently broken.
-9. **Stateful data sources holding DB handles are built inside `useMemo`** in `MobileApiProvider`, with cleanup in a separate effect — StrictMode double-invocation leaks a lease that blocks reset forever. Same root cause as #8; fix them together.
-10. **Rewind detection deletes the whole replica.** Any PC-side restore makes every paired phone re-download everything, and the user sees an empty app in the meantime. At minimum stage the new snapshot before deleting the old one.
-11. **Replica page loops are unbounded and ignore the disposal flag** — a PC-side cursor bug becomes an infinite battery-draining write loop.
-12. **Live mutations have no rollback, idempotency key, or outbox.** A failed follow-up sync shows stale data, the user re-submits, and duplicates appear.
-13. **The connection record is read-modify-written without a lock and fails open** — a parse failure reads as "not paired", and a cursor update racing a category save loses one.
-14. **The restore crash window between the two `renameSync` calls** — record both intended renames in the journal before performing either, extend `RestoreJournal.recover()` to handle "live missing", and add the durability test for a kill between them. The crash-worker harness already exists.
-15. **`closeAll()` uses `Promise.all`** — one bad store aborts shutdown and the rest are never checkpointed. One-line change to `allSettled`.
-16. **`defaultMeasurementTypes` is mutated in place at module load** and shared by reference across all four surfaces. Build a frozen array with `.map()`.
-17. **Care lists are hard-capped at 30 with no `hasMore`** — records 31+ are invisible, which reads as data loss.
-18. **Chart series is derived from pre-downsampled points**, so "1M" over five years of data yields roughly eight points — also indistinguishable from data loss. Push the range cutoff into the query.
-19. **Store-manager errors surface as opaque 500s.** Use the typed errors that already exist so "not found" is a 404.
+*Resolved 2026-07-31, except where noted.*
+
+7. ~~**Staged deletion on mobile is cancelled by unmount after telling the user it succeeded**~~ *Resolved.* `TrackDetailScreen` keeps the staged entry in a ref and the unmount cleanup commits it instead of dropping the timer, so navigating away within the six-second window completes the delete rather than resurrecting the reading. Not covered by a test: the companion app has no React component test harness.
+8. ~~**`SqliteLocalStore.reset()` bypasses lease accounting**~~ — **stale finding.** `reset()` already calls `this.close()` before `resetSqliteLocalStorage()`, so the lease is released through the accounting. Fixed in an earlier phase; the backlog entry was written against older code.
+9. ~~**Stateful data sources holding DB handles are built inside `useMemo`**~~ *Resolved.* The standalone and connected sources are now created inside effects whose cleanup is guaranteed to run for every instance created, so a StrictMode double-invocation can no longer orphan a lease. The separate dispose-on-`source`-change effect — which also wrongly disposed the demo source — was removed.
+10. ~~**Rewind detection deletes the whole replica.**~~ *Resolved.* A rewind now rebuilds under a staging pairing id (`<pairingId>#staging`) and calls the new `LocalStore.promoteReplica()` only once the rebuild completes, so the existing copy keeps serving reads throughout and a failed rebuild costs nothing. No schema migration was needed — the staging replica is just another row.
+11. ~~**Replica page loops are unbounded and ignore the disposal flag**~~ *Resolved.* Both legs check the disposal flag and a page budget (default 10,000, injectable for tests) on every iteration.
+12. ~~**Live mutations have no rollback, idempotency key, or outbox.**~~ *Partially resolved.* A failed post-write refresh now raises `ReplicaRefreshFailedError` — explicitly "saved on your PC, not yet visible here" — instead of reading as a failed write, and sets a pending flag so the next read forces a catch-up sync. That closes the duplicate-on-re-submit path. True idempotency keys still need server-side dedupe and are not done.
+13. ~~**The connection record is read-modify-written without a lock and fails open**~~ *Resolved.* All mutations chain through a non-reentrant mutex, and an unparseable record now preserves the original bytes under `vitana.connection.corrupt` and raises `ConnectionRecordUnreadableError` rather than reading as "not paired". Re-pairing over a corrupt record still works.
+14. ~~**The restore crash window between the two `renameSync` calls**~~ — **already handled.** All four paths are journalled before hydration begins, so `RestoreJournal.recover()` already compensates a kill landing between the renames with no live database on disk. A regression test now locks that in; no code change was required.
+15. ~~**`closeAll()` uses `Promise.all`**~~ *Resolved.* Now `allSettled`, with each rejection logged.
+16. ~~**`defaultMeasurementTypes` is mutated in place at module load**~~ *Resolved.* The export is built with `.map()` and deep-frozen. The exported TypeScript type stays mutable deliberately — making it `readonly` rippled through 127 usages in 32 files for no runtime benefit.
+17. ~~**Care lists are hard-capped at 30 with no `hasMore`**~~ *Resolved.* `CareScreen` tracks `hasMore` per view and offers a "Load more" button. The API already returned `hasMore`; only the screen discarded it. Not covered by a test, for the same reason as item 7.
+18. ~~**Chart series is derived from pre-downsampled points**~~ *Resolved.* `ConnectedReplicaRepository.healthDataChartSeries()` applies the range cutoff before downsampling, so a short range over a long history stays dense.
+19. ~~**Store-manager errors surface as opaque 500s.**~~ *Resolved.* `ProfileNotFoundError` (404) and `ProfileConflictError` (409) carry `status` and `code`, which the centralized error handler already maps.
 
 ### Tier 2 — Portability debt (gets more expensive with every change)
 

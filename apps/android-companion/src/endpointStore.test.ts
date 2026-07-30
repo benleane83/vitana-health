@@ -189,4 +189,33 @@ describe("connection storage", () => {
     expect(storage.async.has(connectionKey)).toBe(false);
     expect(storage.secure.has(tokenKey)).toBe(false);
   });
+
+  it("reports an unreadable record instead of pretending the phone was never paired", async () => {
+    storage.secure.set(deviceIdKey, "device-1");
+    storage.async.set(connectionKey, "{ this is not json");
+
+    await expect(loadConnection()).rejects.toThrow(/could not be read/);
+    // The original bytes survive, so a bad parse cannot quietly destroy the pairing.
+    expect(storage.async.get("vitana.connection.corrupt")).toBe("{ this is not json");
+    await expect(updateHealthSourceSessionKey("https://desktop.test", "session")).rejects.toThrow(/could not be read/);
+
+    // Re-pairing still works and leaves a readable record behind.
+    await saveConnection({ url: "https://desktop.test", token: "companion-token" });
+    await expect(loadConnection()).resolves.toMatchObject({ url: "https://desktop.test", token: "companion-token" });
+  });
+
+  it("does not lose a cursor update that overlaps a category save", async () => {
+    storage.secure.set(deviceIdKey, "device-1");
+    await saveConnection({ url: "https://desktop.test", healthSourceCategories: ["Steps"] });
+
+    await Promise.all([
+      updateHealthSourceCursors("https://desktop.test", { Steps: "2026-01-12T12:00:00.000Z" }),
+      saveConnection({ url: "https://desktop.test", healthSourceCategories: ["Steps", "HeartRate"] })
+    ]);
+
+    await expect(loadConnection()).resolves.toMatchObject({
+      healthSourceCursors: { Steps: "2026-01-12T12:00:00.000Z" },
+      healthSourceCategories: ["Steps", "HeartRate"]
+    });
+  });
 });

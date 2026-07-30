@@ -121,18 +121,45 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
   const syncOperation = useRef<{ promise: Promise<boolean>; force: boolean } | undefined>(undefined);
   const storeKeepAlive = useRef<(() => Promise<void>) | undefined>(undefined);
   const demoSource = useMemo(() => createDemoDataSource(), []);
-  const standaloneSource = useMemo(
-    () => shouldCreateStandaloneSource(preferencesLoaded, operatingMode, demoMode)
-      ? createStandaloneDataSource()
-      : undefined,
-    [demoMode, operatingMode, preferencesLoaded]
-  );
+  // The standalone and connected sources hold a lease on the shared encrypted SQLite database, so
+  // they are built inside effects rather than `useMemo`: an effect's cleanup is guaranteed to run
+  // for every instance it created. A `useMemo` body can run without its value ever being retained
+  // (React StrictMode double-invocation, or a render React throws away), which used to orphan a
+  // lease and leave `resetLocalData` permanently refusing to run.
+  const [standaloneSource, setStandaloneSource] = useState<ReturnType<typeof createStandaloneDataSource>>();
+  useEffect(() => {
+    if (!shouldCreateStandaloneSource(preferencesLoaded, operatingMode, demoMode)) {
+      setStandaloneSource(undefined);
+      return;
+    }
+    const created = createStandaloneDataSource();
+    setStandaloneSource(created);
+    return () => {
+      setStandaloneSource((current) => (current === created ? undefined : current));
+      void (created as Partial<CompanionLifecycleService>).dispose?.();
+    };
+  }, [demoMode, operatingMode, preferencesLoaded]);
+
+  const [connectedSource, setConnectedSource] = useState<ReturnType<typeof createConnectedDataSource>>();
+  useEffect(() => {
+    if (!preferencesLoaded || demoMode || operatingMode === "standalone" || !connection?.token) {
+      setConnectedSource(undefined);
+      return;
+    }
+    const created = createConnectedDataSource(connection);
+    setConnectedSource(created);
+    return () => {
+      setConnectedSource((current) => (current === created ? undefined : current));
+      void (created as Partial<CompanionLifecycleService>).dispose?.();
+    };
+  }, [connection, demoMode, operatingMode, preferencesLoaded]);
+
   const source = useMemo<CompanionDataSource | undefined>(() => {
     if (!preferencesLoaded) return undefined;
     if (demoMode) return demoSource;
     if (operatingMode === "standalone") return standaloneSource;
-    return connection?.token ? createConnectedDataSource(connection) : undefined;
-  }, [connection, demoMode, demoSource, operatingMode, preferencesLoaded, standaloneSource]);
+    return connectedSource;
+  }, [connectedSource, demoMode, demoSource, operatingMode, preferencesLoaded, standaloneSource]);
 
   // Releases the keep-alive taken during a mode switch, once the replacement source exists and has
   // taken its own lease on the shared encrypted database.
@@ -528,9 +555,6 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     }
     return () => { current = false; };
   }, [source, refreshDashboard, refreshTrack, synchronizeConnectedData]);
-  useEffect(() => () => {
-    void (source as Partial<CompanionLifecycleService> | undefined)?.dispose?.();
-  }, [source]);
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "active") {

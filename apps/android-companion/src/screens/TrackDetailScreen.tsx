@@ -55,6 +55,12 @@ export function TrackDetailScreen({ route }: Props) {
   const [actionFeedback, setActionFeedback] = useState<{ entryId?: string; detail: string; title: string; tone: "success" | "danger" }>();
   const [draft, setDraft] = useState<ReadingDraft>({ observedAt: new Date(), value: "", unit: "", note: "" });
   const deletionTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // The undo banner tells the user the reading is already removed, so a staged deletion has to
+  // survive this screen going away. These refs let the unmount cleanup commit it rather than just
+  // dropping the timer, which used to resurrect the reading if you navigated back within six seconds.
+  const stagedDeletion = useRef<HealthDataDetailEntry | undefined>(undefined);
+  const deleteObservationRef = useRef(deleteObservation);
+  useEffect(() => { deleteObservationRef.current = deleteObservation; }, [deleteObservation]);
 
   useEffect(() => {
     let current = true;
@@ -93,7 +99,13 @@ export function TrackDetailScreen({ route }: Props) {
 
   useEffect(() => () => {
     if (deletionTimer.current) clearTimeout(deletionTimer.current);
-  }, []);
+    deletionTimer.current = undefined;
+    const entry = stagedDeletion.current;
+    stagedDeletion.current = undefined;
+    // Fire-and-forget: the screen is gone, so there is nothing to render a failure into. A failed
+    // delete leaves the reading in place, which is the safe direction.
+    if (entry) void deleteObservationRef.current(entry.id).catch(() => undefined);
+  }, [route.params.measurementCode]);
 
   useEffect(() => {
     if (connectionState === "online") return;
@@ -246,6 +258,7 @@ export function TrackDetailScreen({ route }: Props) {
       setSelectedEntryId(undefined);
       setActionFeedback(undefined);
       setPendingDeletion(entry);
+      stagedDeletion.current = entry;
       deletionTimer.current = setTimeout(() => { void commitDeletion(entry); }, 6000);
     }
 
@@ -253,6 +266,7 @@ export function TrackDetailScreen({ route }: Props) {
       if (!pendingDeletion) return;
       if (deletionTimer.current) clearTimeout(deletionTimer.current);
       deletionTimer.current = undefined;
+      stagedDeletion.current = undefined;
       const entry = pendingDeletion;
       setPendingDeletion(undefined);
       setSelectedEntryId(entry.id);
@@ -261,6 +275,7 @@ export function TrackDetailScreen({ route }: Props) {
 
   async function commitDeletion(entry: HealthDataDetailEntry) {
       deletionTimer.current = undefined;
+      stagedDeletion.current = undefined;
       setActionBusy(true);
       try {
         await deleteObservation(entry.id);

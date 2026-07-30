@@ -200,4 +200,67 @@ describe("connected replica sync coordinator", () => {
     expect(requested.some((path) => path.includes("/snapshot"))).toBe(true);
     expect(await store.replicaMetadata(identity)).toMatchObject({ revision: 1, cursorSequence: 1 });
   });
+
+  it("keeps the old replica readable while a rewind rebuild is in flight", async () => {
+    const store = new MemoryLocalStore();
+    await store.applyReplicaPage({
+      ...page("snapshot", true, [profileChange, observationChange]),
+      highWaterMark: { revision: 9, sequence: 9 }
+    });
+    let snapshotFails = true;
+    const get = vi.fn(async (path: string) => {
+      if (path.includes("/handshake")) {
+        return { protocolVersion: 2, minProtocolVersion: 2, maxProtocolVersion: 2, ...identity, highWaterMark: { revision: 1, sequence: 1 } };
+      }
+      if (path.includes("/snapshot")) {
+        if (snapshotFails) throw new Error("network dropped");
+        return page("snapshot", true, [profileChange]);
+      }
+      return page("delta", true, []);
+    });
+    const coordinator = new ReplicaSyncCoordinator(new ReplicaClient({ get } satisfies ReplicaNetwork), store);
+
+    // A failed rebuild must not cost the user the copy they already had.
+    await expect(coordinator.synchronize()).rejects.toThrow("network dropped");
+    expect(await store.replicaEntities(identity)).toHaveLength(2);
+
+    snapshotFails = false;
+    await coordinator.synchronize();
+
+    expect(await store.replicaEntities(identity)).toHaveLength(1);
+    expect(await store.replicaMetadata(identity)).toMatchObject({ ...identity, revision: 1, cursorSequence: 1 });
+  });
+
+  it("gives up instead of looping forever when the PC never advances its cursor", async () => {
+    const store = new MemoryLocalStore();
+    const get = vi.fn(async (path: string) => {
+      if (path.includes("/handshake")) {
+        return { protocolVersion: 2, minProtocolVersion: 2, maxProtocolVersion: 2, ...identity, highWaterMark: { revision: 1, sequence: 1 } };
+      }
+      // Always advertises another page, which is exactly the cursor bug the budget guards against.
+      return page("snapshot", false, [profileChange]);
+    });
+    const coordinator = new ReplicaSyncCoordinator(new ReplicaClient({ get } satisfies ReplicaNetwork), store, undefined, 5);
+
+    await expect(coordinator.synchronize()).rejects.toThrow(/exceeded \d+ pages/);
+    expect(get).toHaveBeenCalledTimes(6);
+  });
+
+  it("stops paging once the coordinator is disposed mid-sync", async () => {
+    const store = new MemoryLocalStore();
+    let coordinator!: ReplicaSyncCoordinator;
+    let snapshotPages = 0;
+    const get = vi.fn(async (path: string) => {
+      if (path.includes("/handshake")) {
+        return { protocolVersion: 2, minProtocolVersion: 2, maxProtocolVersion: 2, ...identity, highWaterMark: { revision: 1, sequence: 1 } };
+      }
+      snapshotPages += 1;
+      if (snapshotPages === 1) void coordinator.dispose();
+      return page("snapshot", false, [profileChange]);
+    });
+    coordinator = new ReplicaSyncCoordinator(new ReplicaClient({ get } satisfies ReplicaNetwork), store);
+
+    await expect(coordinator.synchronize()).rejects.toThrow("closed");
+    expect(snapshotPages).toBe(1);
+  });
 });

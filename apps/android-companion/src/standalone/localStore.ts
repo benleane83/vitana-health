@@ -100,6 +100,12 @@ export interface LocalStore {
   applyReplicaPage(page: ReplicaPage): Promise<void>;
   replicaEntities(identity: ReplicaIdentity): Promise<Array<{ entityType: string; payload: Record<string, unknown> }>>;
   deleteReplica(identity: ReplicaIdentity): Promise<void>;
+  /**
+   * Re-keys a fully built staging replica onto the live identity, replacing whatever was there.
+   * Lets a rebuild after a PC-side restore be assembled without the user losing access to the copy
+   * they already have.
+   */
+  promoteReplica(staging: ReplicaIdentity, target: ReplicaIdentity): Promise<void>;
 }
 
 export interface LocalReplicaMetadata extends ReplicaIdentity {
