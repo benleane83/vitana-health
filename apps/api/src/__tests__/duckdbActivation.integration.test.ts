@@ -88,7 +88,7 @@ describe.skipIf(!httpfsExtensionPath)("ProfileStoreManager DuckDB runtime", () =
     })).toEqual(expect.arrayContaining([expect.objectContaining({ measurement_code: "weight" })]));
 
     const created = await manager.createProfile("Pilot profile");
-    manager.setActiveProfile(created.id);
+    await manager.setActiveProfile(created.id);
     await manager.closeAll();
 
     const reopened = await openManager();

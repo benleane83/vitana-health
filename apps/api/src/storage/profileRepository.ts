@@ -146,6 +146,11 @@ export interface ProfileRepository {
   replicaSnapshotPage(pairingId: string, snapshotId: string, offset: number, limit: number): Promise<StoredReplicaPage | undefined>;
   replicaDeltaPage(afterSequence: number, highWaterSequence: number | undefined, limit: number): Promise<StoredReplicaPage>;
   addInsight(insight: HealthStoreData["insights"][number]): Promise<HealthStoreData["insights"][number]>;
+  /**
+   * Notes that a full export was taken. Separate from {@link ProfileRepository.exportData} so the
+   * short write and the long read are not forced to share a single serialized slot.
+   */
+  recordExportAudit(): Promise<void>;
   exportData(): Promise<HealthStoreData>;
   listHealthEvents(query: HealthEventListQuery): Promise<PaginatedResult<HealthEvent>>;
   createHealthEvent(input: CreateHealthEventInput): Promise<HealthEventMutationResponse>;

@@ -35,7 +35,9 @@ import {
   type LocalDatabaseMode
 } from "./localDatabaseState";
 import {
+  DEFAULT_MIGRATION_BATCH_SIZE,
   LOCAL_SCHEMA_VERSION,
+  MEASUREMENT_SCOPED_REPLICA_TYPES,
   emptyCounts,
   entityOutcome,
   type LocalObservationAggregate,
@@ -43,7 +45,8 @@ import {
   type LocalDatasetSummary,
   type LocalDatasetMetadata,
   type LocalStore,
-  type LocalStoreCounts
+  type LocalStoreCounts,
+  type ReplicaEntityFilter
 } from "./localStore";
 import type { HealthDataChartSeries, HealthDataChartSeriesOptions } from "@vitana/shared";
 import { chartRangeCutoff } from "../chartSeries";
@@ -552,67 +555,80 @@ export class SqliteLocalStore implements LocalStore {
     };
   }
 
-  async exportMigrationBatches(sessionId: string, batchSize = 250): Promise<MobileMigrationBatch[]> {
+  /**
+   * Yields batches as they are read. The previous version selected all four tables in full before
+   * slicing them, so `batchSize` bounded the upload but not the memory — on exactly the datasets
+   * (the largest ones) where that mattered most.
+   */
+  async *streamMigrationBatches(sessionId: string, batchSize = DEFAULT_MIGRATION_BATCH_SIZE): AsyncGenerator<MobileMigrationBatch> {
     const size = Math.min(Math.max(Math.trunc(batchSize), 1), 500);
     const profileId = this.requireProfileId();
-    const batches: MobileMigrationBatch[] = [];
-    const append = <T>(
-      kind: string,
-      values: T[],
-      assign: (batch: MobileMigrationBatch, chunk: T[]) => void
-    ) => {
-      for (let offset = 0; offset < values.length; offset += size) {
-        const batch: MobileMigrationBatch = {
-          protocolVersion: 1,
-          sessionId,
-          batchId: `${kind}-${String(offset / size).padStart(6, "0")}`,
-          sourceImports: [],
-          dataSources: [],
-          observationGroups: [],
-          observations: []
-        };
-        assign(batch, values.slice(offset, offset + size));
-        batches.push(batch);
+    const emptyBatch = (kind: string, index: number): MobileMigrationBatch => ({
+      protocolVersion: 1,
+      sessionId,
+      batchId: `${kind}-${String(index).padStart(6, "0")}`,
+      sourceImports: [],
+      dataSources: [],
+      observationGroups: [],
+      observations: []
+    });
+    const database = this.database;
+    async function* pages<T>(sql: string): AsyncGenerator<T[]> {
+      for (let offset = 0; ; offset += size) {
+        const rows = await database.getAllAsync<T>(`${sql} LIMIT ? OFFSET ?`, profileId, size, offset);
+        if (rows.length === 0) return;
+        yield rows;
+        if (rows.length < size) return;
       }
-    };
-    const sourceImports = await this.database.getAllAsync<any>(
+    }
+
+    let index = 0;
+    for await (const rows of pages<any>(
       `SELECT id, source_kind AS sourceKind, file_name AS fileName, imported_at AS importedAt,
         parser_version AS parserVersion, checksum, row_count AS rowCount, status, diagnostics_json AS diagnostics
-       FROM source_imports WHERE profile_id = ? ORDER BY id`,
-      profileId
-    );
-    append("source-imports", sourceImports.map((row) => ({
-      ...row,
-      diagnostics: JSON.parse(row.diagnostics)
-    })), (batch, chunk) => { batch.sourceImports = chunk; });
-    const dataSources = await this.database.getAllAsync<any>(
+       FROM source_imports WHERE profile_id = ? ORDER BY id`
+    )) {
+      yield {
+        ...emptyBatch("source-imports", index++),
+        sourceImports: rows.map((row) => ({ ...row, diagnostics: JSON.parse(row.diagnostics) }))
+      };
+    }
+
+    index = 0;
+    for await (const rows of pages<any>(
       `SELECT id, source_kind AS sourceKind, label, import_id AS importId, created_at AS createdAt
-       FROM data_sources WHERE profile_id = ? ORDER BY id`,
-      profileId
-    );
-    append("data-sources", dataSources.map(withUndefinedNulls), (batch, chunk) => { batch.dataSources = chunk; });
-    const groups = await this.database.getAllAsync<any>(
+       FROM data_sources WHERE profile_id = ? ORDER BY id`
+    )) {
+      yield { ...emptyBatch("data-sources", index++), dataSources: rows.map(withUndefinedNulls) };
+    }
+
+    index = 0;
+    for await (const rows of pages<any>(
       `SELECT id, kind, label, source_id AS sourceId, import_id AS importId, start_at AS startAt,
         end_at AS endAt, collected_at AS collectedAt, metadata_json AS metadata
-       FROM observation_groups WHERE profile_id = ? ORDER BY id`,
-      profileId
-    );
-    append("observation-groups", groups.map((row) => withUndefinedNulls({
-      ...row,
-      metadata: JSON.parse(row.metadata)
-    })), (batch, chunk) => { batch.observationGroups = chunk; });
-    const observations = await this.database.getAllAsync<any>(
+       FROM observation_groups WHERE profile_id = ? ORDER BY id`
+    )) {
+      yield {
+        ...emptyBatch("observation-groups", index++),
+        observationGroups: rows.map((row) => withUndefinedNulls({ ...row, metadata: JSON.parse(row.metadata) }))
+      };
+    }
+
+    index = 0;
+    for await (const rows of pages<any>(
       `SELECT id, measurement_code AS measurementCode, observed_at AS observedAt,
         effective_start AS effectiveStart, effective_end AS effectiveEnd, value, unit, source_id AS sourceId,
         observation_group_id AS observationGroupId, device_id AS deviceId, note, source_json AS sourceJson
-       FROM observations WHERE profile_id = ? ORDER BY id`,
-      profileId
-    );
-    append("observations", observations.map((row) => withUndefinedNulls({
-      ...row,
-      sourceJson: row.sourceJson ? JSON.parse(row.sourceJson) : undefined
-    })), (batch, chunk) => { batch.observations = chunk; });
-    return batches;
+       FROM observations WHERE profile_id = ? ORDER BY id`
+    )) {
+      yield {
+        ...emptyBatch("observations", index++),
+        observations: rows.map((row) => withUndefinedNulls({
+          ...row,
+          sourceJson: row.sourceJson ? JSON.parse(row.sourceJson) : undefined
+        }))
+      };
+    }
   }
 
   async archiveAfterMigration(receipt: MobileMigrationReceipt, serverUrl: string): Promise<void> {
@@ -977,15 +993,30 @@ export class SqliteLocalStore implements LocalStore {
     }
   }
 
-  async replicaEntities(identity: ReplicaIdentity) {
+  async replicaEntities(identity: ReplicaIdentity, filter: ReplicaEntityFilter = {}) {
     const metadata = await this.replicaMetadata(identity);
     if (!metadata?.initialSnapshotCompleted) {
       throw new Error("Connected data is unavailable offline until the first snapshot completes.");
     }
+    const conditions = ["replica_id = ?"];
+    const params: Array<string | number> = [replicaId(identity)];
+    if (filter.entityTypes) {
+      conditions.push(`entity_type IN (${filter.entityTypes.map(() => "?").join(", ")})`);
+      params.push(...filter.entityTypes);
+    }
+    if (filter.measurementCode !== undefined) {
+      // Applied in SQL so the rows for other measurements are never JSON-parsed into JS at all.
+      const scoped = MEASUREMENT_SCOPED_REPLICA_TYPES;
+      conditions.push(
+        `(entity_type NOT IN (${scoped.map(() => "?").join(", ")})
+          OR json_extract(payload_json, '$.measurementCode') = ?)`
+      );
+      params.push(...scoped, filter.measurementCode);
+    }
     const rows = await this.replicaDatabase.getAllAsync<{ entity_type: string; payload_json: string }>(
       `SELECT entity_type, payload_json FROM connected_replica_entities
-       WHERE replica_id = ? ORDER BY entity_type, entity_id`,
-      replicaId(identity)
+       WHERE ${conditions.join(" AND ")} ORDER BY entity_type, entity_id`,
+      ...params
     );
     return rows.map((row) => ({
       entityType: row.entity_type,

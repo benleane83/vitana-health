@@ -27,6 +27,23 @@ export const LOCAL_SCHEMA_VERSION = 5;
  */
 export const REPLICA_SCHEMA_VERSION = 1;
 
+/** Rows per migration batch. Shared so upload progress can be sized without materialising batches. */
+export const DEFAULT_MIGRATION_BATCH_SIZE = 250;
+
+/**
+ * Narrows a replica read at the storage layer. Reading a measurement detail used to parse every
+ * observation in the replica just to keep the handful belonging to one code.
+ */
+export interface ReplicaEntityFilter {
+  /** Only these entity types are returned. Omit for all of them. */
+  entityTypes?: string[];
+  /** Applied only to reading-bearing entity types; other types are unaffected. */
+  measurementCode?: string;
+}
+
+/** Entity types whose payloads carry a `measurementCode`, and so can be narrowed by one. */
+export const MEASUREMENT_SCOPED_REPLICA_TYPES = ["observation", "time-series-sample"];
+
 
 export interface LocalDatasetMetadata {
   datasetId: string;
@@ -93,7 +110,7 @@ export interface LocalStore {
   counts(): Promise<LocalStoreCounts>;
   mergeImport(imported: ParsedImport): Promise<MobileImportResult>;
   migrationManifest(): Promise<MobileMigrationManifest>;
-  exportMigrationBatches(sessionId: string, batchSize?: number): Promise<MobileMigrationBatch[]>;
+  streamMigrationBatches(sessionId: string, batchSize?: number): AsyncIterable<MobileMigrationBatch>;
   archiveAfterMigration(receipt: MobileMigrationReceipt, serverUrl: string): Promise<void>;
   latestObservationsByCode(): Promise<Observation[]>;
   observationAggregates(): Promise<LocalObservationAggregate[]>;
@@ -109,7 +126,10 @@ export interface LocalStore {
   close(): Promise<void>;
   replicaMetadata(identity: ReplicaIdentity): Promise<LocalReplicaMetadata | undefined>;
   applyReplicaPage(page: ReplicaPage): Promise<void>;
-  replicaEntities(identity: ReplicaIdentity): Promise<Array<{ entityType: string; payload: Record<string, unknown> }>>;
+  replicaEntities(
+    identity: ReplicaIdentity,
+    filter?: ReplicaEntityFilter
+  ): Promise<Array<{ entityType: string; payload: Record<string, unknown> }>>;
   deleteReplica(identity: ReplicaIdentity): Promise<void>;
   /**
    * Re-keys a fully built staging replica onto the live identity, replacing whatever was there.

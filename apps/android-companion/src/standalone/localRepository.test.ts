@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ManualObservationPayload, Profile } from "@vitana/shared";
+import type { ManualObservationPayload, MobileMigrationBatch, Profile } from "@vitana/shared";
 import { LocalProfileRepository } from "./localRepository";
 import {
   MemoryLocalStore,
@@ -94,7 +94,10 @@ describe("local profile repository", () => {
     const repository = new LocalProfileRepository(new MemoryLocalStore(), profile("profile-a"));
     await repository.importManualObservations(reading);
     const manifest = await repository.migrationManifest();
-    const batches = await repository.exportMigrationBatches("session-1");
+    const batches: MobileMigrationBatch[] = [];
+    for await (const batch of repository.streamMigrationBatches("session-1")) {
+      batches.push(batch);
+    }
 
     expect(manifest.counts).toEqual({
       sourceImports: 1,

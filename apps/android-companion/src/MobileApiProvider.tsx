@@ -40,6 +40,8 @@ import {
 import type { CompanionMutationService } from "./companionDataSource";
 import type { CompanionObservationMutationService } from "./companionDataSource";
 import { createStandaloneDataSource } from "./standalone/standaloneDataSource";
+import { DEFAULT_MIGRATION_BATCH_SIZE } from "./standalone/localStore";
+import { cacheProfilePhoto } from "./profilePhotoCache";
 import {
   createConnectedDataSource,
   retainConnectedStore,
@@ -293,17 +295,23 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     const api = createCompanionApi(connection, LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS);
     const manifest = await migrationSource.migrationManifest();
     const started = await retryPinnedRequest(() => api.mobileMigration.start({ manifest }));
-    const batches = await migrationSource.exportMigrationBatches(started.sessionId);
     const processed = new Set(started.processedBatchIds);
-    const pending = batches.filter((batch) => !processed.has(batch.batchId));
-    setMigrationProgress({ uploaded: batches.length - pending.length, total: batches.length });
+    // Derived from the manifest rather than a materialised batch list, so the batches themselves can
+    // stream out of SQLite one page at a time instead of all sitting in memory at once.
+    const total = Object.values(manifest.counts)
+      .reduce((sum, count) => sum + Math.ceil(count / DEFAULT_MIGRATION_BATCH_SIZE), 0);
+    let uploaded = 0;
+    setMigrationProgress({ uploaded, total });
     try {
-      for (const batch of pending) {
+      for await (const batch of migrationSource.streamMigrationBatches(started.sessionId)) {
+        if (processed.has(batch.batchId)) {
+          uploaded += 1;
+          setMigrationProgress({ uploaded, total });
+          continue;
+        }
         await retryPinnedRequest(() => api.mobileMigration.uploadBatch(batch));
-        setMigrationProgress((current) => ({
-          uploaded: (current?.uploaded ?? 0) + 1,
-          total: batches.length
-        }));
+        uploaded += 1;
+        setMigrationProgress({ uploaded, total });
       }
       const receipt = await retryPinnedRequest(() => api.mobileMigration.complete({
         protocolVersion: 1,
@@ -337,10 +345,9 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
         try {
           const photo = await createCompanionApi(connection).profilePhoto.get();
           if (photo.revision === nextBootstrap.profilePhoto.revision) {
-            nextProfilePhoto = {
-              revision: photo.revision,
-              uri: `data:${photo.contentType};base64,${photo.contentBase64}`
-            };
+            // Cached to disk rather than held as a base64 data URI: the string used to sit in
+            // context state for the lifetime of the app.
+            nextProfilePhoto = { revision: photo.revision, uri: cacheProfilePhoto(photo) };
           }
         } catch {
           // The avatar fallback remains available when photo bytes cannot be refreshed.

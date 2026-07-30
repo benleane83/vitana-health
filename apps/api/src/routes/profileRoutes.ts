@@ -127,7 +127,7 @@ export function makeProfileRoutes(storeManager: ProfileStoreManager): express.Ro
       const bytes = decodeProfilePhoto(payload.contentBase64);
       const store = storeManager.getActiveStore();
       const photo = await store.replaceProfilePhoto(payload.contentType, bytes);
-      storeManager.syncProfilePhotoMetadata(store.profileId, photo);
+      await storeManager.syncProfilePhotoMetadata(store.profileId, photo);
       sendJson(response, profilePhotoResponseSchema, {
         contentType: photo.contentType,
         contentBase64: photo.bytes.toString("base64"),
@@ -148,7 +148,7 @@ export function makeProfileRoutes(storeManager: ProfileStoreManager): express.Ro
         response.status(404).json({ error: "Profile photo not found.", code: "PROFILE_PHOTO_NOT_FOUND" });
         return;
       }
-      storeManager.syncProfilePhotoMetadata(store.profileId);
+      await storeManager.syncProfilePhotoMetadata(store.profileId);
       sendJson(response, profilePhotoDeleteResponseSchema, { deleted: true });
     } catch (error) {
       next(error);
@@ -175,7 +175,7 @@ export function makeProfileRoutes(storeManager: ProfileStoreManager): express.Ro
         updatedAt: new Date().toISOString()
       };
       const saved = await store.replaceProfile(profile);
-      storeManager.syncProfileEntry(saved);
+      await storeManager.syncProfileEntry(saved);
       sendJson(response, profileResponseSchema, saved);
     } catch (error) {
       next(error);
@@ -238,7 +238,7 @@ export function makeProfileRoutes(storeManager: ProfileStoreManager): express.Ro
         id: store.profileId,
         updatedAt: new Date().toISOString()
       });
-      storeManager.syncProfileEntry(saved);
+      await storeManager.syncProfileEntry(saved);
       sendJson(response, cloudAiConsentResponseSchema, saved.cloudAiConsent);
     } catch (error) {
       next(error);
@@ -312,10 +312,14 @@ export function makeProfilesRoutes(storeManager: ProfileStoreManager, pairingSto
     sendJson(response, profileIdResponseSchema, { profileId: storeManager.getActiveProfileId() });
   });
 
-  router.put("/active", (request, response) => {
-    const parsed = setActiveProfileSchema.parse(request.body ?? {});
-    const profileId = storeManager.setActiveProfile(parsed.profileId);
-    sendJson(response, profileIdResponseSchema, { profileId });
+  router.put("/active", async (request, response, next) => {
+    try {
+      const parsed = setActiveProfileSchema.parse(request.body ?? {});
+      const profileId = await storeManager.setActiveProfile(parsed.profileId);
+      sendJson(response, profileIdResponseSchema, { profileId });
+    } catch (error) {
+      next(error);
+    }
   });
 
   router.delete("/:id", async (request, response, next) => {

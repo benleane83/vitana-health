@@ -165,6 +165,8 @@ export type {
 
 export class DuckDbRepository implements ProfileRepository {
   private closed = false;
+  /** Held as a promise so concurrent readers share one scan rather than racing six of them. */
+  private countsCache: Promise<AppBootstrap["counts"]> | undefined;
 
   private constructor(
     private readonly handle: EncryptedDuckDbDatabase,
@@ -258,7 +260,7 @@ export class DuckDbRepository implements ProfileRepository {
 
   async appBootstrap(): Promise<AppBootstrap> {
     this.assertOpen();
-    return readAppBootstrap(this.reader);
+    return readAppBootstrap(this.reader, await this.storageCounts());
   }
 
   async analyticsSummary(): Promise<AnalyticsSummary> {
@@ -283,7 +285,13 @@ export class DuckDbRepository implements ProfileRepository {
 
   async storageCounts(): Promise<AppBootstrap["counts"]> {
     this.assertOpen();
-    return readStorageCounts(this.reader);
+    // Six `COUNT(*)` scans that can only change inside a transaction. Bootstrap, every import and
+    // every storage panel were re-running them to be told what the last call already knew.
+    this.countsCache ??= readStorageCounts(this.reader).catch((error: unknown) => {
+      this.countsCache = undefined;
+      throw error;
+    });
+    return { ...await this.countsCache };
   }
 
   async getProfile(): Promise<Profile> {
@@ -429,9 +437,13 @@ export class DuckDbRepository implements ProfileRepository {
     return this.transaction(() => addDuckDbInsight(this.connection, insight));
   }
 
-  async exportData(): Promise<HealthStoreData> {
+  async recordExportAudit(): Promise<void> {
     this.assertOpen();
     await this.transaction(() => recordExportAudit(this.connection));
+  }
+
+  async exportData(): Promise<HealthStoreData> {
+    this.assertOpen();
     return snapshotDuckDb(this.reader, { includeRaw: true });
   }
 
@@ -749,6 +761,9 @@ export class DuckDbRepository implements ProfileRepository {
     operation: () => Promise<T>,
     replicaChanges?: (result: T) => ReplicaChangeInput[]
   ): Promise<T> {
+    // Every write in this repository passes through here, which makes it the one place that can
+    // guarantee the cached row counts never outlive the rows they counted.
+    this.countsCache = undefined;
     await exec(this.connection, "BEGIN TRANSACTION;");
     try {
       const result = await operation();
@@ -761,6 +776,8 @@ export class DuckDbRepository implements ProfileRepository {
     } catch (error) {
       await exec(this.connection, "ROLLBACK;").catch(() => undefined);
       throw error;
+    } finally {
+      this.countsCache = undefined;
     }
   }
 

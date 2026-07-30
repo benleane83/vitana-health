@@ -419,7 +419,9 @@ function SyncImportPanel({
       if (cancelled) return;
       try {
         const result = await api.pairing.pending();
-        if (!cancelled) setPendingPairings(result);
+        // Replacing the array unconditionally re-ran the devices effect below on every tick, so a
+        // five-second poll was issuing two requests instead of one.
+        if (!cancelled) setPendingPairings((current) => JSON.stringify(current) === JSON.stringify(result) ? current : result);
       } catch {
         // Pairing is optional and polling resumes on the next interval.
       }

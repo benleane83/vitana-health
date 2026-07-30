@@ -786,56 +786,55 @@ These gate the *distribution*, not the code, and each one is cheap now and awkwa
 
 The project explicitly wants the SQLite swap and iOS both to stay open. These are the things that quietly close them.
 
-20. **Replace `SELECT * EXCLUDE (...)` with explicit column lists** — ~26 occurrences, mechanical, and it also removes the `raw_content` footgun. Do this before the column count grows again.
-21. **Change `runCompiledQuery(sql: string)` to accept the compiled plan object**, and make `analyticsQueryCompilerFor()` actually dispatch on the store manager instead of always returning DuckDB.
-22. **Move the shared DTOs to a neutral `storage/types.ts`** and remove the layering inversions (`profileRepository.ts` → `duckdbReplicaSync.js`, `duckdbHealthStore.ts` → `profileStoreManager.js`).
-23. **Define the `HealthSourceProvider` interface** in `packages/shared` and move the descriptor list behind it, before the list grows further.
-24. **Define the pinned-HTTP TypeScript contract, including structured error codes**, so a Swift implementation has something to satisfy. *(Phase 8 already introduced structured retry codes — finish the job.)*
-25. **Add the `ios` block to `app.config.js` and iOS profiles to `eas.json`**, so `expo run:ios` fails with real, measurable errors instead of nonsense.
-26. **Replace the scalar Windows-x64 platform gate with a `Record<`${platform}-${arch}`, string>` table.**
-27. **Split `LocalStore` into a durable `standalone.db` and a disposable `replica.db`** so a cache-shaped protocol change stops being a user-data migration.
+20. ~~**Replace `SELECT * EXCLUDE (...)` with explicit column lists**~~ *Resolved.* All 23 code occurrences now build their column lists from the existing `storage/duckdbColumns.ts` registry, which gained `qualifiedColumns()` for the aliased joins. The three window-function queries were rewritten by hand. The `raw_content` footgun was already contained in `duckdbExport.ts` and was left alone.
+21. ~~**Change `runCompiledQuery(sql: string)` to accept the compiled plan object**~~ *Resolved.* `queryCompiler.ts` now exports a `CompiledQuery` carrying an `AnalyticsSqlDialect`, and the plan is threaded through `profileStoreManager` → `profileRepository` → `duckdbRepository`, which rejects a plan compiled for another dialect. `analyticsQueryCompilerFor()` dispatches through a `Record<StorageBackend, AnalyticsQueryCompiler>` and throws for an unregistered backend instead of silently returning DuckDB.
+22. ~~**Move the shared DTOs to a neutral `storage/types.ts`**~~ *Resolved.* `StorageBackend`, `StoreSecurityMode`, `StoreSecurityConfig`, `StoredReplicaPage`, and `HealthConnectSyncSessionStart` now live in `storage/types.ts`; the DuckDB modules re-export them so no call site changed. This also broke a genuine `profileRepository` ↔ `duckdbHealthConnectSync` import cycle.
+23. ~~**Define the `HealthSourceProvider` interface**~~ *Resolved.* `packages/shared/src/healthSource.ts` owns the category vocabulary and the sync contract; `healthSourceProvider.ts` exposes Health Connect through it and returns nothing on a platform with no source, so `ImportScreen` renders an empty picker rather than offering categories nothing can read.
+24. ~~**Define the pinned-HTTP TypeScript contract**~~ *Resolved.* `packages/shared/src/pinnedHttp.ts` declares the error codes with their retryability, the timeout bounds, and the `PinnedHttpClient` interface the native and web modules now implement; `networkRetry.ts` derives its retryable set from it. Doing this surfaced a real bug: the Android module reported a failed certificate pin as `network-interrupted`, which is **retryable** — a pinning failure was being retried instead of stopping the sync.
+25. ~~**Add the `ios` block to `app.config.js` and iOS profiles to `eas.json`**~~ *Resolved.* Bundle identifier, ATS exceptions for local networking, and the three usage descriptions are declared; `eas.json` gained simulator builds for `development`/`preview` and an `m-medium` resource class for `production`.
+26. ~~**Replace the scalar Windows-x64 platform gate**~~ *Resolved.* `SUPPORTED_HOST_PLATFORMS` in `duckdbPin.ts` maps `platform-arch` to the DuckDB platform string, and both gates read through it, so adding macOS or Linux is a table entry rather than a new branch.
+27. ~~**Split `LocalStore` into a durable `standalone.db` and a disposable `replica.db`**~~ *Resolved.* The replica cache now lives in its own encrypted file with its own `user_version`, and a version mismatch **rebuilds** it — `prepareReplicaCache()` drops and recreates rather than migrating, in either direction, since every row is a copy the PC still holds. Durable migration 5 evicts the two cache tables from `standalone-health.db`; migrations 3 and 4 stay as history so databases already at version 4 have a path forward. Those two migrations are exactly the cost this removes: both were cache-shape changes forced through file backups and row-count assertions. Key rotation and reset now discard the cache rather than carrying it.
 
 ### Tier 3 — Performance and responsiveness
 
-28. **Open profile databases lazily and evict idle ones**, and stop configuring every one at 256 MB. Six family profiles is currently 1.5 GB of configured limit plus linear startup latency.
-29. **Replace the synchronous `fs` calls in the store manager**, starting with the `mkdirSync` in the constructor.
-30. **Cache `storageCounts` and invalidate on write** — it runs on every bootstrap and every import.
-31. **Rewrite `listCareItems`' three correlated subqueries as a `LEFT JOIN`** and de-duplicate the two near-identical query bodies.
-32. **Stop writing an audit row inside `exportData()`** — taking a backup currently blocks all writes.
-33. **Clamp the remaining unbounded `measurementDetails` path.**
-34. **Introduce virtualization on mobile** (`FlatList`/`SectionList`), starting with `TrackDetailScreen` and `CareScreen`. Converting late means restructuring headers, footers and `RefreshControl` on every screen.
-35. **Memoize `TrendChart`** — it currently re-derives up to 500 points on every keystroke in the add-reading form.
-36. **Stop re-materializing the entire replica on every range change**; push the filter into SQL.
-37. **Stream images instead of base64-ing them into JS**, and keep the profile photo as a `file://` URI rather than a data URI in context state.
-38. **Batch the migration export instead of loading all four tables into memory** — it runs for exactly the users with the most data.
-39. **Collapse the Track mutation fan-out** (currently three to four requests per action) and **fix the `ImportPage` double-rate poll**.
-40. **Web tables: memoize the sorts, hoist the per-row `RegExp`, and virtualize the long ones.** Then fix `analytics.ts`'s sort-to-find-max and the `find()` inside a per-code loop.
-41. **Narrow `computeAnalytics(store: HealthStoreData)`** to the projection it actually needs — it is the last structural forcer of a full-profile read.
+28. ~~**Open profile databases lazily and evict idle ones**, and stop configuring every one at 256 MB.~~ *Resolved.* A new `storage/lazyProfileStore.ts` wraps each profile in a `Proxy` facade that opens the database on first call, stamps last use, and closes after an idle timeout (default 5 minutes, injectable). Only the active profile is configured at 256 MB; the rest get 64 MB, and an unopened profile costs nothing at startup.
+29. ~~**Replace the synchronous `fs` calls in the store manager**~~ *Resolved.* `profileStoreManager` is on `node:fs/promises` throughout; the constructor performs no filesystem work at all and `ProfileStoreManager.open()` does the one `mkdir`. The remaining sync calls are the three that must be sync: data-dir resolution, the activation-manifest probe, and local key creation.
+30. ~~**Cache `storageCounts` and invalidate on write**~~ *Resolved.* `DuckDbRepository` holds the counts as a shared promise so concurrent readers do not race six `COUNT(*)` scans, and clears it inside `transaction()` — the one place every write passes through. `appBootstrap()` now takes the already-known counts instead of re-scanning.
+31. ~~**Rewrite `listCareItems`' three correlated subqueries as a `LEFT JOIN`**~~ *Resolved.* One `careItemSelectSql(where, tail)` helper builds both the paged read and the `includeId` top-up, so the two bodies cannot drift, and the completed-event columns come from a single join.
+32. ~~**Stop writing an audit row inside `exportData()`**~~ *Resolved.* `recordExportAudit()` is now its own method on `ProfileRepository`. `DuckDbHealthStore.exportData()` enqueues only the short audit write; the multi-second read runs outside the mutation queue, so taking a backup no longer blocks writes.
+33. ~~**Clamp the remaining unbounded `measurementDetails` path.**~~ *Resolved.* Always limited, at `maxMeasurementDetailRows = 5000`.
+34. ~~**Introduce virtualization on mobile**~~ *Resolved.* `TrackDetailScreen` and `CareScreen` are `FlatList`s with `ListHeaderComponent`/`ListFooterComponent`; `CareScreen` keeps its `RefreshControl` through the list's own prop.
+35. ~~**Memoize `TrendChart`**~~ *Resolved.* Wrapped in `memo`, the fixed chart geometry constants are hoisted to module scope, and the point/domain/tick/path derivation collapsed into one `useMemo`. The parent already passed stable `setState` setters, so the memo actually holds.
+36. ~~**Stop re-materializing the entire replica on every range change**~~ *Resolved.* `LocalStore.replicaEntities()` takes a `ReplicaEntityFilter`; the SQLite implementation filters entity type and `measurementCode` in SQL via `json_extract`, so rows for other measurements are never parsed into JS. `ConnectedReplicaRepository` caches the per-measurement projection by replica revision, making a range change a cache hit.
+37. ~~**Stream images instead of base64-ing them into JS, and keep the profile photo as a `file://` URI**~~ *Partially resolved.* The profile photo half is done: a new `src/profilePhotoCache.ts` writes the bytes to the cache directory and hands context state a `file://` URI, evicting the previous revision. `ImportScreen` now reads the base64 off the resized file at request time rather than having the manipulator pin a second copy for the whole handler. A genuinely streamed upload still needs the JSON `contentBase64` contract replaced with multipart on both the API and the pinned-HTTP native module, and was not attempted here.
+38. ~~**Batch the migration export instead of loading all four tables into memory**~~ *Resolved.* `streamMigrationBatches()` is an async generator paging each table with `LIMIT`/`OFFSET`, so `batchSize` now bounds memory as well as upload size. Progress totals are derived from the manifest counts rather than a materialised batch list.
+39. ~~**Collapse the Track mutation fan-out and fix the `ImportPage` double-rate poll.**~~ *Resolved.* `useProfileLifecycle.refresh()` takes `{ profiles }`; recording an observation cannot change the profile roster, so the four data routes skip that request. `ImportPage` only replaces the pending-pairing array when its contents actually changed — the unconditional `setState` was re-triggering the paired-devices effect on every tick, making a five-second poll issue two requests.
+40. ~~**Web tables: memoize the sorts, hoist the per-row `RegExp`, and virtualize the long ones. Then fix `analytics.ts`'s sort-to-find-max and the `find()` inside a per-code loop.**~~ *Resolved.* The summary sort is memoized and the transfer-window pattern is compiled at module load. The entries table uses `content-visibility: auto` with an intrinsic size hint rather than a JS windowing library — the rows are user-paged, so a dependency was not warranted. In `analytics.ts`, personal reference ranges are indexed into a `Map` once instead of being scanned per code, and the two "sort the whole series to read element zero" sites became a single linear `latestObservation()` scan.
+41. ~~**Narrow `computeAnalytics(store: HealthStoreData)`**~~ *Resolved.* It now takes an `AnalyticsStoreProjection` — profile units/subject kind, measurement types, observations, optional ranges and pins, and counts. `analyticsCountsFromStore()` remains for the callers that genuinely hold a whole store.
 
 ### Tier 4 — Hygiene (free now, annoying later)
 
-42. **Delete the dead legacy-migration chain** in `storeSchema.ts` (reachable only from one test), plus `scripts/seed-test-profile.mjs`, the empty root `app.json`, `legacyImportPathAliases`, and `migrateLegacyTlsFiles`.
+42. **Delete the dead legacy-migration chain** in `storeSchema.ts` (reachable only from one test), plus the empty root `app.json`, `legacyImportPathAliases`, and `migrateLegacyTlsFiles`.
 43. **Rename to `DB_SCHEMA_VERSION` and `EXPORT_FORMAT_VERSION`** and document their relationship. Backup-restore correctness depends on not confusing them.
-44. **Generate the SQL allowlist from the schema**, or add a test that diffs it against `information_schema`.
 45. **Link capability routing to the routers it describes** instead of a detached string `switch`.
 46. **Move `testHooks` out of the production `DuckDbOptions` type** (intersect it in test builds only).
 47. **Drop `engine: "duckdb"` and the fake `databasePath` from the API response** before the mobile app depends on them.
-48. **Sweep the rate-limiter buckets on a timer** rather than only above 5,000, and document that the state is process-local.
 49. **Remove the `any` from the replica collection mapping and the `getAllAsync<any>` migration-export queries** — a shape mismatch there is silent data loss.
 50. **Replace the blocking `window.prompt()` owner-token fallback** with the `ConfirmDialog` service that already exists, and **schema-validate `importHealthConnect(payload)`** at the client boundary.
-51. **CodeQL: add a `pull_request` trigger, pin the actions by SHA, and enable `security-extended`.** This is a health app.
-52. **Converge the TypeScript major version** across the workspaces (root/api/web on 5.x, android-companion/website on 6.x).
+51. **CodeQL: add a `pull_request` and workflow_dispatch trigger, pin the actions by SHA, and enable `security-extended`.** This is a health app.
 53. **Relax the profile-photo `CHECK` constraints** (one JPEG per profile blocks pet galleries and PNG) while it is still free.
-54. **Add `expiresAt` to `.audit-allowlist.json` entries and enforce it in `audit-ci.mjs`.**
 55. **Raise the `secure-store-key.cjs` wait from 5 s to ~15 s** and rewrite the message to "please relaunch".
 56. **Replace the fixed `Start-Sleep` waits in `windows-desktop-smoke.ps1`** with the `Wait-ForHealth` helper that already exists.
 57. **Set `testTimeout` in the `packages/shared` and `apps/android-companion` vitest configs** (api and web are both at 20 s) — the Android fake-timer tests currently hang rather than fail fast.
-58. **Drop the dead purchase gating and unlink `react-native-iap`**, move the web-only packages out of production `dependencies`, and remove the unused `react-native-nitro-modules`.
 59. **Anchor the `.gitignore` rules** as `/data/` and `/apps/api/data/`.
+
+### Tier 5 — Hygiene (Deferred Items)
+
+44. **Generate the SQL allowlist from the schema**, or add a test that diffs it against `information_schema`.
+48. **Sweep the rate-limiter buckets on a timer** rather than only above 5,000, and document that the state is process-local.
+52. **Converge the TypeScript major version** across the workspaces (root/api/web on 5.x, android-companion/website on 6.x).
+54. **Add `expiresAt` to `.audit-allowlist.json` entries and enforce it in `audit-ci.mjs`.**
+58. **Drop the dead purchase gating and unlink `react-native-iap`**, move the web-only packages out of production `dependencies`, and remove the unused `react-native-nitro-modules`.
 60. **Delete the unreachable `Platform.OS === "ios"` branches** — or keep them only once #25 makes iOS a real target.
 61. **Split the god files** (`registry.ts`, `duckdbProjections.ts`, `sqliteLocalStore.ts`, `TrackDetailScreen.tsx`, `ImportScreen.tsx`, `MobileApiProvider.tsx`, `SummaryPage.tsx`) as described under *Structural maintainability*, and de-duplicate the three downsampling implementations and the two Health Connect descriptor lists. Best done opportunistically, as each file is opened for one of the items above.
-17. Close the four SQLite-portability leaks (P2).
 18. Split the nine oversized files; move duplicated logic into `packages/shared` (Structural maintainability).
-19. Delete the dead legacy-migration chain and the other dead code (P3).
-
-Items 1–5 are roughly a day of work now. After testers are live, several of them become a support incident with irrecoverable personal health data on the other end.

@@ -16,13 +16,13 @@ afterEach(() => {
 });
 
 describe("ProfileStoreManager photo metadata", () => {
-  it("never exposes or persists photo bytes in the profile registry", () => {
+  it("never exposes or persists photo bytes in the profile registry", async () => {
     dataDir = mkdtempSync(join(tmpdir(), "vitana-profile-registry-"));
     process.env.VITANA_DATA_DIR = dataDir;
     const manager = Reflect.construct(ProfileStoreManager, [{
       passphrase: "profile-registry-test",
       securityMode: "env-secret"
-    }]) as ProfileStoreManager;
+    }, 0]) as ProfileStoreManager;
     Object.assign(manager, {
       profiles: [{
         id: "self",
@@ -37,7 +37,7 @@ describe("ProfileStoreManager photo metadata", () => {
       updatedAt: "2026-07-24T10:01:00.000Z"
     };
 
-    manager.syncProfilePhotoMetadata("self", storedPhoto);
+    await manager.syncProfilePhotoMetadata("self", storedPhoto);
 
     const expectedPhoto = {
       revision: storedPhoto.revision,

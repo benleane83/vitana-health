@@ -1913,6 +1913,17 @@ h3 {
   overflow: visible;
 }
 
+/*
+ * The entries table grows every time "Load more entries" is pressed, and each row carries buttons
+ * and a formatted context string. Letting the browser skip layout and paint for offscreen rows
+ * keeps scrolling flat without pulling in a JS windowing library. `contain-intrinsic-size` supplies
+ * a placeholder height so the scrollbar does not jump as rows come into view.
+ */
+.summary-detail-table tbody tr {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 3rem;
+}
+
 .summary-detail-table th.summary-value-column,
 .summary-detail-table td.summary-entry-value {
   padding-right: var(--space-4);

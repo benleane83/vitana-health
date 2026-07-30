@@ -14,6 +14,7 @@ import {
   calculateBiologicalAge,
   careItemReminderAt,
   computeAnalytics,
+  analyticsCountsFromStore,
   defaultMeasurementTypes,
   type HealthStoreData
 } from "@vitana/shared";
@@ -649,7 +650,7 @@ describe("DuckDbRepository fidelity", () => {
       expect(bootstrap).not.toHaveProperty("observations");
       expect(bootstrap).not.toHaveProperty("sourceImports");
       const analytics = await repository.analyticsSummary();
-      expect(analytics).toEqual(computeAnalytics(fixture));
+      expect(analytics).toEqual(computeAnalytics({ ...fixture, counts: analyticsCountsFromStore(fixture) }));
       const generatedAt = "2026-07-15T00:00:00.000Z";
       const biologicalAgeSource = await repository.biologicalAgeSource();
       expect(calculateBiologicalAge(biologicalAgeSource, generatedAt)).toEqual(calculateBiologicalAge(fixture, generatedAt));

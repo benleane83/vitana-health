@@ -354,7 +354,7 @@ export function App() {
               mode={importMode}
               onModeChange={(mode) => navigate("import", mode)}
               bootstrap={bootstrap}
-              onDataChanged={profileLifecycle.refresh}
+              onDataChanged={() => profileLifecycle.refresh({ profiles: false })}
               onNotice={setMessage}
               profiles={profiles}
               activeProfileId={profile?.id}
@@ -378,7 +378,7 @@ export function App() {
               measurementTypes={recordedMeasurementTypes}
               onBack={() => navigate("track")}
               onSelectDetail={navigateSummaryDetail}
-              onDataChanged={profileLifecycle.refresh}
+              onDataChanged={() => profileLifecycle.refresh({ profiles: false })}
               onNotice={setMessage}
               confirm={confirm}
             />
@@ -393,7 +393,7 @@ export function App() {
               view={careView}
               activeProfileId={activeProfileId}
               onViewChange={navigateCare}
-              onDataChanged={profileLifecycle.refresh}
+              onDataChanged={() => profileLifecycle.refresh({ profiles: false })}
               onNotice={setMessage}
               confirm={confirm}
             />
@@ -408,7 +408,7 @@ export function App() {
               tab={insightsTab}
               bootstrap={bootstrap}
               onTabChange={navigateInsights}
-              onDataChanged={profileLifecycle.refresh}
+              onDataChanged={() => profileLifecycle.refresh({ profiles: false })}
               onNotice={setMessage}
             />
           </ErrorBoundary>

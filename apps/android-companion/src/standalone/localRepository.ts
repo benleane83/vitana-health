@@ -244,9 +244,9 @@ export class LocalProfileRepository implements MobileProfileRepository {
     return this.store.migrationManifest();
   }
 
-  async exportMigrationBatches(sessionId: string) {
+  async *streamMigrationBatches(sessionId: string) {
     await this.ensureInitialized();
-    return this.store.exportMigrationBatches(sessionId);
+    yield* this.store.streamMigrationBatches(sessionId);
   }
 
   async archiveAfterMigration(receipt: MobileMigrationReceipt, serverUrl: string) {

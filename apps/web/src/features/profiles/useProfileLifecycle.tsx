@@ -45,14 +45,21 @@ export function useProfileLifecycle(onNotice: (message: string) => void, confirm
     return () => { load.current.controller?.abort(); };
   }, []);
 
-  async function refresh() {
+  /**
+   * @param options.profiles Whether the profile roster is re-read. Recording an observation cannot
+   * change it, so data mutations skip that request rather than fanning out to every endpoint.
+   */
+  async function refresh(options: { profiles?: boolean } = {}) {
+    const includeProfiles = options.profiles ?? true;
     const generation = ++load.current.generation;
     load.current.controller?.abort();
     const controller = new AbortController();
     load.current.controller = controller;
     try {
-      const next = await loadSnapshot(controller.signal);
-      if (generation === load.current.generation) setSnapshot(next);
+      const next = await loadSnapshot(controller.signal, includeProfiles);
+      if (generation === load.current.generation) {
+        setSnapshot((current) => ({ ...current, ...next }));
+      }
     } catch (error: unknown) {
       if (generation !== load.current.generation || controller.signal.aborted) return;
       onNotice(error instanceof Error ? error.message : "Unable to load local health data.");
@@ -243,16 +250,15 @@ export function ProfileLifecycleDialogs({ lifecycle }: { lifecycle: ProfileLifec
   );
 }
 
-async function loadSnapshot(signal?: AbortSignal): Promise<ProfileSnapshot> {
+async function loadSnapshot(signal: AbortSignal | undefined, includeProfiles: boolean): Promise<Partial<ProfileSnapshot>> {
   const [bootstrap, analytics, profileList] = await Promise.all([
     api.bootstrap(signal),
     api.analytics(signal),
-    api.profiles.list(signal)
+    includeProfiles ? api.profiles.list(signal) : undefined
   ]);
   return {
     bootstrap,
     analytics,
-    profiles: profileList.profiles,
-    activeProfileId: profileList.activeProfileId
+    ...(profileList ? { profiles: profileList.profiles, activeProfileId: profileList.activeProfileId } : {})
   };
 }

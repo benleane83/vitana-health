@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert, AppState, Linking, Platform, Pressable, Scrol
 import DateTimePicker from "@react-native-community/datetimepicker";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
+import { File } from "expo-file-system";
 import { useKeepAwake } from "expo-keep-awake";
 import { ArrowLeft, CalendarDays, ChevronDown, ChevronRight, ChevronUp, LockKeyhole, PencilLine, RefreshCw, ScanLine } from "lucide-react-native";
 import { useNavigation } from "@react-navigation/native";
@@ -446,12 +447,16 @@ function ScanImport() {
       const resized = await ImageManipulator.manipulateAsync(
         asset.uri,
         [{ resize: { width: Math.min(asset.width || 1800, 1800) } }],
-        { base64: true, compress: 0.72, format: ImageManipulator.SaveFormat.JPEG }
+        { compress: 0.72, format: ImageManipulator.SaveFormat.JPEG }
       );
-      if (!resized.base64) throw new Error("Could not read the selected image.");
+      // Read straight off the resized file at request time. Asking the manipulator for `base64: true`
+      // meant the encoded copy was pinned by the result object for the whole handler, on top of the
+      // copy the request body makes. The API contract is still JSON, so one copy is unavoidable.
+      const contentBase64 = await new File(resized.uri).base64();
+      if (!contentBase64) throw new Error("Could not read the selected image.");
       const next = kind === "body-composition"
-        ? await client.previewBodyCompositionReport({ fileName: asset.fileName ?? "report.jpg", mimeType: "image/jpeg", contentBase64: resized.base64 })
-        : await client.previewBloodTestReport({ fileName: asset.fileName ?? "report.jpg", mimeType: "image/jpeg", contentBase64: resized.base64 });
+        ? await client.previewBodyCompositionReport({ fileName: asset.fileName ?? "report.jpg", mimeType: "image/jpeg", contentBase64 })
+        : await client.previewBloodTestReport({ fileName: asset.fileName ?? "report.jpg", mimeType: "image/jpeg", contentBase64 });
       setDraft(next);
       setRows(toEditableScanRows(next.rows));
       setReportDate(scanReportDate(next.reportDate));

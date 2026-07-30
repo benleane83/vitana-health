@@ -241,10 +241,15 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
     });
   }
 
-  exportData(): Promise<HealthStoreData> {
-    return this.enqueueMutation(async () => {
-      return this.repository.exportData();
-    });
+  recordExportAudit(): Promise<void> {
+    return this.enqueueMutation(() => this.repository.recordExportAudit());
+  }
+
+  async exportData(): Promise<HealthStoreData> {
+    // Only the audit row is a mutation. Reading a full store can take seconds, and enqueueing that
+    // read behind the same lock meant taking a backup blocked every write until it finished.
+    await this.recordExportAudit();
+    return this.repository.exportData();
   }
 
   listHealthEvents(query: HealthEventListQuery) {

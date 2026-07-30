@@ -1,5 +1,5 @@
-import { Fragment, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Fragment, memo, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { FlatList, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -301,76 +301,7 @@ export function TrackDetailScreen({ route }: Props) {
   const readOnly = connectionState !== "online";
   const hasEditableEntries = !readOnly && visibleEntries.some((entry) => entry.kind === "observation" && entry.canDelete);
 
-  return (
-    <Screen>
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.titleRow}>
-          <View style={styles.flex}>
-            <Text style={styles.title}>{detail.measurement.displayName}</Text>
-            {detail.measurement.description ? <Text style={styles.meta}>{detail.measurement.description}</Text> : null}
-          </View>
-          {!adding && !readOnly ? <Button disabled={actionBusy || Boolean(pendingDeletion)} onPress={beginAdd}>Add reading</Button> : null}
-        </View>
-        {readOnly ? <Message title="Read-only cached data" detail="Reconnect to your paired PC to add or edit readings." /> : null}
-        {latest ? (
-          <Card>
-            <Text style={styles.label}>Latest</Text>
-            <View style={styles.latestRow}>
-              <Text adjustsFontSizeToFit numberOfLines={1} style={styles.latest}>{latest.value} {latest.unit}</Text>
-              <ReadingStatus entry={latest} />
-            </View>
-            <Text style={styles.meta}>{formatTimestamp(latest.timestamp)}</Text>
-          </Card>
-        ) : <Message title="No history yet" />}
-        {adding ? (
-          <Card>
-            <Text style={styles.heading}>Add reading</Text>
-            <Text style={styles.meta}>Record a new {detail.measurement.displayName.toLocaleLowerCase()} reading.</Text>
-            <ReadingEditor
-              busy={actionBusy}
-              cancelLabel="Cancel"
-              dateOnly={usesDateOnlyObservation(detail.measurement.aggregation)}
-              draft={draft}
-              onCancel={() => setAdding(false)}
-              onChangeDraft={setDraft}
-              onSubmit={() => { void saveNewReading(); }}
-              submitLabel="Save reading"
-            />
-          </Card>
-        ) : null}
-        <Card>
-          <Text style={styles.heading}>Reference range</Text>
-          <Text style={styles.value}>{formatReferenceRange(detail.referenceRange.effective)}</Text>
-          <Text style={styles.meta}>{referenceRangeSourceLabel(detail.referenceRange.source)}</Text>
-        </Card>
-        <Card>
-          <Text style={styles.heading}>Trend</Text>
-          <TrendChart
-            busy={chartLoading}
-            detail={detail}
-            error={chartError}
-            mode={chartMode}
-            onModeChange={setChartMode}
-            onRangeChange={setChartRange}
-            range={chartRange}
-            series={chartSeries}
-          />
-        </Card>
-        <View style={styles.historyHeader}>
-          <Text style={styles.heading}>History</Text>
-          <Text style={styles.meta}>{hasEditableEntries ? "Select a reading to manage it." : "Synced readings are read-only."}</Text>
-        </View>
-        {pendingDeletion ? (
-          <View accessibilityLiveRegion="polite" style={styles.undoBanner}>
-            <View style={styles.flex}>
-              <Text style={styles.undoTitle}>Reading removed</Text>
-              <Text style={styles.meta}>Undo within a few seconds to keep this reading.</Text>
-            </View>
-            <Button secondary onPress={cancelDeletion}>Undo</Button>
-          </View>
-        ) : null}
-        <View style={styles.historyList}>
-          {visibleEntries.map((entry) => {
+  const renderEntry = (entry: HealthDataDetailEntry) => {
             const selected = selectedEntryId === entry.id;
             const editingEntry = editing?.id === entry.id;
             const canManage = !readOnly && entry.kind === "observation" && entry.canDelete;
@@ -389,7 +320,7 @@ export function TrackDetailScreen({ route }: Props) {
               </>
             );
             return (
-              <View key={`${entry.kind}-${entry.id}`} style={[styles.historyItem, selected && styles.historyItemSelected]}>
+              <View style={[styles.historyItem, selected && styles.historyItemSelected]}>
                 {canManage ? (
                   <Pressable
                     accessibilityHint="Selects this reading to edit or delete it."
@@ -426,16 +357,98 @@ export function TrackDetailScreen({ route }: Props) {
                 {actionFeedback?.entryId === entry.id ? <Message detail={actionFeedback.detail} title={actionFeedback.title} tone={actionFeedback.tone} /> : null}
               </View>
             );
-          })}
-        </View>
-        {actionFeedback && !actionFeedback.entryId ? <Message detail={actionFeedback.detail} title={actionFeedback.title} tone={actionFeedback.tone} /> : null}
-        {error ? <Message title="Could not load more history" detail={error} tone="danger" /> : null}
-        {detail.pagination.hasMore ? (
-          <Button disabled={loadingMore} onPress={() => { void loadMore(); }}>
-            {loadingMore ? "Loading…" : "Load more"}
-          </Button>
-        ) : null}
-      </ScrollView>
+  };
+
+  return (
+    <Screen>
+      {/* Virtualized: history can run to hundreds of readings, and every one used to mount up front. */}
+      <FlatList
+        ListFooterComponent={
+          <View style={styles.section}>
+            {actionFeedback && !actionFeedback.entryId ? <Message detail={actionFeedback.detail} title={actionFeedback.title} tone={actionFeedback.tone} /> : null}
+            {error ? <Message title="Could not load more history" detail={error} tone="danger" /> : null}
+            {detail.pagination.hasMore ? (
+              <Button disabled={loadingMore} onPress={() => { void loadMore(); }}>
+                {loadingMore ? "Loading…" : "Load more"}
+              </Button>
+            ) : null}
+          </View>
+        }
+        ListHeaderComponent={
+          <View style={styles.section}>
+            <View style={styles.titleRow}>
+              <View style={styles.flex}>
+                <Text style={styles.title}>{detail.measurement.displayName}</Text>
+                {detail.measurement.description ? <Text style={styles.meta}>{detail.measurement.description}</Text> : null}
+              </View>
+              {!adding && !readOnly ? <Button disabled={actionBusy || Boolean(pendingDeletion)} onPress={beginAdd}>Add reading</Button> : null}
+            </View>
+            {readOnly ? <Message title="Read-only cached data" detail="Reconnect to your paired PC to add or edit readings." /> : null}
+            {latest ? (
+              <Card>
+                <Text style={styles.label}>Latest</Text>
+                <View style={styles.latestRow}>
+                  <Text adjustsFontSizeToFit numberOfLines={1} style={styles.latest}>{latest.value} {latest.unit}</Text>
+                  <ReadingStatus entry={latest} />
+                </View>
+                <Text style={styles.meta}>{formatTimestamp(latest.timestamp)}</Text>
+              </Card>
+            ) : <Message title="No history yet" />}
+            {adding ? (
+              <Card>
+                <Text style={styles.heading}>Add reading</Text>
+                <Text style={styles.meta}>Record a new {detail.measurement.displayName.toLocaleLowerCase()} reading.</Text>
+                <ReadingEditor
+                  busy={actionBusy}
+                  cancelLabel="Cancel"
+                  dateOnly={usesDateOnlyObservation(detail.measurement.aggregation)}
+                  draft={draft}
+                  onCancel={() => setAdding(false)}
+                  onChangeDraft={setDraft}
+                  onSubmit={() => { void saveNewReading(); }}
+                  submitLabel="Save reading"
+                />
+              </Card>
+            ) : null}
+            <Card>
+              <Text style={styles.heading}>Reference range</Text>
+              <Text style={styles.value}>{formatReferenceRange(detail.referenceRange.effective)}</Text>
+              <Text style={styles.meta}>{referenceRangeSourceLabel(detail.referenceRange.source)}</Text>
+            </Card>
+            <Card>
+              <Text style={styles.heading}>Trend</Text>
+              <TrendChart
+                busy={chartLoading}
+                detail={detail}
+                error={chartError}
+                mode={chartMode}
+                onModeChange={setChartMode}
+                onRangeChange={setChartRange}
+                range={chartRange}
+                series={chartSeries}
+              />
+            </Card>
+            <View style={styles.historyHeader}>
+              <Text style={styles.heading}>History</Text>
+              <Text style={styles.meta}>{hasEditableEntries ? "Select a reading to manage it." : "Synced readings are read-only."}</Text>
+            </View>
+            {pendingDeletion ? (
+              <View accessibilityLiveRegion="polite" style={styles.undoBanner}>
+                <View style={styles.flex}>
+                  <Text style={styles.undoTitle}>Reading removed</Text>
+                  <Text style={styles.meta}>Undo within a few seconds to keep this reading.</Text>
+                </View>
+                <Button secondary onPress={cancelDeletion}>Undo</Button>
+              </View>
+            ) : null}
+            <View style={styles.historyList} />
+          </View>
+        }
+        contentContainerStyle={styles.listContent}
+        data={visibleEntries}
+        keyExtractor={(entry) => `${entry.kind}-${entry.id}`}
+        renderItem={({ item }) => renderEntry(item)}
+      />
     </Screen>
   );
 }
@@ -664,7 +677,14 @@ const trendRanges: Array<{ value: HealthDataChartRange; label: string }> = [
   { value: "1m", label: "1M" }
 ];
 
-function TrendChart({
+const chartWidth = 320;
+const chartHeight = 174;
+const chartLeft = 44;
+const chartRight = 308;
+const chartTop = 12;
+const chartBottom = 126;
+
+const TrendChart = memo(function TrendChart({
   busy,
   detail,
   error,
@@ -683,14 +703,53 @@ function TrendChart({
   range: HealthDataChartRange;
   series?: HealthDataChartSeries;
 }) {
-  const chartPoints = (series?.points ?? []).map((point) => ({ ...point, kind: "observation" as const }));
-  const baseDomain = calculateChartDomain(chartPoints);
+  // All of this used to run on every parent render — which includes every keystroke in the
+  // add-reading form — for up to 500 points.
+  const chartPoints = useMemo(
+    () => (series?.points ?? []).map((point) => ({ ...point, kind: "observation" as const })),
+    [series]
+  );
+  const baseDomain = useMemo(() => calculateChartDomain(chartPoints), [chartPoints]);
   const latestPoint = chartPoints.at(-1);
   const [selectedTimestamp, setSelectedTimestamp] = useState(latestPoint?.timestamp);
 
   useEffect(() => {
     setSelectedTimestamp(latestPoint?.timestamp);
   }, [detail.measurement.code, latestPoint?.timestamp]);
+
+  const referenceRange = detail.referenceRange.effective;
+  const chartReferenceRange = useMemo(
+    () => (referenceRange && chartPoints.every((point) => point.unit === referenceRange.unit) ? referenceRange : undefined),
+    [chartPoints, referenceRange]
+  );
+  const referenceBounds = useMemo(
+    () => [chartReferenceRange?.low, chartReferenceRange?.high]
+      .filter((value): value is number => value !== undefined && Number.isFinite(value)),
+    [chartReferenceRange]
+  );
+  const geometry = useMemo(() => {
+    if (!baseDomain) return undefined;
+    const domain = {
+      ...baseDomain,
+      yMin: Math.min(baseDomain.yMin, ...referenceBounds),
+      yMax: Math.max(baseDomain.yMax, ...referenceBounds)
+    };
+    const xRange = domain.xMax - domain.xMin || 1;
+    const yRange = domain.yMax - domain.yMin || 1;
+    const points = chartPoints.map((point) => ({
+      ...point,
+      x: chartLeft + ((Date.parse(point.timestamp) - domain.xMin) / xRange) * (chartRight - chartLeft),
+      y: chartBottom - ((point.value - domain.yMin) / yRange) * (chartBottom - chartTop)
+    }));
+    return {
+      domain,
+      yRange,
+      points,
+      yTicks: [domain.yMax, domain.yMin + yRange / 2, domain.yMin],
+      path: points.map((point, index) =>
+        `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(" ")
+    };
+  }, [baseDomain, chartPoints, referenceBounds]);
 
   const controls = (
     <>
@@ -707,38 +766,13 @@ function TrendChart({
       ) : null}
     </>
   );
-  if (!baseDomain) {
+  if (!geometry) {
     return <View style={styles.chart}>{controls}<Text style={styles.meta}>{busy ? "Loading trend…" : error ?? "No numeric trend points in this range."}</Text></View>;
   }
-  const referenceRange = detail.referenceRange.effective;
-  const chartReferenceRange = referenceRange &&
-    chartPoints.every((point) => point.unit === referenceRange.unit)
-    ? referenceRange
-    : undefined;
-  const referenceBounds = [chartReferenceRange?.low, chartReferenceRange?.high]
-    .filter((value): value is number => value !== undefined && Number.isFinite(value));
-  const domain = {
-    ...baseDomain,
-    yMin: Math.min(baseDomain.yMin, ...referenceBounds),
-    yMax: Math.max(baseDomain.yMax, ...referenceBounds)
-  };
-  const width = 320;
-  const height = 174;
-  const chartLeft = 44;
-  const chartRight = 308;
-  const chartTop = 12;
-  const chartBottom = 126;
-  const xRange = domain.xMax - domain.xMin || 1;
-  const yRange = domain.yMax - domain.yMin || 1;
-  const points = chartPoints.map((point) => ({
-    ...point,
-    x: chartLeft + ((Date.parse(point.timestamp) - domain.xMin) / xRange) * (chartRight - chartLeft),
-    y: chartBottom - ((point.value - domain.yMin) / yRange) * (chartBottom - chartTop)
-  }));
+  const { domain, yRange, points, yTicks, path } = geometry;
+  const width = chartWidth;
+  const height = chartHeight;
   const selectedPoint = points.find((point) => point.timestamp === selectedTimestamp) ?? points.at(-1);
-  const yTicks = [domain.yMax, domain.yMin + yRange / 2, domain.yMin];
-  const path = points.map((point, index) =>
-    `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(" ");
   return (
     <View style={styles.chart}>
       {controls}
@@ -807,7 +841,7 @@ function TrendChart({
       </Svg>
     </View>
   );
-}
+});
 
 function ChartToggle({ label, onPress, selected }: { label: string; onPress: () => void; selected: boolean }) {
   return (
@@ -823,7 +857,8 @@ function ChartToggle({ label, onPress, selected }: { label: string; onPress: () 
 }
 
 const styles = StyleSheet.create({
-  content: { gap: spacing.md, paddingBottom: spacing.xl },
+  listContent: { paddingBottom: spacing.xl },
+  section: { gap: spacing.md },
   titleRow: { alignItems: "flex-start", flexDirection: "row", gap: spacing.sm, justifyContent: "space-between" },
   title: { color: colors.text, fontSize: 24, fontWeight: "800", marginBottom: spacing.xs },
   label: { color: colors.muted, fontSize: 14, fontWeight: "700" },
