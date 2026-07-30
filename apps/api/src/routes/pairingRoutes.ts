@@ -3,7 +3,16 @@ import { z } from "zod";
 import QRCode from "qrcode";
 import type { PairingStore } from "../pairing.js";
 import type { AuthorizationPrincipal } from "../createApp.js";
-import { PAIRING_APP } from "@vitana/shared";
+import {
+  PAIRING_APP,
+  pairedDeviceSchema,
+  pairedDevicesResponseSchema,
+  pairingMutationResponseSchema,
+  pairingRequestResponseSchema,
+  pairingStatusResponseSchema,
+  pendingPairingsResponseSchema
+} from "@vitana/shared";
+import { sendJson } from "./sendJson.js";
 
 export function makePairingRoutes(
   pairingStore: PairingStore,
@@ -48,7 +57,7 @@ export function makePairingRoutes(
       response.status(401).json({ error: "Pairing code is invalid or expired.", code: "PAIRING_CODE_INVALID" });
       return;
     }
-    response.status(201).json({
+    sendJson(response.status(201), pairingRequestResponseSchema, {
       pairingId: result.record.id,
       status: result.record.status,
       pollingSecret: result.pollingSecret
@@ -66,7 +75,7 @@ export function makePairingRoutes(
       response.status(404).json({ error: "Pairing request not found.", code: "PAIRING_NOT_FOUND" });
       return;
     }
-    response.json({ id: result.record.id, status: result.record.status, token: result.token });
+    sendJson(response, pairingStatusResponseSchema, { id: result.record.id, status: result.record.status, token: result.token });
   });
 
   // All routes below require owner token (enforced by auth middleware in createApp)
@@ -77,11 +86,11 @@ export function makePairingRoutes(
       deviceName: r.deviceName,
       requestedAt: r.requestedAt
     }));
-    response.json(pending);
+    sendJson(response, pendingPairingsResponseSchema, pending);
   });
 
   router.get("/devices", (_request, response) => {
-    response.json(pairingStore.listDevices());
+    sendJson(response, pairedDevicesResponseSchema, pairingStore.listDevices());
   });
 
   const approvalSchema = z.object({ profileId: z.string().min(1).max(64) });
@@ -100,7 +109,7 @@ export function makePairingRoutes(
       response.status(404).json({ error: "Pairing request not found or already resolved.", code: "PAIRING_NOT_FOUND" });
       return;
     }
-    response.json({ id: record.id, status: record.status });
+    sendJson(response, pairingMutationResponseSchema, { id: record.id, status: record.status });
   });
 
   router.post("/deny/:pairingId", (request, response) => {
@@ -109,7 +118,7 @@ export function makePairingRoutes(
       response.status(404).json({ error: "Pairing request not found or already resolved.", code: "PAIRING_NOT_FOUND" });
       return;
     }
-    response.json({ id: record.id, status: record.status });
+    sendJson(response, pairingMutationResponseSchema, { id: record.id, status: record.status });
   });
 
   router.post("/revoke/:pairingId", (request, response) => {
@@ -118,7 +127,7 @@ export function makePairingRoutes(
       response.status(404).json({ error: "Paired device not found.", code: "DEVICE_NOT_FOUND" });
       return;
     }
-    response.json(record);
+    sendJson(response, pairedDeviceSchema, record);
   });
 
   router.post("/revoke-self", (_request, response) => {
@@ -132,7 +141,7 @@ export function makePairingRoutes(
       response.status(401).json({ error: "Paired device not found.", code: "AUTH_REQUIRED" });
       return;
     }
-    response.status(200).json({ id: record.id, status: "revoked" });
+    sendJson(response.status(200), pairingMutationResponseSchema, { id: record.id, status: "revoked" });
   });
 
   return router;

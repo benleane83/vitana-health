@@ -569,14 +569,15 @@ function createManualEntry({
 }
 
 function demoImportResult(observationCount: number, importSequence: number): MobileImportResult {
-  const accepted = { attempted: observationCount, accepted: observationCount, duplicates: 0 };
-  const empty = { attempted: 0, accepted: 0, duplicates: 0 };
+  const accepted = { attempted: observationCount, accepted: observationCount, duplicates: 0, rejected: 0 };
+  const empty = { attempted: 0, accepted: 0, duplicates: 0, rejected: 0 };
+  const single = { attempted: 1, accepted: 1, duplicates: 0, rejected: 0 };
   return {
     importId: `demo-import-${importSequence}`,
     outcome: {
-      sourceImports: { attempted: 1, accepted: 1, duplicates: 0 },
-      dataSources: { attempted: 1, accepted: 1, duplicates: 0 },
-      observationGroups: { attempted: 1, accepted: 1, duplicates: 0 },
+      sourceImports: single,
+      dataSources: single,
+      observationGroups: single,
       observations: accepted,
       timeSeriesSamples: empty,
       activitySessions: empty

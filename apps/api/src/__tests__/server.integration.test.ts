@@ -7,6 +7,7 @@ import { ProfileStoreManager } from "../storage/profileStoreManager.js";
 import { PairingStore } from "../pairing.js";
 import { createApp } from "../createApp.js";
 import { buildManualLabEntryImport, defaultMeasurementTypes } from "@vitana/shared";
+import { requirePreparedExtension } from "./support/duckdbExtension.js";
 
 let tempDir: string;
 let storeManager: ProfileStoreManager;
@@ -16,11 +17,7 @@ let app: any;
 const ownerToken = "test-owner-token-for-server-tests";
 const ownerAuthorization = "Bearer " + ownerToken;
 
-const httpfsExtensionPath = [
-  process.env.VITANA_DUCKDB_HTTPFS_EXTENSION,
-  resolve(process.cwd(), "apps", "desktop", "build", "duckdb-extensions", "httpfs.duckdb_extension"),
-  resolve(process.cwd(), "..", "desktop", "build", "duckdb-extensions", "httpfs.duckdb_extension")
-].find((candidate): candidate is string => Boolean(candidate && existsSync(candidate)));
+const httpfsExtensionPath = requirePreparedExtension();
 
 beforeEach(async () => {
   tempDir = mkdtempSync(join(tmpdir(), "vitana-server-test-"));
@@ -28,9 +25,6 @@ beforeEach(async () => {
   process.env.VITANA_SECRET = "test-secret-for-server-tests-1234";
   process.env.VITANA_OWNER_TOKEN = ownerToken;
 
-  if (!httpfsExtensionPath) {
-    throw new Error("Prepared DuckDB httpfs extension is required for API tests.");
-  }
   storeManager = await ProfileStoreManager.open({
     storageBackend: "duckdb",
     duckdb: { httpfsExtensionPath, root: join(tempDir, "duckdb-storage") }
@@ -92,16 +86,14 @@ describe("query endpoint lifecycle", () => {
     expect(aiResponse.headers["x-vitana-lifecycle"]).toBe("supported");
   });
 
-  it("reports active DuckDB analytics storage without rebuilding data", async () => {
+  it("reports active analytics storage counts without rebuilding data", async () => {
     const response = await request(app)
       .get("/api/analytics/storage")
       .set("authorization", ownerAuthorization);
 
     expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({
-      databasePath: "encrypted-profile:self",
-      engine: "duckdb",
-      counts: { imports: 0, observations: 0, samples: 0, activities: 0 }
+    expect(response.body).toEqual({
+      counts: { imports: 0, observations: 0, samples: 0, activities: 0, healthEvents: 0, careItems: 0 }
     });
   });
 });
@@ -142,8 +134,8 @@ describe("POST /api/import/health-connect — auth middleware", () => {
       expect(manual.status).toBe(201);
       expect(manual.body).toMatchObject({
         outcome: {
-          observations: { attempted: 1, accepted: 1, duplicates: 0, evicted: 0 },
-          observationGroups: { attempted: 1, accepted: 1, duplicates: 0, evicted: 0 }
+          observations: { attempted: 1, accepted: 1, duplicates: 0, rejected: 0 },
+          observationGroups: { attempted: 1, accepted: 1, duplicates: 0, rejected: 0 }
         },
         import: { sourceKind: "manual-entry" }
       });
@@ -166,8 +158,8 @@ describe("POST /api/import/health-connect — auth middleware", () => {
       .send(minimalHealthConnectPayload);
     expect(first.status).toBe(201);
     expect(first.body.outcome).toMatchObject({
-      sourceImport: { attempted: 1, accepted: 1, duplicates: 0, evicted: 0 },
-      dataSource: { attempted: 1, accepted: 1, duplicates: 0, evicted: 0 }
+      sourceImport: { attempted: 1, accepted: 1, duplicates: 0, rejected: 0 },
+      dataSource: { attempted: 1, accepted: 1, duplicates: 0, rejected: 0 }
     });
 
     const repeated = await request(app)
@@ -176,8 +168,8 @@ describe("POST /api/import/health-connect — auth middleware", () => {
       .send(minimalHealthConnectPayload);
     expect(repeated.status).toBe(201);
     expect(repeated.body.outcome).toMatchObject({
-      sourceImport: { attempted: 1, accepted: 0, duplicates: 1, evicted: 0 },
-      dataSource: { attempted: 1, accepted: 0, duplicates: 1, evicted: 0 }
+      sourceImport: { attempted: 1, accepted: 0, duplicates: 1, rejected: 0 },
+      dataSource: { attempted: 1, accepted: 0, duplicates: 1, rejected: 0 }
     });
   });
 
@@ -454,6 +446,26 @@ describe("central owner authorization", () => {
     const authenticated = await agent.post("/api/auth/local");
     expect(authenticated.status).toBe(204);
     expect((await agent.get("/api/health")).status).toBe(200);
+  });
+
+  it("requires the launch nonce when the desktop shell configured one", async () => {
+    const guarded = createApp(storeManager, pairingStore, { localAuthNonce: "launch-nonce-for-server-tests" });
+
+    const withoutNonce = await request(guarded).post("/api/auth/local");
+    expect(withoutNonce.status).toBe(403);
+    expect(withoutNonce.body.code).toBe("AUTH_LAUNCH_NONCE_REQUIRED");
+
+    const wrongNonce = await request(guarded)
+      .post("/api/auth/local")
+      .set("x-vitana-launch-nonce", "launch-nonce-for-server-testz");
+    expect(wrongNonce.status).toBe(403);
+
+    const agent = request.agent(guarded);
+    const authenticated = await agent
+      .post("/api/auth/local")
+      .set("x-vitana-launch-nonce", "launch-nonce-for-server-tests");
+    expect(authenticated.status).toBe(204);
+    expect((await agent.get("/api/profiles")).status).toBe(200);
   });
 });
 

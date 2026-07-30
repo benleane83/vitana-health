@@ -60,19 +60,19 @@ export function TrackRoute({
   const defaultUnit = measurementTypes.find((measurement) => measurement.code === detailCode)?.canonicalUnit ?? "";
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
     setSummary((current) => ({ ...current, busy: true, error: undefined }));
-    void api.summary().then((data) => {
-      if (cancelled) return;
+    void api.summary(controller.signal).then((data) => {
+      if (controller.signal.aborted) return;
       setSummary({ data, busy: false });
       setExpandedCategories(new Set(data.categories.map((category) => category.key)));
     }).catch((error: unknown) => {
-      if (!cancelled) setSummary({
+      if (!controller.signal.aborted) setSummary({
         busy: false,
         error: error instanceof Error ? error.message : "Unable to load summary."
       });
     });
-    return () => { cancelled = true; };
+    return () => { controller.abort(); };
   }, [activeProfileId]);
 
   useEffect(() => {
@@ -80,17 +80,17 @@ export function TrackRoute({
       setDetail({ busy: false });
       return;
     }
-    let cancelled = false;
+    const controller = new AbortController();
     setDetail((current) => ({ ...current, busy: true, error: undefined }));
-    void api.healthDataDetail(detailCode).then((data) => {
-      if (!cancelled) setDetail({ data, busy: false });
+    void api.healthDataDetail(detailCode, undefined, controller.signal).then((data) => {
+      if (!controller.signal.aborted) setDetail({ data, busy: false });
     }).catch((error: unknown) => {
-      if (!cancelled) setDetail({
+      if (!controller.signal.aborted) setDetail({
         busy: false,
         error: error instanceof Error ? error.message : "Unable to load detail."
       });
     });
-    return () => { cancelled = true; };
+    return () => { controller.abort(); };
   }, [detailCode, activeProfileId]);
 
   useEffect(() => {
@@ -98,17 +98,17 @@ export function TrackRoute({
       setChartSeries({ busy: false });
       return;
     }
-    let cancelled = false;
+    const controller = new AbortController();
     setChartSeries({ busy: true });
-    void api.healthDataChartSeries(detailCode, { range: chartRange, mode: chartMode }).then((data) => {
-      if (!cancelled) setChartSeries({ data, busy: false });
+    void api.healthDataChartSeries(detailCode, { range: chartRange, mode: chartMode }, controller.signal).then((data) => {
+      if (!controller.signal.aborted) setChartSeries({ data, busy: false });
     }).catch((error: unknown) => {
-      if (!cancelled) setChartSeries({
+      if (!controller.signal.aborted) setChartSeries({
         busy: false,
         error: error instanceof Error ? error.message : "Unable to load trend."
       });
     });
-    return () => { cancelled = true; };
+    return () => { controller.abort(); };
   }, [detailCode, activeProfileId, chartRange, chartMode]);
 
   async function refreshAfterMutation(nextDetailCode: string) {

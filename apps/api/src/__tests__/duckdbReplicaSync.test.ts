@@ -37,7 +37,7 @@ describe("DuckDB companion replica export", () => {
     }];
     const careItems = [{
       id: "care-1",
-      kind: "follow-up",
+      kind: "follow-up" as const,
       title: "Book follow-up",
       dueStart: "2026-08-01",
       priority: "normal" as const,

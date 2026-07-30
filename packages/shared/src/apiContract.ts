@@ -1,5 +1,15 @@
 import { z } from "zod";
-import { careItemKindCodes, healthEventKindCodes } from "./types.js";
+import { careItemKindCodes, generalHealthEventKindCodes, healthEventKindCodes } from "./types.js";
+import {
+  activitySessionSchema,
+  insightSchema,
+  measurementTypeSchema,
+  observationGroupKindSchema,
+  observationSchema,
+  profileSchema,
+  referenceRangeSchema,
+  sourceKindSchema
+} from "./storeSchema.js";
 import type {
   AnalyticsSummary,
   AppBootstrap,
@@ -17,6 +27,7 @@ import type {
   HealthDataSummary,
   HealthEvent,
   HealthEventMutationResponse,
+  HealthEventReference,
   Insight,
   MeasurementPinState,
   Profile,
@@ -250,13 +261,26 @@ export const profileDeleteResponseSchema = z.object({
   profiles: z.array(profileListEntrySchema)
 }).strict();
 export const pairingMutationResponseSchema = z.object({ id: z.string(), status: z.string() }).strict();
+export const pairingRequestResponseSchema = z.object({
+  pairingId: z.string(),
+  status: z.string(),
+  pollingSecret: z.string()
+}).strict();
+/** The token is only present on the single poll that first observes an approval. */
+export const pairingStatusResponseSchema = z.object({
+  id: z.string(),
+  status: z.string(),
+  token: z.string().optional()
+}).strict();
 
 export const importCategoryOutcomeSchema = z.object({
   attempted: z.number().int().nonnegative(),
   accepted: z.number().int().nonnegative(),
   duplicates: z.number().int().nonnegative(),
-  evicted: z.literal(0)
+  /** Rows dropped because their unit could not be reconciled with the measurement registry. */
+  rejected: z.number().int().nonnegative()
 }).strict();
+export type ImportCategoryOutcome = z.infer<typeof importCategoryOutcomeSchema>;
 
 export const importMutationResponseSchema = z.object({
   import: z.object({
@@ -282,33 +306,6 @@ export const importMutationResponseSchema = z.object({
 }).passthrough();
 export type ImportMutationResponse = z.infer<typeof importMutationResponseSchema>;
 
-function objectResponseSchema<T>(): z.ZodType<T> {
-  return z.custom<T>((value) => typeof value === "object" && value !== null && !Array.isArray(value), {
-    message: "Expected an API response object."
-  });
-}
-
-export const appBootstrapResponseSchema = objectResponseSchema<AppBootstrap>();
-export const analyticsSummaryResponseSchema = objectResponseSchema<AnalyticsSummary>();
-export const biologicalAgeResponseSchema = objectResponseSchema<BiologicalAgeReport>();
-export const healthDataSummaryResponseSchema = objectResponseSchema<HealthDataSummary>();
-export const healthDataDetailResponseSchema = objectResponseSchema<HealthDataDetail>();
-export const healthDataChartSeriesResponseSchema = objectResponseSchema<HealthDataChartSeries>();
-export const referenceRangeStateResponseSchema = objectResponseSchema<ReferenceRangeState>();
-export const measurementPinStateResponseSchema: z.ZodType<MeasurementPinState> = z.object({
-  measurementCode: z.string().trim().min(1),
-  isPinned: z.boolean(),
-  pinnedAt: z.string().datetime({ offset: true }).optional()
-}).strict();
-export const profileResponseSchema = objectResponseSchema<Profile>();
-export const cloudAiConsentResponseSchema = objectResponseSchema<CloudAiConsent>();
-export const bodyCompositionDraftResponseSchema = objectResponseSchema<BodyCompositionDraft>();
-export const uploadImportDraftResponseSchema = objectResponseSchema<UploadImportDraft>();
-export const insightResponseSchema = objectResponseSchema<Insight>();
-export const updateObservationResponseSchema = objectResponseSchema<UpdateObservationResponse>();
-export const deleteObservationResponseSchema = objectResponseSchema<DeleteObservationResponse>();
-export const deleteObservationsByTypeResponseSchema = objectResponseSchema<DeleteObservationsByTypeResponse>();
-
 const isoTimestampSchema = z.string().datetime({ offset: true });
 const optionalTrimmedString = (max: number) => z.string().trim().max(max).optional();
 
@@ -326,46 +323,69 @@ export const personalReferenceRangeInputSchema = z.object({
 });
 export type PersonalReferenceRangeInput = z.infer<typeof personalReferenceRangeInputSchema>;
 
-export const healthEventSchema: z.ZodType<HealthEvent> = z.object({
+const immunizationDetailsSchema = z.object({
+  vaccine: z.string(),
+  targetDisease: z.string().optional(),
+  doseNumber: z.number().int().positive().optional(),
+  series: z.string().optional(),
+  manufacturer: z.string().optional(),
+  lotNumber: z.string().optional(),
+  expiresAt: z.string().optional(),
+  route: z.string().optional(),
+  site: z.string().optional(),
+  reaction: z.string().optional()
+}).strict();
+
+const medicationAdministrationDetailsSchema = z.object({
+  medication: z.string(),
+  activeIngredient: z.string().optional(),
+  dose: z.number(),
+  unit: z.string(),
+  route: z.string().optional()
+}).strict();
+
+const healthEventBaseShape = {
   id: z.string(),
-  kind: z.enum(healthEventKindCodes),
   status: z.enum(["completed", "entered-in-error"]),
   occurredAt: isoTimestampSchema,
-  source: z.enum(["health-connect", "manual-entry", "blood-test-csv", "observation-csv", "structured-upload", "blood-test-report", "body-composition-report", "derived"]),
+  source: sourceKindSchema,
   provider: optionalTrimmedString(160),
   notes: optionalTrimmedString(4000),
-  metadata: z.record(z.unknown()).optional(),
-  immunization: z.object({
-    vaccine: z.string(),
-    targetDisease: z.string().optional(),
-    doseNumber: z.number().int().positive().optional(),
-    series: z.string().optional(),
-    manufacturer: z.string().optional(),
-    lotNumber: z.string().optional(),
-    expiresAt: z.string().optional(),
-    route: z.string().optional(),
-    site: z.string().optional(),
-    reaction: z.string().optional()
-  }).strict().optional(),
-  medicationAdministration: z.object({
-    medication: z.string(),
-    activeIngredient: z.string().optional(),
-    dose: z.number(),
-    unit: z.string(),
-    route: z.string().optional()
-  }).strict().optional()
-}).strict().superRefine((value, context) => {
-  if (value.immunization && value.kind !== "immunization") {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["immunization"], message: "Immunization details require an immunization event." });
-  }
-  if (value.medicationAdministration && value.kind !== "medication-administration") {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["medicationAdministration"], message: "Medication details require a medication event." });
-  }
-}).transform((value) => value as HealthEvent);
+  metadata: z.record(z.unknown()).optional()
+};
+
+/**
+ * A discriminated union rather than one flat object with cross-field refinements: it makes the
+ * "only immunizations carry immunization details" rule structural, so the schema output really is
+ * a `HealthEvent` and no `as` cast is needed to claim it.
+ */
+export const healthEventSchema: z.ZodType<HealthEvent> = z.discriminatedUnion("kind", [
+  z.object({
+    ...healthEventBaseShape,
+    kind: z.literal("immunization"),
+    immunization: immunizationDetailsSchema.optional()
+  }).strict(),
+  z.object({
+    ...healthEventBaseShape,
+    kind: z.literal("medication-administration"),
+    medicationAdministration: medicationAdministrationDetailsSchema.optional()
+  }).strict(),
+  z.object({
+    ...healthEventBaseShape,
+    kind: z.enum(generalHealthEventKindCodes)
+  }).strict()
+]);
+
+export const healthEventReferenceSchema: z.ZodType<HealthEventReference> = z.object({
+  id: z.string(),
+  kind: z.enum(healthEventKindCodes),
+  occurredAt: isoTimestampSchema,
+  provider: z.string().optional()
+}).strict();
 
 export const careItemSchema: z.ZodType<CareItem> = z.object({
   id: z.string(),
-  kind: z.string(),
+  kind: z.enum(careItemKindCodes),
   code: z.string().optional(),
   title: z.string(),
   dueStart: isoTimestampSchema.optional(),
@@ -377,12 +397,7 @@ export const careItemSchema: z.ZodType<CareItem> = z.object({
   notes: z.string().optional(),
   completedHealthEventId: z.string().optional(),
   completedAt: isoTimestampSchema.optional(),
-  completedHealthEvent: z.object({
-    id: z.string(),
-    kind: z.enum(healthEventKindCodes),
-    occurredAt: isoTimestampSchema,
-    provider: z.string().optional()
-  }).strict().optional()
+  completedHealthEvent: healthEventReferenceSchema.optional()
 }).strict();
 
 const carePaginationSchema = z.object({
@@ -407,6 +422,8 @@ export const healthEventListQuerySchema = z.object({
   }
 });
 export type HealthEventListQueryContract = z.infer<typeof healthEventListQuerySchema>;
+/** Caller-facing form: every filter is optional, and the server applies the paging defaults. */
+export type HealthEventListQuery = Partial<HealthEventListQueryContract>;
 
 export const careItemListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -424,6 +441,8 @@ export const careItemListQuerySchema = z.object({
   }
 });
 export type CareItemListQueryContract = z.infer<typeof careItemListQuerySchema>;
+/** Caller-facing form: every filter is optional, and the server applies the paging defaults. */
+export type CareItemListQuery = Partial<CareItemListQueryContract>;
 
 export const createHealthEventInputSchema = z.object({
   kind: z.enum(healthEventKindCodes),
@@ -433,6 +452,8 @@ export const createHealthEventInputSchema = z.object({
   notes: optionalTrimmedString(4000)
 }).strict();
 export const updateHealthEventInputSchema = createHealthEventInputSchema;
+export type CreateHealthEventInput = z.infer<typeof createHealthEventInputSchema>;
+export type UpdateHealthEventInput = CreateHealthEventInput;
 
 export const createCareItemInputSchema = z.object({
   title: z.string().trim().min(1).max(160),
@@ -444,11 +465,23 @@ export const createCareItemInputSchema = z.object({
   notes: optionalTrimmedString(4000)
 }).strict();
 export const updateCareItemInputSchema = createCareItemInputSchema;
+export type CreateCareItemInput = z.infer<typeof createCareItemInputSchema>;
+export type UpdateCareItemInput = CreateCareItemInput;
 
 export const completeCareItemInputSchema = z.object({
   occurredAt: isoTimestampSchema,
   kind: z.enum(healthEventKindCodes)
 }).strict();
+export type CompleteCareItemInput = z.infer<typeof completeCareItemInputSchema>;
+
+export const updateObservationInputSchema = z.object({
+  measurementCode: z.string().trim().min(1).max(120),
+  observedAt: isoTimestampSchema,
+  value: z.number().finite(),
+  unit: z.string().trim().min(1).max(40),
+  note: z.string().trim().max(1000).optional()
+}).strict();
+export type UpdateObservationInput = z.infer<typeof updateObservationInputSchema>;
 
 export const paginatedHealthEventsResponseSchema = z.object({
   items: z.array(healthEventSchema),
@@ -458,11 +491,353 @@ export const paginatedCareItemsResponseSchema = z.object({
   items: z.array(careItemSchema),
   ...carePaginationSchema.shape
 }).strict();
-export const healthEventMutationResponseSchema = objectResponseSchema<HealthEventMutationResponse>();
-export const careItemMutationResponseSchema = objectResponseSchema<CareItemMutationResponse>();
-export const completeCareItemResponseSchema = objectResponseSchema<CompleteCareItemResponse>();
-export const deleteHealthEventResponseSchema = objectResponseSchema<DeleteHealthEventResponse>();
-export const deleteCareItemResponseSchema = objectResponseSchema<DeleteCareItemResponse>();
+
+// ─── Response schemas ────────────────────────────────────────────────────────
+//
+// Every response the clients parse has a real schema here. They are `.strict()` on purpose: a
+// field the server renames or drops must fail loudly at the boundary rather than arrive as
+// `undefined` somewhere deep in a chart.
+
+const nonNegativeInt = z.number().int().nonnegative();
+
+const entityCountsSchema = z.object({
+  imports: nonNegativeInt,
+  observations: nonNegativeInt,
+  samples: nonNegativeInt,
+  activities: nonNegativeInt,
+  healthEvents: nonNegativeInt,
+  careItems: nonNegativeInt
+}).strict();
+
+const measurementCategorySchema = z.enum([
+  "activity", "cardio", "sleep", "body", "lab", "derived", "uncategorized"
+]);
+const measurementAggregationSchema = z.enum(["sum", "average", "min", "max", "latest", "none"]);
+const measurementStatusSchema = z.enum(["low", "normal", "high", "unknown"]);
+const trendDirectionSchema = z.enum(["up", "down", "flat", "unknown"]);
+
+const profilePhotoMetadataSchema = z.object({
+  revision: z.string(),
+  updatedAt: z.string()
+}).strict();
+
+const manualObservationGroupTemplateSchema = z.object({
+  label: z.string(),
+  normalizedLabel: z.string(),
+  measurements: z.array(z.object({
+    measurementCode: z.string(),
+    marker: z.string(),
+    unit: z.string()
+  }).strict())
+}).strict();
+
+export const appBootstrapResponseSchema: z.ZodType<AppBootstrap, z.ZodTypeDef, unknown> = z.object({
+  profile: profileSchema,
+  profilePhoto: profilePhotoMetadataSchema.optional(),
+  measurementTypes: z.array(measurementTypeSchema),
+  manualObservationGroupTemplates: z.array(manualObservationGroupTemplateSchema),
+  latestInsight: insightSchema.optional(),
+  counts: entityCountsSchema
+}).strict();
+
+const latestMetricSchema = z.object({
+  code: z.string(),
+  label: z.string(),
+  value: z.number(),
+  unit: z.string(),
+  observedAt: z.string(),
+  status: measurementStatusSchema,
+  isPinned: z.boolean()
+}).strict();
+
+export const analyticsSummaryResponseSchema: z.ZodType<AnalyticsSummary, z.ZodTypeDef, unknown> = z.object({
+  counts: entityCountsSchema.extend({ insights: nonNegativeInt }),
+  latestMetrics: z.array(latestMetricSchema),
+  latestMetricsForInsight: z.array(latestMetricSchema).optional(),
+  trendCards: z.array(z.object({
+    code: z.string(),
+    label: z.string(),
+    unit: z.string(),
+    points: z.array(z.object({ date: z.string(), value: z.number() }).strict()),
+    direction: trendDirectionSchema,
+    summary: z.string()
+  }).strict()),
+  labAlerts: z.array(z.object({
+    code: z.string(),
+    marker: z.string(),
+    value: z.number(),
+    unit: z.string(),
+    observedAt: z.string(),
+    reference: z.string().optional(),
+    flag: z.enum(["low", "high", "critical", "unknown"])
+  }).strict()),
+  evidenceDigest: z.array(z.string())
+}).strict();
+
+export const biologicalAgeResponseSchema: z.ZodType<BiologicalAgeReport> = z.object({
+  generatedAt: z.string(),
+  disclaimer: z.string(),
+  models: z.array(z.object({
+    id: z.literal("phenoage-levine-2018"),
+    name: z.string(),
+    version: z.string(),
+    status: z.enum(["available", "incomplete", "not-implemented"]),
+    methodology: z.string(),
+    citation: z.string(),
+    chronologicalAge: z.number().optional(),
+    chronologicalAgeDetail: z.string().optional(),
+    biologicalAge: z.number().optional(),
+    ageAcceleration: z.number().optional(),
+    calculatedAt: z.string().optional(),
+    panelCollectedAt: z.string().optional(),
+    inputs: z.array(z.object({
+      code: z.string(),
+      label: z.string(),
+      value: z.number().optional(),
+      unit: z.string().optional(),
+      normalizedValue: z.number().optional(),
+      normalizedUnit: z.string(),
+      observedAt: z.string().optional(),
+      status: z.enum(["used", "missing", "invalid"]),
+      detail: z.string().optional()
+    }).strict()),
+    limitations: z.array(z.string())
+  }).strict())
+}).strict();
+
+const sourceCountsSchema = z.object({
+  observations: nonNegativeInt,
+  samples: nonNegativeInt,
+  activities: nonNegativeInt
+}).strict();
+
+const healthDataSummaryTypeRowSchema = z.object({
+  code: z.string(),
+  displayName: z.string(),
+  description: z.string().optional(),
+  category: measurementCategorySchema,
+  aggregation: measurementAggregationSchema.optional(),
+  counts: sourceCountsSchema.extend({ total: nonNegativeInt }),
+  lastMeasuredAt: z.string().optional()
+}).strict();
+
+export const healthDataSummaryResponseSchema: z.ZodType<HealthDataSummary> = z.object({
+  generatedAt: z.string(),
+  totals: sourceCountsSchema.extend({ total: nonNegativeInt, types: nonNegativeInt }),
+  categories: z.array(z.object({
+    key: measurementCategorySchema,
+    label: z.string(),
+    counts: sourceCountsSchema.extend({ total: nonNegativeInt, types: nonNegativeInt }),
+    rows: z.array(healthDataSummaryTypeRowSchema)
+  }).strict())
+}).strict();
+
+export const referenceRangeStateResponseSchema: z.ZodType<ReferenceRangeState> = z.object({
+  personal: referenceRangeSchema.optional(),
+  catalog: referenceRangeSchema.optional(),
+  effective: referenceRangeSchema.optional(),
+  source: z.enum(["personal", "catalog", "none"])
+}).strict();
+
+const healthDataDetailEntryKindSchema = z.enum(["observation", "sample", "activity"]);
+
+export const healthDataDetailResponseSchema: z.ZodType<HealthDataDetail> = z.object({
+  generatedAt: z.string(),
+  measurement: healthDataSummaryTypeRowSchema,
+  isPinned: z.boolean(),
+  referenceRange: referenceRangeStateResponseSchema,
+  entries: z.array(z.object({
+    kind: healthDataDetailEntryKindSchema,
+    id: z.string(),
+    measurementCode: z.string(),
+    displayName: z.string(),
+    timestamp: z.string(),
+    value: z.number(),
+    unit: z.string(),
+    sourceLabel: z.string().optional(),
+    sourceKind: sourceKindSchema.optional(),
+    importFileName: z.string().optional(),
+    importedAt: z.string().optional(),
+    note: z.string().optional(),
+    observationGroup: z.object({
+      id: z.string(),
+      kind: observationGroupKindSchema,
+      label: z.string(),
+      collectedAt: z.string().optional()
+    }).strict().optional(),
+    referenceRange: referenceRangeSchema.optional(),
+    status: measurementStatusSchema.optional(),
+    canDelete: z.boolean().optional(),
+    deleteLabel: z.string().optional()
+  }).strict()),
+  chartPoints: z.array(z.object({
+    kind: healthDataDetailEntryKindSchema,
+    timestamp: z.string(),
+    value: z.number(),
+    unit: z.string(),
+    referenceRange: referenceRangeSchema.optional()
+  }).strict()),
+  counts: sourceCountsSchema.extend({ total: nonNegativeInt }),
+  deletion: z.object({
+    observationEntries: nonNegativeInt,
+    deletableEntries: nonNegativeInt
+  }).strict(),
+  pagination: z.object({
+    limit: nonNegativeInt,
+    loaded: nonNegativeInt,
+    total: nonNegativeInt,
+    hasMore: z.boolean()
+  }).strict()
+}).strict();
+
+export const healthDataChartSeriesResponseSchema: z.ZodType<HealthDataChartSeries> = z.object({
+  generatedAt: z.string(),
+  measurementCode: z.string(),
+  range: z.enum(["all", "1y", "3m", "1m"]),
+  requestedMode: z.enum(["auto", "raw"]),
+  granularity: z.enum(["raw", "daily", "weekly"]),
+  aggregation: measurementAggregationSchema,
+  points: z.array(z.object({
+    timestamp: z.string(),
+    value: z.number(),
+    unit: z.string(),
+    count: nonNegativeInt,
+    minValue: z.number().optional(),
+    maxValue: z.number().optional(),
+    referenceRange: referenceRangeSchema.optional()
+  }).strict()),
+  totalPoints: nonNegativeInt,
+  truncated: z.boolean()
+}).strict();
+
+export const measurementPinStateResponseSchema: z.ZodType<MeasurementPinState> = z.object({
+  measurementCode: z.string().trim().min(1),
+  isPinned: z.boolean(),
+  pinnedAt: isoTimestampSchema.optional()
+}).strict();
+
+export const profileResponseSchema: z.ZodType<Profile, z.ZodTypeDef, unknown> = profileSchema;
+
+export const cloudAiConsentResponseSchema: z.ZodType<CloudAiConsent> = z.object({
+  enabled: z.boolean(),
+  providerScopeAccepted: z.boolean(),
+  consentedAt: z.string().optional(),
+  consentVersion: z.string().optional()
+}).strict();
+
+export const insightResponseSchema: z.ZodType<Insight, z.ZodTypeDef, unknown> = insightSchema;
+
+const draftRowConfidenceSchema = z.enum(["high", "medium", "low"]);
+
+export const bodyCompositionDraftResponseSchema: z.ZodType<BodyCompositionDraft> = z.object({
+  fileName: z.string(),
+  reportDate: z.string().optional(),
+  sourceText: z.string(),
+  checksum: z.string(),
+  parserVersion: z.literal("body-composition-text-v1"),
+  diagnostics: z.array(z.string()),
+  rows: z.array(z.object({
+    id: z.string(),
+    label: z.string(),
+    measurementCode: z.string(),
+    displayName: z.string(),
+    value: z.number(),
+    unit: z.string(),
+    observedAt: z.string().optional(),
+    confidence: draftRowConfidenceSchema,
+    sourceText: z.string().optional(),
+    included: z.boolean(),
+    generatedCode: z.boolean().optional()
+  }).strict())
+}).strict();
+
+const uploadColumnMappingSchema = z.object({
+  dateColumn: z.string().optional(),
+  measurementColumn: z.string().optional(),
+  measurementCodeColumn: z.string().optional(),
+  valueColumn: z.string().optional(),
+  unitColumn: z.string().optional(),
+  labelColumn: z.string().optional(),
+  sourceNameColumn: z.string().optional(),
+  noteColumn: z.string().optional()
+}).strict();
+
+export const uploadImportDraftResponseSchema: z.ZodType<UploadImportDraft> = z.object({
+  fileName: z.string(),
+  format: z.enum(["csv", "tsv"]),
+  checksum: z.string(),
+  parserVersion: z.literal("structured-upload-v1"),
+  columns: z.array(z.string()),
+  mapping: uploadColumnMappingSchema,
+  mappingSuggestion: uploadColumnMappingSchema,
+  rowCount: nonNegativeInt,
+  diagnostics: z.array(z.string()),
+  rows: z.array(z.object({
+    id: z.string(),
+    label: z.string(),
+    measurementCode: z.string(),
+    displayName: z.string(),
+    value: z.number(),
+    unit: z.string(),
+    observedAt: z.string().optional(),
+    confidence: draftRowConfidenceSchema,
+    sourceText: z.string().optional(),
+    sourceName: z.string().optional(),
+    note: z.string().optional(),
+    included: z.boolean(),
+    generatedCode: z.boolean().optional(),
+    sourceRowIndex: nonNegativeInt.optional(),
+    sourceColumn: z.string().optional()
+  }).strict()),
+  truncated: z.boolean()
+}).strict();
+
+/** Storage telemetry the desktop attaches to observation mutations; opaque to the clients. */
+const analyticsStorageField = { analyticsStorage: z.unknown().optional() };
+
+export const updateObservationResponseSchema: z.ZodType<UpdateObservationResponse, z.ZodTypeDef, unknown> = z.object({
+  updatedObservation: observationSchema,
+  counts: entityCountsSchema,
+  ...analyticsStorageField
+}).strict();
+
+export const deleteObservationResponseSchema: z.ZodType<DeleteObservationResponse, z.ZodTypeDef, unknown> = z.object({
+  deletedCount: nonNegativeInt,
+  deletedObservation: observationSchema.optional(),
+  counts: entityCountsSchema,
+  ...analyticsStorageField
+}).strict();
+
+export const deleteObservationsByTypeResponseSchema: z.ZodType<DeleteObservationsByTypeResponse, z.ZodTypeDef, unknown> = z.object({
+  deletedCount: nonNegativeInt,
+  measurementCode: z.string(),
+  counts: entityCountsSchema,
+  ...analyticsStorageField
+}).strict();
+
+export const healthEventMutationResponseSchema: z.ZodType<HealthEventMutationResponse> = z.object({
+  healthEvent: healthEventSchema,
+  counts: entityCountsSchema
+}).strict();
+export const careItemMutationResponseSchema: z.ZodType<CareItemMutationResponse> = z.object({
+  careItem: careItemSchema,
+  counts: entityCountsSchema
+}).strict();
+export const completeCareItemResponseSchema: z.ZodType<CompleteCareItemResponse> = z.object({
+  careItem: careItemSchema,
+  healthEvent: healthEventSchema,
+  counts: entityCountsSchema
+}).strict();
+export const deleteHealthEventResponseSchema: z.ZodType<DeleteHealthEventResponse> = z.object({
+  deletedCount: nonNegativeInt,
+  deletedHealthEvent: healthEventSchema.optional(),
+  counts: entityCountsSchema
+}).strict();
+export const deleteCareItemResponseSchema: z.ZodType<DeleteCareItemResponse> = z.object({
+  deletedCount: nonNegativeInt,
+  deletedCareItem: careItemSchema.optional(),
+  counts: entityCountsSchema
+}).strict();
 export const linkedHealthEventConflictSchema = apiErrorResponseSchema.extend({
   code: z.literal("CARE_HEALTH_EVENT_LINK_CONFLICT"),
   linkedCareItems: z.array(z.object({

@@ -22,7 +22,7 @@ beforeEach(() => {
         profile: { id: "self", displayName: "Local user", units: "metric", updatedAt: "2026-01-01T00:00:00.000Z" },
         measurementTypes: defaultMeasurementTypes,
         manualObservationGroupTemplates: [],
-        counts: { imports: 0, observations: 0, samples: 0, activities: 0 }
+        counts: { imports: 0, observations: 0, samples: 0, activities: 0, healthEvents: 0, careItems: 0 }
       }));
     }
     if (url.includes("/api/profiles")) {
@@ -30,14 +30,15 @@ beforeEach(() => {
     }
     if (url.includes("/api/analytics")) {
       return Promise.resolve(mockResponse({
-        counts: { imports: 0, observations: 0, samples: 0, activities: 0, insights: 0 },
+        counts: { imports: 0, observations: 0, samples: 0, activities: 0, healthEvents: 0, careItems: 0, insights: 0 },
         latestMetrics: [{
           code: "bmi",
           label: "BMI",
           value: 21.1,
           unit: "kg/m2",
           observedAt: "2026-01-01T00:00:00.000Z",
-          status: "normal"
+          status: "normal",
+          isPinned: false
         }],
         trendCards: [],
         labAlerts: [{
@@ -65,6 +66,7 @@ beforeEach(() => {
         },
         entries: [],
         chartPoints: [],
+        isPinned: false,
         referenceRange: { source: "none" },
         counts: { observations: 1, samples: 0, activities: 0, total: 1 },
         deletion: { observationEntries: 1, deletableEntries: 1 },
@@ -83,6 +85,8 @@ beforeEach(() => {
         },
         entries: [],
         chartPoints: [],
+        isPinned: false,
+        referenceRange: { source: "none" },
         counts: { observations: 1, samples: 0, activities: 0, total: 1 },
         deletion: { observationEntries: 1, deletableEntries: 1 },
         pagination: { limit: 100, loaded: 0, total: 1, hasMore: false }
@@ -211,13 +215,6 @@ describe("App smoke", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: /^sync$/i }));
     expect(globalThis.location.pathname).toBe("/import/sync");
-  });
-
-  it("normalizes legacy /import/scan and /import/fitness-tracker URLs to their canonical paths", () => {
-    globalThis.history.replaceState({}, "", "/import/scan");
-    render(<App />);
-    expect(globalThis.location.pathname).toBe("/import/upload");
-    expect(screen.getByRole("tab", { name: /^upload$/i })).toHaveAttribute("aria-selected", "true");
   });
 
   it("keeps PDF and image report imports available in the unified Upload tab", () => {

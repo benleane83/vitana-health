@@ -15,13 +15,15 @@
     "pretest": "npm run build -w @vitana/shared",
     "test": "vitest run",
     "start": "node dist/server.js",
+    "export:profiles": "tsx src/dev/exportProfiles.ts",
+    "import:profiles": "tsx src/dev/importProfiles.ts",
     "prepare:duckdb": "node ../../scripts/prepare-duckdb-httpfs.mjs --output ../desktop/build/duckdb-extensions"
   },
   "dependencies": {
     "@tesseract.js-data/eng": "^1.0.0",
     "@vitana/shared": "file:../../packages/shared",
     "cors": "^2.8.5",
-    "duckdb": "^1.4.4",
+    "duckdb": "1.4.4",
     "express": "^4.21.2",
     "pdf-parse": "^2.4.5",
     "pdfkit": "^0.19.1",

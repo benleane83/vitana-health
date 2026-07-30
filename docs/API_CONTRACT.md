@@ -578,17 +578,17 @@ Successful import commits return `201` with safe import metadata and transaction
 {
   "import": { "id": "...", "sourceKind": "manual-entry", "fileName": "...", "rowCount": 2, "status": "processed" },
   "outcome": {
-    "sourceImport": { "attempted": 1, "accepted": 1, "duplicates": 0, "evicted": 0 },
-    "dataSource": { "attempted": 1, "accepted": 1, "duplicates": 0, "evicted": 0 },
-    "observations": { "attempted": 2, "accepted": 2, "duplicates": 0, "evicted": 0 },
-    "observationGroups": { "attempted": 1, "accepted": 1, "duplicates": 0, "evicted": 0 },
-    "timeSeriesSamples": { "attempted": 0, "accepted": 0, "duplicates": 0, "evicted": 0 },
-    "activitySessions": { "attempted": 0, "accepted": 0, "duplicates": 0, "evicted": 0 }
+    "sourceImport": { "attempted": 1, "accepted": 1, "duplicates": 0, "rejected": 0 },
+    "dataSource": { "attempted": 1, "accepted": 1, "duplicates": 0, "rejected": 0 },
+    "observations": { "attempted": 2, "accepted": 2, "duplicates": 0, "rejected": 0 },
+    "observationGroups": { "attempted": 1, "accepted": 1, "duplicates": 0, "rejected": 0 },
+    "timeSeriesSamples": { "attempted": 0, "accepted": 0, "duplicates": 0, "rejected": 0 },
+    "activitySessions": { "attempted": 0, "accepted": 0, "duplicates": 0, "rejected": 0 }
   }
 }
 ```
 
-`accepted` and `duplicates` describe committed database effects, including duplicates within the submitted batch and records already stored. `evicted` is always `0`: imports never remove older records. Raw source content is retained locally but omitted from API responses. Some commit endpoints also include `analyticsStorage` aggregate counts.
+`accepted` and `duplicates` describe committed database effects, including duplicates within the submitted batch and records already stored. `rejected` counts rows dropped because their unit could not be reconciled with the measurement registry; the reasons are appended to the import's `diagnostics`. Imports never remove previously stored records. Raw source content is retained locally but omitted from API responses. Some commit endpoints also include `analyticsStorage` aggregate counts.
 
 ### Import lab test PDF
 ```
@@ -678,6 +678,28 @@ profile grant; mismatches return `403 PROFILE_ACCESS_DENIED` before store access
 profile is always used. Owners may omit `profileId` to use the active profile or provide a
 target profile. Missing or invalid credentials return `401`; an authenticated companion
 without the required capability returns `403`.
+
+### Start a chunked Health Connect sync session *(companion only)*
+```
+POST /api/import/health-connect/sessions
+```
+**Request body:** `{ "protocolVersion", "sessionKey", "deviceLabel", "rangeStart", "rangeEnd", "profileId"? }`
+**Success `201`:** `{ "protocolVersion", "sessionId", "processedBatchIds" }`
+
+Sessions are idempotent on `(pairing, sessionKey)`. Replaying a key returns the same `sessionId`
+plus every batch already applied, so an interrupted phone resumes instead of re-uploading a full
+window. A `protocolVersion` this PC cannot serve returns `409 SYNC_PROTOCOL_UNSUPPORTED`.
+
+### Upload one sync chunk *(companion only)*
+```
+POST /api/import/health-connect/sessions/:sessionId/chunks
+```
+**Request body:** the Health Connect import body plus `{ "protocolVersion", "sessionId", "batchId" }`
+**Success `201`:** `{ "protocolVersion", "sessionId", "batchId", "counts": { "accepted", "duplicates", "rejected" } }`
+
+The chunk is applied in a single transaction with its acknowledgement, so a replayed `batchId`
+returns the original counts without importing twice. A `sessionId` in the path that disagrees with
+the body returns `400`; a session unknown to this pairing returns `404`.
 
 ---
 

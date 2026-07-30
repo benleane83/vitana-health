@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { RestoreDecision } from "@vitana/shared";
+import { log } from "../logger.js";
 
 export type JournalPhase = "staged" | "hydrating" | "committing" | "completed" | "rolled-back";
 
@@ -55,25 +56,43 @@ export class RestoreJournal {
     };
   }
 
+  /**
+   * Compensates any restore that was interrupted before it committed. Runs on the startup path, so
+   * it distinguishes two failures that look alike but are not:
+   *
+   * - A journal that cannot be read says nothing about whether a restore is outstanding — a
+   *   half-written file is exactly what a power cut during `persist()` leaves behind. It is moved
+   *   aside and skipped, because refusing to start makes the app unrecoverable for a user who
+   *   cannot be talked through deleting a file in `%APPDATA%`.
+   * - A journal that reads cleanly and whose rollback fails means a restore really is uncompensated
+   *   and the databases on disk may be half-swapped. That still throws.
+   */
   static recover(dataDir: string): number {
     const journalDir = resolve(dataDir, "restore-journals");
     if (!existsSync(journalDir)) return 0;
     let recovered = 0;
     for (const file of readdirSync(journalDir).filter((name) => name.endsWith(".json"))) {
       const path = resolve(journalDir, file);
+      let raw: RestoreJournalData;
       try {
-        const raw = JSON.parse(readFileSync(path, "utf8")) as RestoreJournalData;
-        if (raw.phase === "completed" || raw.phase === "rolled-back") {
-          rmSync(path, { force: true });
-          continue;
+        raw = JSON.parse(readFileSync(path, "utf8")) as RestoreJournalData;
+        if (typeof raw?.id !== "string" || !Array.isArray(raw?.entries)) {
+          throw new Error("Journal is missing an id or entry list.");
         }
-        const journal = new RestoreJournal(dataDir, raw.id);
-        journal.data = { ...raw, metadataFiles: raw.metadataFiles ?? [] };
-        if (!journal.rollback()) throw new Error(`Restore journal ${raw.id} could not be compensated.`);
-        recovered += 1;
       } catch (error) {
-        throw new Error(`Failed to recover restore journal ${file}.`, { cause: error });
+        quarantineJournal(path, error);
+        continue;
       }
+      if (raw.phase === "completed" || raw.phase === "rolled-back") {
+        rmSync(path, { force: true });
+        continue;
+      }
+      const journal = new RestoreJournal(dataDir, raw.id);
+      journal.data = { ...raw, metadataFiles: raw.metadataFiles ?? [] };
+      if (!journal.rollback()) {
+        throw new Error(`Restore journal ${raw.id} could not be compensated.`);
+      }
+      recovered += 1;
     }
     return recovered;
   }
@@ -140,7 +159,13 @@ export class RestoreJournal {
       this.persist();
       this.cleanup();
       return true;
-    } catch {
+    } catch (error) {
+      // The caller only learns that compensation failed. Without this the reason — a disk that
+      // filled, a file another process still holds — never reaches anyone who could act on it.
+      log.error(
+        `Restore journal ${this.data.id} rollback failed: ${error instanceof Error ? error.message : String(error)}`,
+        { code: "restore-rollback-failed" }
+      );
       return false;
     }
   }
@@ -156,6 +181,24 @@ export class RestoreJournal {
     writeFileSync(temporaryPath, JSON.stringify(this.data, null, 2), { encoding: "utf8", mode: 0o600 });
     renameSync(temporaryPath, this.journalPath);
   }
+}
+
+/**
+ * Moves a journal we cannot parse out of the recovery directory so the next startup does not trip
+ * over it again, while keeping the bytes around for a bug report.
+ */
+function quarantineJournal(path: string, error: unknown): void {
+  const detail = error instanceof Error ? error.message : String(error);
+  const quarantinePath = `${path}.corrupt`;
+  try {
+    rmSync(quarantinePath, { force: true });
+    renameSync(path, quarantinePath);
+  } catch {
+    rmSync(path, { force: true });
+  }
+  log.warn(`Skipped an unreadable restore journal (${detail}). Moved it to ${quarantinePath}.`, {
+    code: "restore-journal-unreadable"
+  });
 }
 
 function removeDatabaseArtifacts(databasePath: string): void {

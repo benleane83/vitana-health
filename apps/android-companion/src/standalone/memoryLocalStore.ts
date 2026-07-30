@@ -16,12 +16,15 @@ import type {
   UpdateObservationInput
 } from "@vitana/shared";
 import {
+  DEFAULT_MIGRATION_BATCH_SIZE,
+  MEASUREMENT_SCOPED_REPLICA_TYPES,
   emptyCounts,
   entityOutcome,
   type LocalObservationAggregate,
   type LocalObservationPage,
   type LocalStore,
-  type LocalStoreCounts
+  type LocalStoreCounts,
+  type ReplicaEntityFilter
 } from "./localStore";
 import { chartSeriesFromPoints } from "../chartSeries";
 
@@ -186,13 +189,12 @@ export class MemoryLocalStore implements LocalStore {
     };
   }
 
-  async exportMigrationBatches(sessionId: string, batchSize = 250): Promise<MobileMigrationBatch[]> {
-    const batches: MobileMigrationBatch[] = [];
-    const append = <T>(
+  async *streamMigrationBatches(sessionId: string, batchSize = DEFAULT_MIGRATION_BATCH_SIZE): AsyncGenerator<MobileMigrationBatch> {
+    const chunks = function* <T>(
       kind: string,
       values: T[],
       assign: (batch: MobileMigrationBatch, chunk: T[]) => void
-    ) => {
+    ): Generator<MobileMigrationBatch> {
       for (let offset = 0; offset < values.length; offset += batchSize) {
         const batch: MobileMigrationBatch = {
           protocolVersion: 1,
@@ -204,14 +206,13 @@ export class MemoryLocalStore implements LocalStore {
           observations: []
         };
         assign(batch, structuredClone(values.slice(offset, offset + batchSize)));
-        batches.push(batch);
+        yield batch;
       }
     };
-    append("source-imports", this.profileValues(this.state.sourceImports), (batch, values) => { batch.sourceImports = values; });
-    append("data-sources", this.profileValues(this.state.dataSources), (batch, values) => { batch.dataSources = values; });
-    append("observation-groups", this.profileValues(this.state.observationGroups), (batch, values) => { batch.observationGroups = values; });
-    append("observations", this.profileValues(this.state.observations), (batch, values) => { batch.observations = values; });
-    return batches;
+    yield* chunks("source-imports", this.profileValues(this.state.sourceImports), (batch, values) => { batch.sourceImports = values; });
+    yield* chunks("data-sources", this.profileValues(this.state.dataSources), (batch, values) => { batch.dataSources = values; });
+    yield* chunks("observation-groups", this.profileValues(this.state.observationGroups), (batch, values) => { batch.observationGroups = values; });
+    yield* chunks("observations", this.profileValues(this.state.observations), (batch, values) => { batch.observations = values; });
   }
 
   async archiveAfterMigration(receipt: MobileMigrationReceipt): Promise<void> {
@@ -380,19 +381,34 @@ export class MemoryLocalStore implements LocalStore {
     this.replicas.set(id, next);
   }
 
-  async replicaEntities(identity: ReplicaIdentity) {
+  async replicaEntities(identity: ReplicaIdentity, filter: ReplicaEntityFilter = {}) {
     const replica = this.replicas.get(replicaId(identity));
     if (!replica?.metadata.initialSnapshotCompleted) {
       throw new Error("Connected data is unavailable offline until the first snapshot completes.");
     }
-    return [...replica.entities.values()].map(({ entityType, payload }) => ({
-      entityType,
-      payload: structuredClone(payload)
-    }));
+    return [...replica.entities.values()]
+      .filter(({ entityType }) => !filter.entityTypes || filter.entityTypes.includes(entityType))
+      .filter(({ entityType, payload }) => filter.measurementCode === undefined
+        || !MEASUREMENT_SCOPED_REPLICA_TYPES.includes(entityType)
+        || payload.measurementCode === filter.measurementCode)
+      .map(({ entityType, payload }) => ({
+        entityType,
+        payload: structuredClone(payload)
+      }));
   }
 
   async deleteReplica(identity: ReplicaIdentity): Promise<void> {
     this.replicas.delete(replicaId(identity));
+  }
+
+  async promoteReplica(staging: ReplicaIdentity, target: ReplicaIdentity): Promise<void> {
+    const stagingId = replicaId(staging);
+    const targetId = replicaId(target);
+    if (stagingId === targetId) return;
+    const replica = this.replicas.get(stagingId);
+    if (!replica) throw new Error("The staging replica is missing.");
+    this.replicas.delete(stagingId);
+    this.replicas.set(targetId, { ...replica, metadata: { ...replica.metadata, ...target } });
   }
 
   async reset(): Promise<void> {

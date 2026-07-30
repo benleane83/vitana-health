@@ -1,5 +1,44 @@
 import { describe, expect, it, vi } from "vitest";
-import { getOrCreateDatabaseKey, openWithDatabaseKey, type SecureKeyStore } from "./databaseKey";
+import {
+  getOrCreateDatabaseKey,
+  openWithDatabaseKey,
+  rekeyDatabase,
+  type SecureKeyStore
+} from "./databaseKey";
+
+/**
+ * A SQLCipher stand-in: it only decrypts while the applied key matches the key the pages were
+ * written under, which is what makes the round-trip assertion below meaningful.
+ */
+function fakeEncryptedDatabase(storedKey: string) {
+  let pageKey = storedKey;
+  let appliedKey: string | undefined;
+  const statements: string[] = [];
+  return {
+    statements,
+    currentKey: () => pageKey,
+    database: {
+      async execAsync(query: string) {
+        statements.push(query);
+        const apply = /^PRAGMA key = "x'([a-f0-9]{64})'";$/i.exec(query);
+        if (apply) {
+          appliedKey = apply[1];
+          return;
+        }
+        const rekey = /^PRAGMA rekey = "x'([a-f0-9]{64})'";$/i.exec(query);
+        if (rekey) {
+          if (appliedKey !== pageKey) throw new Error("file is not a database");
+          pageKey = rekey[1];
+          appliedKey = rekey[1];
+        }
+      },
+      async getFirstAsync<T>(): Promise<T | null> {
+        if (appliedKey !== pageKey) throw new Error("file is not a database");
+        return { user_version: 4 } as T;
+      }
+    }
+  };
+}
 
 function fakeStore(initial: string | null = null): SecureKeyStore & { value: string | null } {
   return {
@@ -66,5 +105,53 @@ describe("standalone database key", () => {
       () => false
     )).rejects.toThrow("migration interrupted");
     expect(store.value).toBe("00".repeat(32));
+  });
+
+  it("tells the open callback whether the key was freshly generated", async () => {
+    const reused = fakeStore("b".repeat(64));
+    await expect(openWithDatabaseKey(reused, async () => new Uint8Array(32), async (_, created) => created))
+      .resolves.toBe(false);
+    await expect(openWithDatabaseKey(fakeStore(), async () => new Uint8Array(32), async (_, created) => created))
+      .resolves.toBe(true);
+  });
+});
+
+describe("database rekey", () => {
+  const oldKey = "a".repeat(64);
+  const newKey = "b".repeat(64);
+
+  it("re-encrypts under the new key and leaves the old key unable to open the file", async () => {
+    const { database, currentKey, statements } = fakeEncryptedDatabase(oldKey);
+
+    await rekeyDatabase(database, oldKey, newKey);
+
+    expect(currentKey()).toBe(newKey);
+    expect(statements).toEqual([
+      `PRAGMA key = "x'${oldKey}'";`,
+      `PRAGMA rekey = "x'${newKey}'";`
+    ]);
+
+    // Round trip: the new key opens the file, the old one no longer does.
+    const reopened = fakeEncryptedDatabase(newKey);
+    await reopened.database.execAsync(`PRAGMA key = "x'${newKey}'";`);
+    await expect(reopened.database.getFirstAsync()).resolves.toEqual({ user_version: 4 });
+    await reopened.database.execAsync(`PRAGMA key = "x'${oldKey}'";`);
+    await expect(reopened.database.getFirstAsync()).rejects.toThrow("file is not a database");
+  });
+
+  it("proves the current key before rewriting any page", async () => {
+    const { database, currentKey } = fakeEncryptedDatabase(newKey);
+
+    await expect(rekeyDatabase(database, oldKey, "c".repeat(64))).rejects.toThrow("file is not a database");
+
+    expect(currentKey()).toBe(newKey);
+  });
+
+  it("rejects malformed and unchanged keys", async () => {
+    const { database } = fakeEncryptedDatabase(oldKey);
+
+    await expect(rekeyDatabase(database, "short", newKey)).rejects.toThrow("current database key");
+    await expect(rekeyDatabase(database, oldKey, "not-hex")).rejects.toThrow("replacement database key");
+    await expect(rekeyDatabase(database, oldKey, oldKey)).rejects.toThrow("must differ");
   });
 });

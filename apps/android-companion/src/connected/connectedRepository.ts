@@ -1,7 +1,8 @@
 import {
-  CURRENT_SCHEMA_VERSION,
+  EXPORT_FORMAT_VERSION,
   classifyValueWithRange,
   computeAnalytics,
+  analyticsCountsFromStore,
   getPreferredUnit,
   resolveReferenceRange,
   toPreferredMeasurementValue,
@@ -10,6 +11,8 @@ import {
   type CareItem,
   type CareItemListQuery,
   type DataSource,
+  type HealthDataChartSeries,
+  type HealthDataChartSeriesOptions,
   type HealthDataDetail,
   type HealthDataDetailEntry,
   type HealthDataSummary,
@@ -27,7 +30,8 @@ import {
   type SourceImport,
   type TimeSeriesSample
 } from "@vitana/shared";
-import type { LocalStore, LocalReplicaMetadata } from "../standalone/localStore";
+import { chartRangeCutoff, chartSeriesFromPoints } from "../chartSeries";
+import type { LocalStore, LocalReplicaMetadata, ReplicaEntityFilter } from "../standalone/localStore";
 
 const ACTIVITY_SESSIONS_CODE = "activity_sessions";
 
@@ -57,6 +61,8 @@ interface ReplicaProjection {
 
 export class ConnectedReplicaRepository {
   private projection?: ReplicaProjection;
+  /** Keyed by replica revision plus measurement code, so a range change is a cache hit. */
+  private measurementProjection?: { key: string; projection: ReplicaProjection };
 
   constructor(
     private readonly store: LocalStore,
@@ -83,7 +89,8 @@ export class ConnectedReplicaRepository {
   }
 
   async analytics() {
-    return computeAnalytics((await this.readProjection()).data);
+    const { data } = await this.readProjection();
+    return computeAnalytics({ ...data, counts: analyticsCountsFromStore(data) });
   }
 
   async summary(): Promise<HealthDataSummary> {
@@ -91,7 +98,7 @@ export class ConnectedReplicaRepository {
   }
 
   async healthDataDetail(measurementCode: string, page: { limit?: number; offset?: number } = {}): Promise<HealthDataDetail> {
-    const projection = await this.readProjection();
+    const projection = await this.readMeasurementProjection(measurementCode);
     const { data } = projection;
     const allEntries = detailEntries(projection, measurementCode);
     const limit = Math.min(Math.max(Math.trunc(page.limit ?? 50), 1), 100);
@@ -127,6 +134,23 @@ export class ConnectedReplicaRepository {
         hasMore: offset + entries.length < allEntries.length
       }
     };
+  }
+
+  /**
+   * Applies the range cutoff before downsampling. Deriving the series from `healthDataDetail`'s
+   * already-downsampled `chartPoints` meant a short range over a long history returned a handful of
+   * points — five years of daily readings collapsed to 500, of which only ~8 fell inside "1M".
+   */
+  async healthDataChartSeries(
+    measurementCode: string,
+    options: HealthDataChartSeriesOptions
+  ): Promise<HealthDataChartSeries> {
+    const projection = await this.readMeasurementProjection(measurementCode);
+    const cutoff = chartRangeCutoff(options.range);
+    const entries = detailEntries(projection, measurementCode)
+      .filter((entry) => !cutoff || entry.timestamp >= cutoff);
+    const aggregation = projection.types.get(measurementCode)?.aggregation ?? "none";
+    return chartSeriesFromPoints(measurementCode, aggregation, chartPoints(entries), options);
   }
 
   async listHealthEvents(query: HealthEventListQuery = {}) {
@@ -223,8 +247,38 @@ export class ConnectedReplicaRepository {
     return this.projection;
   }
 
-  private async readStore(): Promise<HealthStoreData> {
-    const rows = await this.store.replicaEntities(this.identity);
+  /**
+   * The detail and chart screens need one measurement, not the whole profile. Narrowing the read in
+   * SQL means changing the trend range no longer re-parses every observation in the replica.
+   */
+  private async readMeasurementProjection(measurementCode: string): Promise<ReplicaProjection> {
+    const key = `${projectionKey(await this.store.replicaMetadata(this.identity))}|${measurementCode}`;
+    if (this.measurementProjection?.key === key) return this.measurementProjection.projection;
+    const entityTypes = [
+      "profile",
+      "source-import",
+      "data-source",
+      "measurement-type",
+      "personal-reference-range",
+      "pinned-measurement",
+      "observation-group",
+      "observation",
+      "time-series-sample",
+      ...(measurementCode === ACTIVITY_SESSIONS_CODE ? ["activity-session"] : [])
+    ];
+    const data = await this.readStore({ entityTypes, measurementCode });
+    const projection: ReplicaProjection = {
+      key,
+      data,
+      measurements: indexMeasurements(data),
+      types: new Map(data.measurementTypes.map((entry) => [entry.code, entry]))
+    };
+    this.measurementProjection = { key, projection };
+    return projection;
+  }
+
+  private async readStore(filter?: ReplicaEntityFilter): Promise<HealthStoreData> {
+    const rows = await this.store.replicaEntities(this.identity, filter);
     const buckets = new Map<string, unknown[]>();
     for (const row of rows) {
       const bucket = buckets.get(row.entityType);
@@ -235,7 +289,7 @@ export class ConnectedReplicaRepository {
     const profile = values<Profile>("profile")[0];
     if (!profile) throw new Error("The connected snapshot does not contain its assigned profile.");
     return {
-      schemaVersion: CURRENT_SCHEMA_VERSION,
+      schemaVersion: EXPORT_FORMAT_VERSION,
       profile,
       sourceImports: values<SourceImport>("source-import"),
       dataSources: values<DataSource>("data-source"),

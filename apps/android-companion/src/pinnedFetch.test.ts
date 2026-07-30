@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const nativeModule = vi.hoisted(() => ({ request: vi.fn() }));
+const nativeModule = vi.hoisted(() => ({ request: vi.fn(), cancel: vi.fn().mockResolvedValue(true) }));
 
 vi.mock("../modules/vitana-pinned-http/src/VitanaPinnedHttpModule", () => ({ default: nativeModule }));
 
@@ -27,9 +27,22 @@ describe("pinnedFetch", () => {
       { authorization: "Bearer companion-token" },
       "{}",
       "server-pin",
-      15_000
+      15_000,
+      expect.stringMatching(/^pinned-\d+-\d+$/)
     );
     await expect(response.json()).resolves.toEqual({ ok: true });
+  });
+
+  it("cancels the native call when the caller aborts", async () => {
+    nativeModule.request.mockImplementation(() => new Promise(() => undefined));
+    const controller = new AbortController();
+
+    const pending = pinnedFetch("https://desktop.test/api/import", "server-pin", { signal: controller.signal });
+    const rejection = expect(pending).rejects.toThrow("The request was cancelled.");
+    controller.abort();
+    await rejection;
+
+    expect(nativeModule.cancel).toHaveBeenCalledWith(nativeModule.request.mock.calls[0][6]);
   });
 
   it("rejects HTTPS before a request when the QR key pin is missing", async () => {
@@ -62,7 +75,8 @@ describe("pinnedFetch", () => {
         {},
         null,
         "server-pin",
-        1_000
+        1_000,
+        expect.stringMatching(/^pinned-\d+-\d+$/)
       );
       expect(LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS).toBe(60_000);
     } finally {

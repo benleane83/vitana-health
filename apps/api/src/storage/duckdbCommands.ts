@@ -2,10 +2,12 @@ import type duckdb from "duckdb";
 import { createHash } from "node:crypto";
 import {
   careItemSchema,
+  canonicalizeMeasurement,
   completeCareItemInputSchema,
   createCareItemInputSchema,
   createHealthEventInputSchema,
   convertMeasurementValue,
+  describeMeasurementRejection,
   isHealthEventKind,
   insightSchema,
   profileSchema,
@@ -40,6 +42,7 @@ import { storageCounts } from "./duckdbProjections.js";
 import {
   all,
   allWithParams,
+  insertObservationRows,
   json,
   measurementTypeFromRow,
   observationFromRow,
@@ -52,6 +55,37 @@ import {
 } from "./duckdbRows.js";
 import { CareItemCompletionConflictError, HealthEventDeleteConflictError, RepositoryValidationError } from "./profileRepository.js";
 import type { StoredProfilePhoto } from "./profileRepository.js";
+import { selectColumns } from "./duckdbColumns.js";
+
+// Named column lists, not `SELECT * EXCLUDE (...)`: that syntax is DuckDB-only, and `*` silently
+// widens every DTO the moment the schema gains a column.
+const measurementTypeColumns = selectColumns("measurement_types", { excludeOrdinal: true });
+const observationColumns = selectColumns("observations", { excludeOrdinal: true });
+const healthEventColumns = selectColumns("health_events", { excludeOrdinal: true });
+const careItemColumns = selectColumns("care_items", { excludeOrdinal: true });
+
+/**
+ * Bulk deletes report the identifiers they removed so callers can emit one replica tombstone per
+ * row instead of diffing the whole store.
+ */
+export interface DeletedIdsResult {
+  deletedCount: number;
+  deletedIds: string[];
+}
+
+export type DeleteObservationsByTypeResult = DeleteObservationsByTypeResponse & DeletedIdsResult;
+
+async function deletedObservationIds(
+  connection: duckdb.Connection,
+  measurementCode: string
+): Promise<string[]> {
+  const rows = await allWithParams(
+    connection,
+    "SELECT id FROM observations WHERE measurement_code = ?;",
+    measurementCode
+  );
+  return rows.map((row) => String(row.id));
+}
 
 export async function getProfile(connection: duckdb.Connection): Promise<Profile> {
   const profileRows = await all(connection, "SELECT * FROM profile;");
@@ -178,7 +212,7 @@ export async function upsertPersonalReferenceRange(
   }
   const typeRows = await allWithParams(
     connection,
-    "SELECT * EXCLUDE (ordinal) FROM measurement_types WHERE code = ?;",
+    `SELECT ${measurementTypeColumns} FROM measurement_types WHERE code = ?;`,
     measurementCode
   );
   if (!typeRows[0]) {
@@ -275,14 +309,10 @@ export async function insertObservationRecord(
     return false;
   }
   const ordinal = await nextOrdinal(connection, "observations");
-  await run(
-    connection,
-    "INSERT INTO observations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
-    ordinal, observation.id, observation.measurementCode, observation.observedAt,
-    observation.effectiveStart ?? null, observation.effectiveEnd ?? null, observation.value, observation.unit,
-    observation.sourceId, observation.observationGroupId ?? null, observation.deviceId ?? null,
-    observation.note ?? null, observation.sourceJson !== undefined, optionalJsonValue(observation.sourceJson)
-  );
+  const { accepted, rejections } = await insertObservationRows(connection, [observation], ordinal);
+  if (accepted.length === 0) {
+    throw new RepositoryValidationError(rejections[0] ?? "Observation could not be stored.");
+  }
   return true;
 }
 
@@ -298,24 +328,19 @@ export async function deleteObservationRecord(connection: duckdb.Connection, id:
 export async function deleteObservationRecordsByMeasurementCode(
   connection: duckdb.Connection,
   measurementCode: string
-): Promise<number> {
-  const rows = await allWithParams(
-    connection,
-    "SELECT COUNT(*) AS count FROM observations WHERE measurement_code = ?;",
-    measurementCode
-  );
-  const count = Number(rows[0]?.count ?? 0);
-  if (count > 0) {
+): Promise<DeletedIdsResult> {
+  const deletedIds = await deletedObservationIds(connection, measurementCode);
+  if (deletedIds.length > 0) {
     await run(connection, "DELETE FROM observations WHERE measurement_code = ?;", measurementCode);
   }
-  return count;
+  return { deletedCount: deletedIds.length, deletedIds };
 }
 
 export async function deleteObservation(
   connection: duckdb.Connection,
   id: string
 ): Promise<DeleteObservationResponse | undefined> {
-  const rows = await allWithParams(connection, "SELECT * EXCLUDE (ordinal) FROM observations WHERE id = ?;", id);
+  const rows = await allWithParams(connection, `SELECT ${observationColumns} FROM observations WHERE id = ?;`, id);
   if (!rows[0]) {
     return undefined;
   }
@@ -338,17 +363,24 @@ export async function updateObservation(
   if (!rows[0]) {
     return undefined;
   }
+  // Manual edits go through the same canonicalization as imports, otherwise editing a row could
+  // reintroduce a unit the aggregation views cannot sum.
+  const canonical = canonicalizeMeasurement(input.measurementCode, input.value, input.unit);
+  if (canonical.rejected) {
+    throw new RepositoryValidationError(describeMeasurementRejection(canonical));
+  }
   await run(
     connection,
-    `UPDATE observations SET measurement_code = ?, observed_at = ?, value = ?, unit = ?, note = ? WHERE id = ?;`,
+    `UPDATE observations SET measurement_code = ?, observed_at = ?, value = ?, unit = ?, source_unit = ?, note = ? WHERE id = ?;`,
     input.measurementCode,
     input.observedAt,
-    input.value,
-    input.unit,
+    canonical.value,
+    canonical.unit,
+    canonical.sourceUnit ?? null,
     input.note ?? null,
     id
   );
-  const updatedRows = await allWithParams(connection, "SELECT * EXCLUDE (ordinal) FROM observations WHERE id = ?;", id);
+  const updatedRows = await allWithParams(connection, `SELECT ${observationColumns} FROM observations WHERE id = ?;`, id);
   const updatedObservation = observationFromRow(updatedRows[0]);
   await insertAudit(connection, "observation-updated", `${updatedObservation.measurementCode} observation updated for ${updatedObservation.observedAt}.`);
   return { updatedObservation, counts: await storageCounts(connection) };
@@ -357,13 +389,9 @@ export async function updateObservation(
 export async function deleteObservationsByMeasurementCode(
   connection: duckdb.Connection,
   measurementCode: string
-): Promise<DeleteObservationsByTypeResponse> {
-  const countRows = await allWithParams(
-    connection,
-    "SELECT COUNT(*) AS count FROM observations WHERE measurement_code = ?;",
-    measurementCode
-  );
-  const deletedCount = Number(countRows[0]?.count ?? 0);
+): Promise<DeleteObservationsByTypeResult> {
+  const deletedIds = await deletedObservationIds(connection, measurementCode);
+  const deletedCount = deletedIds.length;
   if (deletedCount > 0) {
     await run(connection, "DELETE FROM observations WHERE measurement_code = ?;", measurementCode);
     await insertAudit(
@@ -374,6 +402,7 @@ export async function deleteObservationsByMeasurementCode(
   }
   return {
     deletedCount,
+    deletedIds,
     measurementCode,
     counts: await storageCounts(connection)
   };
@@ -381,20 +410,19 @@ export async function deleteObservationsByMeasurementCode(
 
 export async function deleteDailyAggregateStepSamples(
   connection: duckdb.Connection
-): Promise<DeleteObservationsByTypeResponse> {
-  const countRows = await all(connection, `
-    SELECT COUNT(*) AS count
-    FROM time_series_samples
-    WHERE measurement_code = 'steps'
-      AND DATE_DIFF('second', start_at, end_at) >= 23 * 60 * 60;
-  `);
-  const deletedCount = Number(countRows[0]?.count ?? 0);
+): Promise<DeleteObservationsByTypeResult> {
+  const dailyAggregatePredicate = `
+    measurement_code = 'steps'
+      AND DATE_DIFF('second', start_at, end_at) >= 23 * 60 * 60
+  `;
+  const rows = await all(
+    connection,
+    `SELECT id FROM time_series_samples WHERE ${dailyAggregatePredicate};`
+  );
+  const deletedIds = rows.map((row) => String(row.id));
+  const deletedCount = deletedIds.length;
   if (deletedCount > 0) {
-    await run(connection, `
-      DELETE FROM time_series_samples
-      WHERE measurement_code = 'steps'
-        AND DATE_DIFF('second', start_at, end_at) >= 23 * 60 * 60;
-    `);
+    await run(connection, `DELETE FROM time_series_samples WHERE ${dailyAggregatePredicate};`);
     await insertAudit(
       connection,
       "daily-step-aggregates-deleted",
@@ -403,6 +431,7 @@ export async function deleteDailyAggregateStepSamples(
   }
   return {
     deletedCount,
+    deletedIds,
     measurementCode: "steps",
     counts: await storageCounts(connection)
   };
@@ -440,7 +469,7 @@ export async function updateHealthEvent(
   id: string,
   input: UpdateHealthEventInput
 ): Promise<HealthEventMutationResponse | undefined> {
-  const rows = await allWithParams(connection, "SELECT * EXCLUDE (ordinal) FROM health_events WHERE id = ?;", id);
+  const rows = await allWithParams(connection, `SELECT ${healthEventColumns} FROM health_events WHERE id = ?;`, id);
   if (!rows[0]) {
     return undefined;
   }
@@ -478,7 +507,7 @@ export async function deleteHealthEvent(
   connection: duckdb.Connection,
   id: string
 ): Promise<DeleteHealthEventResponse | undefined> {
-  const rows = await allWithParams(connection, "SELECT * EXCLUDE (ordinal) FROM health_events WHERE id = ?;", id);
+  const rows = await allWithParams(connection, `SELECT ${healthEventColumns} FROM health_events WHERE id = ?;`, id);
   if (!rows[0]) {
     return undefined;
   }
@@ -533,7 +562,7 @@ export async function updateCareItem(
   id: string,
   input: UpdateCareItemInput
 ): Promise<CareItemMutationResponse | undefined> {
-  const rows = await allWithParams(connection, "SELECT * EXCLUDE (ordinal) FROM care_items WHERE id = ?;", id);
+  const rows = await allWithParams(connection, `SELECT ${careItemColumns} FROM care_items WHERE id = ?;`, id);
   if (!rows[0]) {
     return undefined;
   }
@@ -577,7 +606,7 @@ export async function completeCareItem(
   id: string,
   input: CompleteCareItemInput
 ): Promise<CompleteCareItemResponse | undefined> {
-  const rows = await allWithParams(connection, "SELECT * EXCLUDE (ordinal) FROM care_items WHERE id = ?;", id);
+  const rows = await allWithParams(connection, `SELECT ${careItemColumns} FROM care_items WHERE id = ?;`, id);
   if (!rows[0]) {
     return undefined;
   }
@@ -621,7 +650,7 @@ export async function deleteCareItem(
   connection: duckdb.Connection,
   id: string
 ): Promise<DeleteCareItemResponse | undefined> {
-  const rows = await allWithParams(connection, "SELECT * EXCLUDE (ordinal) FROM care_items WHERE id = ?;", id);
+  const rows = await allWithParams(connection, `SELECT ${careItemColumns} FROM care_items WHERE id = ?;`, id);
   if (!rows[0]) {
     return undefined;
   }
@@ -654,14 +683,56 @@ export async function insertAudit(
   return auditEvent;
 }
 
-export async function nextOrdinal(connection: duckdb.Connection, table: OrderedTable): Promise<number> {
-  const rows = await all(connection, `SELECT COALESCE(MAX(ordinal), -1) + 1 AS ordinal FROM ${table};`);
-  return Number(rows[0]?.ordinal ?? 0);
+/**
+ * Ordinal counters cached per connection.
+ *
+ * Every insert used to aggregate the whole table to find its next ordinal, so a single import paid
+ * a full scan per row. The bounds only ever move outwards, so seeding once and advancing in memory
+ * gives the same ordering guarantee. A rolled-back transaction or a retention prune merely leaves a
+ * gap, which nothing depends on.
+ */
+const ordinalCounters = new WeakMap<duckdb.Connection, Map<OrderedTable, OrdinalBounds>>();
+
+interface OrdinalBounds {
+  next: number;
+  previous: number;
+}
+
+async function ordinalBounds(connection: duckdb.Connection, table: OrderedTable): Promise<OrdinalBounds> {
+  let tables = ordinalCounters.get(connection);
+  if (!tables) {
+    tables = new Map();
+    ordinalCounters.set(connection, tables);
+  }
+  const cached = tables.get(table);
+  if (cached) return cached;
+  const rows = await all(
+    connection,
+    `SELECT COALESCE(MAX(ordinal), -1) + 1 AS next, COALESCE(MIN(ordinal), 1) - 1 AS previous FROM ${table};`
+  );
+  const bounds: OrdinalBounds = {
+    next: Number(rows[0]?.next ?? 0),
+    previous: Number(rows[0]?.previous ?? 0)
+  };
+  tables.set(table, bounds);
+  return bounds;
+}
+
+/** Reserves `count` consecutive ordinals and returns the first of them. */
+export async function nextOrdinal(
+  connection: duckdb.Connection,
+  table: OrderedTable,
+  count = 1
+): Promise<number> {
+  const bounds = await ordinalBounds(connection, table);
+  const first = bounds.next;
+  bounds.next += Math.max(count, 0);
+  return first;
 }
 
 async function prependOrdinal(connection: duckdb.Connection, table: OrderedTable): Promise<number> {
-  const rows = await all(connection, `SELECT COALESCE(MIN(ordinal), 1) - 1 AS ordinal FROM ${table};`);
-  return Number(rows[0]?.ordinal ?? 0);
+  const bounds = await ordinalBounds(connection, table);
+  return bounds.previous--;
 }
 
 function observationDeleteDetail(observation: Observation): string {

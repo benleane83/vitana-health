@@ -1,8 +1,8 @@
-import { CURRENT_SCHEMA_VERSION, defaultMeasurementTypes, type HealthStoreData } from "@vitana/shared";
+import { EXPORT_FORMAT_VERSION, defaultMeasurementTypes, type HealthStoreData } from "@vitana/shared";
 
 export function createDuckDbHealthStoreFixture(): HealthStoreData {
   return {
-    schemaVersion: CURRENT_SCHEMA_VERSION,
+    schemaVersion: EXPORT_FORMAT_VERSION,
     profile: {
       id: "profile-a",
       displayName: "Profile A",

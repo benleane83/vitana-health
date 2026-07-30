@@ -197,6 +197,17 @@ describe("defaultMeasurementTypes", () => {
     ]);
   });
 
+  it("is frozen so no consumer can corrupt the shared registry process-wide", () => {
+    const weight = defaultMeasurementTypes.find((type) => type.code === "weight")!;
+    expect(Object.isFrozen(defaultMeasurementTypes)).toBe(true);
+    expect(Object.isFrozen(weight)).toBe(true);
+    expect(() => {
+      (weight as { display: string }).display = "Tampered";
+    }).toThrow(TypeError);
+    expect(() => defaultMeasurementTypes.push({ ...weight })).toThrow(TypeError);
+    expect(defaultMeasurementTypes.find((type) => type.code === "weight")?.display).toBe(weight.display);
+  });
+
   describe("measurement units", () => {
     const weight = defaultMeasurementTypes.find((type) => type.code === "weight")!;
     const glucose = defaultMeasurementTypes.find((type) => type.code === "glucose")!;

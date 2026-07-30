@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DuckDbRepository } from "../storage/duckdbRepository.js";
 import { initializeDuckDbRoot } from "../storage/duckdbRuntime.js";
 import { createDuckDbHealthStoreFixture } from "./support/duckdbFixture.js";
+import { findPreparedExtension } from "./support/duckdbExtension.js";
 
 const httpfsExtensionPath = findPreparedExtension();
 const key = Buffer.alloc(32, 19).toString("base64");
@@ -21,21 +22,14 @@ afterEach(() => {
 describe("encrypted DuckDB companion replica", () => {
   it.skipIf(!httpfsExtensionPath)("materializes a stable paginated snapshot then converges concurrent updates and tombstones", async () => {
     const fixture = createDuckDbHealthStoreFixture();
-    let replicaSnapshotCount = 0;
     const repository = await DuckDbRepository.hydrate(
       root,
       join(root, "databases", "replica.duckdb-poc"),
       key,
       fixture,
-      {
-        httpfsExtensionPath,
-        testHooks: {
-          beforeReplicaSnapshot: async () => { replicaSnapshotCount += 1; }
-        }
-      }
+      { httpfsExtensionPath }
     );
     try {
-      replicaSnapshotCount = 0;
       const snapshotHighWater = await repository.getReplicaHighWaterMark();
       const snapshotId = await repository.startReplicaSnapshot("pairing-1");
       const firstPage = await repository.replicaSnapshotPage("pairing-1", snapshotId, 0, 2);
@@ -52,7 +46,7 @@ describe("encrypted DuckDB companion replica", () => {
       const createdCareItem = await repository.createCareItem({
         title: "Book follow-up",
         kind: "follow-up",
-        dueStart: "2026-08-01",
+        dueStart: "2026-08-01T00:00:00.000Z",
         priority: "normal",
         status: "open"
       });
@@ -118,7 +112,6 @@ describe("encrypted DuckDB companion replica", () => {
       ]));
       expect(deletePage.changes.find((change) => change.entityId === original.id)?.payload).toBeUndefined();
       expect(deletePage.changes.find((change) => change.entityId === createdCareItem.careItem.id)?.payload).toBeUndefined();
-      expect(replicaSnapshotCount).toBe(0);
     } finally {
       await repository.close();
     }
@@ -161,11 +154,3 @@ describe("encrypted DuckDB companion replica", () => {
     }
   });
 });
-
-function findPreparedExtension(): string | undefined {
-  const candidates = [
-    process.env.DUCKDB_EXTENSION_PATH,
-    resolve("data", "duckdb-poc", "extensions", "httpfs.duckdb_extension")
-  ];
-  return candidates.find((candidate): candidate is string => Boolean(candidate && existsSync(candidate)));
-}

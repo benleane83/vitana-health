@@ -17,6 +17,8 @@ import { timingSafeEqual } from "node:crypto";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { PairingStore } from "./pairing.js";
+import type { CompanionCapability } from "./pairing.js";
+import { companionCapabilityFor as lookupCompanionCapability } from "./companionRouteCapabilities.js";
 import { ProfileStoreManager } from "./storage/profileStoreManager.js";
 import { isLoopbackAddress } from "./netutil.js";
 import { log, generateCorrelationId } from "./logger.js";
@@ -38,6 +40,12 @@ export type { AuthorizationPrincipal, OwnerPrincipal } from "./requestPrincipal.
 export interface AppOptions {
   publicKeyHash?: string | null;
   webRoot?: string;
+  /**
+   * Secret minted by the desktop shell for a single launch and handed to the renderer out of band.
+   * When set, `POST /api/auth/local` requires it, which stops any other process on the machine from
+   * claiming the owner cookie just by being on loopback.
+   */
+  localAuthNonce?: string;
   assertSafeCloudModelEndpoint?: (endpoint: string) => Promise<unknown>;
   openRouterCallbackOrigin?: string;
   desktopRuntimeController?: {
@@ -50,6 +58,18 @@ export interface AppOptions {
     download: () => Promise<DesktopUpdateState>;
     restartToInstall: () => Promise<DesktopUpdateState>;
   };
+}
+
+/** Constant-time comparison of the launch nonce supplied by the renderer against the configured one. */
+function launchNonceIsValid(request: express.Request, expected: string): boolean {
+  const supplied = request.get("x-vitana-launch-nonce") ?? "";
+  const expectedBuffer = Buffer.from(expected, "utf8");
+  const suppliedBuffer = Buffer.from(supplied, "utf8");
+  return (
+    expectedBuffer.length > 0 &&
+    expectedBuffer.length === suppliedBuffer.length &&
+    timingSafeEqual(expectedBuffer, suppliedBuffer)
+  );
 }
 
 function decodeCookieToken(value: string | undefined): string {
@@ -65,55 +85,8 @@ function isOpenRouterCallback(request: express.Request): boolean {
   return request.method === "GET" && request.path === "/settings/ai/openrouter/callback";
 }
 
-function companionCapabilityFor(request: express.Request): import("./pairing.js").CompanionCapability | null {
-  const route = `${request.method} ${request.path}`;
-  switch (route) {
-    case "GET /profiles":
-      return "profiles:list-minimal";
-    case "GET /bootstrap":
-    case "GET /profile/photo":
-    case "GET /analytics":
-    case "GET /summary":
-      return "assigned-profile:read";
-    case "GET /companion/sync/handshake":
-    case "GET /companion/sync/snapshot":
-    case "GET /companion/sync/deltas":
-      return "replica:read";
-    case "GET /care/health-events":
-    case "GET /care/items":
-      return "care:read";
-    case "POST /care/health-events":
-    case "PATCH /care/health-events":
-    case "DELETE /care/health-events":
-    case "POST /care/items":
-    case "PATCH /care/items":
-    case "DELETE /care/items":
-      return "care:write";
-    case "POST /import/observations/manual":
-      return "observations:import-manual";
-    case "POST /import/body-composition/preview":
-    case "POST /import/blood-test/preview":
-      return "reports:preview";
-    case "POST /import/body-composition/commit":
-    case "POST /import/blood-test/commit":
-      return "reports:commit";
-    case "POST /import/health-connect":
-      return "health-connect:import";
-    case "POST /pairing/revoke-self":
-      return "pairing:self-revoke";
-    default:
-      return request.method === "GET" && /^\/summary\/[^/]+$/.test(request.path)
-        ? "assigned-profile:read"
-        : request.method === "POST" && /^\/companion\/migrations(?:\/[^/]+\/(?:batches|complete))?$/.test(request.path)
-          ? "standalone:migrate"
-        : /^\/care\/health-events\/[^/]+$/.test(request.path)
-          ? "care:write"
-          : /^\/care\/items\/[^/]+(?:\/complete)?$/.test(request.path)
-            ? "care:write"
-           : /^(PATCH|DELETE) \/observations\/[^/]+$/.test(route)
-             ? "observations:write"
-        : null;
-  }
+function companionCapabilityFor(request: express.Request): CompanionCapability | null {
+  return lookupCompanionCapability(request.method, request.path);
 }
 
 export function createApp(
@@ -239,7 +212,15 @@ export function createApp(
     );
   }
 
-  // Local browser auth (loopback only, no token required on the same machine)
+  /**
+   * Local browser auth. Loopback alone is not an authorization decision: every process on the
+   * machine shares it, including anything a tester downloads. The desktop shell therefore mints a
+   * nonce per launch and gives it only to the window it opened, so possession of the nonce — not
+   * merely the source address — is what buys the owner cookie.
+   *
+   * With no nonce configured (`npm run dev`, tests, the web preview) the endpoint keeps its
+   * loopback-only behaviour so local development needs no extra ceremony.
+   */
   app.post("/api/auth/local", (request, response) => {
     const address = request.socket.remoteAddress ?? "";
     const loopback = isLoopbackAddress(address);
@@ -249,6 +230,13 @@ export function createApp(
       response
         .status(403)
         .json({ error: "Local desktop authentication is only available on this computer.", code: "AUTH_LOOPBACK_ONLY" });
+      return;
+    }
+    if (options.localAuthNonce && !launchNonceIsValid(request, options.localAuthNonce)) {
+      response.status(403).json({
+        error: "This window cannot sign in automatically. Reopen Vitana Health from the desktop app.",
+        code: "AUTH_LAUNCH_NONCE_REQUIRED"
+      });
       return;
     }
     const secure = request.protocol === "https";
@@ -414,9 +402,14 @@ export function createApp(
               ? "An internal error occurred."
               : error.message;
 
+        // A route may attach a specific code (e.g. REPLICA_PROTOCOL_UNSUPPORTED) that clients branch
+        // on; only fall back to the generic buckets when it has not.
+        const explicitCode =
+          status < 500 && "code" in error && typeof error.code === "string" ? error.code : undefined;
+
         response.status(status).json({
           error: publicMessage,
-          code: status === 413 ? "PAYLOAD_TOO_LARGE" : status >= 500 ? "INTERNAL_ERROR" : "REQUEST_ERROR",
+          code: explicitCode ?? (status === 413 ? "PAYLOAD_TOO_LARGE" : status >= 500 ? "INTERNAL_ERROR" : "REQUEST_ERROR"),
           correlationId
         });
         return;

@@ -1,5 +1,5 @@
 import { createHash, randomBytes, X509Certificate } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import selfsigned from "selfsigned";
@@ -75,14 +75,28 @@ function loadOrCreateOwnerToken(dataDir: string): string {
   return ownerToken;
 }
 
+/** Reads a file, treating "not there" as a value rather than an error. */
+function readIfPresent(filePath: string): string | undefined {
+  try {
+    return readFileSync(filePath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
 async function loadOrCreateCertificate(dataDir: string): Promise<{ certPath: string; keyPath: string }> {
   const tlsDir = path.join(dataDir, "tls");
   const certPath = path.join(tlsDir, "vitana.crt");
   const keyPath = path.join(tlsDir, "vitana.key");
-  const legacyCertPath = path.join(tlsDir, "local-fitness-advisor.crt");
-  const legacyKeyPath = path.join(tlsDir, "local-fitness-advisor.key");
-  migrateLegacyTlsFiles({ certPath, keyPath, legacyCertPath, legacyKeyPath });
-  if (existsSync(certPath) && existsSync(keyPath)) return { certPath, keyPath };
+  // Read rather than stat, so the decision is made from the bytes we actually hold instead of a
+  // separate existence check the filesystem could invalidate before the write below.
+  const existingCert = readIfPresent(certPath);
+  const existingKey = readIfPresent(keyPath);
+  if ((existingCert === undefined) !== (existingKey === undefined)) {
+    throw new Error("The Vitana TLS certificate and key are incomplete. Restore the matching file from backup.");
+  }
+  if (existingCert !== undefined && existingKey !== undefined) return { certPath, keyPath };
 
   mkdirSync(tlsDir, { recursive: true });
   const notBeforeDate = new Date();
@@ -107,27 +121,16 @@ async function loadOrCreateCertificate(dataDir: string): Promise<{ certPath: str
       { name: "subjectAltName", altNames }
     ]
   });
-  writeFileSync(keyPath, certificate.private, { encoding: "utf8", mode: 0o600 });
-  writeFileSync(certPath, certificate.cert, { encoding: "utf8", mode: 0o600 });
+  // `wx` refuses to follow or clobber a file that appeared since the existence check above, so a
+  // pre-planted symlink cannot redirect the private key. A partial pair is removed rather than
+  // left behind, because the check above rejects a lone certificate or key on the next startup.
+  try {
+    writeFileSync(keyPath, certificate.private, { encoding: "utf8", mode: 0o600, flag: "wx" });
+    writeFileSync(certPath, certificate.cert, { encoding: "utf8", mode: 0o600, flag: "wx" });
+  } catch (error) {
+    rmSync(keyPath, { force: true });
+    rmSync(certPath, { force: true });
+    throw error;
+  }
   return { certPath, keyPath };
-}
-
-function migrateLegacyTlsFiles(paths: {
-  certPath: string;
-  keyPath: string;
-  legacyCertPath: string;
-  legacyKeyPath: string;
-}): void {
-  for (const [legacyPath, currentPath] of [
-    [paths.legacyCertPath, paths.certPath],
-    [paths.legacyKeyPath, paths.keyPath]
-  ] as const) {
-    if (existsSync(legacyPath) && existsSync(currentPath)) {
-      throw new Error("Both legacy and Vitana TLS files exist. Remove one complete pair after safeguarding the files.");
-    }
-    if (existsSync(legacyPath)) renameSync(legacyPath, currentPath);
-  }
-  if (existsSync(paths.certPath) !== existsSync(paths.keyPath)) {
-    throw new Error("The Vitana TLS certificate and key are incomplete. Restore the matching file from backup.");
-  }
 }

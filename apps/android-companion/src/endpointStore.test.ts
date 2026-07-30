@@ -30,7 +30,8 @@ import {
   clearConnection,
   loadConnection,
   saveConnection,
-  updateHealthConnectSyncCursor
+  updateHealthSourceCursors,
+  updateHealthSourceSessionKey
 } from "./endpointStore";
 
 const connectionKey = "vitana.connection";
@@ -69,10 +70,25 @@ describe("connection storage", () => {
       url: "https://desktop.test",
       deviceId: "device-1",
       token: "companion-token",
-      healthConnectSyncCursor: null,
+      healthSourceCursors: {},
+      healthSourceSessionKey: null,
       healthConnectSyncWindowDays: 30,
-      healthConnectCategories: [],
+      healthSourceCategories: [],
       healthConnectDisclosureAcknowledged: false
+    });
+  });
+
+  it("fans a legacy single cursor out across the categories it had already covered", async () => {
+    storage.async.set(connectionKey, JSON.stringify({
+      url: "https://desktop.test",
+      healthConnectSyncCursor: "2026-01-10T12:00:00.000Z",
+      healthConnectCategories: ["Steps", "Weight"]
+    }));
+    storage.secure.set(deviceIdKey, "device-1");
+
+    await expect(loadConnection()).resolves.toMatchObject({
+      healthSourceCategories: ["Steps", "Weight"],
+      healthSourceCursors: { Steps: "2026-01-10T12:00:00.000Z", Weight: "2026-01-10T12:00:00.000Z" }
     });
   });
 
@@ -102,18 +118,18 @@ describe("connection storage", () => {
     storage.secure.set(deviceIdKey, "device-1");
 
     await expect(loadConnection()).resolves.toMatchObject({
-      healthConnectCategories: ["Steps"]
+      healthSourceCategories: ["Steps"]
     });
   });
 
-  it("keeps tokens and device IDs out of AsyncStorage while advancing a cursor for the matching endpoint", async () => {
+  it("keeps tokens and device IDs out of AsyncStorage while advancing cursors for the matching endpoint", async () => {
     storage.secure.set(deviceIdKey, "device-1");
     await saveConnection({
       url: "https://desktop.test",
       token: "companion-token",
       publicKeyHash: "pin",
       healthConnectSyncWindowDays: 30,
-      healthConnectCategories: ["Steps"]
+      healthSourceCategories: ["Steps"]
     });
 
     const persisted = storage.async.get(connectionKey)!;
@@ -121,32 +137,45 @@ describe("connection storage", () => {
     expect(persisted).not.toContain("device-1");
     expect(storage.secure.get(tokenKey)).toBe("companion-token");
 
-    await updateHealthConnectSyncCursor("https://other.test", "2026-01-10T12:00:00.000Z");
-    expect(JSON.parse(storage.async.get(connectionKey)!).healthConnectSyncCursor).toBeNull();
+    await updateHealthSourceCursors("https://other.test", { Steps: "2026-01-10T12:00:00.000Z" });
+    expect(JSON.parse(storage.async.get(connectionKey)!).healthSourceCursors).toEqual({});
 
-    await updateHealthConnectSyncCursor("https://desktop.test", "2026-01-10T12:00:00.000Z");
-    expect(JSON.parse(storage.async.get(connectionKey)!).healthConnectSyncCursor).toBe("2026-01-10T12:00:00.000Z");
+    await updateHealthSourceCursors("https://desktop.test", { Steps: "2026-01-10T12:00:00.000Z" });
+    expect(JSON.parse(storage.async.get(connectionKey)!).healthSourceCursors).toEqual({ Steps: "2026-01-10T12:00:00.000Z" });
   });
 
-  it("allows the local Health Connect cursor to be cleared without changing sync preferences", async () => {
+  it("remembers an interrupted sync session and clears it once cursors advance", async () => {
+    storage.secure.set(deviceIdKey, "device-1");
+    await saveConnection({ url: "https://desktop.test", healthSourceCategories: ["Steps"] });
+
+    await updateHealthSourceSessionKey("https://desktop.test", "device-1:2026-01-11T12:00:00.000Z");
+    await expect(loadConnection()).resolves.toMatchObject({
+      healthSourceSessionKey: "device-1:2026-01-11T12:00:00.000Z"
+    });
+
+    await updateHealthSourceCursors("https://desktop.test", { Steps: "2026-01-11T12:00:00.000Z" });
+    await expect(loadConnection()).resolves.toMatchObject({ healthSourceSessionKey: null });
+  });
+
+  it("allows the local Health Connect cursors to be cleared without changing sync preferences", async () => {
     storage.secure.set(deviceIdKey, "device-1");
     await saveConnection({
       url: "https://desktop.test",
       token: "companion-token",
       publicKeyHash: "pin",
-      healthConnectSyncCursor: "2026-01-10T12:00:00.000Z",
+      healthSourceCursors: { Steps: "2026-01-10T12:00:00.000Z" },
       healthConnectSyncWindowDays: 90,
-      healthConnectCategories: ["Steps", "HeartRate"],
+      healthSourceCategories: ["Steps", "HeartRate"],
       healthConnectDisclosureAcknowledged: true
     });
 
-    await saveConnection({ url: "https://desktop.test", healthConnectSyncCursor: null });
+    await saveConnection({ url: "https://desktop.test", healthSourceCursors: {} });
 
     await expect(loadConnection()).resolves.toMatchObject({
       token: "companion-token",
-      healthConnectSyncCursor: null,
+      healthSourceCursors: {},
       healthConnectSyncWindowDays: 90,
-      healthConnectCategories: ["Steps", "HeartRate"],
+      healthSourceCategories: ["Steps", "HeartRate"],
       healthConnectDisclosureAcknowledged: true
     });
   });
@@ -159,5 +188,34 @@ describe("connection storage", () => {
 
     expect(storage.async.has(connectionKey)).toBe(false);
     expect(storage.secure.has(tokenKey)).toBe(false);
+  });
+
+  it("reports an unreadable record instead of pretending the phone was never paired", async () => {
+    storage.secure.set(deviceIdKey, "device-1");
+    storage.async.set(connectionKey, "{ this is not json");
+
+    await expect(loadConnection()).rejects.toThrow(/could not be read/);
+    // The original bytes survive, so a bad parse cannot quietly destroy the pairing.
+    expect(storage.async.get("vitana.connection.corrupt")).toBe("{ this is not json");
+    await expect(updateHealthSourceSessionKey("https://desktop.test", "session")).rejects.toThrow(/could not be read/);
+
+    // Re-pairing still works and leaves a readable record behind.
+    await saveConnection({ url: "https://desktop.test", token: "companion-token" });
+    await expect(loadConnection()).resolves.toMatchObject({ url: "https://desktop.test", token: "companion-token" });
+  });
+
+  it("does not lose a cursor update that overlaps a category save", async () => {
+    storage.secure.set(deviceIdKey, "device-1");
+    await saveConnection({ url: "https://desktop.test", healthSourceCategories: ["Steps"] });
+
+    await Promise.all([
+      updateHealthSourceCursors("https://desktop.test", { Steps: "2026-01-12T12:00:00.000Z" }),
+      saveConnection({ url: "https://desktop.test", healthSourceCategories: ["Steps", "HeartRate"] })
+    ]);
+
+    await expect(loadConnection()).resolves.toMatchObject({
+      healthSourceCursors: { Steps: "2026-01-12T12:00:00.000Z" },
+      healthSourceCategories: ["Steps", "HeartRate"]
+    });
   });
 });

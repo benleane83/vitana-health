@@ -5,6 +5,7 @@ import {
   filterAndSortSummary,
   filterManualGroupTemplates,
   findKnownMeasurement,
+  finiteExtent,
   mergeHealthDataDetail
 } from "../mobileFeatures.js";
 import { defaultMeasurementTypes } from "../registry.js";
@@ -94,5 +95,45 @@ describe("mobile feature models", () => {
     );
     expect(merged.chartPoints).toEqual([point]);
     expect(merged.pagination.loaded).toBe(1);
+  });
+
+  it("merges large pages in linear time rather than quadratic", () => {
+    const detail = {
+      measurement: { code: "weight", displayName: "Weight", category: "body", canonicalUnit: "kg" },
+      latest: undefined,
+      entries: [],
+      chartPoints: [],
+      sourceCounts: { observations: 0, samples: 0, activities: 0 },
+      pagination: { limit: 1, offset: 0, loaded: 0, total: 0, hasMore: false },
+      deletion: { observationEntries: 0, canDeleteAll: false }
+    } as HealthDataDetail;
+
+    // Only the identity-key builder reads `value`; the sort comparator reads timestamp and kind.
+    // Counting reads therefore counts key builds exactly, with no wall-clock flakiness.
+    let valueReads = 0;
+    const page = (start: number, count: number) => Array.from({ length: count }, (_, index) => ({
+      kind: "observation" as const,
+      timestamp: new Date(Date.UTC(2020, 0, 1) + (start + index) * 86_400_000).toISOString(),
+      get value() { valueReads += 1; return 70 + index; },
+      unit: "kg"
+    }));
+
+    const size = 2_000;
+    const merged = mergeHealthDataDetail(
+      { ...detail, chartPoints: page(0, size) },
+      { ...detail, chartPoints: page(size, size) }
+    );
+
+    expect(merged.chartPoints).toHaveLength(size * 2);
+    // The old filter/findIndex form built a key per comparison: ~(2n)^2 reads. One per point now.
+    expect(valueReads).toBe(size * 2);
+  });
+
+  it("computes extents without spreading every value onto the call stack", () => {
+    const values = Array.from({ length: 200_000 }, (_, index) => index);
+    expect(finiteExtent(values)).toEqual({ min: 0, max: 199_999 });
+    expect(finiteExtent([1, Number.NaN, undefined, -3])).toEqual({ min: -3, max: 1 });
+    expect(finiteExtent([])).toBeUndefined();
+    expect(finiteExtent([Number.NaN])).toBeUndefined();
   });
 });

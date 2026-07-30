@@ -6,7 +6,7 @@ export function createCompanionApi(connection: ConnectionDetails, timeoutMs = DE
   const baseUrl = connection.url.replace(/\/+$/, "");
   const token = connection.token;
   if (!token) throw new Error("A paired companion token is required.");
-  return createApiClient(async ({ path, method, headers, body }): Promise<ApiTransportResponse> =>
+  return createApiClient(async ({ path, method, headers, body, signal }): Promise<ApiTransportResponse> =>
     pinnedFetch(`${baseUrl}${path}`, connection.publicKeyHash, {
       method,
       headers: {
@@ -14,6 +14,7 @@ export function createCompanionApi(connection: ConnectionDetails, timeoutMs = DE
         "x-companion-token": token
       },
       body,
+      signal,
       timeoutMs
     }));
 }

@@ -3,6 +3,8 @@ import { defaultMeasurementTypes, safetyNotice } from "@vitana/shared";
 import type { AppRoute, ImportMode, InsightsTab, SettingsView } from "./types.js";
 import { ProfileLifecycleDialogs, useProfileLifecycle } from "./features/profiles/useProfileLifecycle.js";
 import { ConfirmDialog } from "./components/ConfirmDialog.js";
+import { setOwnerTokenPrompt } from "./api.js";
+import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import { ImportPage } from "./pages/ImportPage.js";
 import { SettingsPage } from "./pages/SettingsPage.js";
 import { InsightsRoute } from "./features/insights/InsightsRoute.js";
@@ -34,7 +36,9 @@ export function App() {
     description: string;
     confirmLabel: string;
     destructive: boolean;
-    onConfirm: () => void;
+    promptLabel?: string;
+    promptType?: "text" | "password";
+    onConfirm: (value: string) => void;
     onCancel: () => void;
   } | null>(null);
 
@@ -52,7 +56,6 @@ export function App() {
   // Popstate (browser back/forward)
   useEffect(() => {
     const onPopState = () => {
-      normalizeLegacyImportPath();
       setRoute(routeFromPathname(window.location.pathname));
       setInsightsTab(insightsTabFromPathname(window.location.pathname));
       setCareView(careViewFromPathname(window.location.pathname));
@@ -62,12 +65,6 @@ export function App() {
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, []);
-
-  // Normalize legacy /import/scan and /import/fitness-tracker URLs to their
-  // canonical /import/upload and /import/sync form without adding a history entry.
-  useEffect(() => {
-    normalizeLegacyImportPath();
   }, []);
 
   useEffect(() => {
@@ -156,6 +153,30 @@ export function App() {
       });
     });
   }
+
+  // Route the API layer's owner-token fallback through the accessible dialog instead of
+  // window.prompt, which blocks the renderer and cannot mask the token.
+  useEffect(() => {
+    setOwnerTokenPrompt(() => new Promise<string | null>((resolve) => {
+      setConfirmState({
+        title: "Owner token required",
+        description: "Enter the Vitana owner token shown by the API at startup.",
+        confirmLabel: "Continue",
+        destructive: false,
+        promptLabel: "Owner token",
+        promptType: "password",
+        onConfirm: (value) => {
+          setConfirmState(null);
+          resolve(value.trim() || null);
+        },
+        onCancel: () => {
+          setConfirmState(null);
+          resolve(null);
+        }
+      });
+    }));
+    return () => setOwnerTokenPrompt(undefined);
+  }, []);
 
   // ─── Navigation tabs ─────────────────────────────────────────────────────────
 
@@ -321,18 +342,24 @@ export function App() {
         hidden={route !== "dashboard"}
       >
         {route === "dashboard" ? (
-          <DashboardRoute
-            analytics={analytics}
-            profile={profile}
-            onEditProfile={profileLifecycle.openEditor}
-            onNavigateSummary={() => navigate("track")}
-            onNavigateMeasurement={navigateSummaryDetail}
-          />
+          <ErrorBoundary label="Dashboard">
+            <DashboardRoute
+              analytics={analytics}
+              profile={profile}
+              onEditProfile={profileLifecycle.openEditor}
+              onNavigateSummary={() => navigate("track")}
+              onNavigateMeasurement={navigateSummaryDetail}
+            />
+          </ErrorBoundary>
         ) : null}
       </div>
 
       <div id="route-panel-settings" role="tabpanel" aria-labelledby={navTabIds.settings} hidden={route !== "settings"}>
-        {route === "settings" ? <SettingsPage view={settingsView} onViewChange={navigateSettings} confirm={confirm} /> : null}
+        {route === "settings" ? (
+          <ErrorBoundary label="Settings">
+            <SettingsPage view={settingsView} onViewChange={navigateSettings} confirm={confirm} />
+          </ErrorBoundary>
+        ) : null}
       </div>
 
       <div
@@ -342,16 +369,18 @@ export function App() {
         hidden={route !== "import"}
       >
         {route === "import" ? (
-          <ImportPage
-            mode={importMode}
-            onModeChange={(mode) => navigate("import", mode)}
-            bootstrap={bootstrap}
-            onDataChanged={profileLifecycle.refresh}
-            onNotice={setMessage}
-            profiles={profiles}
-            activeProfileId={profile?.id}
-            units={profile?.units ?? "metric"}
-          />
+          <ErrorBoundary label="Import">
+            <ImportPage
+              mode={importMode}
+              onModeChange={(mode) => navigate("import", mode)}
+              bootstrap={bootstrap}
+              onDataChanged={() => profileLifecycle.refresh({ profiles: false })}
+              onNotice={setMessage}
+              profiles={profiles}
+              activeProfileId={profile?.id}
+              units={profile?.units ?? "metric"}
+            />
+          </ErrorBoundary>
         ) : null}
       </div>
 
@@ -362,41 +391,47 @@ export function App() {
         hidden={route !== "track"}
       >
         {route === "track" ? (
-          <TrackRoute
-            detailCode={summaryDetailCode}
-            activeProfileId={activeProfileId}
-            measurementTypes={recordedMeasurementTypes}
-            onBack={() => navigate("track")}
-            onSelectDetail={navigateSummaryDetail}
-            onDataChanged={profileLifecycle.refresh}
-            onNotice={setMessage}
-            confirm={confirm}
-          />
+          <ErrorBoundary label="Track">
+            <TrackRoute
+              detailCode={summaryDetailCode}
+              activeProfileId={activeProfileId}
+              measurementTypes={recordedMeasurementTypes}
+              onBack={() => navigate("track")}
+              onSelectDetail={navigateSummaryDetail}
+              onDataChanged={() => profileLifecycle.refresh({ profiles: false })}
+              onNotice={setMessage}
+              confirm={confirm}
+            />
+          </ErrorBoundary>
         ) : null}
       </div>
 
       <div id="route-panel-care" role="tabpanel" aria-labelledby={navTabIds.care} hidden={route !== "care"}>
         {route === "care" ? (
-          <CareRoute
-            view={careView}
-            activeProfileId={activeProfileId}
-            onViewChange={navigateCare}
-            onDataChanged={profileLifecycle.refresh}
-            onNotice={setMessage}
-            confirm={confirm}
-          />
+          <ErrorBoundary label="Care">
+            <CareRoute
+              view={careView}
+              activeProfileId={activeProfileId}
+              onViewChange={navigateCare}
+              onDataChanged={() => profileLifecycle.refresh({ profiles: false })}
+              onNotice={setMessage}
+              confirm={confirm}
+            />
+          </ErrorBoundary>
         ) : null}
       </div>
 
       <div id="route-panel-insights" role="tabpanel" aria-labelledby={navTabIds.insights} hidden={route !== "insights"}>
         {route === "insights" ? (
-          <InsightsRoute
-            tab={insightsTab}
-            bootstrap={bootstrap}
-            onTabChange={navigateInsights}
-            onDataChanged={profileLifecycle.refresh}
-            onNotice={setMessage}
-          />
+          <ErrorBoundary label="Insights">
+            <InsightsRoute
+              tab={insightsTab}
+              bootstrap={bootstrap}
+              onTabChange={navigateInsights}
+              onDataChanged={() => profileLifecycle.refresh({ profiles: false })}
+              onNotice={setMessage}
+            />
+          </ErrorBoundary>
         ) : null}
       </div>
 
@@ -407,7 +442,9 @@ export function App() {
         hidden={route !== "export"}
       >
         {route === "export" ? (
-          <ExportRoute bootstrap={bootstrap} onProfilesChanged={profileLifecycle.refresh} />
+          <ErrorBoundary label="Export">
+            <ExportRoute bootstrap={bootstrap} onProfilesChanged={profileLifecycle.refresh} />
+          </ErrorBoundary>
         ) : null}
       </div>
 
@@ -422,6 +459,8 @@ export function App() {
           description={confirmState.description}
           confirmLabel={confirmState.confirmLabel}
           destructive={confirmState.destructive}
+          promptLabel={confirmState.promptLabel}
+          promptType={confirmState.promptType}
           onConfirm={confirmState.onConfirm}
           onCancel={confirmState.onCancel}
         />
@@ -474,35 +513,14 @@ function summaryDetailCodeFromPathname(pathname: string): string | undefined {
   }
 }
 
-// Canonical import mode routes are /import/upload and /import/sync. Earlier
-// prototypes used /import/scan and /import/fitness-tracker; those are
-// recognized here and normalized to the canonical path via history.replaceState
-// (see normalizeLegacyImportPath) rather than being treated as first-class routes.
-const legacyImportPathAliases: Partial<Record<string, ImportMode>> = {
-  "/import/scan": "upload",
-  "/import/fitness-tracker": "sync"
-};
-
 function importModeFromPathname(pathname: string): ImportMode {
   if (pathname === "/import/upload") return "upload";
   if (pathname === "/import/sync") return "sync";
-  return legacyImportPathAliases[pathname] ?? "manual";
+  return "manual";
 }
 
 function importModePath(mode: ImportMode): string {
   return `/import/${mode}`;
-}
-
-function canonicalImportPathname(pathname: string): string | undefined {
-  const alias = legacyImportPathAliases[pathname];
-  return alias ? importModePath(alias) : undefined;
-}
-
-function normalizeLegacyImportPath(): void {
-  const canonical = canonicalImportPathname(window.location.pathname);
-  if (canonical && canonical !== window.location.pathname) {
-    window.history.replaceState({}, "", canonical);
-  }
 }
 
 function insightsPath(tab: InsightsTab): string {

@@ -14,11 +14,14 @@ import {
   BACKUP_MAX_SIZE_BYTES,
   VITANA_BACKUP_FILE_EXTENSION,
   backupCreateRequestSchema,
+  backupInspectResponseSchema,
   backupRestoreRequestSchema,
+  backupRestoreResponseSchema,
   type BackupInspectResponse,
   type BackupPayload,
   type BackupRestoreResponse
 } from "@vitana/shared";
+import { sendJson } from "./sendJson.js";
 import type { ProfileStoreManager } from "../storage/profileStoreManager.js";
 import type { PairingStore } from "../pairing.js";
 import type { AuthorizationPrincipal } from "../createApp.js";
@@ -26,9 +29,22 @@ import {
   buildBackupProfileEntry,
   decryptBackup,
   encryptBackup,
+  UnsupportedBackupFormatError,
   verifyProfileDigest
 } from "../backupCrypto.js";
 import { RestoreJournal } from "../storage/restoreJournal.js";
+
+/**
+ * A format failure is only reachable once the passphrase has already authenticated the file, so
+ * naming it leaks nothing while saving the user from hunting a passphrase that was never wrong.
+ */
+function respondToDecryptFailure(res: express.Response, error: unknown): void {
+  if (error instanceof UnsupportedBackupFormatError) {
+    res.status(400).json({ error: error.message, code: error.code });
+    return;
+  }
+  res.status(400).json({ error: BACKUP_DECRYPTION_ERROR, code: "DECRYPT_FAILED" });
+}
 
 let activeRestoreId: string | undefined;
 export function isInMaintenanceMode(): boolean {
@@ -134,8 +150,8 @@ export function makeBackupRoutes(
     let payload: BackupPayload;
     try {
       payload = await decryptBackup(body, passphrase);
-    } catch {
-      res.status(400).json({ error: BACKUP_DECRYPTION_ERROR, code: "DECRYPT_FAILED" });
+    } catch (error) {
+      respondToDecryptFailure(res, error);
       return;
     }
 
@@ -153,7 +169,7 @@ export function makeBackupRoutes(
       }))
     };
 
-    res.json(response);
+    sendJson(res, backupInspectResponseSchema, response);
   });
 
   // --- POST /restore — Restore profiles from backup ---
@@ -204,8 +220,8 @@ export function makeBackupRoutes(
     let payload: BackupPayload;
     try {
       payload = await decryptBackup(body, passphrase);
-    } catch {
-      res.status(400).json({ error: BACKUP_DECRYPTION_ERROR, code: "DECRYPT_FAILED" });
+    } catch (error) {
+      respondToDecryptFailure(res, error);
       return;
     }
 
@@ -260,7 +276,7 @@ export function makeBackupRoutes(
         activeProfileId: storeManager.getActiveProfileId()
       };
 
-      res.json(response);
+      sendJson(res, backupRestoreResponseSchema, response);
     } catch (err) {
       const compensationFailed = err instanceof Error && err.message.includes("compensation could not be verified");
       res.status(500).json({

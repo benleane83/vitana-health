@@ -1,23 +1,27 @@
 !include LogicLib.nsh
 
+; The private-network firewall rule is a convenience, not a correctness requirement: it only affects
+; whether a companion phone can reach the app over the LAN, and a desktop-only install works fine
+; without it. On an upgrade over an existing install the `add rule` call routinely reports a non-zero
+; exit code (the rule already exists, or Windows Firewall is managed by policy). Aborting there fails
+; the whole upgrade and leaves the user on a half-removed version, so failures are logged and
+; tolerated. See docs/WINDOWS_RELEASE.md for why this ties into the perMachine install scope.
 !macro customInstall
   nsExec::Exec 'netsh advfirewall firewall delete rule name="Local Fitness Advisor"'
   Pop $0
-  firewallRule:
+  nsExec::Exec 'netsh advfirewall firewall delete rule name="Vitana Health" program="$INSTDIR\Vitana Health.exe"'
+  Pop $0
   nsExec::Exec 'netsh advfirewall firewall add rule name="Vitana Health" dir=in action=allow program="$INSTDIR\Vitana Health.exe" profile=private enable=yes'
   Pop $0
   ${If} $0 != 0
-    MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "Unable to configure private-network access (netsh exit code $0)." IDRETRY firewallRule
-    Abort
+    DetailPrint "Warning: could not configure private-network access (netsh exit code $0). Pairing a phone may require allowing Vitana Health through Windows Firewall manually."
   ${EndIf}
 !macroend
 
 !macro customUnInstall
-  removeFirewallRule:
   nsExec::Exec 'netsh advfirewall firewall delete rule name="Vitana Health" program="$INSTDIR\Vitana Health.exe"'
   Pop $0
   ${If} $0 != 0
-    MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "Unable to remove the private-network firewall rule (netsh exit code $0)." IDRETRY removeFirewallRule
-    Abort
+    DetailPrint "Warning: could not remove the private-network firewall rule (netsh exit code $0)."
   ${EndIf}
 !macroend

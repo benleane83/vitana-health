@@ -4,21 +4,23 @@ import {
   encryptBackup,
   decryptBackup,
   buildBackupProfileEntry,
+  UnsupportedBackupFormatError,
   verifyProfileDigest
 } from "../backupCrypto.js";
 import {
   BACKUP_DECRYPTION_ERROR,
+  BACKUP_UNSUPPORTED_FORMAT_ERROR,
   VITANA_BACKUP_MAGIC,
   VITANA_BACKUP_HEADER_LENGTH,
   type BackupPayload,
   type HealthStoreData,
-  CURRENT_SCHEMA_VERSION,
+  EXPORT_FORMAT_VERSION,
   defaultMeasurementTypes
 } from "@vitana/shared";
 
 function createTestStoreData(profileId = "test-user", displayName = "Test User"): HealthStoreData {
   return {
-    schemaVersion: CURRENT_SCHEMA_VERSION,
+    schemaVersion: EXPORT_FORMAT_VERSION,
     profile: {
       id: profileId,
       displayName,
@@ -158,6 +160,82 @@ describe("backupCrypto", () => {
       const enc2 = await encryptBackup(payload, passphrase);
       // Salt differs (bytes 5-36)
       expect(enc1.subarray(5, 37).equals(enc2.subarray(5, 37))).toBe(false);
+    }, 30_000);
+  });
+
+  describe("older backup formats", () => {
+    it("refuses a backup written at an older export format rather than guessing at it", async () => {
+      // The migration chain was removed with the pre-release schema history: the only readable
+      // shape is EXPORT_FORMAT_VERSION, and anything else must fail loudly instead of half-loading.
+      const legacy = { ...createTestStoreData(), schemaVersion: 7 };
+      const payload = {
+        formatVersion: 1,
+        createdAt: "2024-06-01T00:00:00.000Z",
+        scope: "all",
+        profiles: [
+          {
+            profileId: "test-user",
+            displayName: "Test User",
+            data: legacy,
+            digest: computeCanonicalDigest(legacy as unknown as HealthStoreData)
+          }
+        ]
+      } as unknown as BackupPayload;
+
+      const passphrase = "legacy-backup-passphrase";
+      const encrypted = await encryptBackup(payload, passphrase);
+      await expect(decryptBackup(encrypted, passphrase)).rejects.toThrow(UnsupportedBackupFormatError);
+    }, 60_000);
+
+    it("keeps a tampered digest invalid", async () => {
+      const current = createTestStoreData();
+      const payload = {
+        formatVersion: 1,
+        createdAt: "2024-06-01T00:00:00.000Z",
+        scope: "all",
+        profiles: [
+          { profileId: "test-user", displayName: "Test User", data: current, digest: "0".repeat(64) }
+        ]
+      } as unknown as BackupPayload;
+
+      const passphrase = "tampered-digest-passphrase";
+      const decrypted = await decryptBackup(await encryptBackup(payload, passphrase), passphrase);
+      expect(verifyProfileDigest(decrypted.profiles[0])).toBe(false);
+    }, 30_000);
+
+    it("blames the format, not the passphrase, once the passphrase has decrypted the file", async () => {
+      const unreadable = { ...createTestStoreData(), schemaVersion: 99 };
+      const payload = {
+        formatVersion: 1,
+        createdAt: "2024-06-01T00:00:00.000Z",
+        scope: "all",
+        profiles: [
+          {
+            profileId: "test-user",
+            displayName: "Test User",
+            data: unreadable,
+            digest: computeCanonicalDigest(unreadable as unknown as HealthStoreData)
+          }
+        ]
+      } as unknown as BackupPayload;
+
+      const passphrase = "unsupported-format-pass";
+      const encrypted = await encryptBackup(payload, passphrase);
+      await expect(decryptBackup(encrypted, passphrase)).rejects.toThrow(UnsupportedBackupFormatError);
+      await expect(decryptBackup(encrypted, passphrase)).rejects.toThrow(BACKUP_UNSUPPORTED_FORMAT_ERROR);
+    }, 60_000);
+
+    it("still reports a wrong passphrase generically", async () => {
+      const payload: BackupPayload = {
+        formatVersion: 1,
+        createdAt: "2024-06-01T00:00:00.000Z",
+        scope: "all",
+        profiles: [buildBackupProfileEntry(createTestStoreData())]
+      };
+      const encrypted = await encryptBackup(payload, "the-right-passphrase!");
+      await expect(decryptBackup(encrypted, "the-wrong-passphrase")).rejects.not.toBeInstanceOf(
+        UnsupportedBackupFormatError
+      );
     }, 30_000);
   });
 

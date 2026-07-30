@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { configureRuntimeSecurity } from "../security.js";
@@ -28,7 +28,7 @@ describe("runtime security", () => {
     expect(security.publicKeyHash).toBeNull();
   });
 
-  it("preserves generated TLS bytes while migrating retired filenames", async () => {
+  it("reuses the generated TLS material across restarts", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "vitana-security-test-"));
     temporaryDirectories.push(dataDir);
     process.env.VITANA_DATA_DIR = dataDir;
@@ -39,20 +39,14 @@ describe("runtime security", () => {
     const generated = await configureRuntimeSecurity("0.0.0.0");
     const certificateBytes = readFileSync(generated.tlsCertPath!);
     const keyBytes = readFileSync(generated.tlsKeyPath!);
-    const tlsDir = join(dataDir, "tls");
-    const retiredStem = ["local", "fitness", "advisor"].join("-");
-    const retiredCertificate = join(tlsDir, `${retiredStem}.crt`);
-    const retiredKey = join(tlsDir, `${retiredStem}.key`);
-    renameSync(generated.tlsCertPath!, retiredCertificate);
-    renameSync(generated.tlsKeyPath!, retiredKey);
     delete process.env.VITANA_TLS_CERT;
     delete process.env.VITANA_TLS_KEY;
 
-    const migrated = await configureRuntimeSecurity("0.0.0.0");
-    expect(readFileSync(migrated.tlsCertPath!)).toEqual(certificateBytes);
-    expect(readFileSync(migrated.tlsKeyPath!)).toEqual(keyBytes);
-    expect(migrated.publicKeyHash).toBe(generated.publicKeyHash);
-    expect(existsSync(retiredCertificate)).toBe(false);
-    expect(existsSync(retiredKey)).toBe(false);
+    // A second boot must not mint a new certificate: the pinned public-key hash the companion
+    // trusts is derived from these bytes, so regenerating them would silently break pairing.
+    const restarted = await configureRuntimeSecurity("0.0.0.0");
+    expect(readFileSync(restarted.tlsCertPath!)).toEqual(certificateBytes);
+    expect(readFileSync(restarted.tlsKeyPath!)).toEqual(keyBytes);
+    expect(restarted.publicKeyHash).toBe(generated.publicKeyHash);
   });
 });

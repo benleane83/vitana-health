@@ -17,6 +17,7 @@ import type {
   HealthDataDetailEntry,
   ReferenceRange
 } from "@vitana/shared";
+import { finiteExtent } from "@vitana/shared";
 import { formatChartTimestamp, formatDetailValue, formatTimestamp } from "../utils.js";
 
 const flatChartPaddingRatio = 0.05;
@@ -78,9 +79,9 @@ export function DensityBar({ density }: { density: number }) {
 // ─── Sparkline (trend mini chart) ─────────────────────────────────────────────
 
 export function MiniChart({ label, points }: { label: string; points: Array<{ date: string; value: number }> }) {
-  const values = points.map((p) => p.value);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  const extent = finiteExtent(points.map((p) => p.value));
+  const min = extent?.min ?? 0;
+  const max = extent?.max ?? 0;
   const range = max - min || 1;
   const path = points
     .map((point, index) => {
@@ -106,9 +107,9 @@ export function MiniChart({ label, points }: { label: string; points: Array<{ da
 // ─── Query result charts ───────────────────────────────────────────────────────
 
 export function QueryChart({ chart }: { chart: { type: string; series: AiQueryChartSeries[] } }) {
-  const values = chart.series.map((p) => p.value);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  const extent = finiteExtent(chart.series.map((p) => p.value));
+  const min = extent?.min ?? 0;
+  const max = extent?.max ?? 0;
   const range = max - min || 1;
   const summaryText = chart.series.length > 0
     ? `Chart: ${chart.series.length} data points from ${chart.series[0].label} to ${chart.series[chart.series.length - 1].label}, values ${min.toFixed(1)}–${max.toFixed(1)}`
@@ -275,15 +276,19 @@ export function DetailTrendChart({
     );
   }
 
-  const timestamps = points.map((p) => new Date(p.timestamp).getTime());
-  const values = points.map((p) => p.value);
-  const xMin = Math.min(...timestamps);
-  const xMax = Math.max(...timestamps);
-  const rawMin = Math.min(...values);
-  const rawMax = Math.max(...values);
-  const referenceValues = [referenceRange?.low, referenceRange?.high].filter((value): value is number => value !== undefined);
-  const combinedMin = Math.min(rawMin, ...referenceValues);
-  const combinedMax = Math.max(rawMax, ...referenceValues);
+  const timeExtent = finiteExtent(points.map((p) => new Date(p.timestamp).getTime()));
+  const pointExtent = finiteExtent(points.map((p) => p.value));
+  const valueExtent = finiteExtent([
+    ...points.map((p) => p.value),
+    referenceRange?.low,
+    referenceRange?.high
+  ]);
+  const xMin = timeExtent?.min ?? 0;
+  const xMax = timeExtent?.max ?? 0;
+  const rawMin = pointExtent?.min ?? 0;
+  const rawMax = pointExtent?.max ?? 0;
+  const combinedMin = valueExtent?.min ?? 0;
+  const combinedMax = valueExtent?.max ?? 0;
   const flatPadding =
     combinedMin === combinedMax
       ? Math.max(Math.abs(combinedMin) * flatChartPaddingRatio, minimumFlatChartPadding)

@@ -6,6 +6,7 @@ import { initializeDuckDbRoot } from "../storage/duckdbRuntime.js";
 import { createDuckDbHealthStoreFixture } from "./support/duckdbFixture.js";
 import { DuckDbHealthStore } from "../storage/duckdbHealthStore.js";
 import { createTestProfileFixture } from "../dev/testProfileFixture.js";
+import { findPreparedExtension } from "./support/duckdbExtension.js";
 
 const httpfsExtensionPath = findPreparedExtension();
 let root: string;
@@ -115,10 +116,3 @@ describe("DuckDbHealthStore lifecycle", () => {
     }
   });
 });
-
-function findPreparedExtension(): string | undefined {
-  return [
-    process.env.VITANA_DUCKDB_HTTPFS_EXTENSION,
-    resolve(process.cwd(), "apps", "desktop", "build", "duckdb-extensions", "httpfs.duckdb_extension")
-  ].find((candidate): candidate is string => Boolean(candidate && existsSync(candidate)));
-}

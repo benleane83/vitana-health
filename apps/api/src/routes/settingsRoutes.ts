@@ -2,11 +2,16 @@ import { randomBytes } from "node:crypto";
 import express from "express";
 import {
   aiSettingsRequestSchema,
+  aiSettingsResponseSchema,
+  desktopRuntimeSettingsResponseSchema,
   desktopRuntimeSettingsUpdateSchema,
+  desktopUpdateStateSchema,
+  modelValidationResponseSchema,
   type DesktopUpdateState,
   type DesktopRuntimeSettingsResponse,
   type DesktopRuntimeSettingsUpdate
 } from "@vitana/shared";
+import { sendJson } from "./sendJson.js";
 import { getAiSettings, saveAiSettings, toPublicAiSettings, type AiSettings } from "../aiSettings.js";
 import { evaluatePlannerCase, plannerEvaluationCases } from "../aiQueryEvaluation.js";
 import { planAiQuery, type PlannerFailureCategory } from "../aiQueryPlanner.js";
@@ -46,7 +51,7 @@ export function makeSettingsRoutes(options: {
 
   router.get("/desktop", async (_request, response, next) => {
     try {
-      response.json(options.desktopRuntimeController
+      sendJson(response, desktopRuntimeSettingsResponseSchema, options.desktopRuntimeController
         ? await options.desktopRuntimeController.getSettings()
         : { supported: false, backgroundServiceEnabled: false });
     } catch (error) {
@@ -64,7 +69,7 @@ export function makeSettingsRoutes(options: {
         });
         return;
       }
-      response.json(await options.desktopRuntimeController.updateSettings(settings));
+      sendJson(response, desktopRuntimeSettingsResponseSchema, await options.desktopRuntimeController.updateSettings(settings));
     } catch (error) {
       next(error);
     }
@@ -77,7 +82,7 @@ export function makeSettingsRoutes(options: {
     distributionChannel: "github"
   };
   router.get("/updates", (_request, response) => {
-    response.json(options.desktopUpdaterController?.getState() ?? unsupportedUpdateState);
+    sendJson(response, desktopUpdateStateSchema, options.desktopUpdaterController?.getState() ?? unsupportedUpdateState);
   });
   for (const [path, command] of [
     ["/updates/check", "check"],
@@ -93,7 +98,7 @@ export function makeSettingsRoutes(options: {
           });
           return;
         }
-        response.json(await options.desktopUpdaterController[command]());
+        sendJson(response, desktopUpdateStateSchema, await options.desktopUpdaterController[command]());
       } catch (error) {
         next(error);
       }
@@ -101,7 +106,7 @@ export function makeSettingsRoutes(options: {
   }
 
   router.get("/ai", (_request, response) => {
-    response.json(toPublicAiSettings(getAiSettings()));
+    sendJson(response, aiSettingsResponseSchema, toPublicAiSettings(getAiSettings()));
   });
 
   router.put("/ai", async (request, response, next) => {
@@ -121,7 +126,7 @@ export function makeSettingsRoutes(options: {
         apiKey: parsed.provider === "openai" ? submittedApiKey || (!originChanged ? current.apiKey : undefined) : undefined
       };
       plannerProbeCache.clear();
-      response.json(saveAiSettings(settings));
+      sendJson(response, aiSettingsResponseSchema, saveAiSettings(settings));
     } catch (error) {
       next(error);
     }
@@ -174,7 +179,7 @@ export function makeSettingsRoutes(options: {
     }
 
     const modelUnavailable = plannerProbe.failureCategory === "model";
-    response.json({
+    sendJson(response, modelValidationResponseSchema, {
       ok: !modelUnavailable,
       provider: settings.provider,
       endpoint: settings.endpoint,

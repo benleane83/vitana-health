@@ -21,6 +21,7 @@ import type {
   HealthEventListQuery,
   HealthEventMutationResponse,
   HealthStoreData,
+  ImportCategoryOutcome,
   LinkedCareItemConflict,
   MeasurementPinState,
   MobileMigrationBatch,
@@ -42,9 +43,14 @@ import type {
   UpdateObservationInput,
   UpdateObservationResponse
 } from "@vitana/shared";
+import type {
+  HealthConnectSyncBatchAcknowledgement,
+  HealthConnectSyncSessionResponse
+} from "@vitana/shared";
+import type { HealthConnectSyncSessionStart, StoredReplicaPage } from "./types.js";
 import type { MeasurementDetailPage } from "../summary.js";
 import type { ClinicianReportSourceImport } from "../clinicianReport.js";
-import type { StoredReplicaPage } from "./duckdbReplicaSync.js";
+import type { CompiledQuery } from "../queryCompiler.js";
 
 export interface ProfileImport {
   sourceImport: SourceImport;
@@ -55,12 +61,7 @@ export interface ProfileImport {
   activitySessions: HealthStoreData["activitySessions"];
 }
 
-export interface ImportCategoryOutcome {
-  attempted: number;
-  accepted: number;
-  duplicates: number;
-  evicted: 0;
-}
+export type { ImportCategoryOutcome };
 
 export interface ImportOutcome {
   sourceImport: ImportCategoryOutcome;
@@ -126,6 +127,17 @@ export interface ProfileRepository {
   deleteProfilePhoto(): Promise<boolean>;
   resetMeasurementTypeMetadataFromRegistry(): Promise<MeasurementRegistryResetResult>;
   mergeImport(imported: ProfileImport): Promise<ImportMutationResult>;
+  startHealthConnectSyncSession(
+    pairingId: string,
+    request: HealthConnectSyncSessionStart
+  ): Promise<HealthConnectSyncSessionResponse>;
+  /** Resolves to `undefined` when the session id is unknown for this pairing. */
+  applyHealthConnectSyncChunk(
+    pairingId: string,
+    sessionId: string,
+    batchId: string,
+    imported: ProfileImport
+  ): Promise<HealthConnectSyncBatchAcknowledgement | undefined>;
   startMobileMigration(pairingId: string, manifest: MobileMigrationManifest): Promise<MobileMigrationStartResponse>;
   applyMobileMigrationBatch(pairingId: string, batch: MobileMigrationBatch): Promise<MobileMigrationBatchAcknowledgement>;
   completeMobileMigration(pairingId: string, sessionId: string): Promise<MobileMigrationReceipt>;
@@ -134,6 +146,11 @@ export interface ProfileRepository {
   replicaSnapshotPage(pairingId: string, snapshotId: string, offset: number, limit: number): Promise<StoredReplicaPage | undefined>;
   replicaDeltaPage(afterSequence: number, highWaterSequence: number | undefined, limit: number): Promise<StoredReplicaPage>;
   addInsight(insight: HealthStoreData["insights"][number]): Promise<HealthStoreData["insights"][number]>;
+  /**
+   * Notes that a full export was taken. Separate from {@link ProfileRepository.exportData} so the
+   * short write and the long read are not forced to share a single serialized slot.
+   */
+  recordExportAudit(): Promise<void>;
   exportData(): Promise<HealthStoreData>;
   listHealthEvents(query: HealthEventListQuery): Promise<PaginatedResult<HealthEvent>>;
   createHealthEvent(input: CreateHealthEventInput): Promise<HealthEventMutationResponse>;
@@ -158,7 +175,7 @@ export interface ProfileRepository {
   deletePersonalReferenceRange(measurementCode: string): Promise<ReferenceRangeState>;
   pinMeasurement(measurementCode: string): Promise<MeasurementPinState>;
   unpinMeasurement(measurementCode: string): Promise<MeasurementPinState>;
-  runCompiledQuery(sql: string): Promise<Array<Record<string, unknown>>>;
+  runCompiledQuery(query: CompiledQuery): Promise<Array<Record<string, unknown>>>;
   close(): Promise<void>;
 }
 

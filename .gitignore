@@ -2,7 +2,10 @@ node_modules/
 dist/
 .env
 .env.local
-data/
+# Anchored: only the two real data directories, not any nested folder that happens
+# to be called "data".
+/data/
+/apps/api/data/
 *.log
 *.tsbuildinfo
 .DS_Store

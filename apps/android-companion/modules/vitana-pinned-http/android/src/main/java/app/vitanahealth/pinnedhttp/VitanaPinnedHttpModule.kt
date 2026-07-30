@@ -1,5 +1,6 @@
 package app.vitanahealth.pinnedhttp
 
+import expo.modules.kotlin.exception.CodedException
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.io.IOException
@@ -8,16 +9,32 @@ import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLHandshakeException
+import javax.net.ssl.SSLPeerUnverifiedException
 import javax.net.ssl.X509TrustManager
+import okhttp3.Call
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
+/**
+ * Carries a stable machine-readable code alongside the user-facing message so the JS retry policy
+ * can decide what is worth retrying without pattern-matching on prose.
+ *
+ * The permitted codes are defined once in `packages/shared/src/pinnedHttp.ts`, which is also what
+ * an iOS implementation of this module has to satisfy.
+ */
+private class PinnedHttpException(code: String, message: String) : CodedException(code, message, null)
+
 class VitanaPinnedHttpModule : Module() {
   private data class ClientKey(val publicKeyHash: String, val timeoutMs: Int)
+
+  /** In-flight calls by request id, so JS can cancel a long upload instead of just dropping it. */
+  private val calls = ConcurrentHashMap<String, Call>()
 
   private val clients = object : LinkedHashMap<ClientKey, OkHttpClient>(4, 0.75f, true) {
     override fun removeEldestEntry(eldest: MutableMap.MutableEntry<ClientKey, OkHttpClient>): Boolean {
@@ -31,10 +48,18 @@ class VitanaPinnedHttpModule : Module() {
     Name("VitanaPinnedHttp")
 
     OnDestroy {
+      calls.values.forEach(Call::cancel)
+      calls.clear()
       synchronized(clients) {
         clients.values.forEach(::closeClient)
         clients.clear()
       }
+    }
+
+    AsyncFunction("cancel") { requestId: String ->
+      val call = calls.remove(requestId)
+      call?.cancel()
+      call != null
     }
 
     AsyncFunction("request") {
@@ -43,15 +68,18 @@ class VitanaPinnedHttpModule : Module() {
       headers: Map<String, String>,
       body: String?,
       publicKeyHash: String,
-      timeoutMs: Int? ->
+      timeoutMs: Int?,
+      requestId: String? ->
       val requestTimeoutMs = (timeoutMs ?: 15_000).coerceIn(1_000, 120_000)
       val client = clientFor(publicKeyHash, requestTimeoutMs)
       val requestBuilder = Request.Builder().url(url)
       headers.forEach { (name, value) -> requestBuilder.header(name, value) }
       val requestBody = body?.toRequestBody(headers["Content-Type"]?.toMediaTypeOrNull())
       requestBuilder.method(method.uppercase(), requestBody)
+      val call = client.newCall(requestBuilder.build())
+      requestId?.let { calls[it] = call }
       try {
-        client.newCall(requestBuilder.build()).execute().use { response ->
+        call.execute().use { response ->
           mapOf(
             "status" to response.code,
             "body" to (response.body?.string() ?: ""),
@@ -59,13 +87,30 @@ class VitanaPinnedHttpModule : Module() {
           )
         }
       } catch (error: SocketTimeoutException) {
-        throw Exception("The request timed out. Check that your paired PC is awake and reachable, then try again.")
+        throw PinnedHttpException("network-timeout", "The request timed out. Check that your paired PC is awake and reachable, then try again.")
       } catch (error: UnknownHostException) {
-        throw Exception("Could not find your paired PC on the local network. Check its connection and try again.")
+        throw PinnedHttpException("network-unreachable", "Could not find your paired PC on the local network. Check its connection and try again.")
       } catch (error: ConnectException) {
-        throw Exception("Could not connect to your paired PC. Check that it is running and reachable, then try again.")
+        throw PinnedHttpException("network-connect-failed", "Could not connect to your paired PC. Check that it is running and reachable, then try again.")
+      } catch (error: SSLPeerUnverifiedException) {
+        // Must be caught ahead of IOException. A failed pin is not a flaky hop: retrying it would
+        // hammer whatever is answering, and reporting it as a network blip would hide the one
+        // failure the user has to act on.
+        throw PinnedHttpException("tls-pinning-failed", "Your paired PC did not match the identity you scanned. Pair again from the PC to be sure you are connecting to the right machine.")
+      } catch (error: SSLHandshakeException) {
+        val pinningFailure = generateSequence<Throwable>(error, Throwable::cause)
+          .any { it is java.security.cert.CertificateException }
+        if (pinningFailure) {
+          throw PinnedHttpException("tls-pinning-failed", "Your paired PC did not match the identity you scanned. Pair again from the PC to be sure you are connecting to the right machine.")
+        }
+        throw PinnedHttpException("tls-handshake-failed", "Could not establish a secure connection to your paired PC. Pair again from the PC, then try once more.")
       } catch (error: IOException) {
-        throw Exception("The connection to your paired PC was interrupted. Check the local network and try again.")
+        if (call.isCanceled()) {
+          throw PinnedHttpException("cancelled", "The request was cancelled.")
+        }
+        throw PinnedHttpException("network-interrupted", "The connection to your paired PC was interrupted. Check the local network and try again.")
+      } finally {
+        requestId?.let { calls.remove(it) }
       }
     }
   }

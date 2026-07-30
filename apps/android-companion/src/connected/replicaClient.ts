@@ -1,4 +1,6 @@
 import {
+  COMPANION_REPLICA_MAX_PROTOCOL_VERSION,
+  COMPANION_REPLICA_MIN_PROTOCOL_VERSION,
   COMPANION_REPLICA_PAGE_SIZE,
   replicaHandshakeSchema,
   replicaPageSchema,
@@ -44,7 +46,8 @@ export class ReplicaClient {
   constructor(private readonly network: ReplicaNetwork) {}
 
   async handshake(): Promise<ReplicaHandshake> {
-    return replicaHandshakeSchema.parse(await this.network.get("/api/companion/sync/handshake"));
+    const range = `minProtocolVersion=${COMPANION_REPLICA_MIN_PROTOCOL_VERSION}&maxProtocolVersion=${COMPANION_REPLICA_MAX_PROTOCOL_VERSION}`;
+    return replicaHandshakeSchema.parse(await this.network.get(`/api/companion/sync/handshake?${range}`));
   }
 
   async snapshot(cursor?: string): Promise<ReplicaPage> {

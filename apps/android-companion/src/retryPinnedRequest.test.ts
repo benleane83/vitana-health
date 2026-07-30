@@ -8,7 +8,7 @@ describe("retryPinnedRequest", () => {
       .mockResolvedValueOnce({ sessionId: "session-1" });
     const sleep = vi.fn(async () => undefined);
 
-    await expect(retryPinnedRequest(request, { sleep })).resolves.toEqual({ sessionId: "session-1" });
+    await expect(retryPinnedRequest(request, { sleep, random: () => 1 })).resolves.toEqual({ sessionId: "session-1" });
 
     expect(request).toHaveBeenCalledTimes(2);
     expect(sleep).toHaveBeenCalledWith(1000);
@@ -29,9 +29,19 @@ describe("retryPinnedRequest", () => {
     const request = vi.fn().mockRejectedValue(failure);
     const sleep = vi.fn(async () => undefined);
 
-    await expect(retryPinnedRequest(request, { sleep })).rejects.toBe(failure);
+    await expect(retryPinnedRequest(request, { sleep, random: () => 1 })).rejects.toBe(failure);
     expect(request).toHaveBeenCalledTimes(3);
     expect(sleep).toHaveBeenNthCalledWith(1, 1000);
     expect(sleep).toHaveBeenNthCalledWith(2, 2000);
+  });
+
+  it("jitters the backoff so resumed chunks do not retry in lockstep", async () => {
+    const failure = new Error("Connection timed out after 60 seconds.");
+    const request = vi.fn().mockRejectedValue(failure);
+    const sleep = vi.fn(async () => undefined);
+
+    await expect(retryPinnedRequest(request, { sleep, random: () => 0.25 })).rejects.toBe(failure);
+    expect(sleep).toHaveBeenNthCalledWith(1, 250);
+    expect(sleep).toHaveBeenNthCalledWith(2, 500);
   });
 });

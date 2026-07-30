@@ -1,19 +1,14 @@
-import {
-  closeSync,
-  existsSync,
-  fsyncSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { access, mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
+import type { FileHandle } from "node:fs/promises";
 import { createHash, randomBytes } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import {
-  CURRENT_SCHEMA_VERSION,
+  EXPORT_FORMAT_VERSION,
   defaultMeasurementTypes,
+  pinnedHttpfsSha256,
+  supportedHostPlatform,
+  supportedHostPlatformsDescription,
   type HealthStoreData,
   type Profile,
   type ProfilePhotoMetadata,
@@ -21,31 +16,41 @@ import {
 } from "@vitana/shared";
 import { initializeDuckDbRoot, type DuckDbOptions } from "./duckdbRuntime.js";
 import { DuckDbHealthStore } from "./duckdbHealthStore.js";
+import { LazyProfileStore, defaultIdleTimeoutMs } from "./lazyProfileStore.js";
 import type { ManagedProfileRepository } from "./profileRepository.js";
+import type { CompiledQuery } from "../queryCompiler.js";
+import type { StorageBackend, StoreSecurityConfig, StoreSecurityMode } from "./types.js";
 import { RestoreJournal } from "./restoreJournal.js";
-
-export type StoreSecurityMode = "env-secret" | "generated-local-key" | "os-secure-storage";
-
-export interface StoreSecurityConfig {
-  passphrase: string;
-  securityMode: StoreSecurityMode;
-}
+import { sweepOrphanedTempFiles } from "./orphanedTempFiles.js";
 
 export interface DuckDbActivationOptions {
   httpfsExtensionPath: string;
   root?: string;
 }
 
+// Defined in the neutral module and re-exported here, which is where callers have always found
+// them. A second engine has to satisfy the same security contract, so it is not DuckDB's to own.
+export type { StorageBackend, StoreSecurityConfig, StoreSecurityMode };
+
 export interface OpenProfileStoreManagerOptions {
   security?: StoreSecurityConfig;
-  storageBackend: "duckdb";
+  storageBackend: StorageBackend;
   duckdb: DuckDbActivationOptions;
+  /** Overridable so tests can assert eviction without waiting out the real idle window. */
+  idleTimeoutMs?: number;
 }
 
 interface StorageBackendManifest {
   version: 1;
-  backend: "duckdb";
+  backend: StorageBackend;
   activatedAt: string;
+  /**
+   * Provenance for the store as a whole. When a user reports a broken profile this is the only
+   * record of which build last touched it, and it is what tells a downgraded build that it is
+   * looking at data from the future.
+   */
+  lastWrittenByAppVersion?: string;
+  lastWrittenAt?: string;
   profiles: Array<{ profileId: string; databaseFile: string }>;
 }
 
@@ -63,28 +68,53 @@ export interface RestoreProfileResult {
   success: true;
 }
 
-const windowsX64HttpfsSha256 = "21eea4547cf5aa5231f4838906e8935067c956f56a5efd09035a51189af8a77b";
+/**
+ * A caller asked for a profile that does not exist. Carries `status` so the centralized error
+ * handler answers 404 rather than burying a routine typo in an opaque 500.
+ */
+export class ProfileNotFoundError extends Error {
+  readonly status = 404;
+  readonly code = "PROFILE_NOT_FOUND";
+  constructor(message: string) {
+    super(message);
+    this.name = "ProfileNotFoundError";
+  }
+}
+
+/** The request was understood but conflicts with the current profile state (for example, deleting the last profile). */
+export class ProfileConflictError extends Error {
+  readonly status = 409;
+  readonly code = "PROFILE_CONFLICT";
+  constructor(message: string) {
+    super(message);
+    this.name = "ProfileConflictError";
+  }
+}
 
 export class ProfileStoreManager {
   readonly securityMode: StoreSecurityMode;
 
   private readonly passphrase: string;
-  private stores = new Map<string, DuckDbHealthStore>();
+  private readonly idleTimeoutMs: number;
+  private stores = new Map<string, LazyProfileStore>();
   private profiles: ProfileListEntry[] = [];
   private activeProfileId = "self";
   private manifest: StorageBackendManifest | undefined;
   private root: string | undefined;
   private duckdbOptions: DuckDbOptions | undefined;
 
-  private constructor(security?: StoreSecurityConfig) {
-    mkdirSync(resolveDataDir(), { recursive: true });
-    const resolvedSecurity = security ?? resolveStoreSecurityConfig();
-    this.passphrase = resolvedSecurity.passphrase;
-    this.securityMode = resolvedSecurity.securityMode;
+  private constructor(security: StoreSecurityConfig, idleTimeoutMs: number) {
+    this.passphrase = security.passphrase;
+    this.securityMode = security.securityMode;
+    this.idleTimeoutMs = idleTimeoutMs;
   }
 
   static async open(options: OpenProfileStoreManagerOptions): Promise<ProfileStoreManager> {
-    const manager = new ProfileStoreManager(options.security);
+    await mkdir(resolveDataDir(), { recursive: true });
+    const manager = new ProfileStoreManager(
+      options.security ?? resolveStoreSecurityConfig(),
+      options.idleTimeoutMs ?? defaultIdleTimeoutMs
+    );
     await manager.openDuckDb(options.duckdb);
     return manager;
   }
@@ -93,11 +123,11 @@ export class ProfileStoreManager {
     return [...this.profiles];
   }
 
-  syncProfilePhotoMetadata(profileId: string, profilePhoto?: ProfilePhotoMetadata): void {
+  async syncProfilePhotoMetadata(profileId: string, profilePhoto?: ProfilePhotoMetadata): Promise<void> {
     this.profiles = this.profiles.map((entry) =>
       entry.id === profileId ? { ...entry, profilePhoto: photoMetadata(profilePhoto) } : entry
     );
-    persistProfileRegistry(this.profiles);
+    await persistProfileRegistry(this.profiles);
   }
 
   getActiveProfileId(): string {
@@ -112,17 +142,34 @@ export class ProfileStoreManager {
     const normalizedId = normalizeProfileId(profileId);
     const store = this.stores.get(normalizedId);
     if (!store) {
-      throw new Error(`DuckDB profile ${normalizedId} is not registered.`);
+      throw new ProfileNotFoundError(`DuckDB profile ${normalizedId} is not registered.`);
     }
-    return store;
+    this.evictIdleStores(normalizedId);
+    return store.repository;
   }
 
-  getStorageBackend(): "duckdb" {
+  /**
+   * Opportunistic sweep, run whenever a store is handed out. There is no background timer to unref,
+   * stop or leak, and the moment attention moves to one profile is exactly the moment the others
+   * became reclaimable.
+   */
+  private evictIdleStores(keepProfileId: string): void {
+    for (const [profileId, store] of this.stores) {
+      if (profileId === keepProfileId || !store.isOpen) {
+        continue;
+      }
+      void store.evictIfIdle(this.idleTimeoutMs).catch((error: unknown) => {
+        console.error(`Failed to close the idle profile store ${profileId}.`, error);
+      });
+    }
+  }
+
+  getStorageBackend(): StorageBackend {
     return "duckdb";
   }
 
-  runActiveCompiledQuery(sql: string): Promise<Array<Record<string, unknown>>> {
-    return this.getActiveStore().runCompiledQuery(sql);
+  runActiveCompiledQuery(query: CompiledQuery): Promise<Array<Record<string, unknown>>> {
+    return this.getActiveStore().runCompiledQuery(query);
   }
 
   async createProfile(displayName: string): Promise<ProfileListEntry> {
@@ -138,20 +185,20 @@ export class ProfileStoreManager {
       const entry = profileListEntryFromProfile(await store.getProfile());
       const nextProfiles = [...this.profiles, entry];
       const nextManifest = { ...manifest, profiles: [...manifest.profiles, { profileId: id, databaseFile }] };
-      persistProfileRegistry(nextProfiles);
+      await persistProfileRegistry(nextProfiles);
       try {
-        persistStorageBackendManifest(nextManifest);
+        await persistStorageBackendManifest(nextManifest);
       } catch (error) {
-        persistProfileRegistry(this.profiles);
+        await persistProfileRegistry(this.profiles);
         throw error;
       }
       this.profiles = nextProfiles;
       this.manifest = nextManifest;
-      this.stores.set(id, store);
+      this.stores.set(id, this.lazyStore(id, databasePath, store));
       return entry;
     } catch (error) {
       await store?.close().catch(() => undefined);
-      removeDuckDbProfileFiles(databasePath);
+      await removeDuckDbProfileFiles(databasePath);
       throw error;
     }
   }
@@ -179,7 +226,6 @@ export class ProfileStoreManager {
     journal.snapshotMetadataFile(storageBackendManifestPath());
     journal.snapshotMetadataFile(activeProfilePath());
     journal.setPhase("hydrating");
-
     try {
       for (const request of requests) {
         const existsLocally = reservedIds.has(request.sourceProfileId);
@@ -220,17 +266,16 @@ export class ProfileStoreManager {
       for (const item of prepared) {
         if (item.existed) {
           await this.stores.get(item.targetId)!.close();
-          renameSync(item.livePath, item.rollbackPath!);
+          await rename(item.livePath, item.rollbackPath!);
         }
-        renameSync(item.stagedPath, item.livePath);
-        const replacement = await DuckDbHealthStore.open(this.storeOptions(item.targetId, item.livePath));
-        this.stores.set(item.targetId, replacement);
+        await rename(item.stagedPath, item.livePath);
+        this.stores.set(item.targetId, this.lazyStore(item.targetId, item.livePath));
         journal.updateEntryStatus(item.request.sourceProfileId, "committed");
       }
 
       const restoredIds = new Set(prepared.map((item) => item.targetId));
       const restoredProfiles = await Promise.all(
-        prepared.map(async (item) => profileListEntryFromProfile(await this.stores.get(item.targetId)!.getProfile()))
+        prepared.map(async (item) => profileListEntryFromProfile(await this.stores.get(item.targetId)!.repository.getProfile()))
       );
       this.profiles = [
         ...this.profiles.filter((profile) => !restoredIds.has(profile.id)),
@@ -243,8 +288,8 @@ export class ProfileStoreManager {
           ...prepared.map((item) => ({ profileId: item.targetId, databaseFile: item.databaseFile }))
         ]
       };
-      persistProfileRegistry(this.profiles);
-      persistStorageBackendManifest(this.manifest);
+      await persistProfileRegistry(this.profiles);
+      await persistStorageBackendManifest(this.manifest);
       journal.complete();
       return prepared.map((item) => ({
         profileId: item.request.sourceProfileId,
@@ -260,34 +305,36 @@ export class ProfileStoreManager {
       if (!journal.rollback()) throw new Error("Restore failed and compensation could not be verified.", { cause: error });
       this.profiles = originalProfiles;
       this.manifest = originalManifest;
+      // The surviving handles reopen on demand, so putting the original map back is the whole
+      // recovery: any handle closed during the commit loop simply reopens the rolled-back file.
       this.stores = originalStores;
-      for (const item of prepared.filter((candidate) => candidate.existed)) {
-        this.stores.set(item.targetId, await DuckDbHealthStore.open(this.storeOptions(item.targetId, item.livePath)));
-      }
       throw error;
     }
   }
 
-  setActiveProfile(profileId: string): string {
+  async setActiveProfile(profileId: string): Promise<string> {
     const normalizedId = normalizeProfileId(profileId);
     if (!this.profiles.some((entry) => entry.id === normalizedId)) {
-      throw new Error("Profile not found.");
+      throw new ProfileNotFoundError("Profile not found.");
     }
     this.activeProfileId = normalizedId;
-    this.persistActiveProfile();
+    await this.persistActiveProfile();
+    // Drop the handle if it is resident but idle so it reopens with the active profile's larger
+    // memory limit rather than the one it was given as a background profile.
+    await this.stores.get(normalizedId)?.evictIfIdle(0);
     return normalizedId;
   }
 
   async deleteProfile(profileId: string): Promise<{ activeProfileId: string }> {
     const normalizedId = normalizeProfileId(profileId);
     if (this.profiles.length <= 1) {
-      throw new Error("Cannot delete the last remaining profile.");
+      throw new ProfileConflictError("Cannot delete the last remaining profile.");
     }
     const manifest = this.requireOpenStorage();
     const manifestEntry = manifest.profiles.find((entry) => entry.profileId === normalizedId);
     const store = this.stores.get(normalizedId);
     if (!manifestEntry || !store) {
-      throw new Error("Profile not found.");
+      throw new ProfileNotFoundError("Profile not found.");
     }
 
     const nextProfiles = this.profiles.filter((entry) => entry.id !== normalizedId);
@@ -295,11 +342,11 @@ export class ProfileStoreManager {
       ...manifest,
       profiles: manifest.profiles.filter((entry) => entry.profileId !== normalizedId)
     };
-    persistProfileRegistry(nextProfiles);
+    await persistProfileRegistry(nextProfiles);
     try {
-      persistStorageBackendManifest(nextManifest);
+      await persistStorageBackendManifest(nextManifest);
     } catch (error) {
-      persistProfileRegistry(this.profiles);
+      await persistProfileRegistry(this.profiles);
       throw error;
     }
     this.profiles = nextProfiles;
@@ -307,70 +354,108 @@ export class ProfileStoreManager {
     this.stores.delete(normalizedId);
     if (this.activeProfileId === normalizedId) {
       this.activeProfileId = this.profiles[0].id;
-      this.persistActiveProfile();
+      await this.persistActiveProfile();
     }
     await store.close();
-    removeDuckDbProfileFiles(resolve(this.root!, "databases", manifestEntry.databaseFile));
+    await removeDuckDbProfileFiles(resolve(this.root!, "databases", manifestEntry.databaseFile));
     return { activeProfileId: this.activeProfileId };
   }
 
-  syncProfileEntry(profile: Profile): void {
+  async syncProfileEntry(profile: Profile): Promise<void> {
     const normalizedId = normalizeProfileId(profile.id);
     const index = this.profiles.findIndex((entry) => entry.id === normalizedId);
     if (index < 0) {
-      throw new Error(`DuckDB profile ${normalizedId} is not registered.`);
+      throw new ProfileNotFoundError(`DuckDB profile ${normalizedId} is not registered.`);
     }
     this.profiles[index] = profileListEntryFromProfile(profile, this.profiles[index].profilePhoto);
-    persistProfileRegistry(this.profiles);
+    await persistProfileRegistry(this.profiles);
   }
 
   async closeAll(): Promise<void> {
-    await Promise.all([...this.stores.values()].map((store) => store.close()));
+    // `allSettled`, not `all`: a single store that fails to check point must not abort shutdown and
+    // leave every other store open with an unflushed WAL.
+    const results = await Promise.allSettled([...this.stores.values()].map((store) => store.close()));
     this.stores.clear();
+    for (const result of results) {
+      if (result.status === "rejected") {
+        console.error("Failed to close a profile store during shutdown.", result.reason);
+      }
+    }
   }
 
   private async openDuckDb(options: DuckDbActivationOptions): Promise<void> {
-    validateDuckDbRuntime(options);
+    await validateDuckDbRuntime(options);
     RestoreJournal.recover(resolveDataDir());
     this.root = initializeDuckDbRoot(options.root ?? duckdbStorageRoot());
-    this.duckdbOptions = { httpfsExtensionPath: options.httpfsExtensionPath, memoryLimit: "256MB" };
-    const existingManifest = loadStorageBackendManifest();
+    sweepOrphanedTempFiles([resolveDataDir(), this.root, resolve(this.root, "databases")]);
+    this.duckdbOptions = { httpfsExtensionPath: options.httpfsExtensionPath };
+    const existingManifest = await loadStorageBackendManifest();
     const manifest = existingManifest ?? createInitialManifest();
-    const opened = new Map<string, DuckDbHealthStore>();
+    const opened = new Map<string, LazyProfileStore>();
 
     try {
       for (const entry of manifest.profiles) {
         const databasePath = resolve(this.root, "databases", entry.databaseFile);
-        if (existingManifest && !existsSync(databasePath)) {
-          throw new Error(`DuckDB database is missing for profile ${entry.profileId}: ${databasePath}`);
+        if (existingManifest) {
+          if (!(await fileExists(databasePath))) {
+            throw new Error(`DuckDB database is missing for profile ${entry.profileId}: ${databasePath}`);
+          }
+          // Registered, not opened. Nothing has asked to read this profile yet.
+          opened.set(entry.profileId, this.lazyStore(entry.profileId, databasePath));
+        } else {
+          const store = await DuckDbHealthStore.hydrate(
+            this.storeOptions(entry.profileId, databasePath),
+            createEmptyStore(entry.profileId)
+          );
+          opened.set(entry.profileId, this.lazyStore(entry.profileId, databasePath, store));
         }
-        const store = existingManifest
-          ? await DuckDbHealthStore.open(this.storeOptions(entry.profileId, databasePath))
-          : await DuckDbHealthStore.hydrate(
-              this.storeOptions(entry.profileId, databasePath),
-              createEmptyStore(entry.profileId)
-            );
-        opened.set(entry.profileId, store);
       }
       if (!existingManifest) {
-        persistStorageBackendManifest(manifest);
+        await persistStorageBackendManifest(manifest);
       }
       this.stores = opened;
       this.manifest = manifest;
-      this.profiles = await Promise.all([...opened.values()].map(async (store) => {
-        const [profile, photo] = await Promise.all([store.getProfile(), store.getProfilePhoto()]);
-        return profileListEntryFromProfile(profile, photo);
-      }));
-      persistProfileRegistry(this.profiles);
-      const selectedProfileId = loadActiveProfileId();
+      this.profiles = await this.resolveProfileList(manifest);
+      await persistProfileRegistry(this.profiles);
+      const selectedProfileId = await loadActiveProfileId();
       this.activeProfileId = selectedProfileId && opened.has(selectedProfileId)
         ? selectedProfileId
         : this.profiles[0].id;
-      this.persistActiveProfile();
+      await this.persistActiveProfile();
     } catch (error) {
       await Promise.all([...opened.values()].map((store) => store.close().catch(() => undefined)));
       throw error;
     }
+  }
+
+  /**
+   * The registry file is this manager's own projection of every profile's identity, rewritten on
+   * every change that could invalidate it. Trusting it while it still lines up with the manifest is
+   * what keeps startup from opening a database per family member just to read a display name.
+   */
+  private async resolveProfileList(manifest: StorageBackendManifest): Promise<ProfileListEntry[]> {
+    const expectedIds = manifest.profiles.map((entry) => entry.profileId);
+    const registered = await loadProfileRegistry();
+    if (
+      registered &&
+      registered.length === expectedIds.length &&
+      expectedIds.every((profileId, index) => registered[index].id === profileId)
+    ) {
+      return registered;
+    }
+    return Promise.all(expectedIds.map(async (profileId) => {
+      const store = this.stores.get(profileId)!.repository;
+      const [profile, photo] = await Promise.all([store.getProfile(), store.getProfilePhoto()]);
+      return profileListEntryFromProfile(profile, photo);
+    }));
+  }
+
+  private lazyStore(profileId: string, databasePath: string, initial?: DuckDbHealthStore): LazyProfileStore {
+    return new LazyProfileStore({
+      profileId,
+      open: () => DuckDbHealthStore.open(this.storeOptions(profileId, databasePath)),
+      ...(initial ? { initial } : {})
+    });
   }
 
   private storeOptions(profileId: string, databasePath: string) {
@@ -380,7 +465,12 @@ export class ProfileStoreManager {
       profileId,
       passphrase: this.passphrase,
       securityMode: this.securityMode,
-      duckdb: this.duckdbOptions!
+      duckdb: {
+        ...this.duckdbOptions!,
+        // Only the profile being looked at gets the import-sized budget. Reserving it for every
+        // registered family member multiplied the configured limit by the size of the household.
+        memoryLimit: profileId === this.activeProfileId ? "256MB" : "64MB"
+      } satisfies DuckDbOptions
     };
   }
 
@@ -391,14 +481,14 @@ export class ProfileStoreManager {
     return this.manifest;
   }
 
-  private persistActiveProfile(): void {
-    atomicWriteJson(activeProfilePath(), { profileId: this.activeProfileId });
+  private persistActiveProfile(): Promise<void> {
+    return atomicWriteJson(activeProfilePath(), { profileId: this.activeProfileId });
   }
 }
 
 function createEmptyStore(profileId = "self", displayName = "Local user"): HealthStoreData {
   return {
-    schemaVersion: CURRENT_SCHEMA_VERSION,
+    schemaVersion: EXPORT_FORMAT_VERSION,
     profile: {
       id: normalizeProfileId(profileId),
       displayName,
@@ -432,25 +522,30 @@ function createInitialManifest(): StorageBackendManifest {
   };
 }
 
-function validateDuckDbRuntime(options: DuckDbActivationOptions): void {
-  if (process.platform !== "win32" || process.arch !== "x64") {
-    throw new Error("DuckDB storage productionization is currently approved only for Windows x64.");
+async function validateDuckDbRuntime(options: DuckDbActivationOptions): Promise<void> {
+  if (!supportedHostPlatform(process.platform, process.arch)) {
+    throw new Error(
+      `DuckDB storage is not approved for ${process.platform}/${process.arch}. `
+        + `Approved hosts: ${supportedHostPlatformsDescription()}.`
+    );
   }
-  if (!existsSync(options.httpfsExtensionPath)) {
+  const extension = await readFile(options.httpfsExtensionPath).catch(() => undefined);
+  if (!extension) {
     throw new Error(`Pinned DuckDB extension is unavailable at ${options.httpfsExtensionPath}.`);
   }
-  const digest = createHash("sha256").update(readFileSync(options.httpfsExtensionPath)).digest("hex");
-  if (digest !== windowsX64HttpfsSha256) {
+  const digest = createHash("sha256").update(extension).digest("hex");
+  const expected = pinnedHttpfsSha256(process.platform, process.arch);
+  if (!expected || digest !== expected) {
     throw new Error("Pinned DuckDB extension failed SHA-256 verification.");
   }
 }
 
-function loadStorageBackendManifest(): StorageBackendManifest | undefined {
-  const path = storageBackendManifestPath();
-  if (!existsSync(path)) {
+async function loadStorageBackendManifest(): Promise<StorageBackendManifest | undefined> {
+  const raw = await readFileIfPresent(storageBackendManifestPath());
+  if (raw === undefined) {
     return undefined;
   }
-  const parsed = JSON.parse(readFileSync(path, "utf8")) as StorageBackendManifest;
+  const parsed = JSON.parse(raw) as StorageBackendManifest;
   if (
     parsed.version !== 1 ||
     parsed.backend !== "duckdb" ||
@@ -471,37 +566,108 @@ function loadStorageBackendManifest(): StorageBackendManifest | undefined {
     version: 1,
     backend: "duckdb",
     activatedAt: parsed.activatedAt,
+    ...(typeof parsed.lastWrittenByAppVersion === "string"
+      ? { lastWrittenByAppVersion: parsed.lastWrittenByAppVersion }
+      : {}),
+    ...(typeof parsed.lastWrittenAt === "string" ? { lastWrittenAt: parsed.lastWrittenAt } : {}),
     profiles: parsed.profiles.map(({ profileId, databaseFile }) => ({ profileId, databaseFile }))
   };
 }
 
-function persistStorageBackendManifest(manifest: StorageBackendManifest): void {
-  atomicWriteJson(storageBackendManifestPath(), manifest);
+function persistStorageBackendManifest(manifest: StorageBackendManifest): Promise<void> {
+  return atomicWriteJson(storageBackendManifestPath(), {
+    ...manifest,
+    lastWrittenByAppVersion: currentAppVersion(),
+    lastWrittenAt: new Date().toISOString()
+  } satisfies StorageBackendManifest);
 }
 
-function persistProfileRegistry(profiles: ProfileListEntry[]): void {
-  atomicWriteJson(profilesPath(), { profiles });
+/**
+ * The desktop shell passes its own version through the environment; outside it the workspace
+ * version is the best available answer.
+ */
+function currentAppVersion(): string {
+  return process.env.VITANA_APP_VERSION ?? process.env.npm_package_version ?? "unknown";
 }
 
-function atomicWriteJson(path: string, value: unknown): void {
-  const temporaryPath = `${path}.tmp-${process.pid}-${Date.now()}-${randomBytes(4).toString("hex")}`;
-  try {
-    writeFileSync(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-    fsyncPath(temporaryPath);
-    renameSync(temporaryPath, path);
-    fsyncPath(path);
-    fsyncPath(dirname(path));
-  } finally {
-    rmSync(temporaryPath, { force: true });
-  }
+function persistProfileRegistry(profiles: ProfileListEntry[]): Promise<void> {
+  return atomicWriteJson(profilesPath(), { profiles });
 }
 
-function loadActiveProfileId(): string | undefined {
-  if (!existsSync(activeProfilePath())) {
+/** Returns the persisted profile list, or `undefined` when it is absent or does not parse. */
+async function loadProfileRegistry(): Promise<ProfileListEntry[] | undefined> {
+  const raw = await readFileIfPresent(profilesPath());
+  if (raw === undefined) {
     return undefined;
   }
   try {
-    const parsed = JSON.parse(readFileSync(activeProfilePath(), "utf8")) as { profileId?: string };
+    const parsed = JSON.parse(raw) as { profiles?: unknown };
+    if (!Array.isArray(parsed.profiles) || !parsed.profiles.every(isProfileListEntry)) {
+      return undefined;
+    }
+    return parsed.profiles.map((entry) => ({
+      id: entry.id,
+      displayName: entry.displayName,
+      updatedAt: entry.updatedAt,
+      profilePhoto: photoMetadata(entry.profilePhoto)
+    }));
+  } catch {
+    return undefined;
+  }
+}
+
+function isProfileListEntry(value: unknown): value is ProfileListEntry {
+  const entry = value as ProfileListEntry | null;
+  return Boolean(
+    entry &&
+    typeof entry.id === "string" &&
+    typeof entry.displayName === "string" &&
+    typeof entry.updatedAt === "string" &&
+    (entry.profilePhoto === undefined ||
+      (typeof entry.profilePhoto.revision === "string" && typeof entry.profilePhoto.updatedAt === "string"))
+  );
+}
+
+async function readFileIfPresent(path: string): Promise<string | undefined> {
+  try {
+    return await readFile(path, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function atomicWriteJson(path: string, value: unknown): Promise<void> {
+  const temporaryPath = `${path}.tmp-${process.pid}-${Date.now()}-${randomBytes(4).toString("hex")}`;
+  try {
+    await writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+    await fsyncPath(temporaryPath);
+    await rename(temporaryPath, path);
+    await fsyncPath(path);
+    await fsyncPath(dirname(path));
+  } finally {
+    await rm(temporaryPath, { force: true });
+  }
+}
+
+async function loadActiveProfileId(): Promise<string | undefined> {
+  const raw = await readFileIfPresent(activeProfilePath());
+  if (raw === undefined) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(raw) as { profileId?: string };
     return typeof parsed.profileId === "string" ? normalizeProfileId(parsed.profileId) : undefined;
   } catch {
     return undefined;
@@ -543,9 +709,9 @@ function isDirectChildFileName(value: string): boolean {
   return value.length > 0 && value !== "." && value !== ".." && !/[\\/]/.test(value);
 }
 
-function removeDuckDbProfileFiles(databasePath: string): void {
-  rmSync(databasePath, { force: true });
-  rmSync(`${databasePath}.wal`, { force: true });
+async function removeDuckDbProfileFiles(databasePath: string): Promise<void> {
+  await rm(databasePath, { force: true });
+  await rm(`${databasePath}.wal`, { force: true });
 }
 
 export function resolveStoreSecurityConfig(): StoreSecurityConfig {
@@ -602,16 +768,14 @@ function storageBackendManifestPath(): string {
   return resolve(resolveDataDir(), "storage-backend.json");
 }
 
-function fsyncPath(path: string): void {
-  let descriptor: number | undefined;
+async function fsyncPath(path: string): Promise<void> {
+  let handle: FileHandle | undefined;
   try {
-    descriptor = openSync(path, "r");
-    fsyncSync(descriptor);
+    handle = await open(path, "r");
+    await handle.sync();
   } catch {
     // Best-effort durability on filesystems that do not support fsync for every path type.
   } finally {
-    if (descriptor !== undefined) {
-      closeSync(descriptor);
-    }
+    await handle?.close().catch(() => undefined);
   }
 }

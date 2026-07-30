@@ -22,7 +22,7 @@ export interface StandaloneMigrationSource {
   createFreshDataset(): Promise<void>;
   deleteSelectedDataset(): Promise<void>;
   migrationManifest(): ReturnType<LocalProfileRepository["migrationManifest"]>;
-  exportMigrationBatches(sessionId: string): ReturnType<LocalProfileRepository["exportMigrationBatches"]>;
+  streamMigrationBatches(sessionId: string): ReturnType<LocalProfileRepository["streamMigrationBatches"]>;
   archiveAfterMigration(receipt: MobileMigrationReceipt, serverUrl: string): Promise<void>;
 }
 
@@ -52,7 +52,9 @@ export function createStandaloneDataSource(): CompanionDataSource & CompanionMut
     createFreshDataset: async () => (await repository).createFreshDataset(createStandaloneProfile()),
     deleteSelectedDataset: async () => (await repository).deleteSelectedDataset(),
     migrationManifest: async () => (await repository).migrationManifest(),
-    exportMigrationBatches: async (sessionId) => (await repository).exportMigrationBatches(sessionId),
+    streamMigrationBatches: async function* (sessionId) {
+      yield* (await repository).streamMigrationBatches(sessionId);
+    },
     archiveAfterMigration: async (receipt, serverUrl) =>
       (await repository).archiveAfterMigration(receipt, serverUrl),
     resetLocalData: async () => {

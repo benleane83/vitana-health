@@ -27,6 +27,7 @@ import {
   mobileMigrationCompletionRequestSchema,
   mobileMigrationReceiptSchema,
   mobileMigrationStartRequestSchema,
+  healthConnectImportRequestSchema,
   mobileMigrationStartResponseSchema,
   measurementPinStateResponseSchema,
   paginatedCareItemsResponseSchema,
@@ -48,6 +49,7 @@ import type {
   CreateCareItemInput,
   CreateHealthEventInput,
   HealthEventListQuery,
+  HealthConnectImportPayload,
   ManualObservationPayload,
   PersonalReferenceRangeInput,
   UpdateObservationInput,
@@ -63,6 +65,12 @@ export interface ApiTransportRequest {
   method: "GET" | "POST" | "PATCH" | "DELETE" | "PUT";
   headers: Readonly<Record<string, string>>;
   body?: string;
+  /**
+   * Aborts the in-flight request. Transports are expected to forward this to `fetch` (or the
+   * native equivalent) so a superseded profile's response can never resolve and overwrite the
+   * profile the user actually switched to.
+   */
+  signal?: AbortSignal;
 }
 
 export interface ApiTransportResponse {
@@ -97,7 +105,11 @@ export function createApiClient(transport: ApiTransport) {
   async function request<T>(
     schema: ResponseSchema<T>,
     path: string,
-    options: { method?: "GET" | "POST" | "PATCH" | "DELETE" | "PUT"; body?: unknown } = {}
+    options: {
+      method?: "GET" | "POST" | "PATCH" | "DELETE" | "PUT";
+      body?: unknown;
+      signal?: AbortSignal;
+    } = {}
   ): Promise<T> {
     const response = await transport({
       path,
@@ -106,13 +118,20 @@ export function createApiClient(transport: ApiTransport) {
         accept: "application/json",
         ...(options.body === undefined ? {} : { "content-type": "application/json" })
       },
-      body: options.body === undefined ? undefined : JSON.stringify(options.body)
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      signal: options.signal
     });
     if (!response.ok) throw await apiErrorFromResponse(response);
     return schema.parse(await response.json());
   }
 
   return {
+    /**
+     * Escape hatch for callers that need an endpoint this client does not wrap yet. It shares the
+     * transport, error mapping and schema parsing, so there is never a second request pipeline to
+     * keep in sync.
+     */
+    request,
     health: () => request(healthResponseSchema, "/api/health"),
     desktopUpdates: {
       get: () => request(desktopUpdateStateSchema, "/api/settings/updates"),
@@ -120,8 +139,8 @@ export function createApiClient(transport: ApiTransport) {
       download: () => request(desktopUpdateStateSchema, "/api/settings/updates/download", { method: "POST" }),
       restart: () => request(desktopUpdateStateSchema, "/api/settings/updates/restart", { method: "POST" })
     },
-    assignedProfiles: () => request(assignedProfilesResponseSchema, "/api/profiles"),
-    bootstrap: () => request(appBootstrapResponseSchema, "/api/bootstrap"),
+    assignedProfiles: (signal?: AbortSignal) => request(assignedProfilesResponseSchema, "/api/profiles", { signal }),
+    bootstrap: (signal?: AbortSignal) => request(appBootstrapResponseSchema, "/api/bootstrap", { signal }),
     profilePhoto: {
       get: () => request(profilePhotoResponseSchema, "/api/profile/photo"),
       replace: (payload: { contentType: "image/jpeg"; contentBase64: string }) =>
@@ -131,17 +150,27 @@ export function createApiClient(transport: ApiTransport) {
         }),
       remove: () => request(profilePhotoDeleteResponseSchema, "/api/profile/photo", { method: "DELETE" })
     },
-    analytics: () => request(analyticsSummaryResponseSchema, "/api/analytics"),
-    summary: () => request(healthDataSummaryResponseSchema, "/api/summary"),
-    healthDataDetail: (measurementCode: string, page?: { limit?: number; offset?: number }) =>
+    analytics: (signal?: AbortSignal) => request(analyticsSummaryResponseSchema, "/api/analytics", { signal }),
+    summary: (signal?: AbortSignal) => request(healthDataSummaryResponseSchema, "/api/summary", { signal }),
+    healthDataDetail: (
+      measurementCode: string,
+      page?: { limit?: number; offset?: number },
+      signal?: AbortSignal
+    ) =>
       request(
         healthDataDetailResponseSchema,
-        `/api/summary/${encodeURIComponent(measurementCode)}${paginationQuery(page)}`
+        `/api/summary/${encodeURIComponent(measurementCode)}${paginationQuery(page)}`,
+        { signal }
       ),
-    healthDataChartSeries: (measurementCode: string, options?: { range?: "all" | "1y" | "3m" | "1m"; mode?: "auto" | "raw" }) =>
+    healthDataChartSeries: (
+      measurementCode: string,
+      options?: { range?: "all" | "1y" | "3m" | "1m"; mode?: "auto" | "raw" },
+      signal?: AbortSignal
+    ) =>
       request(
         healthDataChartSeriesResponseSchema,
-        `/api/summary/${encodeURIComponent(measurementCode)}/chart${chartQuery(options)}`
+        `/api/summary/${encodeURIComponent(measurementCode)}/chart${chartQuery(options)}`,
+        { signal }
       ),
     setPersonalReferenceRange: (measurementCode: string, input: PersonalReferenceRangeInput) =>
       request(
@@ -193,8 +222,13 @@ export function createApiClient(transport: ApiTransport) {
       request(uploadImportDraftResponseSchema, "/api/import/upload/preview", { method: "POST", body: payload }),
     commitStructuredUpload: (payload: UploadImportCommitPayload) =>
       request(importMutationResponseSchema, "/api/import/upload/commit", { method: "POST", body: payload }),
-    importHealthConnect: (payload: Record<string, unknown>) =>
-      request(importMutationResponseSchema, "/api/import/health-connect", { method: "POST", body: payload }),
+    // Validated before it leaves the device: a malformed sync payload should fail loudly here
+    // rather than be partially accepted or rejected with an opaque 400 after a large upload.
+    importHealthConnect: (payload: HealthConnectImportPayload) =>
+      request(importMutationResponseSchema, "/api/import/health-connect", {
+        method: "POST",
+        body: healthConnectImportRequestSchema.parse(payload)
+      }),
     mobileMigration: {
       start: (payload: MobileMigrationStartRequest) =>
         request(mobileMigrationStartResponseSchema, "/api/companion/migrations", {
@@ -267,7 +301,8 @@ function chartQuery(options?: { range?: "all" | "1y" | "3m" | "1m"; mode?: "auto
   return values.length ? `?${values.join("&")}` : "";
 }
 
-async function apiErrorFromResponse(response: ApiTransportResponse): Promise<ApiError> {
+/** Exported so callers doing raw (non-JSON) fetches can still surface consistent `ApiError`s. */
+export async function apiErrorFromResponse(response: ApiTransportResponse): Promise<ApiError> {
   let payload: unknown;
   let text = "";
   try {

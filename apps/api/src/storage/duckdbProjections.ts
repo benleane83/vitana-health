@@ -7,6 +7,7 @@ import {
   type ClinicianReportLatestMeasurement,
   computeAnalyticsFromInput,
   isHealthEventKind,
+  normalizedCareItemKind,
   type HealthEvent,
   type HealthEventReference,
   type HealthEventListQuery,
@@ -49,8 +50,24 @@ import {
   optionalTimestamp,
   profileFromRow
 } from "./duckdbRows.js";
+import { qualifiedColumns, selectColumns } from "./duckdbColumns.js";
 
-export async function appBootstrap(connection: duckdb.Connection): Promise<AppBootstrap> {
+// Named column lists, not `SELECT * EXCLUDE (...)`: that syntax is DuckDB-only, and `*` silently
+// widens every DTO the moment the schema gains a column.
+const measurementTypeColumns = selectColumns("measurement_types", { excludeOrdinal: true });
+const healthEventColumns = selectColumns("health_events", { excludeOrdinal: true });
+const careItemColumns = qualifiedColumns("care_items", "care_items", { excludeOrdinal: true });
+const observationColumns = selectColumns("observations", { excludeOrdinal: true });
+const qualifiedObservationColumns = qualifiedColumns("o", "observations", { excludeOrdinal: true });
+// Shape of the `measurement_entries` CTE that unions observations, samples and activities.
+const latestMeasurementColumns =
+  "measurement_code, measured_at, value, unit, id, activity_type, duration_minutes";
+
+export async function appBootstrap(
+  connection: duckdb.Connection,
+  /** Already-known row counts, so bootstrap does not repeat six `COUNT(*)` scans the caller has. */
+  knownCounts?: AppBootstrap["counts"]
+): Promise<AppBootstrap> {
   const [profileRows, measurementRows, templateRows, insightRows, photoRows, counts] = await Promise.all([
     all(connection, "SELECT * FROM profile;"),
     all(connection, "SELECT * FROM measurement_types ORDER BY display, code;"),
@@ -69,7 +86,7 @@ export async function appBootstrap(connection: duckdb.Connection): Promise<AppBo
     `),
     all(connection, "SELECT * FROM insights ORDER BY created_at DESC, ordinal ASC LIMIT 1;"),
     all(connection, "SELECT revision, updated_at FROM profile_media WHERE media_kind = 'profile-photo';"),
-    storageCounts(connection)
+    knownCounts ? Promise.resolve(knownCounts) : storageCounts(connection)
   ]);
   if (profileRows.length !== 1) {
     throw new Error("DuckDB expected exactly one profile row.");
@@ -106,11 +123,11 @@ export async function appBootstrap(connection: duckdb.Connection): Promise<AppBo
 export async function analyticsSummary(connection: duckdb.Connection): Promise<AnalyticsSummary> {
   const [profileRows, measurementRows, observationRows, personalRangeRows, pinnedRows, countRows] = await Promise.all([
     all(connection, "SELECT units, subject_kind FROM profile;"),
-    all(connection, "SELECT * EXCLUDE (ordinal) FROM measurement_types ORDER BY ordinal;"),
+    all(connection, `SELECT ${measurementTypeColumns} FROM measurement_types ORDER BY ordinal;`),
     all(connection, `
-      SELECT * EXCLUDE (measurement_rank, category) FROM (
+      SELECT ${observationColumns} FROM (
         SELECT
-          o.* EXCLUDE (ordinal),
+          ${qualifiedObservationColumns},
           o.ordinal,
           m.category,
           ROW_NUMBER() OVER (
@@ -166,9 +183,9 @@ export async function biologicalAgeSource(connection: duckdb.Connection): Promis
   const [profileRows, observationRows] = await Promise.all([
     all(connection, "SELECT * FROM profile;"),
     allWithParams(connection, `
-      SELECT * EXCLUDE (measurement_rank) FROM (
+      SELECT ${observationColumns} FROM (
         SELECT
-          o.* EXCLUDE (ordinal),
+          ${qualifiedObservationColumns},
           ROW_NUMBER() OVER (
             PARTITION BY o.measurement_code
             ORDER BY o.observed_at DESC, o.id DESC
@@ -224,7 +241,7 @@ export async function clinicianReportLatestMeasurements(
           NULL::DOUBLE AS value, NULL::VARCHAR AS unit, id, activity_type, duration_minutes
         FROM activities
       )
-      SELECT * EXCLUDE (measurement_rank) FROM (
+      SELECT ${latestMeasurementColumns} FROM (
         SELECT
           entries.*,
           ROW_NUMBER() OVER (
@@ -328,7 +345,7 @@ export async function measurementDetail(
   page: MeasurementDetailPage = { offset: 0, limit: 100 }
 ) {
   const [typeRows, rows, countRows, profileRows, personalRows, pinnedRows] = await Promise.all([
-    allWithParams(connection, "SELECT * EXCLUDE (ordinal) FROM measurement_types WHERE code = ?;", measurementCode),
+    allWithParams(connection, `SELECT ${measurementTypeColumns} FROM measurement_types WHERE code = ?;`, measurementCode),
     allWithParams(connection, `
       SELECT * FROM (
         SELECT
@@ -426,7 +443,7 @@ export async function measurementChartSeries(
   options: HealthDataChartSeriesOptions
 ): Promise<HealthDataChartSeries> {
   const [typeRows, profileRows, personalRows] = await Promise.all([
-    allWithParams(connection, "SELECT * EXCLUDE (ordinal) FROM measurement_types WHERE code = ?;", measurementCode),
+    allWithParams(connection, `SELECT ${measurementTypeColumns} FROM measurement_types WHERE code = ?;`, measurementCode),
     all(connection, "SELECT subject_kind FROM profile;"),
     allWithParams(connection, "SELECT * FROM personal_reference_ranges WHERE measurement_code = ?;", measurementCode)
   ]);
@@ -464,6 +481,11 @@ export async function measurementChartSeries(
   const rows = useWeeklyBuckets
     ? await aggregateChartPoints(connection, measurementCode, cutoff, "week", aggregation)
     : dailyRows;
+  // Weekly bucketing bounds most histories, but a decade of daily readings still exceeds it, and
+  // a subject with sparse-but-ancient data can produce more weekly buckets than the client will
+  // ever plot. Keep the most recent buckets and report the truncation honestly.
+  const truncatedBuckets = rows.length > maxAggregatedChartBuckets;
+  const visibleRows = truncatedBuckets ? rows.slice(rows.length - maxAggregatedChartBuckets) : rows;
   return {
     generatedAt: new Date().toISOString(),
     measurementCode,
@@ -471,9 +493,9 @@ export async function measurementChartSeries(
     requestedMode: options.mode,
     granularity: useWeeklyBuckets ? "weekly" : "daily",
     aggregation,
-    points: rows.map((row) => chartPointFromRow(row, type, personalRange, subjectKind)),
+    points: visibleRows.map((row) => chartPointFromRow(row, type, personalRange, subjectKind)),
     totalPoints: rows.length,
-    truncated: false
+    truncated: truncatedBuckets
   };
 }
 
@@ -636,6 +658,9 @@ export async function measurementDetails(
   if (limit !== undefined && (!Number.isInteger(limit) || limit < 1)) {
     throw new Error("DuckDB measurement detail limit must be a positive integer.");
   }
+  // Every other read in this file clamps. Leaving this one open meant a single measurement with
+  // years of samples could materialise its entire history into JS.
+  const effectiveLimit = Math.min(limit ?? maxMeasurementDetailRows, maxMeasurementDetailRows);
   const rows = await allWithParams(
     connection,
     `SELECT kind, id, measured_at, value, unit FROM (
@@ -644,8 +669,10 @@ export async function measurementDetails(
       UNION ALL
       SELECT 'sample' AS kind, id, end_at AS measured_at, value, unit
       FROM time_series_samples WHERE measurement_code = ?
-    ) ORDER BY measured_at DESC, kind, id${limit === undefined ? "" : " LIMIT ?"};`,
-    ...(limit === undefined ? [measurementCode, measurementCode] : [measurementCode, measurementCode, limit])
+    ) ORDER BY measured_at DESC, kind, id LIMIT ?;`,
+    measurementCode,
+    measurementCode,
+    effectiveLimit
   );
   return rows.map((row) => ({
     kind: String(row.kind) as "observation" | "sample",
@@ -707,7 +734,7 @@ export async function listHealthEvents(
   const { whereSql, params } = buildHealthEventWhere(normalized);
   const rows = await allWithParams(
     connection,
-    `SELECT * EXCLUDE (ordinal)
+    `SELECT ${healthEventColumns}
       FROM health_events
       ${whereSql}
       ORDER BY occurred_at DESC, id DESC
@@ -725,7 +752,7 @@ export async function listHealthEvents(
   if (normalized.includeId && !items.some((event) => event.id === normalized.includeId)) {
     const includedRows = await allWithParams(
       connection,
-      "SELECT * EXCLUDE (ordinal) FROM health_events WHERE id = ?;",
+      `SELECT ${healthEventColumns} FROM health_events WHERE id = ?;`,
       normalized.includeId
     );
     if (includedRows[0]) {
@@ -742,6 +769,22 @@ export async function listHealthEvents(
   };
 }
 
+/**
+ * One join instead of three correlated subqueries per row. Written once so the paged read and the
+ * `includeId` top-up cannot drift into projecting different shapes.
+ */
+function careItemSelectSql(whereSql: string, tailSql: string): string {
+  return `SELECT ${careItemColumns},
+      completed_event.kind AS completed_event_kind,
+      completed_event.occurred_at AS completed_event_occurred_at,
+      completed_event.provider AS completed_event_provider
+    FROM care_items
+    LEFT JOIN health_events AS completed_event
+      ON completed_event.id = care_items.completed_health_event_id
+    ${whereSql}
+    ${tailSql};`;
+}
+
 export async function listCareItems(
   connection: duckdb.Connection,
   query: CareItemListQuery
@@ -750,17 +793,14 @@ export async function listCareItems(
   const { whereSql, params } = buildCareItemWhere(normalized);
   const rows = await allWithParams(
     connection,
-    `SELECT * EXCLUDE (ordinal),
-        (SELECT kind FROM health_events WHERE id = care_items.completed_health_event_id) AS completed_event_kind,
-        (SELECT occurred_at FROM health_events WHERE id = care_items.completed_health_event_id) AS completed_event_occurred_at,
-        (SELECT provider FROM health_events WHERE id = care_items.completed_health_event_id) AS completed_event_provider
-      FROM care_items
-      ${whereSql}
-      ORDER BY
-        CASE WHEN due_start IS NULL THEN 1 ELSE 0 END,
-        due_start ASC,
-        id ASC
-      LIMIT ? OFFSET ?;`,
+    careItemSelectSql(
+      whereSql,
+      `ORDER BY
+        CASE WHEN care_items.due_start IS NULL THEN 1 ELSE 0 END,
+        care_items.due_start ASC,
+        care_items.id ASC
+      LIMIT ? OFFSET ?`
+    ),
     ...params,
     normalized.limit,
     normalized.offset
@@ -774,11 +814,7 @@ export async function listCareItems(
   if (normalized.includeId && !items.some((item) => item.id === normalized.includeId)) {
     const includedRows = await allWithParams(
       connection,
-      `SELECT * EXCLUDE (ordinal),
-        (SELECT kind FROM health_events WHERE id = care_items.completed_health_event_id) AS completed_event_kind,
-        (SELECT occurred_at FROM health_events WHERE id = care_items.completed_health_event_id) AS completed_event_occurred_at,
-        (SELECT provider FROM health_events WHERE id = care_items.completed_health_event_id) AS completed_event_provider
-      FROM care_items WHERE id = ?;`,
+      careItemSelectSql("WHERE care_items.id = ?", ""),
       normalized.includeId
     );
     if (includedRows[0]) {
@@ -884,7 +920,7 @@ export async function referenceRangeState(
   measurementCode: string
 ): Promise<ReferenceRangeState> {
   const [typeRows, profileRows, personalRows] = await Promise.all([
-    allWithParams(connection, "SELECT * EXCLUDE (ordinal) FROM measurement_types WHERE code = ?;", measurementCode),
+    allWithParams(connection, `SELECT ${measurementTypeColumns} FROM measurement_types WHERE code = ?;`, measurementCode),
     all(connection, "SELECT units, subject_kind FROM profile;"),
     allWithParams(connection, "SELECT * FROM personal_reference_ranges WHERE measurement_code = ?;", measurementCode)
   ]);
@@ -987,7 +1023,7 @@ function careItemFromRow(row: Record<string, unknown>): CareItem {
   const completedHealthEventId = optionalString(row.completed_health_event_id);
   return {
     id: String(row.id),
-    kind: String(row.kind),
+    kind: normalizedCareItemKind(String(row.kind)),
     code: optionalString(row.code),
     title: String(row.title),
     dueStart: optionalTimestamp(row.due_start),
@@ -1148,27 +1184,29 @@ function buildCareItemWhere(query: NormalizedCareItemListQuery): { whereSql: str
   const clauses: string[] = [];
   const params: unknown[] = [];
   if (query.kind) {
-    clauses.push("kind = ?");
+    clauses.push("care_items.kind = ?");
     params.push(query.kind);
   }
   if (query.status) {
-    clauses.push("status = ?");
+    clauses.push("care_items.status = ?");
     params.push(query.status);
   }
   if (query.priority) {
-    clauses.push("priority = ?");
+    clauses.push("care_items.priority = ?");
     params.push(query.priority);
   }
   if (query.dueFrom) {
-    clauses.push("due_start >= ?");
+    clauses.push("care_items.due_start >= ?");
     params.push(query.dueFrom);
   }
   if (query.dueTo) {
-    clauses.push("due_start <= ?");
+    clauses.push("care_items.due_start <= ?");
     params.push(query.dueTo);
   }
   if (query.search) {
-    clauses.push("(LOWER(title) LIKE ? OR LOWER(kind) LIKE ? OR LOWER(COALESCE(notes, '')) LIKE ?)");
+    clauses.push(
+      "(LOWER(care_items.title) LIKE ? OR LOWER(care_items.kind) LIKE ? OR LOWER(COALESCE(care_items.notes, '')) LIKE ?)"
+    );
     const token = `%${query.search.toLowerCase()}%`;
     params.push(token, token, token);
   }
@@ -1224,3 +1262,6 @@ export interface DuckDbActivityCount {
 const maxAnalyticalRows = 200;
 const maxRawChartPoints = 500;
 const maxDailyChartBuckets = 366;
+const maxAggregatedChartBuckets = 1000;
+/** Ceiling for the raw per-measurement history read. Generous, but no longer unbounded. */
+const maxMeasurementDetailRows = 5000;

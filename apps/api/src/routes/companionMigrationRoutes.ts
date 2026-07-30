@@ -1,9 +1,13 @@
 import { Router } from "express";
 import {
+  mobileMigrationBatchAcknowledgementSchema,
   mobileMigrationBatchSchema,
   mobileMigrationCompletionRequestSchema,
-  mobileMigrationStartRequestSchema
+  mobileMigrationReceiptSchema,
+  mobileMigrationStartRequestSchema,
+  mobileMigrationStartResponseSchema
 } from "@vitana/shared";
+import { sendJson } from "./sendJson.js";
 import type { AuthorizationPrincipal } from "../requestPrincipal.js";
 import { resolvePrincipalStore } from "../requestPrincipal.js";
 import type { ProfileStoreManager } from "../storage/profileStoreManager.js";
@@ -16,7 +20,7 @@ export function makeCompanionMigrationRoutes(storeManager: ProfileStoreManager):
       const principal = requireCompanion(response.locals.principal as AuthorizationPrincipal);
       const input = mobileMigrationStartRequestSchema.parse(request.body);
       const store = resolvePrincipalStore(storeManager, principal);
-      response.status(201).json(await store.startMobileMigration(principal.pairingId, input.manifest));
+      sendJson(response.status(201), mobileMigrationStartResponseSchema, await store.startMobileMigration(principal.pairingId, input.manifest));
     } catch (error) {
       next(error);
     }
@@ -28,7 +32,7 @@ export function makeCompanionMigrationRoutes(storeManager: ProfileStoreManager):
       const batch = mobileMigrationBatchSchema.parse(request.body);
       if (batch.sessionId !== request.params.sessionId) throw requestError(400, "Migration session does not match the route.");
       const store = resolvePrincipalStore(storeManager, principal);
-      response.json(await store.applyMobileMigrationBatch(principal.pairingId, batch));
+      sendJson(response, mobileMigrationBatchAcknowledgementSchema, await store.applyMobileMigrationBatch(principal.pairingId, batch));
     } catch (error) {
       next(error);
     }
@@ -40,7 +44,7 @@ export function makeCompanionMigrationRoutes(storeManager: ProfileStoreManager):
       const input = mobileMigrationCompletionRequestSchema.parse(request.body);
       if (input.sessionId !== request.params.sessionId) throw requestError(400, "Migration session does not match the route.");
       const store = resolvePrincipalStore(storeManager, principal);
-      response.json(await store.completeMobileMigration(principal.pairingId, input.sessionId));
+      sendJson(response, mobileMigrationReceiptSchema, await store.completeMobileMigration(principal.pairingId, input.sessionId));
     } catch (error) {
       next(error);
     }

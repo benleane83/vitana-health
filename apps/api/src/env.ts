@@ -21,6 +21,13 @@ const envSchema = z.object({
     .min(16, "VITANA_SECRET must be at least 16 characters for security")
     .optional(),
 
+  // Minted per launch by the desktop shell and handed to the renderer, so that loopback alone does
+  // not entitle a caller to the owner cookie. Absent during local development.
+  VITANA_LOCAL_AUTH_NONCE: z
+    .string()
+    .min(16, "VITANA_LOCAL_AUTH_NONCE must be at least 16 characters for security")
+    .optional(),
+
   // Data storage
   VITANA_DATA_DIR: z.string().optional(),
   VITANA_DUCKDB_HTTPFS_EXTENSION: z.string().optional(),

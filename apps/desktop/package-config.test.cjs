@@ -34,7 +34,7 @@ test("electron-builder excludes DuckDB development files but keeps runtime files
 test("Windows preview packages use checksummed GitHub updates without Authenticode", () => {
   const packageJson = JSON.parse(readFileSync(path.join(__dirname, "package.json"), "utf8"));
 
-  assert.equal(packageJson.scripts.package, "electron-builder --publish=never");
+  assert.equal(packageJson.scripts.package, "npm run verify:native-abi && electron-builder --publish=never");
   assert.equal(packageJson.vitanaDistributionChannel, "github");
   assert.equal(packageJson.vitanaUpdateChannel, "production");
   assert.equal(packageJson.build.win.target, "nsis");
@@ -50,6 +50,38 @@ test("Windows preview packages use checksummed GitHub updates without Authentico
     releaseType: "release"
   }]);
   assert.equal(packageJson.dependencies["electron-updater"], "6.8.9");
+});
+
+test("the installer tolerates a firewall rule it cannot add or remove", () => {
+  const installer = readFileSync(path.join(__dirname, "build", "installer.nsh"), "utf8");
+  const directives = installer.replace(/^\s*;.*$/gm, "");
+
+  // `netsh` reliably fails on upgrade (the rule already exists) and under managed firewall policy.
+  // The rule only gates LAN companion pairing, so aborting the install over it would trade a
+  // cosmetic problem for a half-upgraded app.
+  assert.doesNotMatch(directives, /nsExec::ExecToStack|ExecWait|Abort|SetErrorLevel/);
+  assert.equal(directives.match(/nsExec::Exec /g)?.length, 4);
+  assert.equal(directives.match(/^\s*Pop \$0$/gm)?.length, 4);
+  assert.match(directives, /customInstall[\s\S]*\$\{If\} \$0 != 0\s+DetailPrint "Warning: could not configure private-network access/);
+  assert.match(directives, /customUnInstall[\s\S]*\$\{If\} \$0 != 0\s+DetailPrint "Warning: could not remove the private-network firewall rule/);
+});
+
+test("every packaging path runs the Electron ABI gate before electron-builder", () => {
+  const packageJson = JSON.parse(readFileSync(path.join(__dirname, "package.json"), "utf8"));
+
+  // npmRebuild is off, so the DuckDB prebuild is never recompiled for Electron. The gate is the
+  // only thing that proves the shipped binary matches the shipped runtime's module ABI.
+  assert.equal(packageJson.build.npmRebuild, false);
+  assert.equal(packageJson.scripts["verify:native-abi"], "electron verify-native-abi.cjs");
+  for (const script of ["package", "package:store"]) {
+    assert.match(
+      packageJson.scripts[script],
+      /npm run verify:native-abi &&[^&]*electron-builder/,
+      `${script} must run the ABI gate before electron-builder`
+    );
+  }
+  // The gate is build tooling, not runtime code, so it must not reach the packaged app.
+  assert.ok(!packageJson.build.files.includes("verify-native-abi.cjs"));
 });
 
 test("Store packages use an isolated AppX target and placeholder identity", () => {
@@ -79,7 +111,7 @@ test("Store packages use an isolated AppX target and placeholder identity", () =
 
 test("desktop updater shutdown callback is available during main-process initialization", () => {
   const mainProcess = readFileSync(path.join(__dirname, "main.cjs"), "utf8");
-  const shutdownCallback = mainProcess.indexOf("async function shutdownApiForUpdate()");
+  const shutdownCallback = mainProcess.indexOf("async function shutdownApiForUpdate(");
   const updaterController = mainProcess.indexOf("const desktopUpdater = createDesktopUpdaterController(");
   const beforeQuitHandler = mainProcess.indexOf("app.on(\"before-quit\"");
 
@@ -89,4 +121,33 @@ test("desktop updater shutdown callback is available during main-process initial
   assert.ok(shutdownCallback < beforeQuitHandler);
   assert.match(mainProcess.slice(updaterController, beforeQuitHandler), /prepareToInstall: shutdownApiForUpdate/);
   assert.match(mainProcess, /distributionChannel === "store" \? "Vitana Health Store Test" : "Vitana Health"/);
+});
+
+test("every local module main.cjs requires is packaged", () => {
+  // `files` replaces electron-builder's default `**/*`, so a new local module is silently left out
+  // of the asar and only fails once someone installs the build. `pre-update-backup.cjs` was.
+  const packageJson = JSON.parse(readFileSync(path.join(__dirname, "package.json"), "utf8"));
+  const mainProcess = readFileSync(path.join(__dirname, "main.cjs"), "utf8");
+  const required = [...mainProcess.matchAll(/require\("\.\/([^"]+\.cjs)"\)/g)].map((match) => match[1]);
+
+  assert.ok(required.length > 0);
+  for (const module of new Set(required)) {
+    assert.ok(packageJson.build.files.includes(module), `${module} must be listed in build.files`);
+  }
+});
+
+test("DuckDB is pinned to an exact version matching the shared httpfs digest", () => {
+  const apiPackageJson = JSON.parse(
+    readFileSync(path.join(__dirname, "..", "api", "package.json"), "utf8")
+  );
+  const pinSource = readFileSync(
+    path.join(__dirname, "..", "..", "packages", "shared", "src", "duckdbPin.ts"),
+    "utf8"
+  );
+  const pinnedVersion = /PINNED_DUCKDB_VERSION = "([^"]+)"/.exec(pinSource)?.[1];
+
+  // A caret range would let npm resolve a DuckDB build whose core-signed httpfs extension no
+  // longer matches the digest we verify at runtime, turning an upgrade into a startup failure.
+  assert.ok(pinnedVersion, "shared duckdbPin.ts must declare PINNED_DUCKDB_VERSION");
+  assert.equal(apiPackageJson.dependencies.duckdb, pinnedVersion);
 });

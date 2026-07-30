@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
     analytics: vi.fn(),
     summary: vi.fn(),
     healthDataDetail: vi.fn(),
+    healthDataChartSeries: vi.fn(),
     listHealthEvents: vi.fn(),
     listCareItems: vi.fn(),
     metadata: vi.fn()
@@ -44,6 +45,7 @@ vi.mock("./connectedRepository", () => ({
     analytics = mocks.cached.analytics;
     summary = mocks.cached.summary;
     healthDataDetail = mocks.cached.healthDataDetail;
+    healthDataChartSeries = mocks.cached.healthDataChartSeries;
     listHealthEvents = mocks.cached.listHealthEvents;
     listCareItems = mocks.cached.listCareItems;
     metadata = mocks.cached.metadata;
@@ -65,7 +67,7 @@ vi.mock("./syncCoordinator", () => ({
   }
 }));
 
-import { createConnectedDataSource } from "./connectedDataSource";
+import { createConnectedDataSource, ReplicaRefreshFailedError } from "./connectedDataSource";
 
 const connection = {
   url: "https://desktop.test",
@@ -78,9 +80,10 @@ const connection = {
   serverInstanceId: "server-1",
   profileId: "profile-1",
   pairingId: "pairing-1",
-  healthConnectSyncCursor: null,
+  healthSourceCursors: {},
+  healthSourceSessionKey: null,
   healthConnectSyncWindowDays: 30,
-  healthConnectCategories: [],
+  healthSourceCategories: [],
   healthConnectDisclosureAcknowledged: false
 };
 
@@ -150,18 +153,25 @@ describe("connected data source", () => {
   it("reports a mutation refresh failure instead of leaving the replica silently stale", async () => {
     const refreshError = new Error("Replica refresh failed");
     mocks.live.createCareItem.mockResolvedValue({ id: "care-1" });
-    mocks.synchronize.mockRejectedValue(refreshError);
+    mocks.synchronize.mockRejectedValueOnce(refreshError);
+    mocks.cached.listCareItems.mockResolvedValue({ items: [], total: 0 });
     const source = createConnectedDataSource(connection);
 
+    // The item was created on the PC, so the user must not be told the save failed - that is how
+    // duplicates appear.
     await expect(source.createCareItem({
       kind: "follow-up",
       title: "Book follow-up",
       priority: "normal",
       status: "open"
-    })).rejects.toBe(refreshError);
+    })).rejects.toBeInstanceOf(ReplicaRefreshFailedError);
 
     expect(mocks.live.createCareItem).toHaveBeenCalledOnce();
     expect(mocks.synchronize).toHaveBeenCalledOnce();
+
+    // The next read knows the replica is behind the user's own change and catches up first.
+    await source.listCareItems({});
+    expect(mocks.synchronize).toHaveBeenCalledTimes(2);
   });
 
   it("reads metric detail and Care without making a live request", async () => {
@@ -182,6 +192,17 @@ describe("connected data source", () => {
       deletion: { observationEntries: 1, deletableEntries: 1 },
       pagination: { limit: 50, loaded: 0, total: 0, hasMore: false }
     });
+    mocks.cached.healthDataChartSeries.mockResolvedValue({
+      generatedAt: "2026-07-25T14:00:00.000Z",
+      measurementCode: "weight",
+      range: "all",
+      requestedMode: "auto",
+      granularity: "raw",
+      aggregation: "latest",
+      points: [{ kind: "observation", timestamp: "2026-07-25T14:00:00.000Z", value: 70, unit: "kg", count: 1 }],
+      totalPoints: 1,
+      truncated: false
+    });
     mocks.cached.listCareItems.mockResolvedValue({ items: [], total: 0 });
     const source = createConnectedDataSource(connection);
 
@@ -192,7 +213,8 @@ describe("connected data source", () => {
     expect(chart).toMatchObject({ aggregation: "latest", points: [{ value: 70, unit: "kg" }] });
     expect(care).toEqual({ items: [], total: 0 });
 
-    expect(mocks.cached.healthDataDetail).toHaveBeenCalledTimes(2);
+    expect(mocks.cached.healthDataDetail).toHaveBeenCalledOnce();
+    expect(mocks.cached.healthDataChartSeries).toHaveBeenCalledOnce();
     expect(mocks.cached.listCareItems).toHaveBeenCalledOnce();
     expect(mocks.live.healthDataDetail).not.toHaveBeenCalled();
     expect(mocks.live.healthDataChartSeries).not.toHaveBeenCalled();

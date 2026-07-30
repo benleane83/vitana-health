@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { FlatList, Platform, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Picker } from "@react-native-picker/picker";
 import { useIsFocused } from "@react-navigation/native";
@@ -29,6 +29,8 @@ import { userFacingError } from "../userFacingError";
 type CareView = "items" | "health-events";
 type EditorMode = "closed" | "create" | "edit" | "complete";
 type Feedback = { detail: string; tone: "success" | "danger" };
+
+const CARE_PAGE_SIZE = 30;
 
 const defaultHealthEvent: CreateHealthEventInput = {
   kind: "other",
@@ -69,6 +71,9 @@ export function CareScreen() {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<CareItem[]>([]);
   const [events, setEvents] = useState<HealthEvent[]>([]);
+  const [itemsHasMore, setItemsHasMore] = useState(false);
+  const [eventsHasMore, setEventsHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [careItemKindFilter, setCareItemKindFilter] = useState<"" | CareItemKind>("");
   const [healthEventKindFilter, setHealthEventKindFilter] = useState<"" | HealthEventKind>("");
   const [editorMode, setEditorMode] = useState<EditorMode>("closed");
@@ -83,6 +88,8 @@ export function CareScreen() {
     if (standaloneMode) {
       setItems([]);
       setEvents([]);
+      setItemsHasMore(false);
+      setEventsHasMore(false);
       setLoading(false);
       setFeedback(undefined);
       return;
@@ -91,17 +98,40 @@ export function CareScreen() {
     try {
       if (synchronize) await synchronizeConnectedData(true);
       const [nextItems, nextEvents] = await Promise.all([
-        listCareItems({ limit: 30, kind: careItemKindFilter || undefined }),
-        listHealthEvents({ limit: 30, kind: healthEventKindFilter || undefined })
+        listCareItems({ limit: CARE_PAGE_SIZE, kind: careItemKindFilter || undefined }),
+        listHealthEvents({ limit: CARE_PAGE_SIZE, kind: healthEventKindFilter || undefined })
       ]);
       setItems(nextItems.items);
       setEvents(nextEvents.items);
+      setItemsHasMore(nextItems.hasMore);
+      setEventsHasMore(nextEvents.hasMore);
     } catch (caught) {
       setFeedback({ detail: userFacingError(caught, "Unable to load care data. Try again."), tone: "danger" });
     } finally {
       setLoading(false);
     }
   }, [careItemKindFilter, healthEventKindFilter, listCareItems, listHealthEvents, standaloneMode, synchronizeConnectedData]);
+
+  // Without this the list silently stopped at the first page, which reads to a user as data loss.
+  async function loadMore() {
+    if (loadingMore) return;
+    setLoadingMore(true);
+    try {
+      if (view === "health-events") {
+        const next = await listHealthEvents({ limit: CARE_PAGE_SIZE, offset: events.length, kind: healthEventKindFilter || undefined });
+        setEvents((current) => [...current, ...next.items]);
+        setEventsHasMore(next.hasMore);
+      } else {
+        const next = await listCareItems({ limit: CARE_PAGE_SIZE, offset: items.length, kind: careItemKindFilter || undefined });
+        setItems((current) => [...current, ...next.items]);
+        setItemsHasMore(next.hasMore);
+      }
+    } catch (caught) {
+      setFeedback({ detail: userFacingError(caught, "Unable to load more care records. Try again."), tone: "danger" });
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
@@ -227,80 +257,100 @@ export function CareScreen() {
     );
   }
 
+  const listData: Array<CareItem | HealthEvent> = editorMode === "closed" ? (view === "health-events" ? events : items) : [];
+  const renderRow = (entry: CareItem | HealthEvent) => ("occurredAt" in entry ? (
+    <Card>
+      <Text style={styles.title}>{healthEventKindLabels[entry.kind]}</Text>
+      <Text style={styles.meta}>{formatDate(entry.occurredAt)}{entry.provider ? ` • ${entry.provider}` : ""}</Text>
+      <Text style={styles.meta}>{entry.status}{entry.notes ? ` • ${entry.notes}` : ""}</Text>
+      {canWrite ? <View style={styles.actions}><Button disabled={busy} secondary onPress={() => startEditHealthEvent(entry)}>Edit</Button><Button disabled={busy} secondary onPress={() => { void remove(entry.id); }}>Delete</Button></View> : null}
+    </Card>
+  ) : (
+    <Card>
+      <Text style={styles.title}>{entry.title}</Text>
+      <Text style={styles.meta}>{entry.status} • {careItemKindLabel(entry.kind)}</Text>
+      <Text style={styles.meta}>{entry.dueStart ? `Due ${formatDate(entry.dueStart)}` : "No due date"}</Text>
+      {canWrite ? (
+        <View style={styles.actions}>
+          {entry.status === "open" ? <Button disabled={busy} onPress={() => startCompleteCareItem(entry)}>Complete</Button> : null}
+          <Button disabled={busy} secondary onPress={() => startEditCareItem(entry)}>Edit</Button>
+          <Button disabled={busy} secondary onPress={() => { void remove(entry.id); }}>Delete</Button>
+        </View>
+      ) : null}
+    </Card>
+  ));
+
   return (
     <Screen>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={loading || syncing} onRefresh={() => { setFeedback(undefined); void load(true); }} />}>
-        <View style={styles.headerRow}>
-          <View style={styles.segmented}>
-            {(["items", "health-events"] as const).map((value) => (
-              <Pressable
-                accessibilityRole="tab"
-                accessibilityState={{ selected: view === value }}
-                key={value}
-                onPress={() => switchView(value)}
-                style={[styles.segment, view === value && styles.segmentActive]}
-              >
-                <Text style={[styles.segmentText, view === value && styles.segmentTextActive]}>{value === "items" ? "Care items" : "Health events"}</Text>
-              </Pressable>
-            ))}
-          </View>
-          {canWrite && editorMode === "closed" ? <Button disabled={busy} onPress={startCreate}>{view === "items" ? "Add care item" : "Add health event"}</Button> : null}
-        </View>
-        {demoMode ? <Message title="Demo mode is read-only" detail="Connect to your paired PC to create, edit, or delete care records." /> : null}
-        {connectionState !== "online" ? <Message title={connectionState.replaceAll("-", " ")} detail={error ?? "Showing read-only Care data. Reconnect or pull to refresh."} tone="warning" /> : null}
-        {feedback ? <Message title={feedback.tone === "success" ? "Care updated" : "Care error"} detail={feedback.detail} tone={feedback.tone} /> : null}
-        {editorMode === "closed" ? <>
-        {view === "items" ? (
-          <FormField label="Kind filter">
-            <View style={styles.pickerField}>
-              <Picker
-                accessibilityLabel="Care item kind filter"
-                selectedValue={careItemKindFilter}
-                style={styles.picker}
-                onValueChange={(value) => setCareItemKindFilter(value as "" | CareItemKind)}
-              >
-                <Picker.Item label="All kinds" value="" />
-                {careItemKindCodes.map((kind) => <Picker.Item key={kind} label={careItemKindLabels[kind]} value={kind} />)}
-              </Picker>
-            </View>
-          </FormField>
-        ) : (
-          <FormField label="Kind filter">
-            <View style={styles.pickerField}>
-              <Picker
-                accessibilityLabel="Health event kind filter"
-                selectedValue={healthEventKindFilter}
-                style={styles.picker}
-                onValueChange={(value) => setHealthEventKindFilter(value as "" | HealthEventKind)}
-              >
-                <Picker.Item label="All kinds" value="" />
-                {healthEventKindCodes.map((kind) => <Picker.Item key={kind} label={healthEventKindLabels[kind]} value={kind} />)}
-              </Picker>
-            </View>
-          </FormField>
-        )}
-        {view === "health-events" ? events.map((entry) => (
-          <Card key={entry.id}>
-            <Text style={styles.title}>{healthEventKindLabels[entry.kind]}</Text>
-            <Text style={styles.meta}>{formatDate(entry.occurredAt)}{entry.provider ? ` • ${entry.provider}` : ""}</Text>
-            <Text style={styles.meta}>{entry.status}{entry.notes ? ` • ${entry.notes}` : ""}</Text>
-            {canWrite ? <View style={styles.actions}><Button disabled={busy} secondary onPress={() => startEditHealthEvent(entry)}>Edit</Button><Button disabled={busy} secondary onPress={() => { void remove(entry.id); }}>Delete</Button></View> : null}
-          </Card>
-        )) : items.map((entry) => (
-          <Card key={entry.id}>
-            <Text style={styles.title}>{entry.title}</Text>
-            <Text style={styles.meta}>{entry.status} • {careItemKindLabel(entry.kind)}</Text>
-            <Text style={styles.meta}>{entry.dueStart ? `Due ${formatDate(entry.dueStart)}` : "No due date"}</Text>
-            {canWrite ? (
-              <View style={styles.actions}>
-                {entry.status === "open" ? <Button disabled={busy} onPress={() => startCompleteCareItem(entry)}>Complete</Button> : null}
-                <Button disabled={busy} secondary onPress={() => startEditCareItem(entry)}>Edit</Button>
-                <Button disabled={busy} secondary onPress={() => { void remove(entry.id); }}>Delete</Button>
+      {/* Virtualized: Care lists grow without bound, and every card used to mount on first render. */}
+      <FlatList
+        ListHeaderComponent={
+          <View style={styles.section}>
+            <View style={styles.headerRow}>
+              <View style={styles.segmented}>
+                {(["items", "health-events"] as const).map((value) => (
+                  <Pressable
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: view === value }}
+                    key={value}
+                    onPress={() => switchView(value)}
+                    style={[styles.segment, view === value && styles.segmentActive]}
+                  >
+                    <Text style={[styles.segmentText, view === value && styles.segmentTextActive]}>{value === "items" ? "Care items" : "Health events"}</Text>
+                  </Pressable>
+                ))}
               </View>
+              {canWrite && editorMode === "closed" ? <Button disabled={busy} onPress={startCreate}>{view === "items" ? "Add care item" : "Add health event"}</Button> : null}
+            </View>
+            {demoMode ? <Message title="Demo mode is read-only" detail="Connect to your paired PC to create, edit, or delete care records." /> : null}
+            {connectionState !== "online" ? <Message title={connectionState.replaceAll("-", " ")} detail={error ?? "Showing read-only Care data. Reconnect or pull to refresh."} tone="warning" /> : null}
+            {feedback ? <Message title={feedback.tone === "success" ? "Care updated" : "Care error"} detail={feedback.detail} tone={feedback.tone} /> : null}
+            {editorMode === "closed" ? (
+              view === "items" ? (
+                <FormField label="Kind filter">
+                  <View style={styles.pickerField}>
+                    <Picker
+                      accessibilityLabel="Care item kind filter"
+                      selectedValue={careItemKindFilter}
+                      style={styles.picker}
+                      onValueChange={(value) => setCareItemKindFilter(value as "" | CareItemKind)}
+                    >
+                      <Picker.Item label="All kinds" value="" />
+                      {careItemKindCodes.map((kind) => <Picker.Item key={kind} label={careItemKindLabels[kind]} value={kind} />)}
+                    </Picker>
+                  </View>
+                </FormField>
+              ) : (
+                <FormField label="Kind filter">
+                  <View style={styles.pickerField}>
+                    <Picker
+                      accessibilityLabel="Health event kind filter"
+                      selectedValue={healthEventKindFilter}
+                      style={styles.picker}
+                      onValueChange={(value) => setHealthEventKindFilter(value as "" | HealthEventKind)}
+                    >
+                      <Picker.Item label="All kinds" value="" />
+                      {healthEventKindCodes.map((kind) => <Picker.Item key={kind} label={healthEventKindLabels[kind]} value={kind} />)}
+                    </Picker>
+                  </View>
+                </FormField>
+              )
             ) : null}
-          </Card>
-        ))}
-        </> : null}
+          </View>
+        }
+        contentContainerStyle={styles.listContent}
+        data={listData}
+        keyExtractor={(entry) => entry.id}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={<RefreshControl refreshing={loading || syncing} onRefresh={() => { setFeedback(undefined); void load(true); }} />}
+        renderItem={({ item }) => renderRow(item)}
+        ListFooterComponent={
+          <View style={styles.section}>
+        {editorMode === "closed" && (view === "health-events" ? eventsHasMore : itemsHasMore) ? (
+          <Button disabled={loadingMore} secondary onPress={() => { void loadMore(); }}>
+            {loadingMore ? "Loading…" : "Load more"}
+          </Button>
+        ) : null}
         {editorMode !== "closed" ? (
           <Card>
             <Text style={styles.heading}>{editorMode === "complete" ? "Complete care item" : editorMode === "create" ? `New ${view === "health-events" ? "health event" : "care item"}` : `Edit ${view === "health-events" ? "health event" : "care item"}`}</Text>
@@ -435,7 +485,9 @@ export function CareScreen() {
             {editorMode !== "complete" ? <View style={styles.actions}><Button disabled={busy || !canWrite} onPress={() => { void save(); }}>{busy ? "Saving…" : "Save"}</Button><Button disabled={busy} secondary onPress={() => setEditorMode("closed")}>Cancel</Button></View> : null}
           </Card>
         ) : null}
-      </ScrollView>
+          </View>
+        }
+      />
     </Screen>
   );
 }
@@ -529,7 +581,8 @@ function formatDate(value: string): string {
 }
 
 const styles = StyleSheet.create({
-  content: { gap: spacing.md, paddingBottom: spacing.xl },
+  listContent: { gap: spacing.md, paddingBottom: spacing.xl },
+  section: { gap: spacing.md },
   headerRow: { gap: spacing.md },
   segmented: { flexDirection: "row", gap: spacing.sm },
   segment: { alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: 999, borderWidth: 1, justifyContent: "center", minHeight: 48, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },

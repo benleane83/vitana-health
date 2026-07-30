@@ -22,12 +22,13 @@ import type {
   UpdateObservationInput,
   UpdateObservationResponse
 } from "@vitana/shared";
-import type { StoreSecurityMode } from "./profileStoreManager.js";
+import type { StoreSecurityMode } from "./types.js";
 import {
   DuckDbRepository
 } from "./duckdbRepository.js";
 import type { DuckDbOptions } from "./duckdbRuntime.js";
 import type { MeasurementDetailPage } from "../summary.js";
+import type { CompiledQuery } from "../queryCompiler.js";
 import { deriveProfileStorageKey } from "./profileKey.js";
 import type {
   ImportMutationResult,
@@ -36,6 +37,7 @@ import type {
   ProfileImport,
   ProfileRepository
 } from "./profileRepository.js";
+import type { HealthConnectSyncSessionStart } from "./types.js";
 
 export interface DuckDbHealthStoreOptions {
   root: string;
@@ -173,6 +175,14 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
     });
   }
 
+  startHealthConnectSyncSession(pairingId: string, request: HealthConnectSyncSessionStart) {
+    return this.enqueueMutation(() => this.repository.startHealthConnectSyncSession(pairingId, request));
+  }
+
+  applyHealthConnectSyncChunk(pairingId: string, sessionId: string, batchId: string, parsed: ProfileImport) {
+    return this.enqueueMutation(() => this.repository.applyHealthConnectSyncChunk(pairingId, sessionId, batchId, parsed));
+  }
+
   startMobileMigration(pairingId: string, manifest: MobileMigrationManifest) {
     return this.enqueueMutation(() => this.repository.startMobileMigration(pairingId, manifest));
   }
@@ -231,10 +241,15 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
     });
   }
 
-  exportData(): Promise<HealthStoreData> {
-    return this.enqueueMutation(async () => {
-      return this.repository.exportData();
-    });
+  recordExportAudit(): Promise<void> {
+    return this.enqueueMutation(() => this.repository.recordExportAudit());
+  }
+
+  async exportData(): Promise<HealthStoreData> {
+    // Only the audit row is a mutation. Reading a full store can take seconds, and enqueueing that
+    // read behind the same lock meant taking a backup blocked every write until it finished.
+    await this.recordExportAudit();
+    return this.repository.exportData();
   }
 
   listHealthEvents(query: HealthEventListQuery) {
@@ -273,8 +288,8 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
     return this.enqueueMutation(async () => this.repository.deleteCareItem(id));
   }
 
-  runCompiledQuery(sql: string): Promise<Array<Record<string, unknown>>> {
-    return this.repository.runCompiledQuery(sql);
+  runCompiledQuery(query: CompiledQuery): Promise<Array<Record<string, unknown>>> {
+    return this.repository.runCompiledQuery(query);
   }
 
   async close(): Promise<void> {

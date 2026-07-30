@@ -1,17 +1,30 @@
 import { z } from "zod";
-import { healthEventKindCodes } from "./types.js";
+import { healthEventKindCodes, normalizedCareItemKind } from "./types.js";
 import type { HealthStoreData, InsightModel } from "./types.js";
-import { defaultMeasurementTypes } from "./registry.js";
 
-export const CURRENT_SCHEMA_VERSION = 8 as const;
+/**
+ * Version of the *document* format — the shape of a `HealthStoreData` object as it appears in an
+ * export or a backup envelope. It is deliberately distinct from `DB_SCHEMA_VERSION` in
+ * `apps/api/src/storage/duckdbRuntime.ts`, which versions the *physical* DuckDB table layout.
+ *
+ * The two move independently: a DuckDB migration that only adds an index bumps DB_SCHEMA_VERSION
+ * and leaves this alone, while a new field on an observation bumps this and leaves the table
+ * layout alone. Confusing them breaks backup/restore, which reads and writes this format and has
+ * no knowledge of the storage engine that produced it.
+ */
+export const EXPORT_FORMAT_VERSION = 8 as const;
 
-const sourceKind = z.enum([
+export const sourceKindSchema = z.enum([
   "health-connect", "manual-entry", "blood-test-csv", "observation-csv", "structured-upload",
   "blood-test-report", "body-composition-report", "derived"
 ]);
+const sourceKind = sourceKindSchema;
+export const observationGroupKindSchema = z.enum([
+  "lab_panel", "body_composition_report", "activity_session", "sleep_session", "import_batch", "custom"
+]);
 const stringRecord = z.record(z.unknown());
 
-export const profileSchema = z.object({
+export const profileObjectSchema = z.object({
   id: z.string(), displayName: z.string(), subjectKind: z.enum(["adult", "child", "pet"]).default("adult"),
   birthDate: z.string().date().optional(),
   sex: z.enum(["female", "male", "intersex", "unknown", "not-specified"]).optional(),
@@ -29,7 +42,9 @@ export const profileSchema = z.object({
     microchipId: z.string().optional()
   }).strict().optional(),
   units: z.enum(["metric", "imperial"]), updatedAt: z.string()
-}).strict().superRefine((profile, context) => {
+}).strict();
+
+export const profileSchema = profileObjectSchema.superRefine((profile, context) => {
   if (profile.subjectKind === "pet" && !profile.pet?.species?.trim()) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["pet", "species"], message: "Pet profiles require a species." });
   }
@@ -45,7 +60,12 @@ export const insightSchema = z.object({
   safetyNotice: z.string()
 }).strict();
 
-const measurementTypeSchema = z.object({
+export const referenceRangeSchema = z.object({
+  low: z.number().optional(), high: z.number().optional(), unit: z.string(),
+  label: z.string().optional(), source: z.string().optional()
+}).strict();
+
+export const measurementTypeSchema = z.object({
   code: z.string(), display: z.string(), description: z.string().default(""),
   category: z.enum(["activity", "cardio", "sleep", "body", "lab", "derived"]),
   kind: z.enum(["point", "interval", "event", "panel-component"]), canonicalUnit: z.string(), aliases: z.array(z.string()),
@@ -53,11 +73,11 @@ const measurementTypeSchema = z.object({
   unitAliases: z.record(z.array(z.string())).optional(),
   fhirCode: z.string().optional(), loincCode: z.string().optional(), openMHealthSchema: z.string().optional(),
   normalLow: z.number().optional(), normalHigh: z.number().optional(),
-  referenceRanges: z.array(z.object({ low: z.number().optional(), high: z.number().optional(), unit: z.string(), label: z.string().optional(), source: z.string().optional() }).strict()).optional(),
+  referenceRanges: z.array(referenceRangeSchema).optional(),
   aggregation: z.enum(["sum", "average", "min", "max", "latest", "none"])
 }).strict();
 
-const personalReferenceRangeSchema = z.object({
+export const personalReferenceRangeSchema = z.object({
   measurementCode: z.string().trim().min(1),
   normalLow: z.number().finite().optional(),
   normalHigh: z.number().finite().optional(),
@@ -77,78 +97,101 @@ const personalReferenceRangeSchema = z.object({
   }
 });
 
-const version5PersonalReferenceRangeSchema = z.object({
+
+export const sourceImportSchema = z.object({
+  id: z.string(), sourceKind, fileName: z.string(), importedAt: z.string(), parserVersion: z.string(),
+  checksum: z.string(), rowCount: z.number(), status: z.enum(["processed", "needs-review", "failed"]),
+  diagnostics: z.array(z.string()), rawContent: z.string().optional()
+}).strict();
+
+export const dataSourceSchema = z.object({
+  id: z.string(), sourceKind, label: z.string(), importId: z.string().optional(), createdAt: z.string()
+}).strict();
+
+export const deviceSchema = z.object({
+  id: z.string(), label: z.string(), manufacturer: z.string().optional(), model: z.string().optional(), sourceId: z.string().optional()
+}).strict();
+
+export const pinnedMeasurementSchema = z.object({
   measurementCode: z.string().trim().min(1),
-  low: z.number().finite().optional(),
-  high: z.number().finite().optional(),
-  unit: z.string().trim().min(1),
-  updatedAt: z.string()
+  pinnedAt: z.string().datetime({ offset: true })
+}).strict();
+
+export const observationSchema = z.object({
+  id: z.string(), measurementCode: z.string(), observedAt: z.string(), effectiveStart: z.string().optional(), effectiveEnd: z.string().optional(),
+  value: z.number(), unit: z.string(), sourceId: z.string(), observationGroupId: z.string().optional(), deviceId: z.string().optional(),
+  note: z.string().optional(), sourceJson: z.unknown().optional()
+}).strict();
+
+export const observationGroupSchema = z.object({
+  id: z.string(), kind: observationGroupKindSchema,
+  label: z.string(), sourceId: z.string().optional(), importId: z.string().optional(), startAt: z.string().optional(),
+  endAt: z.string().optional(), collectedAt: z.string().optional(), metadata: stringRecord.optional()
+}).strict();
+
+export const timeSeriesSampleSchema = z.object({
+  id: z.string(), measurementCode: z.string(), startAt: z.string(), endAt: z.string(), value: z.number(), unit: z.string(),
+  sourceId: z.string(), deviceId: z.string().optional(), sourceJson: z.unknown().optional()
+}).strict();
+
+export const activitySessionSchema = z.object({
+  id: z.string(), activityType: z.string(), startAt: z.string(), endAt: z.string().optional(), durationMinutes: z.number().optional(),
+  energyKcal: z.number().optional(), distanceMeters: z.number().optional(), sourceId: z.string(), sourceJson: z.unknown().optional()
+}).strict();
+
+export const healthEventObjectSchema = z.object({
+  id: z.string(), kind: z.enum(healthEventKindCodes), status: z.enum(["completed", "entered-in-error"]),
+  occurredAt: z.string(), source: sourceKind, provider: z.string().optional(),
+  notes: z.string().optional(), metadata: stringRecord.optional(),
+  immunization: z.object({
+    vaccine: z.string(), targetDisease: z.string().optional(), doseNumber: z.number().int().positive().optional(),
+    series: z.string().optional(), manufacturer: z.string().optional(), lotNumber: z.string().optional(),
+    expiresAt: z.string().optional(), route: z.string().optional(), site: z.string().optional(), reaction: z.string().optional()
+  }).strict().optional(),
+  medicationAdministration: z.object({
+    medication: z.string(), activeIngredient: z.string().optional(), dose: z.number(), unit: z.string(), route: z.string().optional()
+  }).strict().optional()
+}).strict();
+
+export const persistedHealthEventSchema = healthEventObjectSchema.superRefine((value, context) => {
+  if (value.immunization && value.kind !== "immunization") {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["immunization"], message: "Immunization details require an immunization event." });
+  }
+  if (value.medicationAdministration && value.kind !== "medication-administration") {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["medicationAdministration"], message: "Medication details require a medication event." });
+  }
+});
+
+/**
+ * `kind` is normalised rather than rejected: care items can arrive from schedule templates and
+ * older stores that predate the closed taxonomy, and losing the whole store to one stray label
+ * would be a far worse failure than filing it under "other".
+ */
+export const persistedCareItemSchema = z.object({
+  id: z.string(), kind: z.string().transform(normalizedCareItemKind), code: z.string().optional(), title: z.string(), dueStart: z.string().optional(),
+  reminderAt: z.string().optional(), priority: z.enum(["low", "normal", "high"]),
+  status: z.enum(["open", "completed", "cancelled", "skipped"]), scheduleProvenance: z.string().optional(),
+  scheduleVersion: z.string().optional(), notes: z.string().optional(),
+  completedHealthEventId: z.string().optional(), completedAt: z.string().optional(),
+  completedHealthEvent: z.object({
+    id: z.string(), kind: z.enum(healthEventKindCodes), occurredAt: z.string(), provider: z.string().optional()
+  }).strict().optional()
 }).strict();
 
 const storeFields = {
   profile: profileSchema,
-  sourceImports: z.array(z.object({
-    id: z.string(), sourceKind, fileName: z.string(), importedAt: z.string(), parserVersion: z.string(),
-    checksum: z.string(), rowCount: z.number(), status: z.enum(["processed", "needs-review", "failed"]),
-    diagnostics: z.array(z.string()), rawContent: z.string().optional()
-  }).strict()),
-  dataSources: z.array(z.object({
-    id: z.string(), sourceKind, label: z.string(), importId: z.string().optional(), createdAt: z.string()
-  }).strict()),
-  devices: z.array(z.object({
-    id: z.string(), label: z.string(), manufacturer: z.string().optional(), model: z.string().optional(), sourceId: z.string().optional()
-  }).strict()),
+  sourceImports: z.array(sourceImportSchema),
+  dataSources: z.array(dataSourceSchema),
+  devices: z.array(deviceSchema),
   measurementTypes: z.array(measurementTypeSchema),
   personalReferenceRanges: z.array(personalReferenceRangeSchema).default([]),
-  pinnedMeasurements: z.array(z.object({
-    measurementCode: z.string().trim().min(1),
-    pinnedAt: z.string().datetime({ offset: true })
-  }).strict()).default([]),
-  observations: z.array(z.object({
-    id: z.string(), measurementCode: z.string(), observedAt: z.string(), effectiveStart: z.string().optional(), effectiveEnd: z.string().optional(),
-    value: z.number(), unit: z.string(), sourceId: z.string(), observationGroupId: z.string().optional(), deviceId: z.string().optional(),
-    note: z.string().optional(), sourceJson: z.unknown().optional()
-  }).strict()),
-  observationGroups: z.array(z.object({
-    id: z.string(), kind: z.enum(["lab_panel", "body_composition_report", "activity_session", "sleep_session", "import_batch", "custom"]),
-    label: z.string(), sourceId: z.string().optional(), importId: z.string().optional(), startAt: z.string().optional(),
-    endAt: z.string().optional(), collectedAt: z.string().optional(), metadata: stringRecord.optional()
-  }).strict()),
-  timeSeriesSamples: z.array(z.object({
-    id: z.string(), measurementCode: z.string(), startAt: z.string(), endAt: z.string(), value: z.number(), unit: z.string(),
-    sourceId: z.string(), deviceId: z.string().optional(), sourceJson: z.unknown().optional()
-  }).strict()),
-  activitySessions: z.array(z.object({
-    id: z.string(), activityType: z.string(), startAt: z.string(), endAt: z.string().optional(), durationMinutes: z.number().optional(),
-    energyKcal: z.number().optional(), distanceMeters: z.number().optional(), sourceId: z.string(), sourceJson: z.unknown().optional()
-  }).strict()),
-  healthEvents: z.array(z.object({
-    id: z.string(), kind: z.enum(healthEventKindCodes), status: z.enum(["completed", "entered-in-error"]),
-    occurredAt: z.string(), source: sourceKind, provider: z.string().optional(),
-    notes: z.string().optional(), metadata: stringRecord.optional(),
-    immunization: z.object({
-      vaccine: z.string(), targetDisease: z.string().optional(), doseNumber: z.number().int().positive().optional(),
-      series: z.string().optional(), manufacturer: z.string().optional(), lotNumber: z.string().optional(),
-      expiresAt: z.string().optional(), route: z.string().optional(), site: z.string().optional(), reaction: z.string().optional()
-    }).strict().optional(),
-    medicationAdministration: z.object({
-      medication: z.string(), activeIngredient: z.string().optional(), dose: z.number(), unit: z.string(), route: z.string().optional()
-    }).strict().optional()
-  }).strict().superRefine((value, context) => {
-    if (value.immunization && value.kind !== "immunization") {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["immunization"], message: "Immunization details require an immunization event." });
-    }
-    if (value.medicationAdministration && value.kind !== "medication-administration") {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["medicationAdministration"], message: "Medication details require a medication event." });
-    }
-  })).default([]),
-  careItems: z.array(z.object({
-    id: z.string(), kind: z.string(), code: z.string().optional(), title: z.string(), dueStart: z.string().optional(),
-    reminderAt: z.string().optional(), priority: z.enum(["low", "normal", "high"]),
-    status: z.enum(["open", "completed", "cancelled", "skipped"]), scheduleProvenance: z.string().optional(),
-    scheduleVersion: z.string().optional(), notes: z.string().optional(),
-    completedHealthEventId: z.string().optional(), completedAt: z.string().optional()
-  }).strict()).default([]),
+  pinnedMeasurements: z.array(pinnedMeasurementSchema).default([]),
+  observations: z.array(observationSchema),
+  observationGroups: z.array(observationGroupSchema),
+  timeSeriesSamples: z.array(timeSeriesSampleSchema),
+  activitySessions: z.array(activitySessionSchema),
+  healthEvents: z.array(persistedHealthEventSchema).default([]),
+  careItems: z.array(persistedCareItemSchema).default([]),
   insights: z.array(insightSchema),
   auditEvents: z.array(z.object({
     id: z.string(), createdAt: z.string(),
@@ -158,179 +201,19 @@ const storeFields = {
 };
 
 export const healthStoreDataSchema = z.object({
-  schemaVersion: z.literal(CURRENT_SCHEMA_VERSION),
+  schemaVersion: z.literal(EXPORT_FORMAT_VERSION),
   ...storeFields
 }).strict();
 
-const version4StoreSchema = healthStoreDataSchema.extend({ schemaVersion: z.literal(4) });
-const version2StoreSchema = healthStoreDataSchema.extend({ schemaVersion: z.literal(2) });
-const version5StoreSchema = healthStoreDataSchema.extend({
-  schemaVersion: z.literal(5),
-  measurementTypes: z.array(measurementTypeSchema.extend({
-    category: z.enum(["activity", "cardio", "sleep", "body", "lab", "metabolic", "derived"])
-  })),
-  personalReferenceRanges: z.array(version5PersonalReferenceRangeSchema).default([])
-});
-
-const retiredMetabolicStoreSchema = healthStoreDataSchema.extend({
-  measurementTypes: z.array(measurementTypeSchema.extend({
-    category: z.enum(["activity", "cardio", "sleep", "body", "lab", "metabolic", "derived"])
-  }))
-});
-
-const legacyStoreSchema = z.object({
-  schemaVersion: z.literal(1),
-  ...storeFields,
-  observationGroups: storeFields.observationGroups.optional(),
-  labPanels: z.array(z.object({
-    id: z.string(), collectedAt: z.string(), panelName: z.string(), sourceId: z.string(), labName: z.string().optional()
-  }).strict()).optional(),
-  labMarkers: z.array(z.object({
-    id: z.string(), panelId: z.string(), measurementCode: z.string(), value: z.number(), unit: z.string()
-  }).strict()).optional(),
-  sleepSessions: z.array(z.unknown()).optional(),
-  sleepStageIntervals: z.array(z.unknown()).optional()
-}).strict();
-
-type LegacyStoreData = z.infer<typeof legacyStoreSchema>;
-
-function migrateV1ToV2(data: LegacyStoreData): HealthStoreData {
-  const observationGroups = [...(data.observationGroups ?? [])];
-  const observations = data.observations.map((observation) => ({ ...observation }));
-  for (const panel of data.labPanels ?? []) {
-    const groupId = `group_legacy_${panel.id}`;
-    if (!observationGroups.some((group) => group.id === groupId)) {
-      observationGroups.push({
-        id: groupId, kind: "lab_panel", label: panel.panelName, sourceId: panel.sourceId, collectedAt: panel.collectedAt,
-        metadata: { labName: panel.labName, legacyPanelId: panel.id }
-      });
-    }
-    for (const marker of (data.labMarkers ?? []).filter((item) => item.panelId === panel.id)) {
-      const matching = observations.find((observation) =>
-        observation.sourceId === panel.sourceId && observation.measurementCode === marker.measurementCode &&
-        observation.observedAt === panel.collectedAt && observation.value === marker.value && observation.unit === marker.unit
-      );
-      if (matching) {
-        if (!matching.observationGroupId) {
-          matching.observationGroupId = groupId;
-        }
-      } else {
-        observations.push({
-          id: `obs_legacy_${marker.id}`, measurementCode: marker.measurementCode, observedAt: panel.collectedAt,
-          value: marker.value, unit: marker.unit, sourceId: panel.sourceId, observationGroupId: groupId,
-          note: `Lab marker from ${panel.panelName}`
-        });
-      }
-    }
-  }
-  const { labPanels: _panels, labMarkers: _markers, sleepSessions: _sleepSessions, sleepStageIntervals: _sleepStages, observationGroups: _groups, schemaVersion: _version, ...rest } = data;
-  return healthStoreDataSchema.parse({ ...rest, schemaVersion: CURRENT_SCHEMA_VERSION, observationGroups, observations }) as HealthStoreData;
-}
-
-export function parsePersistedHealthStore(data: unknown): { data: HealthStoreData; migrated: boolean } {
+/**
+ * The only persisted shape this build can read. The app is unreleased, so nothing older than
+ * `EXPORT_FORMAT_VERSION` exists outside a developer's own machine — the migration chain that
+ * used to live here maintained seven historical on-disk formats that had no reader.
+ */
+export function parsePersistedHealthStore(data: unknown): HealthStoreData {
   const version = z.object({ schemaVersion: z.number().int() }).passthrough().parse(data).schemaVersion;
-  const normalizedData = version < CURRENT_SCHEMA_VERSION ? stripRetiredCareFields(data) : data;
-  if (version === CURRENT_SCHEMA_VERSION) {
-    const current = healthStoreDataSchema.safeParse(normalizedData);
-    if (current.success) {
-      return { data: current.data as HealthStoreData, migrated: false };
-    }
-    const retired = retiredMetabolicStoreSchema.parse(normalizedData);
-    const defaultsByCode = new Map(defaultMeasurementTypes.map((type) => [type.code, type]));
-    const measurementTypes = retired.measurementTypes.map((type) => {
-      if (type.category !== "metabolic") return type;
-      const replacement = defaultsByCode.get(type.code);
-      if (!replacement) {
-        throw new Error(`Retired metabolic measurement type ${type.code} has no current registry definition.`);
-      }
-      return replacement;
-    });
-    return {
-      data: healthStoreDataSchema.parse({ ...retired, measurementTypes }) as HealthStoreData,
-      migrated: true
-    };
+  if (version !== EXPORT_FORMAT_VERSION) {
+    throw new Error(`Unsupported health store schema version ${version}.`);
   }
-  if (version === 7) {
-    return {
-      data: healthStoreDataSchema.parse({
-        ...z.record(z.unknown()).parse(normalizedData),
-        schemaVersion: CURRENT_SCHEMA_VERSION
-      }) as HealthStoreData,
-      migrated: true
-    };
-  }
-  if (version === 6) {
-    return {
-      data: healthStoreDataSchema.parse({
-        ...z.record(z.unknown()).parse(normalizedData),
-        schemaVersion: CURRENT_SCHEMA_VERSION
-      }) as HealthStoreData,
-      migrated: true
-    };
-  }
-  if (version === 5) {
-    const legacy = version5StoreSchema.parse(normalizedData);
-    const defaultsByCode = new Map(defaultMeasurementTypes.map((type) => [type.code, type]));
-    return {
-      data: healthStoreDataSchema.parse({
-        ...legacy,
-        schemaVersion: CURRENT_SCHEMA_VERSION,
-        measurementTypes: legacy.measurementTypes.map((type) => {
-          if (type.category !== "metabolic") return type;
-          const replacement = defaultsByCode.get(type.code);
-          if (!replacement) {
-            throw new Error(`Retired metabolic measurement type ${type.code} has no current registry definition.`);
-          }
-          return replacement;
-        }),
-        personalReferenceRanges: legacy.personalReferenceRanges.map((range) => ({
-          measurementCode: range.measurementCode,
-          ...(range.low === undefined ? {} : { normalLow: range.low }),
-          ...(range.high === undefined ? {} : { normalHigh: range.high }),
-          unit: range.unit,
-          updatedAt: range.updatedAt
-        }))
-      }),
-      migrated: true
-    };
-  }
-  if (version === 2) {
-    const legacy = version2StoreSchema.parse(normalizedData);
-    return {
-      data: healthStoreDataSchema.parse({ ...legacy, schemaVersion: CURRENT_SCHEMA_VERSION }),
-      migrated: true
-    };
-  }
-  if (version === 4) {
-    const legacy = version4StoreSchema.parse(normalizedData);
-    return {
-      data: healthStoreDataSchema.parse({ ...legacy, schemaVersion: CURRENT_SCHEMA_VERSION }),
-      migrated: true
-    };
-  }
-  if (version === 1) {
-    return { data: migrateV1ToV2(legacyStoreSchema.parse(normalizedData)), migrated: true };
-  }
-  throw new Error(`Unsupported health store schema version ${version}.`);
-}
-
-function stripRetiredCareFields(data: unknown): unknown {
-  const store = z.record(z.unknown()).parse(data);
-  const healthEvents = Array.isArray(store.healthEvents)
-    ? store.healthEvents.map((entry) => {
-        const { occurredEnd: _occurredEnd, ...event } = z.record(z.unknown()).parse(entry);
-        return event;
-      })
-    : store.healthEvents;
-  const careItems = Array.isArray(store.careItems)
-    ? store.careItems.map((entry) => {
-        const {
-          dueEnd: _dueEnd,
-          originatingHealthEventId: _originatingHealthEventId,
-          ...careItem
-        } = z.record(z.unknown()).parse(entry);
-        return careItem;
-      })
-    : store.careItems;
-  return { ...store, healthEvents, careItems };
+  return healthStoreDataSchema.parse(data) as HealthStoreData;
 }

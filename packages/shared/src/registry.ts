@@ -1,6 +1,12 @@
-import type { MeasurementType, UnitSystem } from "./types.js";
+import type { MeasurementType, ReferenceRange, UnitSystem } from "./types.js";
 
-export const defaultMeasurementTypes: MeasurementType[] = [
+/**
+ * The hand-authored registry. Derived fields (`preferredUnits`, `unitAliases`, `referenceRanges`)
+ * are computed once into the frozen `defaultMeasurementTypes` below rather than assigned back onto
+ * these objects, because the exported array is shared by reference across web, mobile, API, and
+ * desktop — an in-place mutation by any one consumer would corrupt the registry process-wide.
+ */
+const measurementTypeDefinitions: MeasurementType[] = [
   {
     code: "steps",
     display: "Steps",
@@ -1216,17 +1222,27 @@ const normalRangeSources: Readonly<Record<string, string>> = {
   sodium: "Spasovski et al., European Clinical Practice Guideline on Hyponatraemia, 2014"
 };
 
-for (const type of defaultMeasurementTypes) {
-  type.preferredUnits = preferredUnitsFor(type);
-  type.unitAliases = unitAliasesFor(type);
-  if (type.normalLow !== undefined || type.normalHigh !== undefined) {
-    type.referenceRanges = [{
-      ...(type.normalLow === undefined ? {} : { low: type.normalLow }),
-      ...(type.normalHigh === undefined ? {} : { high: type.normalHigh }),
-      unit: type.canonicalUnit,
-      ...(normalRangeSources[type.code] === undefined ? {} : { source: normalRangeSources[type.code] })
-    }];
-  }
+export const defaultMeasurementTypes: MeasurementType[] = Object.freeze(
+  measurementTypeDefinitions.map((definition) => {
+    // `unitAliasesFor` reads `preferredUnits.imperial`, so the units have to be resolved first.
+    const withUnits: MeasurementType = { ...definition, preferredUnits: preferredUnitsFor(definition) };
+    const referenceRange = referenceRangeFor(withUnits);
+    return Object.freeze({
+      ...withUnits,
+      unitAliases: unitAliasesFor(withUnits),
+      ...(referenceRange === undefined ? {} : { referenceRanges: [Object.freeze(referenceRange)] })
+    });
+  })
+) as MeasurementType[];
+
+function referenceRangeFor(type: MeasurementType): ReferenceRange | undefined {
+  if (type.normalLow === undefined && type.normalHigh === undefined) return undefined;
+  return {
+    ...(type.normalLow === undefined ? {} : { low: type.normalLow }),
+    ...(type.normalHigh === undefined ? {} : { high: type.normalHigh }),
+    unit: type.canonicalUnit,
+    ...(normalRangeSources[type.code] === undefined ? {} : { source: normalRangeSources[type.code] })
+  };
 }
 
 export const MANUAL_LAB_MARKER_CATALOG = defaultMeasurementTypes
@@ -1251,9 +1267,26 @@ function unitAliasesFor(type: MeasurementType): Record<string, string[]> {
       "mg/dL": ["mg/dl", "mg / dl"],
       "mmol/L": ["mmol/l", "mmol / l"],
       "µmol/L": ["μmol/l", "umol/l", "µmol/l"],
-      "g/dL": ["g/dl"],
+      "g/dL": ["g/dl", "g / dl"],
       "g/L": ["g/l"],
-      "%": ["percent"]
+      "%": ["percent"],
+      "beats/min": ["bpm", "beats per minute", "count/min"],
+      "breaths/min": ["breaths per minute"],
+      "kcal/day": ["kcal", "kcal/d", "cal/day"],
+      "µg/L": ["ug/L", "mcg/L", "ng/mL"],
+      "×10⁹/L": ["10^9/L", "10⁹/L", "x10^9/L", "10³/µL", "10^3/uL", "10³/uL", "10*3/uL", "K/uL"],
+      "×10¹²/L": ["10^12/L", "10¹²/L", "x10^12/L", "10⁶/µL", "10^6/uL", "10*6/uL", "M/uL"],
+      "U/L": ["IU/L"],
+      "mIU/L": ["µIU/mL", "uIU/mL"],
+      "kg/m2": ["kg/m²"],
+      cm2: ["cm²"],
+      "g/cm2": ["g/cm²"],
+      "mL/min/1.73m2": ["mL/min/1.73m²", "mL/min/1.73 m2"],
+      "L/L": ["l/l", "ratio"],
+      min: ["minute", "minutes", "mins"],
+      sec: ["s", "second", "seconds"],
+      m: ["meter", "meters", "metre", "metres"],
+      count: ["steps", "count/day"]
     };
     const preferred = type.preferredUnits?.imperial;
     return Object.fromEntries(
@@ -1268,6 +1301,6 @@ function imperialUnitFor(type: MeasurementType): string | undefined {
     if (type.canonicalUnit === "L" && type.category === "body") return "fl oz";
     if (type.code === "glucose" || type.code === "total_cholesterol" || type.code === "hdl_cholesterol" || type.code === "ldl_cholesterol" || type.code === "triglycerides" || type.code === "creatinine" || type.code === "uric_acid") return "mg/dL";
     if (type.code === "hba1c") return "%";
-    if (type.code === "hemoglobin") return "g/dL";
+    if (type.code === "haemoglobin") return "g/dL";
     return undefined;
 }

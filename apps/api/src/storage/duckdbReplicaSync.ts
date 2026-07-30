@@ -8,6 +8,12 @@ import {
   type ReplicaHighWaterMark
 } from "@vitana/shared";
 import { all, allWithParams, insertRows, json, run } from "./duckdbRows.js";
+import { oldestRetainedChangeSequence, ReplicaDeltaGapError } from "./duckdbRetention.js";
+import { isReplicatedMeasurementCode, type ReplicaChangeInput } from "./duckdbReplicaChanges.js";
+import type { StoredReplicaPage } from "./types.js";
+
+export type { ReplicaChangeInput };
+export type { StoredReplicaPage };
 
 export interface ReplicaEntity {
   entityType: ReplicaEntityType;
@@ -15,31 +21,45 @@ export interface ReplicaEntity {
   payload: Record<string, unknown>;
 }
 
-export interface StoredReplicaPage {
-  changes: ReplicaChange[];
-  highWaterMark: ReplicaHighWaterMark;
-  nextOffset?: number;
+/** Every `HealthStoreData` field that holds a collection of replicable entities. */
+type ReplicaCollectionKey = {
+  [K in keyof HealthStoreData]-?: NonNullable<HealthStoreData[K]> extends readonly unknown[] ? K : never
+}[keyof HealthStoreData];
+
+type ReplicaCollectionItem<K extends ReplicaCollectionKey> = NonNullable<HealthStoreData[K]>[number];
+
+interface ReplicaCollection {
+  entityType: ReplicaEntityType;
+  key: ReplicaCollectionKey;
+  id: (value: unknown) => string;
 }
 
-export type ReplicaChangeInput = Omit<ReplicaChange, "revision" | "sequence">;
+/**
+ * Binds an id accessor to the element type of the collection it reads, so `value.code` versus
+ * `value.measurementCode` versus `value.id` is checked rather than assumed. The single cast is
+ * the erasure back to the heterogeneous list below.
+ */
+function collection<K extends ReplicaCollectionKey>(
+  entityType: ReplicaEntityType,
+  key: K,
+  id: (value: ReplicaCollectionItem<K>) => string
+): ReplicaCollection {
+  return { entityType, key, id: id as (value: unknown) => string };
+}
 
-const collections: Array<{
-  entityType: ReplicaEntityType;
-  key: keyof HealthStoreData;
-  id: (value: any) => string;
-}> = [
-  { entityType: "measurement-type", key: "measurementTypes", id: (value) => value.code },
-  { entityType: "personal-reference-range", key: "personalReferenceRanges", id: (value) => value.measurementCode },
-  { entityType: "pinned-measurement", key: "pinnedMeasurements", id: (value) => value.measurementCode },
-  { entityType: "source-import", key: "sourceImports", id: (value) => value.id },
-  { entityType: "data-source", key: "dataSources", id: (value) => value.id },
-  { entityType: "device", key: "devices", id: (value) => value.id },
-  { entityType: "observation-group", key: "observationGroups", id: (value) => value.id },
-  { entityType: "observation", key: "observations", id: (value) => value.id },
-  { entityType: "time-series-sample", key: "timeSeriesSamples", id: (value) => value.id },
-  { entityType: "activity-session", key: "activitySessions", id: (value) => value.id },
-  { entityType: "health-event", key: "healthEvents", id: (value) => value.id },
-  { entityType: "care-item", key: "careItems", id: (value) => value.id }
+const collections: readonly ReplicaCollection[] = [
+  collection("measurement-type", "measurementTypes", (value) => value.code),
+  collection("personal-reference-range", "personalReferenceRanges", (value) => value.measurementCode),
+  collection("pinned-measurement", "pinnedMeasurements", (value) => value.measurementCode),
+  collection("source-import", "sourceImports", (value) => value.id),
+  collection("data-source", "dataSources", (value) => value.id),
+  collection("device", "devices", (value) => value.id),
+  collection("observation-group", "observationGroups", (value) => value.id),
+  collection("observation", "observations", (value) => value.id),
+  collection("time-series-sample", "timeSeriesSamples", (value) => value.id),
+  collection("activity-session", "activitySessions", (value) => value.id),
+  collection("health-event", "healthEvents", (value) => value.id),
+  collection("care-item", "careItems", (value) => value.id)
 ];
 
 export function replicaEntities(data: HealthStoreData): ReplicaEntity[] {
@@ -65,33 +85,7 @@ export function replicaEntities(data: HealthStoreData): ReplicaEntity[] {
 
 function includeInReplica(entityType: ReplicaEntityType, value: unknown): boolean {
   if (entityType !== "observation" && entityType !== "time-series-sample") return true;
-  return (value as { measurementCode?: unknown }).measurementCode !== "heart_rate";
-}
-
-export async function recordReplicaChanges(
-  connection: duckdb.Connection,
-  before: HealthStoreData,
-  after: HealthStoreData
-): Promise<void> {
-  const beforeByKey = new Map(replicaEntities(before).map((entity) => [entityKey(entity), entity]));
-  const afterByKey = new Map(replicaEntities(after).map((entity) => [entityKey(entity), entity]));
-  const changes: ReplicaChangeInput[] = [];
-  for (const [key, entity] of afterByKey) {
-    const previous = beforeByKey.get(key);
-    if (!previous || JSON.stringify(previous.payload) !== JSON.stringify(entity.payload)) {
-      changes.push({ ...entity, operation: "upsert" });
-    }
-  }
-  for (const [key, entity] of beforeByKey) {
-    if (!afterByKey.has(key)) {
-      changes.push({
-        entityType: entity.entityType,
-        entityId: entity.entityId,
-        operation: "tombstone"
-      });
-    }
-  }
-  await recordReplicaEntityChanges(connection, changes);
+  return isReplicatedMeasurementCode((value as { measurementCode?: string }).measurementCode);
 }
 
 export async function recordReplicaEntityChanges(
@@ -107,9 +101,7 @@ export async function recordReplicaEntityChanges(
     left.entityType.localeCompare(right.entityType) || left.entityId.localeCompare(right.entityId));
   await insertRows(
     connection,
-    `INSERT INTO companion_sync_changes
-     (sequence, revision, entity_type, entity_id, operation, payload, changed_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?);`,
+    "companion_sync_changes",
     ordered.map((change, index) => [
       state.nextSequence + index,
       revision,
@@ -162,8 +154,7 @@ export async function createReplicaSnapshot(
   );
   await insertRows(
     connection,
-    `INSERT INTO companion_sync_snapshot_entries
-     (snapshot_id, entry_index, entity_type, entity_id, payload) VALUES (?, ?, ?, ?, ?);`,
+    "companion_sync_snapshot_entries",
     replicaEntities(data).map((entity, entryIndex) => [
       snapshotId,
       entryIndex,
@@ -226,6 +217,13 @@ export async function readReplicaDeltaPage(
   limit: number
 ): Promise<StoredReplicaPage> {
   const current = await replicaHighWaterMark(connection);
+  // Retention trims the tail of the change log, so a device that has been offline for a long time
+  // can ask for a sequence that no longer exists. Failing loudly sends it back to a snapshot
+  // instead of handing it a page that silently skips the pruned changes.
+  const oldestRetained = await oldestRetainedChangeSequence(connection);
+  if (afterSequence > 0 && oldestRetained > afterSequence + 1) {
+    throw new ReplicaDeltaGapError(oldestRetained);
+  }
   const highWaterMark = highWaterSequence === undefined
     ? current
     : {

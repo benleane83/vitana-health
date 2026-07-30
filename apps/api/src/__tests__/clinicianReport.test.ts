@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { buildClinicianReport } from "../clinicianReport.js";
-import { computeAnalytics, type HealthStoreData } from "@vitana/shared";
+import { analyticsCountsFromStore, computeAnalytics, type HealthStoreData } from "@vitana/shared";
+
+const analyticsOf = (data: HealthStoreData) => computeAnalytics({ ...data, counts: analyticsCountsFromStore(data) });
 
 function store(): HealthStoreData {
   return {
-    schemaVersion: 2,
+    schemaVersion: 8,
     profile: { id: "self", displayName: "Alex", units: "metric", updatedAt: "2026-01-01T00:00:00.000Z" },
     sourceImports: [{ id: "import-1", sourceKind: "blood-test-csv", fileName: "labs.csv", importedAt: "2026-01-02T00:00:00.000Z", parserVersion: "1", checksum: "private", rowCount: 1, status: "processed", diagnostics: [], rawContent: "private" }],
     dataSources: [], devices: [],
@@ -24,7 +26,7 @@ describe("buildClinicianReport", () => {
     const data = store();
     const report = buildClinicianReport({
       profile: data.profile,
-      analytics: computeAnalytics(data),
+      analytics: analyticsOf(data),
       sourceImports: data.sourceImports
     }, "2026-01-03T00:00:00.000Z");
 
@@ -41,7 +43,7 @@ describe("buildClinicianReport", () => {
   it("uses the profile's preferred unit for height", () => {
     const data = store();
     data.profile = { ...data.profile, units: "imperial", heightCm: 180 };
-    const input = { profile: data.profile, analytics: computeAnalytics(data), sourceImports: data.sourceImports };
+    const input = { profile: data.profile, analytics: analyticsOf(data), sourceImports: data.sourceImports };
 
     expect(buildClinicianReport(input).patient.height).toMatchObject({ unit: "in" });
     expect(buildClinicianReport(input).patient.height?.value).toBeCloseTo(70.87, 2);
@@ -59,7 +61,7 @@ describe("buildClinicianReport", () => {
 
     const report = buildClinicianReport({
       profile: data.profile,
-      analytics: computeAnalytics(data),
+      analytics: analyticsOf(data),
       latestMeasurements,
       sourceImports: data.sourceImports
     });

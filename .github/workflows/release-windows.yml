@@ -40,6 +40,22 @@ jobs:
       - name: Install DuckDB native binding
         run: npm rebuild duckdb
 
+      - name: Prepare DuckDB encryption extension
+        run: npm run prepare:duckdb -w @vitana/api
+
+      # A release must never be cut from a red tree.
+      - name: Typecheck, build, and test
+        env:
+          VITANA_REQUIRE_DUCKDB: "1"
+        run: npm run validate:fast
+
+      - name: Run storage integration and durability tests
+        env:
+          VITANA_REQUIRE_DUCKDB: "1"
+        run: |
+          npm run test:integration
+          npm run test:durability
+
       - name: Package unsigned Windows preview installer
         run: npm run package:desktop
 
@@ -88,7 +104,7 @@ jobs:
           ./scripts/windows-desktop-smoke.ps1
           -Installer (Get-ChildItem apps/desktop/dist/*.exe | Select-Object -First 1).FullName
           -EvidenceDirectory desktop-release-evidence
-          -Scope Fast
+          -Scope Full
           -HealthTimeoutSeconds 60
 
       - name: Write release checksums
@@ -122,8 +138,11 @@ jobs:
           ) + "apps/desktop/dist/SHA256SUMS.txt"
           if (gh release view $env:GITHUB_REF_NAME) {
             $release = gh release view $env:GITHUB_REF_NAME --json isDraft | ConvertFrom-Json
-            if ($release.isDraft) { throw "The matching GitHub Release must not be a draft." }
+            if (-not $release.isDraft) {
+              throw "Release $env:GITHUB_REF_NAME is already published. Refusing to overwrite a live release; delete it or cut a new tag."
+            }
             gh release upload $env:GITHUB_REF_NAME $files --clobber
           } else {
-            gh release create $env:GITHUB_REF_NAME $files --verify-tag --generate-notes --title "Vitana Health Preview $env:GITHUB_REF_NAME"
+            gh release create $env:GITHUB_REF_NAME $files --draft --verify-tag --generate-notes --title "Vitana Health Preview $env:GITHUB_REF_NAME"
           }
+          Write-Host "Release $env:GITHUB_REF_NAME staged as a draft. Review the assets, then publish it manually."

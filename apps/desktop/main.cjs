@@ -1,5 +1,6 @@
 const { app, BrowserWindow, dialog, Menu, Notification, safeStorage, session, Tray } = require("electron");
 const path = require("node:path");
+const { randomBytes } = require("node:crypto");
 const { pathToFileURL } = require("node:url");
 const { createBackgroundServiceController } = require("./background-service.cjs");
 const { createBackgroundServiceSettingsStore } = require("./background-service-settings.cjs");
@@ -7,13 +8,13 @@ const { loadOrCreateSecureStoreKey, prepareSecureStoreKey } = require("./secure-
 const { createStartupDiagnostics } = require("./startup-diagnostics.cjs");
 const { createDesktopUpdaterController } = require("./desktop-updater.cjs");
 const { migrateUserDataDirectory } = require("./user-data-migration.cjs");
+const { createPreUpdateBackup } = require("./pre-update-backup.cjs");
+const { createDesktopLifecycle } = require("./desktop-lifecycle.cjs");
 
-let apiServer;
 let mainWindow;
-let quitting = false;
-let shutdownStarted = false;
-let updateInstallPending = false;
 let launchPromise;
+/** Kept in memory for the lifetime of this process only; see the two uses below. */
+const launchNonce = randomBytes(32).toString("base64url");
 const backgroundLaunch = process.argv.includes("--background");
 let startupPathError;
 const packageMetadata = require("./package.json");
@@ -22,13 +23,21 @@ const brandedUserDataPath = path.join(
   app.getPath("appData"),
   distributionChannel === "store" ? "Vitana Health Store Test" : "Vitana Health"
 );
-try {
-  if (distributionChannel === "github") migrateUserDataDirectory(app.getPath("appData"));
-} catch (error) {
-  startupPathError = error;
-}
 app.setPath("userData", brandedUserDataPath);
+
+// The lock has to be taken before the legacy user-data directory is moved. Two copies launching
+// together would otherwise both see the old directory and race their renames, and the loser can
+// leave the store half-moved between the two paths.
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (hasSingleInstanceLock) {
+  try {
+    if (distributionChannel === "github") migrateUserDataDirectory(app.getPath("appData"));
+  } catch (error) {
+    startupPathError = error;
+  }
+}
 const diagnostics = createStartupDiagnostics({ userDataPath: app.getPath("userData") });
+const lifecycle = createDesktopLifecycle({ app, diagnostics });
 const settingsStore = createBackgroundServiceSettingsStore({ userDataPath: app.getPath("userData") });
 const updateChannel = packageMetadata.vitanaUpdateChannel;
 const desktopUpdater = createDesktopUpdaterController({
@@ -45,27 +54,26 @@ function trayIconPath() {
 }
 
 function requestQuit() {
-  quitting = true;
+  lifecycle.markQuitting();
   app.quit();
 }
 
-async function shutdownApiForUpdate() {
-  if (updateInstallPending) return;
-  updateInstallPending = true;
-  quitting = true;
-  backgroundService.destroyTray();
-  if (!apiServer) return;
-  try {
-    await Promise.race([
-      apiServer.shutdown(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("Embedded API shutdown timed out.")), 10_000))
-    ]);
-    apiServer = undefined;
-  } catch (error) {
-    updateInstallPending = false;
-    quitting = false;
-    throw error;
-  }
+async function shutdownApiForUpdate(versions = {}) {
+  await lifecycle.prepareForUpdateInstall(async () => {
+    backgroundService.destroyTray();
+    // Only safe now that the API has closed and checkpointed the databases. A failure here must not
+    // block the update, so it is recorded and swallowed.
+    try {
+      const backupPath = createPreUpdateBackup({
+        userDataPath: app.getPath("userData"),
+        fromVersion: versions.fromVersion ?? app.getVersion(),
+        toVersion: versions.toVersion
+      });
+      if (backupPath) diagnostics.info(`Pre-update backup written to ${backupPath}`);
+    } catch (error) {
+      diagnostics.error("Pre-update backup failed.", error);
+    }
+  });
 }
 
 async function createOrFocusWindow() {
@@ -75,7 +83,7 @@ async function createOrFocusWindow() {
     mainWindow.focus();
     return mainWindow;
   }
-  if (!apiServer) return undefined;
+  if (!lifecycle.hasServer()) return undefined;
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 840,
@@ -90,7 +98,12 @@ async function createOrFocusWindow() {
   mainWindow.once("closed", () => {
     mainWindow = undefined;
   });
-  await mainWindow.loadURL(`https://127.0.0.1:${process.env.PORT}`);
+  /**
+   * The fragment never leaves the browser, so the nonce reaches the renderer without appearing in
+   * the request line, the API log, or anything a bystanding process can read. The renderer stashes
+   * it in session storage and strips it from the address immediately.
+   */
+  await mainWindow.loadURL(`https://127.0.0.1:${process.env.PORT}#launch=${launchNonce}`);
   diagnostics.info("Main window loaded");
   return mainWindow;
 }
@@ -123,8 +136,8 @@ const backgroundService = createBackgroundServiceController({
 });
 
 diagnostics.info(`Process started (Electron ${process.versions.electron}, Node ${process.versions.node})`);
-process.on("uncaughtException", (error) => diagnostics.error("Uncaught exception", error));
-process.on("unhandledRejection", (error) => diagnostics.error("Unhandled rejection", error));
+process.on("uncaughtException", (error) => void lifecycle.handleFatalError("Uncaught exception", error));
+process.on("unhandledRejection", (error) => void lifecycle.handleFatalError("Unhandled rejection", error));
 app.on("child-process-gone", (_event, details) => {
   diagnostics.error(`Child process exited (${details.type}, reason ${details.reason}, exit code ${details.exitCode})`);
 });
@@ -132,7 +145,7 @@ app.on("render-process-gone", (_event, _webContents, details) => {
   diagnostics.error(`Renderer process exited (reason ${details.reason}, exit code ${details.exitCode})`);
 });
 
-if (!app.requestSingleInstanceLock()) {
+if (!hasSingleInstanceLock) {
   app.quit();
 } else {
   app.on("second-instance", () => {
@@ -161,7 +174,11 @@ async function launch() {
   process.env.HOST = "0.0.0.0";
   process.env.PORT = process.env.PORT || "4317";
   process.env.VITANA_DATA_DIR = app.getPath("userData");
+  process.env.VITANA_APP_VERSION = app.getVersion();
   process.env.VITANA_LOG_FILE = path.join(app.getPath("userData"), "logs", "api.ndjson");
+  // Proves a caller of /api/auth/local is the window this launch opened, rather than merely another
+  // process that reached loopback. Regenerated every launch and never written to disk.
+  process.env.VITANA_LOCAL_AUTH_NONCE = launchNonce;
   process.env.VITANA_STORAGE_BACKEND = "duckdb";
   process.env.VITANA_WEB_ROOT = packaged
     ? path.join(process.resourcesPath, "web")
@@ -193,13 +210,14 @@ async function launch() {
   } finally {
     secureKeyInitialization?.finalize();
   }
-  apiServer = await startServer({
+  const apiServer = await startServer({
     storeSecurity: configuredSecret
       ? { passphrase: configuredSecret, securityMode: "env-secret" }
       : { passphrase: secureKey.passphrase, securityMode: "os-secure-storage" },
     desktopRuntimeController: backgroundService,
     desktopUpdaterController: desktopUpdater
   });
+  lifecycle.setServer(apiServer);
   secureKey?.finalize();
   diagnostics.info(`Embedded API listening on port ${process.env.PORT}`);
   desktopUpdater.start();
@@ -221,22 +239,8 @@ function handleStartupFailure(error) {
 }
 
 app.on("window-all-closed", () => {
-  if (quitting) return;
+  if (lifecycle.isQuitting()) return;
   if (!backgroundService.handleLastWindowClosed()) requestQuit();
 });
 
-app.on("before-quit", (event) => {
-  quitting = true;
-  diagnostics.info("Application shutdown requested");
-  if (updateInstallPending) return;
-  if (shutdownStarted || !apiServer) return;
-  event.preventDefault();
-  shutdownStarted = true;
-  void apiServer.shutdown()
-    .then(() => app.quit())
-    .catch((error) => {
-      diagnostics.error("Embedded API shutdown failed", error);
-      console.error(error);
-      app.exit(1);
-    });
-});
+app.on("before-quit", (event) => lifecycle.handleBeforeQuit(event));

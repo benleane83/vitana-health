@@ -12,7 +12,7 @@ const ownerToken = "test-owner-token-for-companion-routes";
 let dataDir: string;
 
 function outcome() {
-  const empty = { attempted: 0, accepted: 0, duplicates: 0, evicted: 0 };
+  const empty = { attempted: 0, accepted: 0, duplicates: 0, rejected: 0 };
   return {
     sourceImport: empty,
     dataSource: empty,
@@ -24,12 +24,50 @@ function outcome() {
 }
 
 function store(profileId: string) {
+  const observations = profileId === "phone" ? 1 : 0;
+  const sourceCounts = { observations, samples: 0, activities: 0 };
+  const profile = {
+    id: profileId,
+    displayName: profileId,
+    units: "metric",
+    updatedAt: "2026-01-01T00:00:00.000Z"
+  };
   return {
     profileId,
-    appBootstrap: vi.fn(async () => ({ profile: { id: profileId }, counts: { observations: profileId === "phone" ? 1 : 0 } })),
-    analyticsSummary: vi.fn(async () => ({ profileId, counts: { observations: profileId === "phone" ? 1 : 0 } })),
-    summary: vi.fn(async () => ({ profileId, totals: { observations: profileId === "phone" ? 1 : 0 } })),
-    measurementDetail: vi.fn(async (measurementCode: string) => ({ profileId, measurement: { code: measurementCode } })),
+    appBootstrap: vi.fn(async () => ({
+      profile,
+      measurementTypes: [],
+      manualObservationGroupTemplates: [],
+      counts: { imports: 0, observations, samples: 0, activities: 0, healthEvents: 0, careItems: 0 }
+    })),
+    analyticsSummary: vi.fn(async () => ({
+      counts: { imports: 0, observations, samples: 0, activities: 0, healthEvents: 0, careItems: 0, insights: 0 },
+      latestMetrics: [],
+      trendCards: [],
+      labAlerts: [],
+      evidenceDigest: []
+    })),
+    summary: vi.fn(async () => ({
+      generatedAt: "2026-01-01T00:00:00.000Z",
+      totals: { ...sourceCounts, total: observations, types: 0 },
+      categories: []
+    })),
+    measurementDetail: vi.fn(async (measurementCode: string) => ({
+      generatedAt: "2026-01-01T00:00:00.000Z",
+      measurement: {
+        code: measurementCode,
+        displayName: measurementCode,
+        category: "uncategorized",
+        counts: { ...sourceCounts, total: observations }
+      },
+      isPinned: false,
+      referenceRange: { source: "none" },
+      entries: [],
+      chartPoints: [],
+      counts: { ...sourceCounts, total: observations },
+      deletion: { observationEntries: 0, deletableEntries: 0 },
+      pagination: { limit: 20, loaded: 0, total: 0, hasMore: false }
+    })),
     listHealthEvents: vi.fn(async () => ({ items: [{ id: `${profileId}-event`, kind: "other", status: "completed", occurredAt: "2026-01-01T00:00:00.000Z", source: "manual-entry" }], total: 1, offset: 0, limit: 20, hasMore: false })),
     createHealthEvent: vi.fn(async () => ({ healthEvent: { id: `${profileId}-event`, kind: "other", status: "completed", occurredAt: "2026-01-01T00:00:00.000Z", source: "manual-entry" }, counts: { imports: 0, observations: 0, samples: 0, activities: 0, healthEvents: 1, careItems: 0 } })),
     deleteHealthEvent: vi.fn(async () => ({ deletedCount: 1, counts: { imports: 0, observations: 0, samples: 0, activities: 0, healthEvents: 0, careItems: 0 } })),
@@ -84,7 +122,7 @@ function store(profileId: string) {
         entityType: "profile",
         entityId: profileId,
         operation: "upsert",
-        payload: { id: profileId }
+        payload: profile
       }],
       highWaterMark: { revision: 2, sequence: 4 }
     })),

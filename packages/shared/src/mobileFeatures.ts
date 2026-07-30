@@ -82,15 +82,42 @@ export function mergeHealthDataDetail(
   current: HealthDataDetail,
   nextPage: HealthDataDetail
 ): HealthDataDetail {
-  const chartPoints = [...current.chartPoints, ...nextPage.chartPoints]
-    .filter((point, index, points) =>
-      points.findIndex((candidate) => chartPointKey(candidate) === chartPointKey(point)) === index)
+  // A Map keyed by the point identity, rather than `findIndex` inside `filter`. The old form was
+  // O(n^2) over the *accumulated* array and allocated a fresh key string per comparison, so every
+  // "load more" press made the next one quadratically slower.
+  const byKey = new Map<string, HealthDataDetailChartPoint>();
+  for (const point of current.chartPoints) byKey.set(chartPointKey(point), point);
+  for (const point of nextPage.chartPoints) {
+    const key = chartPointKey(point);
+    if (!byKey.has(key)) byKey.set(key, point);
+  }
+  const chartPoints = [...byKey.values()]
     .sort((left, right) => left.timestamp.localeCompare(right.timestamp) || left.kind.localeCompare(right.kind));
   return {
     ...nextPage,
     entries: [...current.entries, ...nextPage.entries],
     chartPoints
   };
+}
+
+/**
+ * Minimum and maximum of a finite-number sequence.
+ *
+ * `Math.min(...values)` pushes every element onto the call stack and throws `RangeError` somewhere
+ * around 100k arguments, which is reachable once a user has years of accumulated history. This
+ * walks the sequence instead, and skips non-finite entries so a bad row cannot poison the extent.
+ */
+export function finiteExtent(values: Iterable<number | undefined>): { min: number; max: number } | undefined {
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+  let seen = false;
+  for (const value of values) {
+    if (value === undefined || !Number.isFinite(value)) continue;
+    if (value < min) min = value;
+    if (value > max) max = value;
+    seen = true;
+  }
+  return seen ? { min, max } : undefined;
 }
 
 export function calculateChartDomain(points: readonly HealthDataDetailChartPoint[]): {
@@ -100,21 +127,17 @@ export function calculateChartDomain(points: readonly HealthDataDetailChartPoint
   yMax: number;
 } | undefined {
   if (points.length === 0) return undefined;
-  const timestamps = points.map((point) => new Date(point.timestamp).getTime()).filter(Number.isFinite);
-  const values = points.flatMap((point) => [
+  const time = finiteExtent(points.map((point) => new Date(point.timestamp).getTime()));
+  const value = finiteExtent(points.flatMap((point) => [
     point.value,
     point.referenceRange?.low,
     point.referenceRange?.high
-  ]).filter((value): value is number => Number.isFinite(value));
-  if (timestamps.length === 0 || values.length === 0) return undefined;
-  const xMin = Math.min(...timestamps);
-  const xMax = Math.max(...timestamps);
-  const rawMin = Math.min(...values);
-  const rawMax = Math.max(...values);
-  const padding = rawMin === rawMax
-    ? Math.max(Math.abs(rawMin) * 0.05, 1)
-    : (rawMax - rawMin) * 0.05;
-  return { xMin, xMax, yMin: rawMin - padding, yMax: rawMax + padding };
+  ]));
+  if (!time || !value) return undefined;
+  const padding = value.min === value.max
+    ? Math.max(Math.abs(value.min) * 0.05, 1)
+    : (value.max - value.min) * 0.05;
+  return { xMin: time.min, xMax: time.max, yMin: value.min - padding, yMax: value.max + padding };
 }
 
 function chartPointKey(point: HealthDataDetailChartPoint): string {

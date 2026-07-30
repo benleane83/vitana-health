@@ -168,7 +168,9 @@ function isStaleInitializationLock(lockPath, now) {
 
 async function waitForPersistedWindowsEncryptionState(userDataPath, delay) {
   const localStatePath = path.join(userDataPath, "Local State");
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  // 15 seconds. Chromium can take well over five on a cold or contended disk, and giving up
+  // early surfaces as a hard startup failure rather than a slow one.
+  for (let attempt = 0; attempt < 300; attempt += 1) {
     try {
       const localState = JSON.parse(readFileSync(localStatePath, "utf8"));
       if (typeof localState?.os_crypt?.encrypted_key === "string" && localState.os_crypt.encrypted_key.length > 0) {
@@ -179,7 +181,7 @@ async function waitForPersistedWindowsEncryptionState(userDataPath, delay) {
     }
     await delay(50);
   }
-  throw new Error("The OS secure store did not persist its encryption state during startup.");
+  throw new Error("The OS secure store did not finish starting up. Please relaunch Vitana Health.");
 }
 
 function initializationHandle(lockPath) {

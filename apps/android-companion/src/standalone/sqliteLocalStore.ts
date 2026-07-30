@@ -13,10 +13,31 @@ import type {
   ReplicaPage,
   UpdateObservationInput
 } from "@vitana/shared";
-import { openWithDatabaseKey, type SecureKeyStore } from "./databaseKey";
-import { deleteEmptyPlaintextDatabase, isFileNotDatabaseError } from "./databaseRecovery";
 import {
+  generateDatabaseKeyHex,
+  openWithDatabaseKey,
+  rekeyDatabase,
+  type SecureKeyStore
+} from "./databaseKey";
+import { deleteEmptyPlaintextDatabase } from "./databaseRecovery";
+import {
+  assertDatabaseIntegrity,
+  assertRowCountsPreserved,
+  captureMigrationBackup,
+  countTrackedRows,
+  discardMigrationBackup,
+  expoDatabaseFileStore,
+  restoreMigrationBackup
+} from "./databaseBackup";
+import {
+  LocalDatabaseError,
+  type LocalDatabaseFailureReason,
+  type LocalDatabaseMode
+} from "./localDatabaseState";
+import {
+  DEFAULT_MIGRATION_BATCH_SIZE,
   LOCAL_SCHEMA_VERSION,
+  MEASUREMENT_SCOPED_REPLICA_TYPES,
   emptyCounts,
   entityOutcome,
   type LocalObservationAggregate,
@@ -24,16 +45,30 @@ import {
   type LocalDatasetSummary,
   type LocalDatasetMetadata,
   type LocalStore,
-  type LocalStoreCounts
+  type LocalStoreCounts,
+  type ReplicaEntityFilter
 } from "./localStore";
 import type { HealthDataChartSeries, HealthDataChartSeriesOptions } from "@vitana/shared";
 import { chartRangeCutoff } from "../chartSeries";
-import { migrate } from "./migrations";
+import { migrate, readSchemaVersion } from "./migrations";
+import { prepareReplicaCache } from "./replicaCache";
 
 const DATABASE_NAME = "standalone-health.db";
+// A separate file on purpose. `standalone-health.db` holds records that exist nowhere else and are
+// migrated with backups and row-count assertions; `replica.db` holds copies of data the paired PC
+// still has, and is rebuilt rather than migrated. Keeping them together made every cache-shape
+// change a user-data migration.
+const REPLICA_DATABASE_NAME = "replica.db";
 const DATABASE_KEY_NAME = "vitana.standaloneDatabaseKey.v1";
 let sharedDatabase: Promise<SQLiteDatabase> | undefined;
+let sharedReplicaDatabase: Promise<SQLiteDatabase> | undefined;
 let databaseLeases = 0;
+let databaseMode: LocalDatabaseMode = "read-write";
+
+/** Whether the open database accepts writes, or is pinned read-only by a newer build's schema. */
+export function localDatabaseMode(): LocalDatabaseMode {
+  return databaseMode;
+}
 
 const secureKeyStore: SecureKeyStore = {
   get: () => SecureStore.getItemAsync(DATABASE_KEY_NAME),
@@ -44,25 +79,60 @@ const secureKeyStore: SecureKeyStore = {
 };
 
 export async function openSqliteLocalStore(): Promise<SqliteLocalStore> {
-  const database = await acquireSharedDatabase();
-  return new SqliteLocalStore(database, releaseSharedDatabase);
+  const { database, replicaDatabase } = await acquireSharedDatabase();
+  return new SqliteLocalStore(database, releaseSharedDatabase, replicaDatabase);
 }
 
-async function acquireSharedDatabase(): Promise<SQLiteDatabase> {
+async function acquireSharedDatabase(): Promise<{ database: SQLiteDatabase; replicaDatabase: SQLiteDatabase }> {
   sharedDatabase ??= openSqliteDatabase().catch((error) => {
     sharedDatabase = undefined;
     throw error;
   });
   const database = await sharedDatabase;
+  sharedReplicaDatabase ??= openReplicaDatabase().catch((error) => {
+    sharedReplicaDatabase = undefined;
+    throw error;
+  });
+  const replicaDatabase = await sharedReplicaDatabase;
   databaseLeases += 1;
-  return database;
+  return { database, replicaDatabase };
+}
+
+/**
+ * Opens the cache under the same key as the durable database - it holds real health readings, just
+ * borrowed ones - but with none of the migration ceremony. A cache that will not open is deleted
+ * and refilled, which is why this has no recovery path of its own.
+ */
+async function openReplicaDatabase(): Promise<SQLiteDatabase> {
+  return openWithDatabaseKey(secureKeyStore, Crypto.getRandomBytesAsync, async (hexKey) => {
+    let database = await openDatabaseAsync(REPLICA_DATABASE_NAME);
+    try {
+      await database.execAsync(`PRAGMA key = "x'${hexKey}'";`);
+      await database.getFirstAsync("PRAGMA user_version");
+    } catch {
+      await database.closeAsync().catch(() => undefined);
+      await deleteDatabaseAsync(REPLICA_DATABASE_NAME).catch(() => undefined);
+      database = await openDatabaseAsync(REPLICA_DATABASE_NAME);
+      await database.execAsync(`PRAGMA key = "x'${hexKey}'";`);
+    }
+    await database.execAsync(`
+      PRAGMA foreign_keys = ON;
+      PRAGMA journal_mode = WAL;
+      PRAGMA secure_delete = ON;
+    `);
+    await prepareReplicaCache(database);
+    return database;
+  }, () => false);
 }
 
 async function openSqliteDatabase(): Promise<SQLiteDatabase> {
   try {
     return await openSqliteDatabaseOnce();
   } catch (error) {
-    if (!isFileNotDatabaseError(error)) throw error;
+    // Recovery is attempted for any open failure rather than only for a driver message containing
+    // "file is not a database". The gate that protects real data is the positive proof below - the
+    // file must open unencrypted and contain zero tables - not a substring match, which would risk
+    // destroying the key for a database that is merely temporarily unreadable.
     const removed = await deleteEmptyPlaintextDatabase(
       () => openDatabaseAsync(DATABASE_NAME),
       () => deleteDatabaseAsync(DATABASE_NAME)
@@ -75,8 +145,9 @@ async function openSqliteDatabase(): Promise<SQLiteDatabase> {
 }
 
 async function openSqliteDatabaseOnce(): Promise<SQLiteDatabase> {
+  const fileExisted = await expoDatabaseFileStore.exists(DATABASE_NAME).catch(() => false);
   let databaseReadable = false;
-  return openWithDatabaseKey(secureKeyStore, Crypto.getRandomBytesAsync, async (hexKey) => {
+  return openWithDatabaseKey(secureKeyStore, Crypto.getRandomBytesAsync, async (hexKey, created) => {
     const database = await openDatabaseAsync(DATABASE_NAME);
     let phase = "applying the encryption key";
     try {
@@ -84,7 +155,10 @@ async function openSqliteDatabaseOnce(): Promise<SQLiteDatabase> {
       phase = "checking SQLCipher availability";
       const cipher = await database.getFirstAsync<{ cipher_version: string }>("PRAGMA cipher_version");
       if (!cipher?.cipher_version) {
-        throw new Error("SQLCipher is unavailable. Reinstall the standalone test build with SQLCipher enabled.");
+        throw new LocalDatabaseError(
+          "sqlcipher-unavailable",
+          "SQLCipher is unavailable. Reinstall the standalone test build with SQLCipher enabled."
+        );
       }
 
       phase = "verifying the encrypted database";
@@ -98,19 +172,106 @@ async function openSqliteDatabaseOnce(): Promise<SQLiteDatabase> {
         PRAGMA secure_delete = ON;
       `);
       phase = "migrating the encrypted database";
-      await migrate(database);
+      databaseMode = await migrateWithBackup(database);
       return database;
     } catch (error) {
       await database.closeAsync().catch(() => undefined);
+      if (error instanceof LocalDatabaseError) throw error;
       const detail = error instanceof Error ? error.message : "Unknown database error";
-      throw new Error(`Unable to open the encrypted standalone database safely while ${phase}: ${detail}`);
+      throw new LocalDatabaseError(
+        failureReason(databaseReadable, created, fileExisted),
+        `Unable to open the encrypted standalone database safely while ${phase}: ${detail}`,
+        { cause: error }
+      );
     }
   }, () => !databaseReadable);
 }
 
+/**
+ * A freshly minted key against a database file that already existed means the key was lost, not
+ * that the data is damaged - the ciphertext is intact but no longer openable.
+ */
+function failureReason(
+  databaseReadable: boolean,
+  keyWasGenerated: boolean,
+  fileExisted: boolean
+): LocalDatabaseFailureReason {
+  if (databaseReadable) return "migration-failed";
+  if (keyWasGenerated && fileExisted) return "key-missing";
+  return "data-unreadable";
+}
+
+/**
+ * Runs pending migrations with the pre-migration file copied aside, so a migration that corrupts
+ * the database or loses rows can be rolled back instead of leaving unrecoverable health data.
+ */
+async function migrateWithBackup(database: SQLiteDatabase): Promise<LocalDatabaseMode> {
+  const fromVersion = await readSchemaVersion(database);
+  if (fromVersion >= LOCAL_SCHEMA_VERSION) {
+    const outcome = await migrate(database);
+    if (!outcome.readOnly) return "read-write";
+    // A newer build wrote this file. Refuse writes at the engine level rather than trusting every
+    // call site to check a flag, and let the user keep reading what is already there.
+    await database.execAsync("PRAGMA query_only = ON;");
+    return "read-only";
+  }
+
+  const countsBefore = await countTrackedRows(database);
+  await database.execAsync("PRAGMA wal_checkpoint(TRUNCATE);").catch(() => undefined);
+  const captured = await captureMigrationBackup(expoDatabaseFileStore, DATABASE_NAME, fromVersion);
+  try {
+    await migrate(database);
+    await assertDatabaseIntegrity(database);
+    assertRowCountsPreserved(countsBefore, await countTrackedRows(database));
+  } catch (error) {
+    await database.closeAsync().catch(() => undefined);
+    await restoreMigrationBackup(expoDatabaseFileStore, DATABASE_NAME, fromVersion, captured);
+    throw error;
+  }
+  await discardMigrationBackup(expoDatabaseFileStore, DATABASE_NAME, fromVersion, captured);
+  return "read-write";
+}
+
+/**
+ * Re-encrypts the standalone database under a freshly generated key.
+ *
+ * The new key is only persisted once `PRAGMA rekey` has succeeded and the database has been read
+ * back under it, so a failure part-way leaves the old key in SecureStore matching the old
+ * ciphertext.
+ */
+export async function rekeySqliteLocalStorage(
+  newKeyHex?: string
+): Promise<void> {
+  if (databaseLeases > 0) {
+    throw new Error("Close active local data operations before rotating the encryption key.");
+  }
+
+  const currentKey = await secureKeyStore.get();
+  if (currentKey === null) throw new LocalDatabaseError("key-missing", "There is no key to rotate.");
+  const replacement = newKeyHex ?? (await generateDatabaseKeyHex(Crypto.getRandomBytesAsync));
+
+  const database = await openDatabaseAsync(DATABASE_NAME);
+  try {
+    await rekeyDatabase(database, currentKey, replacement);
+  } finally {
+    await database.closeAsync().catch(() => undefined);
+  }
+  // The cache shares the key but is not worth rotating: dropping it costs one re-sync, and it means
+  // a half-finished rotation can never leave a file no key opens.
+  await deleteDatabaseAsync(REPLICA_DATABASE_NAME).catch(() => undefined);
+  await secureKeyStore.set(replacement);
+}
+
+
 async function releaseSharedDatabase(): Promise<void> {
   databaseLeases = Math.max(0, databaseLeases - 1);
-  if (databaseLeases !== 0 || !sharedDatabase) return;
+  if (databaseLeases !== 0) return;
+  if (sharedReplicaDatabase) {
+    const replica = await sharedReplicaDatabase;
+    sharedReplicaDatabase = undefined;
+    await replica.closeAsync().catch(() => undefined);
+  }
+  if (!sharedDatabase) return;
   const database = await sharedDatabase;
   sharedDatabase = undefined;
   await database.closeAsync();
@@ -121,7 +282,9 @@ export async function resetSqliteLocalStorage(): Promise<void> {
     throw new Error("Close active local data operations before resetting encrypted storage.");
   }
   await deleteDatabaseAsync(DATABASE_NAME);
+  await deleteDatabaseAsync(REPLICA_DATABASE_NAME).catch(() => undefined);
   await secureKeyStore.remove();
+  databaseMode = "read-write";
 }
 
 export class SqliteLocalStore implements LocalStore {
@@ -130,7 +293,9 @@ export class SqliteLocalStore implements LocalStore {
 
   constructor(
     private readonly database: SQLiteDatabase,
-    private readonly release: () => Promise<void> = () => database.closeAsync()
+    private readonly release: () => Promise<void> = () => database.closeAsync(),
+    /** Defaults to the durable handle so existing single-database tests keep working. */
+    private readonly replicaDatabase: SQLiteDatabase = database
   ) {}
 
   async initialize(defaultProfile: Profile): Promise<void> {
@@ -390,67 +555,83 @@ export class SqliteLocalStore implements LocalStore {
     };
   }
 
-  async exportMigrationBatches(sessionId: string, batchSize = 250): Promise<MobileMigrationBatch[]> {
+  /**
+   * Yields batches as they are read. The previous version selected all four tables in full before
+   * slicing them, so `batchSize` bounded the upload but not the memory — on exactly the datasets
+   * (the largest ones) where that mattered most.
+   */
+  async *streamMigrationBatches(sessionId: string, batchSize = DEFAULT_MIGRATION_BATCH_SIZE): AsyncGenerator<MobileMigrationBatch> {
     const size = Math.min(Math.max(Math.trunc(batchSize), 1), 500);
     const profileId = this.requireProfileId();
-    const batches: MobileMigrationBatch[] = [];
-    const append = <T>(
-      kind: string,
-      values: T[],
-      assign: (batch: MobileMigrationBatch, chunk: T[]) => void
-    ) => {
-      for (let offset = 0; offset < values.length; offset += size) {
-        const batch: MobileMigrationBatch = {
-          protocolVersion: 1,
-          sessionId,
-          batchId: `${kind}-${String(offset / size).padStart(6, "0")}`,
-          sourceImports: [],
-          dataSources: [],
-          observationGroups: [],
-          observations: []
-        };
-        assign(batch, values.slice(offset, offset + size));
-        batches.push(batch);
+    const emptyBatch = (kind: string, index: number): MobileMigrationBatch => ({
+      protocolVersion: 1,
+      sessionId,
+      batchId: `${kind}-${String(index).padStart(6, "0")}`,
+      sourceImports: [],
+      dataSources: [],
+      observationGroups: [],
+      observations: []
+    });
+    const database = this.database;
+    async function* pages<T>(sql: string): AsyncGenerator<T[]> {
+      for (let offset = 0; ; offset += size) {
+        const rows = await database.getAllAsync<T>(`${sql} LIMIT ? OFFSET ?`, profileId, size, offset);
+        if (rows.length === 0) return;
+        yield rows;
+        if (rows.length < size) return;
       }
-    };
-    const sourceImports = await this.database.getAllAsync<any>(
+    }
+
+    let index = 0;
+    for await (const rows of pages<SourceImportRow>(
       `SELECT id, source_kind AS sourceKind, file_name AS fileName, imported_at AS importedAt,
         parser_version AS parserVersion, checksum, row_count AS rowCount, status, diagnostics_json AS diagnostics
-       FROM source_imports WHERE profile_id = ? ORDER BY id`,
-      profileId
-    );
-    append("source-imports", sourceImports.map((row) => ({
-      ...row,
-      diagnostics: JSON.parse(row.diagnostics)
-    })), (batch, chunk) => { batch.sourceImports = chunk; });
-    const dataSources = await this.database.getAllAsync<any>(
+       FROM source_imports WHERE profile_id = ? ORDER BY id`
+    )) {
+      yield {
+        ...emptyBatch("source-imports", index++),
+        sourceImports: rows.map((row) => ({ ...row, diagnostics: JSON.parse(row.diagnostics) as string[] }))
+      };
+    }
+
+    index = 0;
+    for await (const rows of pages<DataSourceRow>(
       `SELECT id, source_kind AS sourceKind, label, import_id AS importId, created_at AS createdAt
-       FROM data_sources WHERE profile_id = ? ORDER BY id`,
-      profileId
-    );
-    append("data-sources", dataSources.map(withUndefinedNulls), (batch, chunk) => { batch.dataSources = chunk; });
-    const groups = await this.database.getAllAsync<any>(
+       FROM data_sources WHERE profile_id = ? ORDER BY id`
+    )) {
+      yield { ...emptyBatch("data-sources", index++), dataSources: rows.map((row) => withUndefinedNulls(row)) };
+    }
+
+    index = 0;
+    for await (const rows of pages<ObservationGroupRow>(
       `SELECT id, kind, label, source_id AS sourceId, import_id AS importId, start_at AS startAt,
         end_at AS endAt, collected_at AS collectedAt, metadata_json AS metadata
-       FROM observation_groups WHERE profile_id = ? ORDER BY id`,
-      profileId
-    );
-    append("observation-groups", groups.map((row) => withUndefinedNulls({
-      ...row,
-      metadata: JSON.parse(row.metadata)
-    })), (batch, chunk) => { batch.observationGroups = chunk; });
-    const observations = await this.database.getAllAsync<any>(
+       FROM observation_groups WHERE profile_id = ? ORDER BY id`
+    )) {
+      yield {
+        ...emptyBatch("observation-groups", index++),
+        observationGroups: rows.map((row) => withUndefinedNulls({
+          ...row,
+          metadata: JSON.parse(row.metadata) as Record<string, unknown>
+        }))
+      };
+    }
+
+    index = 0;
+    for await (const rows of pages<ObservationRow>(
       `SELECT id, measurement_code AS measurementCode, observed_at AS observedAt,
         effective_start AS effectiveStart, effective_end AS effectiveEnd, value, unit, source_id AS sourceId,
         observation_group_id AS observationGroupId, device_id AS deviceId, note, source_json AS sourceJson
-       FROM observations WHERE profile_id = ? ORDER BY id`,
-      profileId
-    );
-    append("observations", observations.map((row) => withUndefinedNulls({
-      ...row,
-      sourceJson: row.sourceJson ? JSON.parse(row.sourceJson) : undefined
-    })), (batch, chunk) => { batch.observations = chunk; });
-    return batches;
+       FROM observations WHERE profile_id = ? ORDER BY id`
+    )) {
+      yield {
+        ...emptyBatch("observations", index++),
+        observations: rows.map((row) => withUndefinedNulls({
+          ...row,
+          sourceJson: row.sourceJson ? (JSON.parse(row.sourceJson) as unknown) : undefined
+        }))
+      };
+    }
   }
 
   async archiveAfterMigration(receipt: MobileMigrationReceipt, serverUrl: string): Promise<void> {
@@ -704,7 +885,7 @@ export class SqliteLocalStore implements LocalStore {
   }
 
   async replicaMetadata(identity: ReplicaIdentity) {
-    const row = await this.database.getFirstAsync<{
+    const row = await this.replicaDatabase.getFirstAsync<{
       server_instance_id: string;
       profile_id: string;
       pairing_id: string;
@@ -737,8 +918,8 @@ export class SqliteLocalStore implements LocalStore {
     const identity = replicaIdentity(page);
     const id = replicaId(identity);
     const appliedAt = new Date().toISOString();
-    await this.database.withTransactionAsync(async () => {
-      await this.database.runAsync(
+    await this.replicaDatabase.withTransactionAsync(async () => {
+      await this.replicaDatabase.runAsync(
         `INSERT OR IGNORE INTO connected_replicas
          (replica_id, server_instance_id, profile_id, pairing_id)
          VALUES (?, ?, ?, ?)`,
@@ -760,7 +941,7 @@ export class SqliteLocalStore implements LocalStore {
             : Math.max(metadata.cursorSequence, ...page.changes.map((change) => change.sequence)));
       const initialSnapshotCompleted = metadata.initialSnapshotCompleted ||
         (page.kind === "snapshot" && page.complete);
-      await this.database.runAsync(
+      await this.replicaDatabase.runAsync(
         `UPDATE connected_replicas SET cursor_sequence = ?, revision = ?,
          initial_snapshot_completed = ?, cached_at = ?, applied_at = ?, snapshot_cursor = ?
          WHERE replica_id = ?`,
@@ -781,7 +962,7 @@ export class SqliteLocalStore implements LocalStore {
    */
   private async writeReplicaChanges(id: string, changes: ReplicaPage["changes"]): Promise<void> {
     if (changes.length === 0) return;
-    const upsert = await this.database.prepareAsync(
+    const upsert = await this.replicaDatabase.prepareAsync(
       `INSERT INTO connected_replica_entities
        (replica_id, entity_type, entity_id, payload_json, revision)
        VALUES (?, ?, ?, ?, ?)
@@ -790,7 +971,7 @@ export class SqliteLocalStore implements LocalStore {
          revision = excluded.revision
        WHERE excluded.revision >= connected_replica_entities.revision`
     );
-    const tombstone = await this.database.prepareAsync(
+    const tombstone = await this.replicaDatabase.prepareAsync(
       `DELETE FROM connected_replica_entities
        WHERE replica_id = ? AND entity_type = ? AND entity_id = ? AND revision <= ?`
     );
@@ -815,15 +996,30 @@ export class SqliteLocalStore implements LocalStore {
     }
   }
 
-  async replicaEntities(identity: ReplicaIdentity) {
+  async replicaEntities(identity: ReplicaIdentity, filter: ReplicaEntityFilter = {}) {
     const metadata = await this.replicaMetadata(identity);
     if (!metadata?.initialSnapshotCompleted) {
       throw new Error("Connected data is unavailable offline until the first snapshot completes.");
     }
-    const rows = await this.database.getAllAsync<{ entity_type: string; payload_json: string }>(
+    const conditions = ["replica_id = ?"];
+    const params: Array<string | number> = [replicaId(identity)];
+    if (filter.entityTypes) {
+      conditions.push(`entity_type IN (${filter.entityTypes.map(() => "?").join(", ")})`);
+      params.push(...filter.entityTypes);
+    }
+    if (filter.measurementCode !== undefined) {
+      // Applied in SQL so the rows for other measurements are never JSON-parsed into JS at all.
+      const scoped = MEASUREMENT_SCOPED_REPLICA_TYPES;
+      conditions.push(
+        `(entity_type NOT IN (${scoped.map(() => "?").join(", ")})
+          OR json_extract(payload_json, '$.measurementCode') = ?)`
+      );
+      params.push(...scoped, filter.measurementCode);
+    }
+    const rows = await this.replicaDatabase.getAllAsync<{ entity_type: string; payload_json: string }>(
       `SELECT entity_type, payload_json FROM connected_replica_entities
-       WHERE replica_id = ? ORDER BY entity_type, entity_id`,
-      replicaId(identity)
+       WHERE ${conditions.join(" AND ")} ORDER BY entity_type, entity_id`,
+      ...params
     );
     return rows.map((row) => ({
       entityType: row.entity_type,
@@ -835,9 +1031,40 @@ export class SqliteLocalStore implements LocalStore {
     const id = replicaId(identity);
     // Deleted explicitly rather than through the foreign-key cascade: this is the "forget my synced
     // health data" path, and orphaned entity rows would be unreachable health data.
-    await this.database.withTransactionAsync(async () => {
-      await this.database.runAsync("DELETE FROM connected_replica_entities WHERE replica_id = ?", id);
-      await this.database.runAsync("DELETE FROM connected_replicas WHERE replica_id = ?", id);
+    await this.replicaDatabase.withTransactionAsync(async () => {
+      await this.replicaDatabase.runAsync("DELETE FROM connected_replica_entities WHERE replica_id = ?", id);
+      await this.replicaDatabase.runAsync("DELETE FROM connected_replicas WHERE replica_id = ?", id);
+    });
+  }
+
+  async promoteReplica(staging: ReplicaIdentity, target: ReplicaIdentity): Promise<void> {
+    const stagingId = replicaId(staging);
+    const targetId = replicaId(target);
+    if (stagingId === targetId) return;
+    // Ordered so no entity row is ever parentless: seed the new parent, move the children, then drop
+    // the old parent.
+    await this.replicaDatabase.withTransactionAsync(async () => {
+      await this.replicaDatabase.runAsync("DELETE FROM connected_replica_entities WHERE replica_id = ?", targetId);
+      await this.replicaDatabase.runAsync("DELETE FROM connected_replicas WHERE replica_id = ?", targetId);
+      await this.replicaDatabase.runAsync(
+        `INSERT INTO connected_replicas
+         (replica_id, server_instance_id, profile_id, pairing_id, cursor_sequence, revision,
+          initial_snapshot_completed, cached_at, applied_at, snapshot_cursor)
+         SELECT ?, ?, ?, ?, cursor_sequence, revision, initial_snapshot_completed, cached_at,
+           applied_at, snapshot_cursor
+         FROM connected_replicas WHERE replica_id = ?`,
+        targetId,
+        target.serverInstanceId,
+        target.profileId,
+        target.pairingId,
+        stagingId
+      );
+      await this.replicaDatabase.runAsync(
+        "UPDATE connected_replica_entities SET replica_id = ? WHERE replica_id = ?",
+        targetId,
+        stagingId
+      );
+      await this.replicaDatabase.runAsync("DELETE FROM connected_replicas WHERE replica_id = ?", stagingId);
     });
   }
 
@@ -848,7 +1075,10 @@ export class SqliteLocalStore implements LocalStore {
   }
 
   async reset(): Promise<void> {
-    await this.database.closeAsync();
+    // Release this store's lease instead of closing the shared handle behind the accounting's back.
+    // Closing directly left `databaseLeases` above zero, so `resetSqliteLocalStorage` refused to run
+    // and the module kept caching a handle to a database that was already closed.
+    await this.close();
     await resetSqliteLocalStorage();
     this.profileId = undefined;
   }
@@ -941,6 +1171,61 @@ function resumableSnapshotCursor(
   return current ?? null;
 }
 
-function withUndefinedNulls<T extends Record<string, unknown>>(value: T): T {
-  return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, entry ?? undefined])) as T;
+/**
+ * Row shapes for the migration export. These mirror the `AS` aliases in the queries below and the
+ * element schemas in `mobileMigrationBatchSchema`: a renamed column or a dropped alias becomes a
+ * compile error here instead of a field that silently arrives as `undefined` on the desktop.
+ */
+type SourceImportRow = {
+  id: string;
+  sourceKind: MobileMigrationBatch["sourceImports"][number]["sourceKind"];
+  fileName: string;
+  importedAt: string;
+  parserVersion: string;
+  checksum: string;
+  rowCount: number;
+  status: MobileMigrationBatch["sourceImports"][number]["status"];
+  diagnostics: string;
+}
+
+type DataSourceRow = {
+  id: string;
+  sourceKind: MobileMigrationBatch["dataSources"][number]["sourceKind"];
+  label: string;
+  importId: string | null;
+  createdAt: string;
+}
+
+type ObservationGroupRow = {
+  id: string;
+  kind: MobileMigrationBatch["observationGroups"][number]["kind"];
+  label: string;
+  sourceId: string | null;
+  importId: string | null;
+  startAt: string | null;
+  endAt: string | null;
+  collectedAt: string | null;
+  metadata: string;
+}
+
+type ObservationRow = {
+  id: string;
+  measurementCode: string;
+  observedAt: string;
+  effectiveStart: string | null;
+  effectiveEnd: string | null;
+  value: number;
+  unit: string;
+  sourceId: string;
+  observationGroupId: string | null;
+  deviceId: string | null;
+  note: string | null;
+  sourceJson: string | null;
+}
+
+/** Strips SQLite `NULL`s so optional fields are absent rather than explicitly null. */
+type NullsToUndefined<T> = { [K in keyof T]: null extends T[K] ? Exclude<T[K], null> | undefined : T[K] };
+
+function withUndefinedNulls<T extends Record<string, unknown>>(value: T): NullsToUndefined<T> {
+  return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, entry ?? undefined])) as NullsToUndefined<T>;
 }

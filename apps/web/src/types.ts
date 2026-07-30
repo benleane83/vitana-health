@@ -2,6 +2,8 @@
  * Shared front-end types extracted from App.tsx.
  */
 
+import type { UploadDraftRow } from "@vitana/shared";
+
 export type AppRoute = "dashboard" | "import" | "track" | "care" | "insights" | "export" | "settings";
 export type InsightsTab = "biological-age" | "ai-query" | "ai-review";
 export type CareView = "items" | "health-events";
@@ -17,21 +19,8 @@ export interface ManualMarkerRow {
   unit: string;
 }
 
-/** Editable form of an `UploadDraftRow` (see `@vitana/shared`) for the review table. */
-export interface UploadEditableRow {
-  id: string;
-  label: string;
-  measurementCode: string;
-  displayName: string;
-  value: string;
-  unit: string;
-  observedAt?: string;
-  confidence: "high" | "medium" | "low";
-  sourceText?: string;
-  sourceName?: string;
-  note?: string;
-  included: boolean;
-  generatedCode?: boolean;
-  sourceRowIndex?: number;
-  sourceColumn?: string;
-}
+/**
+ * Editable form of an `UploadDraftRow` for the review table: identical apart from `value`, which is
+ * held as raw text while the user is mid-edit and only parsed back to a number on submit.
+ */
+export type UploadEditableRow = Omit<UploadDraftRow, "value"> & { value: string };

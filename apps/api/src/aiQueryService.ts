@@ -73,7 +73,7 @@ export async function executeAiQuery(
 
   let rows: Array<Record<string, unknown>>;
   try {
-    rows = await runAnalyticsQuery(storeManager, compiled.sql);
+    rows = await runAnalyticsQuery(storeManager, compiled);
   } catch {
     return internalError("execution", planner, input.debug);
   }

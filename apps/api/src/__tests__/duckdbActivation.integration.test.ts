@@ -7,6 +7,7 @@ import { describeAnalyticsStorage, runAnalyticsQuery } from "../storage/analytic
 import { ProfileStoreManager } from "../storage/profileStoreManager.js";
 import { RestoreJournal } from "../storage/restoreJournal.js";
 import { createDuckDbHealthStoreFixture } from "./support/duckdbFixture.js";
+import { findPreparedExtension } from "./support/duckdbExtension.js";
 
 const httpfsExtensionPath = findPreparedExtension();
 let tempDir: string;
@@ -74,18 +75,18 @@ describe.skipIf(!httpfsExtensionPath)("ProfileStoreManager DuckDB runtime", () =
       panelName: "DuckDB fixture",
       markers: [{ markerName: "Weight", value: 81, unit: "kg" }]
     }));
-    expect(describeAnalyticsStorage(manager, await manager.getActiveStore().storageCounts())).toMatchObject({
-      databasePath: "encrypted-profile:self",
-      engine: "duckdb",
+    expect(describeAnalyticsStorage(await manager.getActiveStore().storageCounts())).toMatchObject({
       counts: { observations: 1 }
     });
-    expect(await runAnalyticsQuery(
-      manager,
-      "SELECT measurement_code, n FROM v_daily_metrics ORDER BY measurement_code LIMIT 10"
-    )).toEqual(expect.arrayContaining([expect.objectContaining({ measurement_code: "weight" })]));
+    expect(await runAnalyticsQuery(manager, {
+      dialect: "duckdb",
+      sql: "SELECT measurement_code, n FROM v_daily_metrics ORDER BY measurement_code LIMIT 10",
+      resolvedTimeRange: { start: "1970-01-01", end: "2100-01-01", label: "all time" },
+      appliedLimit: 10
+    })).toEqual(expect.arrayContaining([expect.objectContaining({ measurement_code: "weight" })]));
 
     const created = await manager.createProfile("Pilot profile");
-    manager.setActiveProfile(created.id);
+    await manager.setActiveProfile(created.id);
     await manager.closeAll();
 
     const reopened = await openManager();
@@ -177,12 +178,4 @@ function openManager(): Promise<ProfileStoreManager> {
     storageBackend: "duckdb",
     duckdb: { httpfsExtensionPath: httpfsExtensionPath!, root: duckdbRoot }
   });
-}
-
-function findPreparedExtension(): string | undefined {
-  return [
-    process.env.VITANA_DUCKDB_HTTPFS_EXTENSION,
-    resolve(process.cwd(), "apps", "desktop", "build", "duckdb-extensions", "httpfs.duckdb_extension"),
-    resolve(process.cwd(), "..", "desktop", "build", "duckdb-extensions", "httpfs.duckdb_extension")
-  ].find((candidate): candidate is string => Boolean(candidate && existsSync(candidate)));
 }

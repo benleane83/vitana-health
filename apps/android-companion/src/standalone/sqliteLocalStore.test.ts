@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Profile } from "@vitana/shared";
 import * as SecureStore from "expo-secure-store";
-import { openDatabaseAsync } from "expo-sqlite";
+import { deleteDatabaseAsync, openDatabaseAsync } from "expo-sqlite";
 
 vi.mock("expo-crypto", () => ({ getRandomBytesAsync: vi.fn() }));
 vi.mock("expo-secure-store", () => ({
@@ -11,10 +11,20 @@ vi.mock("expo-secure-store", () => ({
   setItemAsync: vi.fn()
 }));
 vi.mock("expo-sqlite", () => ({
-  deleteDatabaseAsync: vi.fn(),
+  deleteDatabaseAsync: vi.fn(async () => undefined),
   openDatabaseAsync: vi.fn()
 }));
-vi.mock("./migrations", () => ({ migrate: vi.fn() }));
+vi.mock("expo-file-system", () => ({
+  Directory: class {},
+  File: class {},
+  Paths: { document: "document" }
+}));
+vi.mock("./migrations", () => ({
+  migrate: vi.fn(async () => ({ schemaVersion: 5, readOnly: false, appliedVersions: [] })),
+  readSchemaVersion: vi.fn(async () => 5),
+  replicaSchemaSql: "CREATE TABLE IF NOT EXISTS connected_replicas (replica_id TEXT PRIMARY KEY);",
+  replicaResetSql: "DROP TABLE IF EXISTS connected_replicas;"
+}));
 
 import { LocalProfileRepository } from "./localRepository";
 import { openSqliteLocalStore, SqliteLocalStore } from "./sqliteLocalStore";
@@ -106,7 +116,7 @@ describe("SQLite local store connection ownership", () => {
   });
 
   it("shares one database connection until the final store lease closes", async () => {
-    const closeAsync = vi.fn();
+    const closeAsync = vi.fn(async () => undefined);
     const database = {
       closeAsync,
       execAsync: vi.fn(),
@@ -119,12 +129,61 @@ describe("SQLite local store connection ownership", () => {
     const standaloneStore = await openSqliteLocalStore();
     const connectedStore = await openSqliteLocalStore();
 
-    expect(openDatabaseAsync).toHaveBeenCalledTimes(1);
+    // Two files, one lease: the durable database and the disposable replica cache are opened and
+    // torn down together, so callers never see a half-open pair.
+    expect(vi.mocked(openDatabaseAsync).mock.calls.map(([name]) => name))
+      .toEqual(["standalone-health.db", "replica.db"]);
     await standaloneStore.close();
     await standaloneStore.close();
     expect(closeAsync).not.toHaveBeenCalled();
 
     await connectedStore.close();
-    expect(closeAsync).toHaveBeenCalledTimes(1);
+    expect(closeAsync).toHaveBeenCalledTimes(2);
+  });
+
+  it("releases its lease when reset so the shared connection is actually torn down", async () => {
+    const closeAsync = vi.fn(async () => undefined);
+    const database = {
+      closeAsync,
+      execAsync: vi.fn(),
+      getFirstAsync: vi.fn(async (sql: string) =>
+        sql === "PRAGMA cipher_version" ? { cipher_version: "4.6.1" } : null)
+    };
+    vi.mocked(SecureStore.getItemAsync).mockResolvedValue("a".repeat(64));
+    vi.mocked(openDatabaseAsync).mockResolvedValue(database as never);
+
+    const store = await openSqliteLocalStore();
+    // Previously this closed the raw handle without touching the lease count, so the reset below
+    // threw "Close active local data operations..." and the module kept caching a closed handle.
+    await store.reset();
+
+    expect(closeAsync).toHaveBeenCalledTimes(2);
+    expect(deleteDatabaseAsync).toHaveBeenCalledWith("standalone-health.db");
+    expect(deleteDatabaseAsync).toHaveBeenCalledWith("replica.db");
+    expect(SecureStore.deleteItemAsync).toHaveBeenCalled();
+
+    // A fresh store must open new connections rather than reuse the closed ones.
+    vi.mocked(openDatabaseAsync).mockClear();
+    const reopened = await openSqliteLocalStore();
+    expect(openDatabaseAsync).toHaveBeenCalledTimes(2);
+    await reopened.close();
+  });
+
+  it("refuses to reset while another store still holds a lease", async () => {
+    const database = {
+      closeAsync: vi.fn(async () => undefined),
+      execAsync: vi.fn(),
+      getFirstAsync: vi.fn(async (sql: string) =>
+        sql === "PRAGMA cipher_version" ? { cipher_version: "4.6.1" } : null)
+    };
+    vi.mocked(SecureStore.getItemAsync).mockResolvedValue("a".repeat(64));
+    vi.mocked(openDatabaseAsync).mockResolvedValue(database as never);
+
+    const first = await openSqliteLocalStore();
+    const second = await openSqliteLocalStore();
+
+    await expect(first.reset()).rejects.toThrow("Close active local data operations");
+
+    await second.close();
   });
 });

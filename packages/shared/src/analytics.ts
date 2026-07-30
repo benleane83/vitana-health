@@ -1,18 +1,22 @@
 import type { AnalyticsSummary, HealthStoreData, MeasurementType, Observation, PersonalReferenceRange, SubjectKind, UnitSystem } from "./types.js";
 import { classifyValueWithRange, resolveReferenceRange, toPreferredMeasurementValue } from "./measurementRegistry.js";
 
-export function computeAnalytics(store: HealthStoreData): AnalyticsSummary {
-  const counts = {
-    imports: store.sourceImports.length,
-    observations: store.observations.length,
-    samples: store.timeSeriesSamples.length,
-    activities: store.activitySessions.length,
-    insights: store.insights.length,
-    ...(store.healthEvents ? { healthEvents: store.healthEvents.length } : {}),
-    ...(store.careItems ? { careItems: store.careItems.length } : {})
-  };
+/**
+ * The slice of a profile analytics actually reads. Deliberately narrower than {@link HealthStoreData}
+ * so callers are not forced into a full-profile read just to satisfy the type.
+ */
+export interface AnalyticsStoreProjection {
+  profile: Pick<HealthStoreData["profile"], "units" | "subjectKind">;
+  measurementTypes: MeasurementType[];
+  observations: Observation[];
+  personalReferenceRanges?: PersonalReferenceRange[];
+  pinnedMeasurements?: HealthStoreData["pinnedMeasurements"];
+  counts: AnalyticsSummary["counts"];
+}
+
+export function computeAnalytics(store: AnalyticsStoreProjection): AnalyticsSummary {
   return computeAnalyticsFromInput({
-    counts: counts as AnalyticsSummary["counts"],
+    counts: store.counts,
     measurementTypes: store.measurementTypes,
     observations: store.observations,
     personalReferenceRanges: store.personalReferenceRanges,
@@ -20,6 +24,19 @@ export function computeAnalytics(store: HealthStoreData): AnalyticsSummary {
     units: store.profile.units,
     subjectKind: store.profile.subjectKind
   });
+}
+
+/** Counts derived from a whole store, for the callers that genuinely hold one. */
+export function analyticsCountsFromStore(store: HealthStoreData): AnalyticsSummary["counts"] {
+  return {
+    imports: store.sourceImports.length,
+    observations: store.observations.length,
+    samples: store.timeSeriesSamples.length,
+    activities: store.activitySessions.length,
+    insights: store.insights.length,
+    ...(store.healthEvents ? { healthEvents: store.healthEvents.length } : {}),
+    ...(store.careItems ? { careItems: store.careItems.length } : {})
+  } as AnalyticsSummary["counts"];
 }
 
 export interface AnalyticsInput {
@@ -36,6 +53,9 @@ export function computeAnalyticsFromInput(input: AnalyticsInput): AnalyticsSumma
   const registry = new Map(input.measurementTypes.map((type) => [type.code, type]));
   const pinnedCodes = new Set(input.pinnedMeasurements?.map((pin) => pin.measurementCode) ?? []);
   const observationsByCode = groupBy(input.observations, (observation) => observation.measurementCode);
+  // Indexed once. Looking the range up with `find` inside the per-code loops below made this a
+  // scan of every personal range for every measurement the profile records.
+  const personalRanges = new Map((input.personalReferenceRanges ?? []).map((range) => [range.measurementCode, range]));
   const latestMetricsForInsight = [...observationsByCode.entries()]
     .map(([code, observations]) => latestMetric(
       code,
@@ -43,7 +63,7 @@ export function computeAnalyticsFromInput(input: AnalyticsInput): AnalyticsSumma
       registry.get(code),
       input.units ?? "metric",
       input.subjectKind ?? "adult",
-      input.personalReferenceRanges?.find((range) => range.measurementCode === code),
+      personalRanges.get(code),
       pinnedCodes.has(code)
     ))
     .filter((metric): metric is NonNullable<typeof metric> => metric !== undefined)
@@ -61,13 +81,13 @@ export function computeAnalyticsFromInput(input: AnalyticsInput): AnalyticsSumma
   const labAlerts = [...observationsByCode.entries()]
         .filter(([code]) => registry.get(code)?.category === "lab")
         .map(([code, observations]) => {
-          const latest = [...observations].sort((a, b) => b.observedAt.localeCompare(a.observedAt))[0];
+          const latest = latestObservation(observations);
           return labAlert(
             latest,
             registry.get(code),
             input.units ?? "metric",
             input.subjectKind ?? "adult",
-            input.personalReferenceRanges?.find((range) => range.measurementCode === code)
+            personalRanges.get(code)
           );
         })
         .filter((alert): alert is NonNullable<typeof alert> => alert !== undefined)
@@ -94,6 +114,15 @@ export function computeAnalyticsFromInput(input: AnalyticsInput): AnalyticsSumma
   };
 }
 
+/**
+ * A single linear scan. Copying and fully sorting a series just to read its first element was the
+ * hot path here — every measurement code paid for it on every analytics run.
+ */
+function latestObservation(observations: Observation[]): Observation {
+  return observations.reduce((latest, observation) =>
+    observation.observedAt.localeCompare(latest.observedAt) > 0 ? observation : latest);
+}
+
 function latestMetric(
   code: string,
   observations: Observation[],
@@ -104,7 +133,7 @@ function latestMetric(
   isPinned: boolean
 ) {
   if (!type || observations.length === 0) return undefined;
-  const latest = [...observations].sort((a, b) => b.observedAt.localeCompare(a.observedAt))[0];
+  const latest = latestObservation(observations);
   const display = toPreferredMeasurementValue(latest.value, latest.unit, type, units);
   return {
     code,

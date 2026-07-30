@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type duckdb from "duckdb";
 import {
-  CURRENT_SCHEMA_VERSION,
+  EXPORT_FORMAT_VERSION,
   healthStoreDataSchema,
   isHealthEventKind,
   type HealthEvent,
@@ -11,8 +11,10 @@ import {
   all,
   compact,
   isoTimestamp,
+  insertActivityRows,
   insertObservationRows,
   insertRows,
+  insertTimeSeriesSampleRows,
   json,
   measurementTypeProperties,
   optionalJson,
@@ -25,26 +27,33 @@ import {
   run,
   withStoredJson
 } from "./duckdbRows.js";
+import { selectColumns, tableColumns } from "./duckdbColumns.js";
 import { insertAudit } from "./duckdbCommands.js";
 
-export async function exportData(connection: duckdb.Connection): Promise<HealthStoreData> {
+/**
+ * Recording the export is the only write an export performs. It is kept separate from the snapshot
+ * so that reading a full store - which can take a while - does not occupy the mutation queue.
+ */
+export async function recordExportAudit(connection: duckdb.Connection): Promise<void> {
   await insertAudit(connection, "export-created", "Full local data export created.");
-  return snapshot(connection);
 }
 
 export async function snapshot(
   connection: duckdb.Connection,
   options: { includeRaw?: boolean } = { includeRaw: true }
 ): Promise<HealthStoreData> {
-  const profileRows = await all(connection, "SELECT * FROM profile;");
+  const profileRows = await all(connection, `SELECT ${selectColumns("profile")} FROM profile;`);
   if (profileRows.length !== 1) {
     throw new Error(`DuckDB expected exactly one profile row, found ${profileRows.length}.`);
   }
   const profile = profileFromRow(profileRows[0]);
 
-  const importRows = options.includeRaw === true
-    ? await orderedRows(connection, "imports")
-    : await all(connection, "SELECT * EXCLUDE (ordinal, raw_content) FROM imports ORDER BY ordinal;");
+  // Raw import payloads are large and only needed by the export path, so they are named
+  // explicitly rather than swept up by a wildcard select.
+  const importColumns = tableColumns.imports
+    .filter((column) => column !== "ordinal" && (options.includeRaw === true || column !== "raw_content"))
+    .join(", ");
+  const importRows = await all(connection, `SELECT ${importColumns} FROM imports ORDER BY ordinal;`);
   const sourceImports = importRows.map((row) => compact({
     id: row.id,
     sourceKind: row.source_kind,
@@ -182,7 +191,7 @@ export async function snapshot(
   }));
 
   return healthStoreDataSchema.parse({
-    schemaVersion: CURRENT_SCHEMA_VERSION,
+    schemaVersion: EXPORT_FORMAT_VERSION,
     profile,
     sourceImports,
     dataSources,
@@ -205,54 +214,42 @@ export async function insertStore(connection: duckdb.Connection, store: HealthSt
   const profileProperties = store.profile.cloudAiConsent
     ? json({ cloudAiConsent: store.profile.cloudAiConsent })
     : null;
-  await run(connection, `INSERT INTO profile (
-    id, display_name, sex, height_cm, blood_type, goal_summary, units, updated_at, custom_properties,
-    subject_kind, birth_date, pet_species, pet_breed, pet_reproductive_status, pet_microchip_id
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+  await run(connection, `INSERT INTO profile (${selectColumns("profile")}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
     store.profile.id, store.profile.displayName, store.profile.sex ?? null,
     store.profile.heightCm ?? null, store.profile.bloodType ?? null, store.profile.goalSummary ?? null,
     store.profile.units, store.profile.updatedAt, profileProperties, store.profile.subjectKind, store.profile.birthDate ?? null,
     store.profile.pet?.species ?? null, store.profile.pet?.breed ?? null, store.profile.pet?.reproductiveStatus ?? null, store.profile.pet?.microchipId ?? null);
 
-  await insertRows(connection, "INSERT INTO imports VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+  await insertRows(connection, "imports",
     store.sourceImports.map((entry, ordinal) => [ordinal, entry.id, entry.sourceKind, entry.fileName, entry.importedAt,
       entry.parserVersion, entry.checksum, entry.rowCount, entry.status, json(entry.diagnostics), entry.rawContent ?? null]));
-  await insertRows(connection, "INSERT INTO sources VALUES (?, ?, ?, ?, ?, ?);",
+  await insertRows(connection, "sources",
     store.dataSources.map((entry, ordinal) => [ordinal, entry.id, entry.sourceKind, entry.label, entry.importId ?? null, entry.createdAt]));
-  await insertRows(connection, "INSERT INTO devices VALUES (?, ?, ?, ?, ?, ?);",
+  await insertRows(connection, "devices",
     store.devices.map((entry, ordinal) => [ordinal, entry.id, entry.label, entry.manufacturer ?? null, entry.model ?? null, entry.sourceId ?? null]));
-  await insertRows(connection, "INSERT INTO measurement_types VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);",
+  await insertRows(connection, "measurement_types",
     store.measurementTypes.map((entry, ordinal) => [ordinal, entry.code, entry.display, entry.category, entry.kind,
       entry.canonicalUnit, json(entry.aliases), entry.aggregation, json(measurementTypeProperties(entry))]));
-  await insertRows(connection, `
-    INSERT INTO personal_reference_ranges
-      (measurement_code, normal_low, normal_high, optimal_low, optimal_high, unit, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?);
-  `,
+  await insertRows(connection, "personal_reference_ranges",
     store.personalReferenceRanges.map((entry) => [
-      entry.measurementCode, entry.normalLow ?? null, entry.normalHigh ?? null,
-      entry.optimalLow ?? null, entry.optimalHigh ?? null, entry.unit, entry.updatedAt
+      entry.measurementCode, entry.normalLow ?? null, entry.normalHigh ?? null, entry.unit, entry.updatedAt,
+      entry.optimalLow ?? null, entry.optimalHigh ?? null
     ]));
-  await insertRows(connection, "INSERT INTO pinned_measurements VALUES (?, ?);",
+  await insertRows(connection, "pinned_measurements",
     store.pinnedMeasurements.map((entry) => [entry.measurementCode, entry.pinnedAt]));
-  await insertRows(connection, "INSERT INTO observation_groups VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+  await insertRows(connection, "observation_groups",
     store.observationGroups.map((entry, ordinal) => [ordinal, entry.id, entry.kind, entry.label, entry.sourceId ?? null,
       entry.importId ?? null, entry.startAt ?? null, entry.endAt ?? null, entry.collectedAt ?? null, optionalJsonValue(entry.metadata)]));
   await insertObservationRows(connection, store.observations, 0);
-  await insertRows(connection, "INSERT INTO time_series_samples VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
-    store.timeSeriesSamples.map((entry, ordinal) => [ordinal, entry.id, entry.measurementCode, entry.startAt, entry.endAt,
-      entry.value, entry.unit, entry.sourceId, entry.deviceId ?? null, entry.sourceJson !== undefined, optionalJsonValue(entry.sourceJson)]));
-  await insertRows(connection, "INSERT INTO activities VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
-    store.activitySessions.map((entry, ordinal) => [ordinal, entry.id, entry.activityType, entry.startAt, entry.endAt ?? null,
-      entry.durationMinutes ?? null, entry.energyKcal ?? null, entry.distanceMeters ?? null, entry.sourceId,
-      entry.sourceJson !== undefined, optionalJsonValue(entry.sourceJson)]));
+  await insertTimeSeriesSampleRows(connection, store.timeSeriesSamples, 0);
+  await insertActivityRows(connection, store.activitySessions, 0);
   await insertHealthEventRows(connection, store.healthEvents ?? []);
-  await insertRows(connection, "INSERT INTO care_items VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+  await insertRows(connection, "care_items",
     (store.careItems ?? []).map((entry, ordinal) => [ordinal, entry.id, entry.kind, entry.code ?? null, entry.title, entry.dueStart ?? null, entry.reminderAt ?? null, entry.priority, entry.status, entry.scheduleProvenance ?? null, entry.scheduleVersion ?? null, entry.notes ?? null, entry.completedHealthEventId ?? null, entry.completedAt ?? null]));
-  await insertRows(connection, "INSERT INTO insights VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);",
+  await insertRows(connection, "insights",
     store.insights.map((entry, ordinal) => [ordinal, entry.id, entry.createdAt, entry.title, entry.body,
       json(entry.evidence), entry.confidence, entry.model, entry.safetyNotice]));
-  await insertRows(connection, "INSERT INTO audit_events VALUES (?, ?, ?, ?, ?);",
+  await insertRows(connection, "audit_events",
     store.auditEvents.map((entry, ordinal) => [ordinal, entry.id, entry.createdAt, entry.eventType, entry.detail]));
 }
 
@@ -296,17 +293,17 @@ export function firstDifferencePath(expected: unknown, actual: unknown, path = "
 }
 
 async function insertHealthEventRows(connection: duckdb.Connection, events: HealthEvent[]): Promise<void> {
-  await insertRows(connection, "INSERT INTO health_events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);", events.map((event, ordinal) => [
+  await insertRows(connection, "health_events", events.map((event, ordinal) => [
     ordinal, event.id, event.kind, event.status, event.occurredAt, event.source,
     event.provider ?? null, event.notes ?? null, optionalJsonValue(event.metadata)
   ]));
-  await insertRows(connection, "INSERT INTO immunizations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+  await insertRows(connection, "immunizations",
     events.filter((event): event is Extract<HealthEvent, { kind: "immunization" }> & { immunization: NonNullable<Extract<HealthEvent, { kind: "immunization" }>["immunization"]> } => event.kind === "immunization" && !!event.immunization).map((event) => [
       event.id, event.immunization.vaccine, event.immunization.targetDisease ?? null, event.immunization.doseNumber ?? null,
       event.immunization.series ?? null, event.immunization.manufacturer ?? null, event.immunization.lotNumber ?? null,
       event.immunization.expiresAt ?? null, event.immunization.route ?? null, event.immunization.site ?? null, event.immunization.reaction ?? null
     ]));
-  await insertRows(connection, "INSERT INTO medication_administrations VALUES (?, ?, ?, ?, ?, ?);",
+  await insertRows(connection, "medication_administrations",
     events.filter((event): event is Extract<HealthEvent, { kind: "medication-administration" }> & { medicationAdministration: NonNullable<Extract<HealthEvent, { kind: "medication-administration" }>["medicationAdministration"]> } => event.kind === "medication-administration" && !!event.medicationAdministration).map((event) => [
       event.id, event.medicationAdministration.medication, event.medicationAdministration.activeIngredient ?? null,
       event.medicationAdministration.dose, event.medicationAdministration.unit, event.medicationAdministration.route ?? null

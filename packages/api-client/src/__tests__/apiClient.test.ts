@@ -11,6 +11,24 @@ function response(body: unknown, status = 200) {
   };
 }
 
+const entityCounts = {
+  imports: 0,
+  observations: 0,
+  samples: 0,
+  activities: 0,
+  healthEvents: 0,
+  careItems: 0
+};
+
+const sourceCounts = { observations: 0, samples: 0, activities: 0 };
+
+const measurementRow = {
+  code: "blood pressure",
+  displayName: "Blood pressure",
+  category: "cardio" as const,
+  counts: { ...sourceCounts, total: 0 }
+};
+
 describe("createApiClient", () => {
   it("uses dedicated desktop update operations", async () => {
     const seen: ApiTransportRequest[] = [];
@@ -34,12 +52,15 @@ describe("createApiClient", () => {
 
   it("constructs pagination queries and encodes measurement codes", async () => {
     const transport = vi.fn(async (_request: ApiTransportRequest) => response({
-      measurement: {},
+      generatedAt: "2026-07-28T12:00:00.000Z",
+      measurement: measurementRow,
+      isPinned: false,
+      referenceRange: { source: "none" },
       entries: [],
       chartPoints: [],
-      pagination: {},
-      sourceCounts: {},
-      deletion: {}
+      counts: { ...sourceCounts, total: 0 },
+      deletion: { observationEntries: 0, deletableEntries: 0 },
+      pagination: { limit: 25, loaded: 0, total: 0, hasMore: false }
     }));
     const client = createApiClient(transport);
 
@@ -109,9 +130,9 @@ describe("createApiClient", () => {
               unit: "kg",
               sourceId: "manual"
             },
-            counts: {}
+            counts: entityCounts
           }
-        : { deletedCount: 1, counts: {} });
+        : { deletedCount: 1, counts: entityCounts });
     };
     const client = createApiClient(transport);
     const input = {
@@ -153,7 +174,7 @@ describe("createApiClient", () => {
         },
         outcome: Object.fromEntries([
           "sourceImport", "dataSource", "observations", "observationGroups", "timeSeriesSamples", "activitySessions"
-        ].map((key) => [key, { attempted: 0, accepted: 0, duplicates: 0, evicted: 0 }]))
+        ].map((key) => [key, { attempted: 0, accepted: 0, duplicates: 0, rejected: 0 }]))
       });
     };
 
@@ -282,7 +303,7 @@ describe("createApiClient", () => {
         },
         outcome: Object.fromEntries([
           "sourceImport", "dataSource", "observations", "observationGroups", "timeSeriesSamples", "activitySessions"
-        ].map((key) => [key, { attempted: 0, accepted: 0, duplicates: 0, evicted: 0 }]))
+        ].map((key) => [key, { attempted: 0, accepted: 0, duplicates: 0, rejected: 0 }]))
       });
     };
     const client = createApiClient(transport);

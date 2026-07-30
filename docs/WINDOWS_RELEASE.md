@@ -49,6 +49,27 @@ and review release assets before sharing a build.
 The tag must exactly equal `v` plus the desktop package version. Reusing a version is
 not supported because updaters only offer a strictly newer version.
 
+## Native binding ABI gate
+
+`build.npmRebuild` is `false`, so the DuckDB native binding shipped in the installer is
+the prebuild that npm resolved for **Node**, never one recompiled for Electron. Node and
+Electron use different module ABI versions, and a mismatch surfaces only as a failure to
+open any profile in the packaged app — no Node-hosted test can catch it, because those
+tests load the binding under the ABI it was built for.
+
+`npm run package` and `npm run package:store` therefore both run `verify:native-abi`
+first, which loads the binding under Electron and executes a query:
+
+```powershell
+npm run verify:native-abi -w apps/desktop
+```
+
+A pass prints the Electron version and module ABI it validated against. If it fails after
+an Electron upgrade, either the dependency needs an Electron-targeted rebuild or
+`npmRebuild` must be turned back on. The Windows smoke script asserts the same property
+end to end in both scopes by requiring the packaged runtime to have created an encrypted
+`.duckdb` file, which is only possible if the binding loaded.
+
 ## Tester update flow
 
 The app checks GitHub Releases after packaged startup but never downloads or installs
@@ -76,6 +97,33 @@ singleton process, while tray **Quit** performs a graceful shutdown.
 
 Manually verify this after sign-in or reboot, including the one-time notification and
 a paired Android sync. Disabling the setting must restore foreground-only behavior.
+
+## Install scope and the firewall rule
+
+The NSIS installer is `perMachine: true`, so installs into `Program Files` and every
+`electron-updater` install step prompts for UAC. `build/installer.nsh` uses that elevation
+to add a private-network firewall rule for the app.
+
+The firewall step is deliberately non-fatal. It runs through `nsExec::Exec` and inspects
+the exit code rather than aborting, so a rule that already exists from a previous install
+— the normal case on upgrade — leaves a `DetailPrint` warning instead of failing the
+install. Uninstall deletes the rule with the same tolerance.
+
+`perMachine: false` would install to `%LOCALAPPDATA%` and remove UAC from both install
+and auto-update, which is what a beta channel wants. It is **not** enabled yet, because:
+
+- `netsh advfirewall firewall add rule` requires elevation. Without it the rule is never
+  created and the installer only warns.
+- The embedded API still binds `0.0.0.0`, so companion pairing depends on inbound access.
+  Without the installer-created rule that falls back to Windows' own first-bind consent
+  dialog, which is suppressed under some group policies — a tester could hit a pairing
+  failure with no visible cause.
+- Switching scope changes the install location, so an existing per-machine install must be
+  uninstalled first rather than upgraded in place.
+
+The cleaner sequence is to bind loopback by default and widen only on pairing, at which
+point the installer no longer needs a firewall rule and the scope can flip with no
+trade-off. Revisit this once that change lands.
 
 ## Troubleshooting
 

@@ -22,9 +22,10 @@ const connection = {
   serverInstanceId: null,
   profileId: null,
   pairingId: null,
-  healthConnectSyncCursor: null,
+  healthSourceCursors: {},
+  healthSourceSessionKey: null,
   healthConnectSyncWindowDays: 30,
-  healthConnectCategories: [],
+  healthSourceCategories: [],
   healthConnectDisclosureAcknowledged: false
 };
 

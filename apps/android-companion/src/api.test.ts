@@ -13,9 +13,10 @@ const connection: ConnectionDetails = {
   name: "Home PC",
   pairedAt: "2026-01-01",
   lastSyncAt: null,
-  healthConnectSyncCursor: null,
+  healthSourceCursors: {},
+  healthSourceSessionKey: null,
   healthConnectSyncWindowDays: 30,
-  healthConnectCategories: [],
+  healthSourceCategories: [],
   healthConnectDisclosureAcknowledged: false
 };
 

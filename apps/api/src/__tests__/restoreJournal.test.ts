@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -41,5 +41,52 @@ describe("RestoreJournal", () => {
     expect(readFileSync(livePath, "utf8")).toBe("old database");
     expect(readFileSync(metadataPath, "utf8")).toBe("old metadata");
     expect(existsSync(join(tempDir, "restore-journals", "interrupted.json"))).toBe(false);
+  });
+
+  it("recovers a crash landing between the two renames, with no live database on disk", () => {
+    tempDir = mkdtempSync(join(tmpdir(), "vitana-restore-journal-"));
+    const livePath = join(tempDir, "health-store-self.duckdb");
+    const stagedPath = `${livePath}.restore-midswap`;
+    const rollbackPath = `${livePath}.pre-restore-midswap`;
+    const metadataPath = join(tempDir, "storage-backend.json");
+    writeFileSync(livePath, "old database");
+    writeFileSync(metadataPath, "old metadata");
+
+    const journal = new RestoreJournal(tempDir, "midswap");
+    journal.snapshotMetadataFile(metadataPath);
+    journal.addEntry({
+      profileId: "self",
+      decision: "replace",
+      originalDatabaseFile: livePath,
+      newDatabaseFile: livePath,
+      stagedDatabaseFile: stagedPath,
+      rollbackDatabaseFile: rollbackPath,
+      status: "hydrated"
+    });
+    writeFileSync(stagedPath, "new database");
+    // The crash window: the old database has been moved aside but the staged one has not been
+    // moved into place, so there is no live database at all.
+    renameSync(livePath, rollbackPath);
+    expect(existsSync(livePath)).toBe(false);
+
+    expect(RestoreJournal.recover(tempDir)).toBe(1);
+    expect(readFileSync(livePath, "utf8")).toBe("old database");
+    expect(readFileSync(metadataPath, "utf8")).toBe("old metadata");
+    expect(existsSync(stagedPath)).toBe(false);
+    expect(existsSync(rollbackPath)).toBe(false);
+    expect(existsSync(join(tempDir, "restore-journals", "midswap.json"))).toBe(false);
+  });
+
+  it("quarantines a half-written journal instead of blocking startup", () => {
+    tempDir = mkdtempSync(join(tmpdir(), "vitana-restore-journal-"));
+    const journalDir = join(tempDir, "restore-journals");
+    mkdirSync(journalDir, { recursive: true });
+    // What a power cut during persist() leaves behind. It is not evidence of an uncompensated
+    // restore, so recovery must not make the app unstartable over it.
+    writeFileSync(join(journalDir, "truncated.json"), '{"id":"truncated","phase":"hyd');
+
+    expect(RestoreJournal.recover(tempDir)).toBe(0);
+    expect(existsSync(join(journalDir, "truncated.json"))).toBe(false);
+    expect(existsSync(join(journalDir, "truncated.json.corrupt"))).toBe(true);
   });
 });

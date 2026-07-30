@@ -1,5 +1,6 @@
 import express from "express";
-import { aiQueryRequestSchema } from "@vitana/shared";
+import { aiQueryRequestSchema, llmConfigResponseSchema } from "@vitana/shared";
+import { sendJson } from "./sendJson.js";
 import type { ProfileStoreManager } from "../storage/profileStoreManager.js";
 import { currentModelConfig } from "../modelClient.js";
 import { executeAiQuery } from "../aiQueryService.js";
@@ -56,7 +57,7 @@ export function makeLlmRoutes(): express.Router {
   const router = express.Router();
 
   router.get("/config", (_request, response) => {
-    response.json(currentModelConfig());
+    sendJson(response, llmConfigResponseSchema, currentModelConfig());
   });
 
   return router;

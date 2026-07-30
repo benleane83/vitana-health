@@ -188,19 +188,23 @@ try {
   if ($storage.backend -ne "duckdb") {
     throw "Storage manifest '$($manifest.FullName)' selected '$($storage.backend)' instead of encrypted DuckDB."
   }
+  # Evidence that the DuckDB native binding loaded under Electron's module ABI: `npmRebuild` is off,
+  # so the prebuild is compiled for Node and only ever exercised against Electron here and in the
+  # `verify:native-abi` gate. A database file exists only if a real query ran through the binding.
+  if (-not (Get-ChildItem (Join-Path $manifest.DirectoryName "duckdb-storage") -Filter "*.duckdb" -Recurse -ErrorAction SilentlyContinue)) {
+    throw "The packaged runtime did not create an encrypted DuckDB database."
+  }
   if ($Scope -eq "Fast") {
     Stop-DesktopProcess $firstLaunch
     [pscustomobject]@{
       scope = "fast"
       installerSha256 = (Get-FileHash $Installer -Algorithm SHA256).Hash
       storageManifest = $manifest.FullName
+      nativeBindingLoaded = $true
       install_ms = $installStopwatch.ElapsedMilliseconds
       launch_to_health_ms = $firstLaunchStopwatch.ElapsedMilliseconds
     } | ConvertTo-Json | Set-Content (Join-Path $evidenceRoot "smoke-test-fast.json")
     return
-  }
-  if (-not (Get-ChildItem (Join-Path $manifest.DirectoryName "duckdb-storage") -Filter "*.duckdb" -Recurse -ErrorAction SilentlyContinue)) {
-    throw "The packaged runtime did not create an encrypted DuckDB database."
   }
   $manifestHash = (Get-FileHash $manifest.FullName -Algorithm SHA256).Hash
   $ownerSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
@@ -210,10 +214,9 @@ try {
     throw "The desktop API did not enable background service mode."
   }
   Close-DesktopMainWindow $firstLaunch
-  Start-Sleep -Seconds 2
-  if (-not (Test-HealthEndpoint $activeHealthUri)) {
-    throw "Desktop health stopped after closing the window with background service mode enabled."
-  }
+  # Poll rather than sleeping a fixed two seconds: the assertion is that health survives the
+  # window closing, and Wait-ForHealth already captures diagnostics when it does not.
+  Wait-ForHealth "background service mode"
   $loginCommand = Get-LoginStartupCommand
   if (-not $loginCommand -or $loginCommand -notlike "*--background*") {
     throw "Per-user login registration does not include --background."

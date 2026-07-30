@@ -1,7 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { computeAnalytics } from "../analytics.js";
+import { analyticsCountsFromStore, computeAnalytics } from "../analytics.js";
 import type { HealthStoreData, Observation, MeasurementType } from "../types.js";
 import { defaultMeasurementTypes } from "../registry.js";
+
+const analyticsOf = (store: HealthStoreData) =>
+  computeAnalytics({ ...store, counts: analyticsCountsFromStore(store) });
 
 function makeEmptyStore(): HealthStoreData {
   return {
@@ -28,7 +31,7 @@ function makeObservation(overrides: Partial<Observation> & Pick<Observation, "id
 
 describe("computeAnalytics — counts", () => {
   it("returns zero counts for empty store", () => {
-    const result = computeAnalytics(makeEmptyStore());
+    const result = analyticsOf(makeEmptyStore());
     expect(result.counts).toEqual({
       imports: 0,
       observations: 0,
@@ -47,7 +50,7 @@ describe("computeAnalytics — counts", () => {
       makeObservation({ id: "o1", measurementCode: "heart_rate", observedAt: "2026-01-01T00:00:00.000Z", value: 72, unit: "bpm", sourceId: "src1" }),
       makeObservation({ id: "o2", measurementCode: "weight", observedAt: "2026-01-02T00:00:00.000Z", value: 80, unit: "kg", sourceId: "src1" })
     ];
-    const result = computeAnalytics(store);
+    const result = analyticsOf(store);
     expect(result.counts.imports).toBe(1);
     expect(result.counts.observations).toBe(2);
   });
@@ -61,7 +64,7 @@ describe("computeAnalytics — latestMetrics", () => {
       makeObservation({ id: "o2", measurementCode: "heart_rate", observedAt: "2026-02-01T00:00:00.000Z", value: 70, unit: "bpm", sourceId: "src1" }),
       makeObservation({ id: "o3", measurementCode: "weight", observedAt: "2026-01-15T00:00:00.000Z", value: 82, unit: "kg", sourceId: "src1" })
     ];
-    const result = computeAnalytics(store);
+    const result = analyticsOf(store);
     const hrMetric = result.latestMetrics.find((m) => m.code === "heart_rate");
     expect(hrMetric).toBeDefined();
     expect(hrMetric?.value).toBe(70);
@@ -74,7 +77,7 @@ describe("computeAnalytics — latestMetrics", () => {
     store.observations = [
       makeObservation({ id: "o1", measurementCode: "heart_rate", observedAt: "2026-01-01T00:00:00.000Z", value: 110, unit: "beats/min", sourceId: "src1" })
     ];
-    const result = computeAnalytics(store);
+    const result = analyticsOf(store);
     const hrMetric = result.latestMetrics.find((m) => m.code === "heart_rate");
     expect(hrMetric?.status).toBe("high");
   });
@@ -92,7 +95,7 @@ describe("computeAnalytics — latestMetrics", () => {
       sourceId: "src1"
     }));
 
-    const result = computeAnalytics(store);
+    const result = analyticsOf(store);
     expect(result.latestMetrics).toHaveLength(12);
     expect(result.latestMetricsForInsight).toHaveLength(13);
   });
@@ -114,7 +117,7 @@ describe("computeAnalytics — latestMetrics", () => {
       { measurementCode: measurementTypes[1].code, pinnedAt: "2026-02-02T00:00:00.000Z" }
     ];
 
-    const result = computeAnalytics(store);
+    const result = analyticsOf(store);
 
     expect(result.latestMetrics).toHaveLength(14);
     expect(result.latestMetrics.slice(0, 2).map((metric) => metric.code)).toEqual([
@@ -134,7 +137,7 @@ describe("computeAnalytics — trendCards", () => {
       makeObservation({ id: "o1", measurementCode: "weight", observedAt: "2026-01-01T00:00:00.000Z", value: 78, unit: "kg", sourceId: "src1" }),
       makeObservation({ id: "o2", measurementCode: "weight", observedAt: "2026-01-15T00:00:00.000Z", value: 82, unit: "kg", sourceId: "src1" })
     ];
-    const result = computeAnalytics(store);
+    const result = analyticsOf(store);
     const card = result.trendCards.find((c) => c.code === "weight");
     expect(card?.direction).toBe("up");
   });
@@ -145,7 +148,7 @@ describe("computeAnalytics — trendCards", () => {
       makeObservation({ id: "o1", measurementCode: "weight", observedAt: "2026-01-01T00:00:00.000Z", value: 85, unit: "kg", sourceId: "src1" }),
       makeObservation({ id: "o2", measurementCode: "weight", observedAt: "2026-01-15T00:00:00.000Z", value: 80, unit: "kg", sourceId: "src1" })
     ];
-    const result = computeAnalytics(store);
+    const result = analyticsOf(store);
     const card = result.trendCards.find((c) => c.code === "weight");
     expect(card?.direction).toBe("down");
   });
@@ -155,7 +158,7 @@ describe("computeAnalytics — trendCards", () => {
     store.observations = [
       makeObservation({ id: "o1", measurementCode: "weight", observedAt: "2026-01-01T00:00:00.000Z", value: 80, unit: "kg", sourceId: "src1" })
     ];
-    const result = computeAnalytics(store);
+    const result = analyticsOf(store);
     expect(result.trendCards.find((c) => c.code === "weight")).toBeUndefined();
   });
 });
@@ -168,7 +171,7 @@ describe("computeAnalytics — labAlerts", () => {
       makeObservation({ id: "m2", measurementCode: "total_cholesterol", observedAt: "2026-01-01T00:00:00.000Z", value: 4.8, unit: "mmol/L", sourceId: "source" }),
       makeObservation({ id: "m3", measurementCode: "hdl_cholesterol", observedAt: "2026-01-01T00:00:00.000Z", value: 0.8, unit: "mmol/L", sourceId: "source" })
     ];
-    const result = computeAnalytics(store);
+    const result = analyticsOf(store);
     expect(result.labAlerts).toHaveLength(2);
     expect(result.labAlerts.map((alert) => alert.code)).toEqual(expect.arrayContaining(["glucose", "hdl_cholesterol"]));
     expect(result.labAlerts.map((a) => a.flag)).toContain("high");
@@ -180,7 +183,7 @@ describe("computeAnalytics — labAlerts", () => {
     store.observations = [
       makeObservation({ id: "m1", measurementCode: "glucose", observedAt: "2026-01-01T00:00:00.000Z", value: 180, unit: "mg/dL", sourceId: "source" })
     ];
-    const result = computeAnalytics(store);
+    const result = analyticsOf(store);
     expect(result.labAlerts).toMatchObject([{ unit: "mmol/L", flag: "high", observedAt: "2026-01-01T00:00:00.000Z" }]);
     expect(result.labAlerts[0].value).toBeCloseTo(9.99, 2);
   });
@@ -192,7 +195,7 @@ describe("computeAnalytics — labAlerts", () => {
       makeObservation({ id: "new", measurementCode: "glucose", observedAt: "2026-02-01T00:00:00.000Z", value: 5, unit: "mmol/L", sourceId: "source" })
     ];
 
-    expect(computeAnalytics(store).labAlerts).toEqual([]);
+    expect(analyticsOf(store).labAlerts).toEqual([]);
   });
 
   it.each(["child", "pet"] as const)("suppresses adult reference classifications for %s profiles", (subjectKind) => {
@@ -202,7 +205,7 @@ describe("computeAnalytics — labAlerts", () => {
       makeObservation({ id: "lab", measurementCode: "glucose", observedAt: "2026-01-01T00:00:00.000Z", value: 8, unit: "mmol/L", sourceId: "source" })
     ];
 
-    const result = computeAnalytics(store);
+    const result = analyticsOf(store);
     expect(result.labAlerts).toEqual([]);
     expect(result.latestMetrics.find((metric) => metric.code === "glucose")?.status).toBe("unknown");
   });
@@ -214,7 +217,7 @@ describe("computeAnalytics — labAlerts", () => {
       makeObservation({ id: "w1", measurementCode: "weight", observedAt: "2026-01-01T00:00:00.000Z", value: 70, unit: "kg", sourceId: "source" }),
       makeObservation({ id: "w2", measurementCode: "weight", observedAt: "2026-01-02T00:00:00.000Z", value: 154.324, unit: "lb", sourceId: "source" })
     ];
-    const result = computeAnalytics(store);
+    const result = analyticsOf(store);
     const trend = result.trendCards.find((card) => card.code === "weight");
     expect(trend?.unit).toBe("lb");
     expect(trend?.points[0].value).toBeCloseTo(trend?.points[1].value ?? 0, 2);
@@ -230,13 +233,13 @@ describe("computeAnalytics — evidenceDigest", () => {
     store.observations = [
       makeObservation({ id: "o1", measurementCode: "heart_rate", observedAt: "2026-01-01T00:00:00.000Z", value: 72, unit: "bpm", sourceId: "src1" })
     ];
-    const result = computeAnalytics(store);
+    const result = analyticsOf(store);
     expect(result.evidenceDigest[0]).toMatch(/1 source file/);
     expect(result.evidenceDigest[0]).toMatch(/1 observation/);
   });
 
   it("notes no lab markers out of range when all markers are normal", () => {
-    const result = computeAnalytics(makeEmptyStore());
+    const result = analyticsOf(makeEmptyStore());
     expect(result.evidenceDigest[2]).toMatch(/No lab markers are outside/);
   });
 });
