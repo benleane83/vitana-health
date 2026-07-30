@@ -90,13 +90,13 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
       storageBackend: storeManager.getStorageBackend(),
       profileCount: profiles.length,
       activeProfileId,
-      activeProfileDisplayName: profiles.find((profile) => profile.id === activeProfileId)?.displayName,
       activationState
     });
     const pairingStore = new PairingStore();
     const app = createApp(storeManager, pairingStore, {
       publicKeyHash: security.publicKeyHash,
       webRoot: env.VITANA_WEB_ROOT,
+      localAuthNonce: env.VITANA_LOCAL_AUTH_NONCE,
       openRouterCallbackOrigin: `${tlsEnabled ? "https" : "http"}://127.0.0.1:${port}`,
       desktopRuntimeController: options.desktopRuntimeController,
       desktopUpdaterController: options.desktopUpdaterController

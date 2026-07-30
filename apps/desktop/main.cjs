@@ -1,5 +1,6 @@
 const { app, BrowserWindow, dialog, Menu, Notification, safeStorage, session, Tray } = require("electron");
 const path = require("node:path");
+const { randomBytes } = require("node:crypto");
 const { pathToFileURL } = require("node:url");
 const { createBackgroundServiceController } = require("./background-service.cjs");
 const { createBackgroundServiceSettingsStore } = require("./background-service-settings.cjs");
@@ -12,6 +13,8 @@ const { createDesktopLifecycle } = require("./desktop-lifecycle.cjs");
 
 let mainWindow;
 let launchPromise;
+/** Kept in memory for the lifetime of this process only; see the two uses below. */
+const launchNonce = randomBytes(32).toString("base64url");
 const backgroundLaunch = process.argv.includes("--background");
 let startupPathError;
 const packageMetadata = require("./package.json");
@@ -95,7 +98,12 @@ async function createOrFocusWindow() {
   mainWindow.once("closed", () => {
     mainWindow = undefined;
   });
-  await mainWindow.loadURL(`https://127.0.0.1:${process.env.PORT}`);
+  /**
+   * The fragment never leaves the browser, so the nonce reaches the renderer without appearing in
+   * the request line, the API log, or anything a bystanding process can read. The renderer stashes
+   * it in session storage and strips it from the address immediately.
+   */
+  await mainWindow.loadURL(`https://127.0.0.1:${process.env.PORT}#launch=${launchNonce}`);
   diagnostics.info("Main window loaded");
   return mainWindow;
 }
@@ -168,6 +176,9 @@ async function launch() {
   process.env.VITANA_DATA_DIR = app.getPath("userData");
   process.env.VITANA_APP_VERSION = app.getVersion();
   process.env.VITANA_LOG_FILE = path.join(app.getPath("userData"), "logs", "api.ndjson");
+  // Proves a caller of /api/auth/local is the window this launch opened, rather than merely another
+  // process that reached loopback. Regenerated every launch and never written to disk.
+  process.env.VITANA_LOCAL_AUTH_NONCE = launchNonce;
   process.env.VITANA_STORAGE_BACKEND = "duckdb";
   process.env.VITANA_WEB_ROOT = packaged
     ? path.join(process.resourcesPath, "web")

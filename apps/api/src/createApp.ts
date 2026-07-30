@@ -40,6 +40,12 @@ export type { AuthorizationPrincipal, OwnerPrincipal } from "./requestPrincipal.
 export interface AppOptions {
   publicKeyHash?: string | null;
   webRoot?: string;
+  /**
+   * Secret minted by the desktop shell for a single launch and handed to the renderer out of band.
+   * When set, `POST /api/auth/local` requires it, which stops any other process on the machine from
+   * claiming the owner cookie just by being on loopback.
+   */
+  localAuthNonce?: string;
   assertSafeCloudModelEndpoint?: (endpoint: string) => Promise<unknown>;
   openRouterCallbackOrigin?: string;
   desktopRuntimeController?: {
@@ -52,6 +58,18 @@ export interface AppOptions {
     download: () => Promise<DesktopUpdateState>;
     restartToInstall: () => Promise<DesktopUpdateState>;
   };
+}
+
+/** Constant-time comparison of the launch nonce supplied by the renderer against the configured one. */
+function launchNonceIsValid(request: express.Request, expected: string): boolean {
+  const supplied = request.get("x-vitana-launch-nonce") ?? "";
+  const expectedBuffer = Buffer.from(expected, "utf8");
+  const suppliedBuffer = Buffer.from(supplied, "utf8");
+  return (
+    expectedBuffer.length > 0 &&
+    expectedBuffer.length === suppliedBuffer.length &&
+    timingSafeEqual(expectedBuffer, suppliedBuffer)
+  );
 }
 
 function decodeCookieToken(value: string | undefined): string {
@@ -194,7 +212,15 @@ export function createApp(
     );
   }
 
-  // Local browser auth (loopback only, no token required on the same machine)
+  /**
+   * Local browser auth. Loopback alone is not an authorization decision: every process on the
+   * machine shares it, including anything a tester downloads. The desktop shell therefore mints a
+   * nonce per launch and gives it only to the window it opened, so possession of the nonce — not
+   * merely the source address — is what buys the owner cookie.
+   *
+   * With no nonce configured (`npm run dev`, tests, the web preview) the endpoint keeps its
+   * loopback-only behaviour so local development needs no extra ceremony.
+   */
   app.post("/api/auth/local", (request, response) => {
     const address = request.socket.remoteAddress ?? "";
     const loopback = isLoopbackAddress(address);
@@ -204,6 +230,13 @@ export function createApp(
       response
         .status(403)
         .json({ error: "Local desktop authentication is only available on this computer.", code: "AUTH_LOOPBACK_ONLY" });
+      return;
+    }
+    if (options.localAuthNonce && !launchNonceIsValid(request, options.localAuthNonce)) {
+      response.status(403).json({
+        error: "This window cannot sign in automatically. Reopen Vitana Health from the desktop app.",
+        code: "AUTH_LAUNCH_NONCE_REQUIRED"
+      });
       return;
     }
     const secure = request.protocol === "https";

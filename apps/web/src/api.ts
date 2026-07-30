@@ -75,7 +75,25 @@ import { ApiError, apiErrorFromResponse, createApiClient } from "@vitana/api-cli
 export { ApiError } from "@vitana/api-client";
 
 const ownerTokenKey = "vitana.ownerToken";
+const launchNonceKey = "vitana.launchNonce";
 let ownerTokenPromptInFlight: Promise<string | null> | undefined;
+
+/**
+ * The desktop shell passes a per-launch nonce in the URL fragment. It is moved into session storage
+ * (so a reload of this window keeps working) and cleared from the address bar straight away, then
+ * presented when claiming the owner cookie. Nothing is present when the app is opened any other
+ * way, in which case the server is not enforcing a nonce either.
+ */
+function captureLaunchNonce(): string | null {
+  const match = /(?:^|[#&])launch=([^&]+)/.exec(window.location.hash);
+  if (match) {
+    window.sessionStorage.setItem(launchNonceKey, decodeURIComponent(match[1]));
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+  }
+  return window.sessionStorage.getItem(launchNonceKey);
+}
+
+const launchNonce = captureLaunchNonce();
 
 function ownerHeaders(options?: RequestInit): HeadersInit {
   const token = window.sessionStorage.getItem(ownerTokenKey);
@@ -96,7 +114,10 @@ async function fetchAsOwner(path: string, options?: RequestInit, retry = true): 
     const authenticated = await fetch("/api/auth/local", {
       method: "POST",
       credentials: "include",
-      headers: { accept: "application/json" }
+      headers: {
+        accept: "application/json",
+        ...(launchNonce ? { "x-vitana-launch-nonce": launchNonce } : {})
+      }
     });
     if (authenticated.ok) {
       return fetchAsOwner(path, options, false);

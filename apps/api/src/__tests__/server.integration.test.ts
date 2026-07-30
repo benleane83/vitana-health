@@ -447,6 +447,26 @@ describe("central owner authorization", () => {
     expect(authenticated.status).toBe(204);
     expect((await agent.get("/api/health")).status).toBe(200);
   });
+
+  it("requires the launch nonce when the desktop shell configured one", async () => {
+    const guarded = createApp(storeManager, pairingStore, { localAuthNonce: "launch-nonce-for-server-tests" });
+
+    const withoutNonce = await request(guarded).post("/api/auth/local");
+    expect(withoutNonce.status).toBe(403);
+    expect(withoutNonce.body.code).toBe("AUTH_LAUNCH_NONCE_REQUIRED");
+
+    const wrongNonce = await request(guarded)
+      .post("/api/auth/local")
+      .set("x-vitana-launch-nonce", "launch-nonce-for-server-testz");
+    expect(wrongNonce.status).toBe(403);
+
+    const agent = request.agent(guarded);
+    const authenticated = await agent
+      .post("/api/auth/local")
+      .set("x-vitana-launch-nonce", "launch-nonce-for-server-tests");
+    expect(authenticated.status).toBe(204);
+    expect((await agent.get("/api/profiles")).status).toBe(200);
+  });
 });
 
 describe("GET /api/export/pdf", () => {

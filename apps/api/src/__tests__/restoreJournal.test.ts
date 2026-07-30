@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -75,5 +75,18 @@ describe("RestoreJournal", () => {
     expect(existsSync(stagedPath)).toBe(false);
     expect(existsSync(rollbackPath)).toBe(false);
     expect(existsSync(join(tempDir, "restore-journals", "midswap.json"))).toBe(false);
+  });
+
+  it("quarantines a half-written journal instead of blocking startup", () => {
+    tempDir = mkdtempSync(join(tmpdir(), "vitana-restore-journal-"));
+    const journalDir = join(tempDir, "restore-journals");
+    mkdirSync(journalDir, { recursive: true });
+    // What a power cut during persist() leaves behind. It is not evidence of an uncompensated
+    // restore, so recovery must not make the app unstartable over it.
+    writeFileSync(join(journalDir, "truncated.json"), '{"id":"truncated","phase":"hyd');
+
+    expect(RestoreJournal.recover(tempDir)).toBe(0);
+    expect(existsSync(join(journalDir, "truncated.json"))).toBe(false);
+    expect(existsSync(join(journalDir, "truncated.json.corrupt"))).toBe(true);
   });
 });
