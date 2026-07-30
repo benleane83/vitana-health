@@ -75,14 +75,28 @@ function loadOrCreateOwnerToken(dataDir: string): string {
   return ownerToken;
 }
 
+/** Reads a file, treating "not there" as a value rather than an error. */
+function readIfPresent(filePath: string): string | undefined {
+  try {
+    return readFileSync(filePath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
 async function loadOrCreateCertificate(dataDir: string): Promise<{ certPath: string; keyPath: string }> {
   const tlsDir = path.join(dataDir, "tls");
   const certPath = path.join(tlsDir, "vitana.crt");
   const keyPath = path.join(tlsDir, "vitana.key");
-  if (existsSync(certPath) !== existsSync(keyPath)) {
+  // Read rather than stat, so the decision is made from the bytes we actually hold instead of a
+  // separate existence check the filesystem could invalidate before the write below.
+  const existingCert = readIfPresent(certPath);
+  const existingKey = readIfPresent(keyPath);
+  if ((existingCert === undefined) !== (existingKey === undefined)) {
     throw new Error("The Vitana TLS certificate and key are incomplete. Restore the matching file from backup.");
   }
-  if (existsSync(certPath) && existsSync(keyPath)) return { certPath, keyPath };
+  if (existingCert !== undefined && existingKey !== undefined) return { certPath, keyPath };
 
   mkdirSync(tlsDir, { recursive: true });
   const notBeforeDate = new Date();
