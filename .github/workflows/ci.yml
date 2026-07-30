@@ -108,13 +108,15 @@ jobs:
       - name: Install DuckDB native binding
         run: npm rebuild duckdb
 
-      - name: Prepare DuckDB encryption extension
-        run: npm run prepare:duckdb -w @vitana/api
-
+      # Must precede prepare:duckdb, which reads the DuckDB pin from the shared package's build
+      # output rather than its source.
       - name: Build shared packages (required by tests)
         run: |
           npm run build -w packages/shared
           npm run build -w packages/api-client
+
+      - name: Prepare DuckDB encryption extension
+        run: npm run prepare:duckdb -w @vitana/api
 
       - name: Run integration tests
         run: npm run test:integration

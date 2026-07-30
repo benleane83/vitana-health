@@ -1,8 +1,13 @@
-import { readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it, vi } from "vitest";
 import { log } from "../logger.js";
+
+/** A private directory keeps the fixtures out of reach of anything else writing to the temp dir. */
+function makeLogFile(): string {
+  return join(mkdtempSync(join(tmpdir(), "vitana-logger-")), "api.ndjson");
+}
 
 describe("logger", () => {
   it("preserves an I/O error while redacting explicit credential values", () => {
@@ -18,7 +23,7 @@ describe("logger", () => {
 
   it("persists redacted records when a log file is configured", () => {
     const previousLogFile = process.env.VITANA_LOG_FILE;
-    const logFile = join(tmpdir(), `vitana-api-${crypto.randomUUID()}.ndjson`);
+    const logFile = makeLogFile();
     const write = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     process.env.VITANA_LOG_FILE = logFile;
     try {
@@ -34,7 +39,7 @@ describe("logger", () => {
 
   it("rotates the log file once it passes the size cap", () => {
     const previousLogFile = process.env.VITANA_LOG_FILE;
-    const logFile = join(tmpdir(), `vitana-api-${crypto.randomUUID()}.ndjson`);
+    const logFile = makeLogFile();
     const write = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     process.env.VITANA_LOG_FILE = logFile;
     try {

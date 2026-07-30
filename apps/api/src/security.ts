@@ -1,5 +1,5 @@
 import { createHash, randomBytes, X509Certificate } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import selfsigned from "selfsigned";
@@ -107,7 +107,16 @@ async function loadOrCreateCertificate(dataDir: string): Promise<{ certPath: str
       { name: "subjectAltName", altNames }
     ]
   });
-  writeFileSync(keyPath, certificate.private, { encoding: "utf8", mode: 0o600 });
-  writeFileSync(certPath, certificate.cert, { encoding: "utf8", mode: 0o600 });
+  // `wx` refuses to follow or clobber a file that appeared since the existence check above, so a
+  // pre-planted symlink cannot redirect the private key. A partial pair is removed rather than
+  // left behind, because the check above rejects a lone certificate or key on the next startup.
+  try {
+    writeFileSync(keyPath, certificate.private, { encoding: "utf8", mode: 0o600, flag: "wx" });
+    writeFileSync(certPath, certificate.cert, { encoding: "utf8", mode: 0o600, flag: "wx" });
+  } catch (error) {
+    rmSync(keyPath, { force: true });
+    rmSync(certPath, { force: true });
+    throw error;
+  }
   return { certPath, keyPath };
 }
