@@ -4,5 +4,6 @@ import { formatAppBuildLabel } from "./appBuildLabel";
 
 export const appBuildLabel = formatAppBuildLabel({
   version: Application.nativeApplicationVersion,
+  build: Application.nativeBuildVersion,
   publishedAt: Updates.createdAt
 });

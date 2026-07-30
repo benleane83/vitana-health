@@ -20,8 +20,9 @@
     "start": "electron .",
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --test *.test.cjs",
-    "package": "electron-builder --publish=never",
-    "package:store": "npm run prepackage && electron-builder --win appx --x64 --publish=never --config.directories.output=dist-store --config.extraMetadata.vitanaDistributionChannel=store"
+    "verify:native-abi": "electron verify-native-abi.cjs",
+    "package": "npm run verify:native-abi && electron-builder --publish=never",
+    "package:store": "npm run prepackage && npm run verify:native-abi && electron-builder --win appx --x64 --publish=never --config.directories.output=dist-store --config.extraMetadata.vitanaDistributionChannel=store"
   },
   "license": "Elastic-2.0",
   "type": "commonjs",

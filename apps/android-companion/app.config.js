@@ -1,4 +1,22 @@
 const allowCleartext = process.env.VITANA_ALLOW_CLEARTEXT === "1";
+const buildProfile = process.env.EAS_BUILD_PROFILE || null;
+
+// Cleartext HTTP is a development affordance: it lets the companion talk to an unencrypted local
+// API while the pairing certificate work is bypassed. Three independent switches have to agree for
+// that to be safe (`usesCleartextTraffic`, the network security config, and the `__DEV__` guards in
+// syncHealthConnect/PairScreen), and nothing previously stopped a distributable profile from being
+// built with the development environment still selected. `development` is the only EAS profile that
+// may carry it; every other profile produces an artifact that can reach a tester, so fail the build
+// rather than ship one that will silently downgrade its own transport.
+// `buildProfile` is unset for a local `expo start`, which is not a distributable artifact — the
+// startup assertion in src/transportSecurity.ts covers a locally compiled release build instead.
+if (allowCleartext && buildProfile && buildProfile !== "development") {
+  throw new Error(
+    `EAS profile "${buildProfile}" was built with VITANA_ALLOW_CLEARTEXT=1. Cleartext HTTP is only ` +
+    "permitted on the \"development\" profile. Fix the profile's env block in eas.json, or build the " +
+    "development profile instead."
+  );
+}
 
 module.exports = {
   expo: {

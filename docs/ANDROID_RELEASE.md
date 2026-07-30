@@ -17,7 +17,8 @@ The release owner owns the user-visible application version in `apps/android-com
 
 - Increment `expo.version` for every Play Store release. Use semantic versioning: patch for compatible fixes, minor for user-visible compatible features, and major for incompatible changes.
 - EAS owns the Android `versionCode` because `cli.appVersionSource` is `remote` in `apps/android-companion/eas.json`.
-- The production profile has `autoIncrement: true`; every production build receives a new, monotonically increasing Android version code. Do not set or reuse an Android version code locally.
+- The production and preview profiles both have `autoIncrement: true`; every build receives a new, monotonically increasing Android version code. Do not set or reuse an Android version code locally. Preview needs this as much as production: two testers on the same `expo.version` are otherwise indistinguishable in a bug report. The app shows the version code next to the marketing version, for example `Version 1.2.0 (57)`.
+- The `development` profile deliberately does not auto-increment, because a development client is rebuilt constantly and its version code carries no reporting value.
 - Record the `expo.version`, EAS Android version code, EAS build URL, commit SHA, and Play release name in the release notes.
 - `runtimeVersion` is an explicit string (currently `"1"`) that is **decoupled from `expo.version`**. It describes the native layer an OTA update can safely land on, not the marketing version.
 
@@ -41,6 +42,7 @@ Do **not** bump it for JavaScript-only changes — that is the whole point of th
 | Play Store | `production` | Signed AAB | `production` | HTTPS required |
 
 - Never publish a production update to `preview`, or a preview update to `production`.
+- Cleartext HTTP is enforced by three independent switches: `android.usesCleartextTraffic`, the network security config, and the `__DEV__` guards in `syncHealthConnect` and `PairScreen`. Two automatic gates keep them in agreement. `app.config.js` throws at build time if `VITANA_ALLOW_CLEARTEXT=1` is set on any EAS profile other than `development`, so a misconfigured preview or production build fails in EAS rather than shipping. `assertTransportSecurity` repeats the check at startup for release builds produced outside EAS, and surfaces it through the app error boundary as a readable screen.
 - Store development, preview, and production EAS environment variables separately in the Expo dashboard or CI secret store. Production values must be reviewed before each release.
 - The companion obtains its paired server address at runtime. Do not embed a production server URL, pairing token, private key, or certificate fingerprint in the app configuration or EAS environment.
 - A native change requires a new build. This includes Expo configuration, Android permissions, native modules, SDK upgrades, and dependencies that alter native binaries. JavaScript/TypeScript-only changes may use an OTA update only when they are compatible with the installed runtime version.

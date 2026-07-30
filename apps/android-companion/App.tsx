@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator, type NativeStackScreenProps } from "@react-navigation/native-stack";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
+import Constants from "expo-constants";
 import { StatusBar } from "expo-status-bar";
 import { ChartNoAxesColumnIncreasing, HeartPulse, Home, MonitorSmartphone, Plus } from "lucide-react-native";
 import { MobileApiProvider, useMobileApi } from "./src/MobileApiProvider";
@@ -13,6 +14,7 @@ import { EntitlementProvider } from "./src/EntitlementProvider";
 import { ELASTIC_LICENSE_2_0_DISPLAY_TEXT, SOFTWARE_COPYRIGHT } from "./src/legal";
 import { PairScreen } from "./src/PairScreen";
 import type { RootStackParamList, TabParamList } from "./src/navigationTypes";
+import { assertTransportSecurity } from "./src/transportSecurity";
 import { DashboardScreen } from "./src/screens/DashboardScreen";
 import { ImportScreen } from "./src/screens/ImportScreen";
 import { TrackDetailScreen } from "./src/screens/TrackDetailScreen";
@@ -28,27 +30,41 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <AppErrorBoundary>
-        <EntitlementProvider>
-          <MobileApiProvider>
-            <NavigationContainer>
-              <Stack.Navigator>
-                <Stack.Screen name="Main" component={MainTabs} options={{ headerShown: false }} />
-                <Stack.Screen name="Pair" component={PairRoute} options={{ presentation: "modal", title: "Pair this phone" }} />
-                <Stack.Screen name="Connection" component={ConnectionScreen} options={{ presentation: "modal", title: "Connection" }} />
-                <Stack.Screen name="License" component={LicenseScreen} options={{ title: "Software license" }} />
-                <Stack.Screen
-                  name="TrackDetail"
-                  component={TrackDetailScreen}
-                  options={({ route }) => ({ title: route.params.displayName })}
-                />
-              </Stack.Navigator>
-            </NavigationContainer>
-            <StatusBar style="dark" />
-          </MobileApiProvider>
-        </EntitlementProvider>
+        <TransportSecurityGate>
+          <EntitlementProvider>
+            <MobileApiProvider>
+              <NavigationContainer>
+                <Stack.Navigator>
+                  <Stack.Screen name="Main" component={MainTabs} options={{ headerShown: false }} />
+                  <Stack.Screen name="Pair" component={PairRoute} options={{ presentation: "modal", title: "Pair this phone" }} />
+                  <Stack.Screen name="Connection" component={ConnectionScreen} options={{ presentation: "modal", title: "Connection" }} />
+                  <Stack.Screen name="License" component={LicenseScreen} options={{ title: "Software license" }} />
+                  <Stack.Screen
+                    name="TrackDetail"
+                    component={TrackDetailScreen}
+                    options={({ route }) => ({ title: route.params.displayName })}
+                  />
+                </Stack.Navigator>
+              </NavigationContainer>
+              <StatusBar style="dark" />
+            </MobileApiProvider>
+          </EntitlementProvider>
+        </TransportSecurityGate>
       </AppErrorBoundary>
     </SafeAreaProvider>
   );
+}
+
+/**
+ * Renders nothing of its own: it exists so the transport-security check runs inside the error
+ * boundary, where a failure becomes a readable screen instead of a white one.
+ */
+function TransportSecurityGate({ children }: { children: ReactNode }) {
+  assertTransportSecurity({
+    isDevelopmentBuild: __DEV__,
+    allowCleartext: Constants.expoConfig?.extra?.allowCleartext === true
+  });
+  return <>{children}</>;
 }
 
 function MainTabs() {

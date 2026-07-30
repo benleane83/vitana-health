@@ -1,10 +1,11 @@
 !include LogicLib.nsh
 
-; The private-network firewall rule is a convenience, not a correctness requirement: the app binds
-; loopback until a companion device is paired, and an unpaired install works fine without it. On an
-; upgrade over an existing install the `add rule` call routinely reports a non-zero exit code (the
-; rule already exists, or Windows Firewall is managed by policy). Aborting there fails the whole
-; upgrade and leaves the user on a half-removed version, so failures are logged and tolerated.
+; The private-network firewall rule is a convenience, not a correctness requirement: it only affects
+; whether a companion phone can reach the app over the LAN, and a desktop-only install works fine
+; without it. On an upgrade over an existing install the `add rule` call routinely reports a non-zero
+; exit code (the rule already exists, or Windows Firewall is managed by policy). Aborting there fails
+; the whole upgrade and leaves the user on a half-removed version, so failures are logged and
+; tolerated. See docs/WINDOWS_RELEASE.md for why this ties into the perMachine install scope.
 !macro customInstall
   nsExec::Exec 'netsh advfirewall firewall delete rule name="Local Fitness Advisor"'
   Pop $0

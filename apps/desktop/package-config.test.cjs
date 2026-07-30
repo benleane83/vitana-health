@@ -34,7 +34,7 @@ test("electron-builder excludes DuckDB development files but keeps runtime files
 test("Windows preview packages use checksummed GitHub updates without Authenticode", () => {
   const packageJson = JSON.parse(readFileSync(path.join(__dirname, "package.json"), "utf8"));
 
-  assert.equal(packageJson.scripts.package, "electron-builder --publish=never");
+  assert.equal(packageJson.scripts.package, "npm run verify:native-abi && electron-builder --publish=never");
   assert.equal(packageJson.vitanaDistributionChannel, "github");
   assert.equal(packageJson.vitanaUpdateChannel, "production");
   assert.equal(packageJson.build.win.target, "nsis");
@@ -50,6 +50,38 @@ test("Windows preview packages use checksummed GitHub updates without Authentico
     releaseType: "release"
   }]);
   assert.equal(packageJson.dependencies["electron-updater"], "6.8.9");
+});
+
+test("the installer tolerates a firewall rule it cannot add or remove", () => {
+  const installer = readFileSync(path.join(__dirname, "build", "installer.nsh"), "utf8");
+  const directives = installer.replace(/^\s*;.*$/gm, "");
+
+  // `netsh` reliably fails on upgrade (the rule already exists) and under managed firewall policy.
+  // The rule only gates LAN companion pairing, so aborting the install over it would trade a
+  // cosmetic problem for a half-upgraded app.
+  assert.doesNotMatch(directives, /nsExec::ExecToStack|ExecWait|Abort|SetErrorLevel/);
+  assert.equal(directives.match(/nsExec::Exec /g)?.length, 4);
+  assert.equal(directives.match(/^\s*Pop \$0$/gm)?.length, 4);
+  assert.match(directives, /customInstall[\s\S]*\$\{If\} \$0 != 0\s+DetailPrint "Warning: could not configure private-network access/);
+  assert.match(directives, /customUnInstall[\s\S]*\$\{If\} \$0 != 0\s+DetailPrint "Warning: could not remove the private-network firewall rule/);
+});
+
+test("every packaging path runs the Electron ABI gate before electron-builder", () => {
+  const packageJson = JSON.parse(readFileSync(path.join(__dirname, "package.json"), "utf8"));
+
+  // npmRebuild is off, so the DuckDB prebuild is never recompiled for Electron. The gate is the
+  // only thing that proves the shipped binary matches the shipped runtime's module ABI.
+  assert.equal(packageJson.build.npmRebuild, false);
+  assert.equal(packageJson.scripts["verify:native-abi"], "electron verify-native-abi.cjs");
+  for (const script of ["package", "package:store"]) {
+    assert.match(
+      packageJson.scripts[script],
+      /npm run verify:native-abi &&[^&]*electron-builder/,
+      `${script} must run the ABI gate before electron-builder`
+    );
+  }
+  // The gate is build tooling, not runtime code, so it must not reach the packaged app.
+  assert.ok(!packageJson.build.files.includes("verify-native-abi.cjs"));
 });
 
 test("Store packages use an isolated AppX target and placeholder identity", () => {

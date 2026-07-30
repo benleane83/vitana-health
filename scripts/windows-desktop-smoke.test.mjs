@@ -9,6 +9,18 @@ test("Windows smoke validates the persisted DuckDB backend manifest field", () =
   assert.doesNotMatch(script, /\$storage\.storageBackend/);
 });
 
+test("Windows smoke proves the native DuckDB binding loaded in both scopes", () => {
+  const script = readFileSync(new URL("./windows-desktop-smoke.ps1", import.meta.url), "utf8");
+
+  // The database-file assertion has to sit above the Fast early-return, otherwise a Fast run
+  // reports success on an Electron build whose native binding never loaded.
+  const databaseAssertion = script.indexOf("did not create an encrypted DuckDB database");
+  const fastReturn = script.lastIndexOf('if ($Scope -eq "Fast")');
+  assert.ok(databaseAssertion > 0 && fastReturn > 0);
+  assert.ok(databaseAssertion < fastReturn);
+  assert.match(script, /nativeBindingLoaded = \$true/);
+});
+
 test("Windows smoke refreshes the singleton process before closing recreated windows", () => {
   const script = readFileSync(new URL("./windows-desktop-smoke.ps1", import.meta.url), "utf8");
 
