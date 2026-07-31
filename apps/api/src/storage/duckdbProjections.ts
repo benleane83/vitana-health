@@ -302,6 +302,8 @@ export async function summary(connection: duckdb.Connection) {
       UNION ALL
       SELECT measurement_code, 'sample' AS entry_kind, end_at AS measured_at FROM time_series_samples
       UNION ALL
+      SELECT measurement_code, 'sample' AS entry_kind, end_at AS measured_at FROM measurement_aggregates
+      UNION ALL
       SELECT 'activity_sessions' AS measurement_code, 'activity' AS entry_kind, COALESCE(end_at, start_at) AS measured_at FROM activities
     )
     SELECT
@@ -372,6 +374,25 @@ export async function measurementDetail(
         WHERE t.measurement_code = ?
         UNION ALL
         SELECT
+          'sample' AS kind, a.id, a.measurement_code, a.end_at AS measured_at, a.average AS value, a.unit,
+          s.label AS source_label, s.source_kind, i.file_name AS import_file_name, i.imported_at,
+          CONCAT(a.granularity, ' aggregate; min ', a.minimum, ', max ', a.maximum, ', ', a.measurement_count, ' readings') AS note,
+          NULL AS group_id, NULL AS group_kind, NULL AS group_label, NULL AS group_collected_at,
+          a.start_at AS sample_start, a.end_at AS sample_end, NULL AS activity_type, NULL AS activity_start,
+          NULL AS duration_minutes, NULL AS energy_kcal, NULL AS distance_meters
+        FROM measurement_aggregates a
+        LEFT JOIN sources s ON s.id = a.source_id
+        LEFT JOIN imports i ON i.id = s.import_id
+        WHERE a.measurement_code = ? AND (
+          a.granularity = '15m' OR (
+            a.granularity = 'day' AND a.end_at <= COALESCE((
+              SELECT MIN(recent.start_at) FROM measurement_aggregates recent
+              WHERE recent.measurement_code = a.measurement_code AND recent.granularity = '15m'
+            ), TIMESTAMPTZ 'infinity')
+          )
+        )
+        UNION ALL
+        SELECT
           'activity' AS kind, a.id, 'activity_sessions' AS measurement_code, COALESCE(a.end_at, a.start_at) AS measured_at,
           COALESCE(a.duration_minutes, DATE_DIFF('minute', a.start_at, COALESCE(a.end_at, a.start_at))) AS value, 'min' AS unit,
           s.label AS source_label, s.source_kind, i.file_name AS import_file_name, i.imported_at,
@@ -385,16 +406,18 @@ export async function measurementDetail(
       )
       ORDER BY measured_at DESC, id
       LIMIT ? OFFSET ?;
-    `, measurementCode, measurementCode, measurementCode, page.limit, page.offset),
+    `, measurementCode, measurementCode, measurementCode, measurementCode, page.limit, page.offset),
     allWithParams(connection, `
       SELECT
         (SELECT COUNT(*) FROM observations WHERE measurement_code = ?) AS observations,
         (SELECT COUNT(*) FROM time_series_samples WHERE measurement_code = ?) AS samples,
+        (SELECT COUNT(*) FROM measurement_aggregates WHERE measurement_code = ?) AS aggregates,
         (SELECT COUNT(*) FROM activities WHERE ? = 'activity_sessions') AS activities,
         (SELECT MAX(observed_at) FROM observations WHERE measurement_code = ?) AS observation_latest,
         (SELECT MAX(end_at) FROM time_series_samples WHERE measurement_code = ?) AS sample_latest,
+        (SELECT MAX(end_at) FROM measurement_aggregates WHERE measurement_code = ?) AS aggregate_latest,
         (SELECT MAX(COALESCE(end_at, start_at)) FROM activities WHERE ? = 'activity_sessions') AS activity_latest;
-    `, measurementCode, measurementCode, measurementCode, measurementCode, measurementCode, measurementCode),
+    `, measurementCode, measurementCode, measurementCode, measurementCode, measurementCode, measurementCode, measurementCode, measurementCode),
     all(connection, "SELECT units, subject_kind FROM profile;"),
     allWithParams(connection, "SELECT * FROM personal_reference_ranges WHERE measurement_code = ?;", measurementCode),
     allWithParams(connection, "SELECT 1 AS found FROM pinned_measurements WHERE measurement_code = ?;", measurementCode)
@@ -407,13 +430,14 @@ export async function measurementDetail(
   const countRow = countRows[0] ?? {};
   const counts = {
     observations: Number(countRow.observations ?? 0),
-    samples: Number(countRow.samples ?? 0),
+    samples: Number(countRow.samples ?? 0) + Number(countRow.aggregates ?? 0),
     activities: Number(countRow.activities ?? 0)
   };
   const total = counts.observations + counts.samples + counts.activities;
   const latestTimestamp = [
     optionalTimestamp(countRow.observation_latest),
     optionalTimestamp(countRow.sample_latest),
+    optionalTimestamp(countRow.aggregate_latest),
     optionalTimestamp(countRow.activity_latest)
   ].reduce<string | undefined>((latest, candidate) => !latest || (candidate && candidate > latest) ? candidate : latest, undefined);
   return summarizeMeasurementEntries(measurementCode, type, entries, {
@@ -508,6 +532,7 @@ async function chartEntryCount(connection: duckdb.Connection, measurementCode: s
     measurementCode,
     measurementCode,
     measurementCode,
+    measurementCode,
     ...range.params
   );
 }
@@ -517,10 +542,11 @@ async function rawChartPoints(connection: duckdb.Connection, measurementCode: st
   return allWithParams(
     connection,
     `WITH chart_entries AS (${chartEntriesSql()})
-      SELECT measured_at AS bucket, value, unit, 1 AS count, value AS min_value, value AS max_value
+      SELECT measured_at AS bucket, value, unit, weight AS count, min_value, max_value
       FROM chart_entries ${range.clause}
       ORDER BY measured_at DESC, id DESC
       LIMIT ?;`,
+    measurementCode,
     measurementCode,
     measurementCode,
     measurementCode,
@@ -537,7 +563,7 @@ async function aggregateChartPoints(
   aggregation: "sum" | "average"
 ) {
   const range = chartRangeSql(cutoff);
-  const aggregate = aggregation === "sum" ? "SUM(value)" : "AVG(value)";
+  const aggregate = aggregation === "sum" ? "SUM(value)" : "SUM(value * weight) / SUM(weight)";
   return allWithParams(
     connection,
     `WITH chart_entries AS (${chartEntriesSql()})
@@ -545,12 +571,13 @@ async function aggregateChartPoints(
         DATE_TRUNC('${bucket}', measured_at) AS bucket,
         ${aggregate} AS value,
         MIN(unit) AS unit,
-        COUNT(*) AS count,
-        MIN(value) AS min_value,
-        MAX(value) AS max_value
+        SUM(weight) AS count,
+        MIN(min_value) AS min_value,
+        MAX(max_value) AS max_value
       FROM chart_entries ${range.clause}
       GROUP BY DATE_TRUNC('${bucket}', measured_at)
       ORDER BY bucket;`,
+    measurementCode,
     measurementCode,
     measurementCode,
     measurementCode,
@@ -560,7 +587,7 @@ async function aggregateChartPoints(
 
 function chartEntriesSql(): string {
   return `
-    SELECT id, observed_at AS measured_at, value, unit
+    SELECT id, observed_at AS measured_at, value, unit, 1 AS weight, value AS min_value, value AS max_value
     FROM observations WHERE measurement_code = ?
     UNION ALL
     SELECT id,
@@ -568,12 +595,25 @@ function chartEntriesSql(): string {
         THEN COALESCE(TRY_CAST(json_extract_string(source_json, '$.calendarDate') AS TIMESTAMP), end_at)
         ELSE end_at
       END AS measured_at,
-      value, unit
+      value, unit, 1 AS weight, value AS min_value, value AS max_value
     FROM time_series_samples WHERE measurement_code = ?
+    UNION ALL
+    SELECT id, end_at AS measured_at, average AS value, unit, measurement_count AS weight,
+      minimum AS min_value, maximum AS max_value
+    FROM measurement_aggregates a WHERE measurement_code = ? AND (
+      granularity = '15m' OR (
+        granularity = 'day' AND end_at <= COALESCE((
+          SELECT MIN(recent.start_at) FROM measurement_aggregates recent
+          WHERE recent.measurement_code = a.measurement_code AND recent.granularity = '15m'
+        ), TIMESTAMPTZ 'infinity')
+      )
+    )
     UNION ALL
     SELECT id, COALESCE(end_at, start_at) AS measured_at,
       COALESCE(duration_minutes, DATE_DIFF('minute', start_at, COALESCE(end_at, start_at))) AS value,
-      'min' AS unit
+      'min' AS unit, 1 AS weight,
+      COALESCE(duration_minutes, DATE_DIFF('minute', start_at, COALESCE(end_at, start_at))) AS min_value,
+      COALESCE(duration_minutes, DATE_DIFF('minute', start_at, COALESCE(end_at, start_at))) AS max_value
     FROM activities WHERE ? = 'activity_sessions'`;
 }
 
@@ -674,7 +714,18 @@ export async function measurementDetails(
       UNION ALL
       SELECT 'sample' AS kind, id, end_at AS measured_at, value, unit
       FROM time_series_samples WHERE measurement_code = ?
+      UNION ALL
+      SELECT 'sample' AS kind, id, end_at AS measured_at, average AS value, unit
+      FROM measurement_aggregates a WHERE measurement_code = ? AND (
+        granularity = '15m' OR (
+          granularity = 'day' AND end_at <= COALESCE((
+            SELECT MIN(recent.start_at) FROM measurement_aggregates recent
+            WHERE recent.measurement_code = a.measurement_code AND recent.granularity = '15m'
+          ), TIMESTAMPTZ 'infinity')
+        )
+      )
     ) ORDER BY measured_at DESC, kind, id LIMIT ?;`,
+    measurementCode,
     measurementCode,
     measurementCode,
     effectiveLimit

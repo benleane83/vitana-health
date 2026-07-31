@@ -101,6 +101,39 @@ export async function mergeImport(
     }
   }
 
+  const aggregateFirstOrdinal = await nextOrdinal(
+    connection,
+    "measurement_aggregates",
+    parsed.measurementAggregates.length
+  );
+  const aggregateIds = await insertRows(
+    connection,
+    "measurement_aggregates",
+    parsed.measurementAggregates.map((entry, index) => [
+      aggregateFirstOrdinal + index,
+      entry.id,
+      entry.measurementCode,
+      entry.granularity,
+      entry.startAt,
+      entry.endAt,
+      entry.average,
+      entry.minimum,
+      entry.maximum,
+      entry.count,
+      entry.unit,
+      entry.sourceId,
+      entry.calendarDate ?? null,
+      entry.sourceJson !== undefined,
+      optionalJsonValue(entry.sourceJson)
+    ]),
+    { updateDuplicatesById: true, returningIds: true }
+  );
+  for (const entry of parsed.measurementAggregates) {
+    if (aggregateIds.includes(entry.id)) {
+      replicaChanges.push(replicaUpsert("measurement-aggregate", entry.id, entry));
+    }
+  }
+
   const activities = await insertActivityRows(
     connection,
     parsed.activitySessions,
@@ -119,6 +152,7 @@ export async function mergeImport(
     observationGroups: categoryOutcome(parsed.observationGroups.length, insertedGroupIds.size, 0),
     timeSeriesSamples: categoryOutcome(
       parsed.timeSeriesSamples.length, samples.inserted.length, samples.rejections.length),
+    measurementAggregates: categoryOutcome(parsed.measurementAggregates.length, aggregateIds.length, 0),
     activitySessions: categoryOutcome(parsed.activitySessions.length, activities.length, 0)
   };
   if (rejections.length > 0) {

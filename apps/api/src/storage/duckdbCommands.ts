@@ -890,6 +890,7 @@ type OrderedTable =
   | "observations"
   | "observation_groups"
   | "time_series_samples"
+  | "measurement_aggregates"
   | "activities"
   | "health_events"
   | "care_items"

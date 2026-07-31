@@ -157,6 +157,7 @@ export function buildBodyCompositionImportFromDraft(payload: BodyCompositionDraf
     observations,
     observationGroups: [group],
     timeSeriesSamples: [],
+    measurementAggregates: [],
     activitySessions: []
   };
 }

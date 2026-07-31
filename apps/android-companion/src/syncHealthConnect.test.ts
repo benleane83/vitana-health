@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => {
   Object.defineProperty(globalThis, "__DEV__", { configurable: true, value: true });
   return {
     getSdkStatus: vi.fn(),
+    aggregateGroupByDuration: vi.fn(),
     aggregateGroupByPeriod: vi.fn(),
     initialize: vi.fn(),
     readRecords: vi.fn(),
@@ -16,6 +17,7 @@ const mocks = vi.hoisted(() => {
 vi.mock("react-native", () => ({ Platform: { OS: "android" } }));
 vi.mock("react-native-health-connect", () => ({
   SdkAvailabilityStatus: { SDK_AVAILABLE: "available" },
+  aggregateGroupByDuration: mocks.aggregateGroupByDuration,
   aggregateGroupByPeriod: mocks.aggregateGroupByPeriod,
   getSdkStatus: mocks.getSdkStatus,
   initialize: mocks.initialize,
@@ -68,6 +70,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-01-11T12:00:00.000Z"));
   mocks.getSdkStatus.mockResolvedValue("available");
+  mocks.aggregateGroupByDuration.mockResolvedValue([]);
   mocks.aggregateGroupByPeriod.mockResolvedValue([]);
   mocks.initialize.mockResolvedValue(true);
   mocks.requestPermission.mockResolvedValue([{ accessType: "read", recordType: "Steps" }]);
@@ -97,6 +100,62 @@ describe("Health Connect sync", () => {
     expect(sleepSession).not.toHaveProperty("title");
     expect(sleepSession).not.toHaveProperty("notes");
     expect(() => healthConnectImportRequestSchema.parse({ ...emptyPayload(), ...converted })).not.toThrow();
+  });
+
+  it("reads completed native Heart Rate aggregates instead of raw samples", async () => {
+    mocks.aggregateGroupByDuration.mockImplementation(async (request) => request.timeRangeSlicer.duration === "DAYS"
+      ? [{
+          startTime: "2026-01-10T00:00:00.000Z",
+          endTime: "2026-01-11T00:00:00.000Z",
+          result: { BPM_AVG: 71, BPM_MIN: 52, BPM_MAX: 121, MEASUREMENTS_COUNT: 900, dataOrigins: [] }
+        }]
+      : request.timeRangeFilter.endTime === "2026-01-11T12:00:00.000Z" ? [{
+          startTime: "2026-01-11T11:30:00.000Z",
+          endTime: "2026-01-11T11:45:00.000Z",
+          result: { BPM_AVG: 74, BPM_MIN: 68, BPM_MAX: 89, MEASUREMENTS_COUNT: 24, dataOrigins: [] }
+        }] : []);
+    const descriptor = HEALTH_CONNECT_DESCRIPTORS.find((entry) => entry.recordType === "HeartRate")!;
+    const pages = [];
+    for await (const page of descriptor.readPages({
+      timeRangeFilter: {
+        operator: "between",
+        startTime: "2025-01-11T12:00:00.000Z",
+        endTime: "2026-01-11T12:07:00.000Z"
+      }
+    })) {
+      pages.push(page);
+    }
+
+    expect(mocks.readRecords).not.toHaveBeenCalled();
+    expect(mocks.aggregateGroupByDuration).toHaveBeenCalledWith(expect.objectContaining({
+      recordType: "HeartRate",
+      timeRangeSlicer: { duration: "DAYS", length: 1 }
+    }));
+    expect(mocks.aggregateGroupByDuration).toHaveBeenCalledWith(expect.objectContaining({
+      recordType: "HeartRate",
+      timeRangeFilter: {
+        operator: "between",
+        startTime: "2025-10-13T12:15:00.000Z",
+        endTime: "2025-10-20T12:15:00.000Z"
+      },
+      timeRangeSlicer: { duration: "MINUTES", length: 15 }
+    }));
+    const quarterHourCalls = mocks.aggregateGroupByDuration.mock.calls
+      .map(([request]) => request)
+      .filter((request) => request.timeRangeSlicer.duration === "MINUTES");
+    expect(quarterHourCalls).toHaveLength(13);
+    expect(quarterHourCalls.at(-1)?.timeRangeFilter).toEqual({
+      operator: "between",
+      startTime: "2026-01-05T12:15:00.000Z",
+      endTime: "2026-01-11T12:00:00.000Z"
+    });
+    expect(pages.flatMap((page) => page.heartRate)).toEqual([
+      expect.objectContaining({ granularity: "day", average: 71, minimum: 52, maximum: 121, count: 900 }),
+      expect.objectContaining({ granularity: "15m", average: 74, minimum: 68, maximum: 89, count: 24 })
+    ]);
+    for (const page of pages) {
+      expect(() => healthConnectImportRequestSchema.parse({ ...emptyPayload(), ...page })).not.toThrow();
+    }
   });
 
   it("does not request permission when no categories are selected", async () => {

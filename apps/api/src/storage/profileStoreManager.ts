@@ -505,6 +505,7 @@ function createEmptyStore(profileId = "self", displayName = "Local user"): Healt
     observations: [],
     observationGroups: [],
     timeSeriesSamples: [],
+    measurementAggregates: [],
     activitySessions: [],
     healthEvents: [],
     careItems: [],

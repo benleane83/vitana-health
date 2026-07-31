@@ -19,12 +19,11 @@ import { HEALTH_CONNECT_DESCRIPTORS } from "./syncHealthConnect";
 import { healthConnectProvider } from "./healthSourceProvider";
 
 describe("Health Connect collection descriptors", () => {
-  it("defines exactly one descriptor for every selectable category", () => {
+  it("defines descriptors only for selectable categories and offers each category once", () => {
     const descriptorCategories = HEALTH_CONNECT_DESCRIPTORS.map((descriptor) => descriptor.category);
 
-    expect(descriptorCategories).toHaveLength(HEALTH_CONNECT_CATEGORIES.length);
-    expect(new Set(descriptorCategories).size).toBe(descriptorCategories.length);
-    expect([...descriptorCategories].sort()).toEqual([...HEALTH_CONNECT_CATEGORIES].sort());
+    expect([...new Set(descriptorCategories)].sort()).toEqual([...HEALTH_CONNECT_CATEGORIES].sort());
+    expect(new Set(healthConnectProvider.categories).size).toBe(healthConnectProvider.categories.length);
   });
 
   it("offers only categories from the shared vocabulary through the provider", () => {

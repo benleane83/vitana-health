@@ -22,7 +22,7 @@ module.exports = {
   expo: {
     name: "Vitana",
     slug: "local-fitness-companion",
-    version: "0.1.0",
+    version: "0.1.1",
     orientation: "portrait",
     icon: "./assets/icon.png",
     userInterfaceStyle: "light",
@@ -111,7 +111,7 @@ module.exports = {
     // Bumped by hand whenever the native layer changes, independently of the marketing `version`
     // above. An appVersion policy silently orphaned installs on every marketing bump.
     // See docs/ANDROID_RELEASE.md for the bump rule.
-    runtimeVersion: "1",
+    runtimeVersion: "2",
     updates: {
       enabled: true,
       url: "https://u.expo.dev/2cc5cf1b-57e8-4e6f-8709-662259497a57",

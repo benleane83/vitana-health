@@ -49,6 +49,8 @@ export function orderedRows(connection: duckdb.Connection, table: PersistedTable
 export interface InsertOptions {
   /** Import paths tolerate re-submitted rows; export/restore paths want a hard failure instead. */
   ignoreDuplicates?: boolean;
+  /** Aggregate retries replace the complete deterministic bucket rather than appending a duplicate. */
+  updateDuplicatesById?: boolean;
   /**
    * Collect the `id` of every row the statement actually wrote. Duplicate rows suppressed by
    * `ignoreDuplicates` are absent, which is what import accounting and replica change tracking
@@ -77,8 +79,15 @@ export async function insertRows(
   if (rows.some((row) => row.length !== columns.length)) {
     throw new Error(`DuckDB bulk insert into ${table} expects ${columns.length} values per row.`);
   }
+  if (options.ignoreDuplicates && options.updateDuplicatesById) {
+    throw new Error("DuckDB bulk insert cannot both ignore and update duplicates.");
+  }
   const prefix = `INSERT${options.ignoreDuplicates ? " OR IGNORE" : ""} INTO ${table} (${columns.join(", ")}) VALUES `;
-  const suffix = options.returningIds ? " RETURNING id" : "";
+  const updatableColumns = columns.filter((column) => column !== "id" && column !== "ordinal");
+  const conflictClause = options.updateDuplicatesById
+    ? ` ON CONFLICT (id) DO UPDATE SET ${updatableColumns.map((column) => `${column} = excluded.${column}`).join(", ")}`
+    : "";
+  const suffix = `${conflictClause}${options.returningIds ? " RETURNING id" : ""}`;
   const rowPlaceholder = `(${columns.map(() => "?").join(", ")})`;
   const maxChunkRows = Math.max(1, Math.floor(3_000 / columns.length));
   const maxChunkStringChars = 2_000_000;

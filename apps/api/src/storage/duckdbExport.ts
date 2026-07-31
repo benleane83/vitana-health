@@ -143,6 +143,20 @@ export async function snapshot(
     sourceId: row.source_id,
     deviceId: row.device_id
   }), row.source_json_present, row.source_json));
+  const measurementAggregates = (await orderedRows(connection, "measurement_aggregates")).map((row) => withStoredJson(compact({
+    id: row.id,
+    measurementCode: row.measurement_code,
+    granularity: row.granularity,
+    startAt: isoTimestamp(row.start_at),
+    endAt: isoTimestamp(row.end_at),
+    average: Number(row.average),
+    minimum: Number(row.minimum),
+    maximum: Number(row.maximum),
+    count: Number(row.measurement_count),
+    unit: row.unit,
+    sourceId: row.source_id,
+    calendarDate: row.calendar_date ? String(row.calendar_date).slice(0, 10) : undefined
+  }), row.source_json_present, row.source_json));
   const activitySessions = (await orderedRows(connection, "activities")).map((row) => withStoredJson(compact({
     id: row.id,
     activityType: row.activity_type,
@@ -202,6 +216,7 @@ export async function snapshot(
     observations,
     observationGroups,
     timeSeriesSamples,
+    measurementAggregates,
     activitySessions,
     healthEvents,
     careItems,
@@ -242,6 +257,11 @@ export async function insertStore(connection: duckdb.Connection, store: HealthSt
       entry.importId ?? null, entry.startAt ?? null, entry.endAt ?? null, entry.collectedAt ?? null, optionalJsonValue(entry.metadata)]));
   await insertObservationRows(connection, store.observations, 0);
   await insertTimeSeriesSampleRows(connection, store.timeSeriesSamples, 0);
+  await insertRows(connection, "measurement_aggregates", store.measurementAggregates.map((entry, ordinal) => [
+    ordinal, entry.id, entry.measurementCode, entry.granularity, entry.startAt, entry.endAt,
+    entry.average, entry.minimum, entry.maximum, entry.count, entry.unit, entry.sourceId,
+    entry.calendarDate ?? null, entry.sourceJson !== undefined, optionalJsonValue(entry.sourceJson)
+  ]));
   await insertActivityRows(connection, store.activitySessions, 0);
   await insertHealthEventRows(connection, store.healthEvents ?? []);
   await insertRows(connection, "care_items",

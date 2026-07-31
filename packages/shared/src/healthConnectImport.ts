@@ -39,6 +39,25 @@ const pointSampleSchema = z.object({
   provenance
 });
 
+const measurementAggregateSchema = z.object({
+  startTime: isoDateString,
+  endTime: isoDateString,
+  granularity: z.enum(["15m", "day"]),
+  average: z.number().finite().nonnegative(),
+  minimum: z.number().finite().nonnegative(),
+  maximum: z.number().finite().nonnegative(),
+  count: z.number().int().positive(),
+  calendarDate: z.string().date().optional(),
+  provenance
+}).superRefine((value, context) => {
+  if (value.endTime <= value.startTime) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["endTime"], message: "endTime must be after startTime" });
+  }
+  if (value.minimum > value.average || value.average > value.maximum) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["average"], message: "average must be between minimum and maximum" });
+  }
+});
+
 const exerciseSchema = z.object({
   startTime: isoDateString,
   endTime: isoDateString,
@@ -59,7 +78,7 @@ export const healthConnectImportRequestSchema = z.object({
   deviceLabel: z.string().min(1).max(120).optional(),
   batchId: z.string().min(1).max(160).optional(),
   steps: z.array(stepSchema).default([]),
-  heartRate: z.array(pointSampleSchema).default([]),
+  heartRate: z.array(measurementAggregateSchema).default([]),
   oxygenSaturation: z.array(pointSampleSchema).default([]),
   hrvRmssd: z.array(pointSampleSchema).default([]),
   basalMetabolicRateKcalDay: z.array(pointSampleSchema).default([]),

@@ -23,6 +23,7 @@ import type {
   HealthStoreData,
   ImportCategoryOutcome,
   LinkedCareItemConflict,
+  MeasurementAggregate,
   MeasurementPinState,
   MobileMigrationBatch,
   MobileMigrationBatchAcknowledgement,
@@ -58,6 +59,7 @@ export interface ProfileImport {
   observations: HealthStoreData["observations"];
   observationGroups: HealthStoreData["observationGroups"];
   timeSeriesSamples: HealthStoreData["timeSeriesSamples"];
+  measurementAggregates: MeasurementAggregate[];
   activitySessions: HealthStoreData["activitySessions"];
 }
 
@@ -69,6 +71,7 @@ export interface ImportOutcome {
   observations: ImportCategoryOutcome;
   observationGroups: ImportCategoryOutcome;
   timeSeriesSamples: ImportCategoryOutcome;
+  measurementAggregates: ImportCategoryOutcome;
   activitySessions: ImportCategoryOutcome;
 }
 

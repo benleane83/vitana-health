@@ -264,6 +264,7 @@ export class ConnectedReplicaRepository {
       "observation-group",
       "observation",
       "time-series-sample",
+      "measurement-aggregate",
       ...(measurementCode === ACTIVITY_SESSIONS_CODE ? ["activity-session"] : [])
     ];
     const data = await this.readStore({ entityTypes, measurementCode });
@@ -300,6 +301,7 @@ export class ConnectedReplicaRepository {
       observationGroups: values<ObservationGroup>("observation-group"),
       observations: values<Observation>("observation"),
       timeSeriesSamples: values<TimeSeriesSample>("time-series-sample"),
+      measurementAggregates: values<HealthStoreData["measurementAggregates"][number]>("measurement-aggregate"),
       activitySessions: values<ActivitySession>("activity-session"),
       healthEvents: values<HealthEvent>("health-event"),
       careItems: values<CareItem>("care-item"),
@@ -335,6 +337,11 @@ function indexMeasurements(data: HealthStoreData): Map<string, MeasurementBucket
     observe(bucket, entry.observedAt);
   }
   for (const entry of data.timeSeriesSamples) {
+    const bucket = bucketFor(entry.measurementCode);
+    bucket.samples += 1;
+    observe(bucket, entry.endAt);
+  }
+  for (const entry of data.measurementAggregates) {
     const bucket = bucketFor(entry.measurementCode);
     bucket.samples += 1;
     observe(bucket, entry.endAt);
@@ -504,6 +511,18 @@ function detailEntries(projection: ReplicaProjection, measurementCode: string): 
       ...range(entry.value, entry.unit),
       ...sourceFields(entry.sourceId)
     } as HealthDataDetailEntry));
+  const aggregates = data.measurementAggregates
+    .filter((entry) => entry.measurementCode === measurementCode)
+    .map<HealthDataDetailEntry>((entry) => ({
+      kind: "sample",
+      id: entry.id,
+      measurementCode,
+      displayName,
+      timestamp: entry.endAt,
+      ...range(entry.average, entry.unit),
+      ...sourceFields(entry.sourceId),
+      note: `${entry.granularity} aggregate; min ${entry.minimum}, max ${entry.maximum}, ${entry.count} readings`
+    } as HealthDataDetailEntry));
   const activities = measurementCode === ACTIVITY_SESSIONS_CODE
     ? data.activitySessions.map<HealthDataDetailEntry>((entry) => ({
         kind: "activity",
@@ -517,6 +536,6 @@ function detailEntries(projection: ReplicaProjection, measurementCode: string): 
         note: `Type: ${entry.activityType}`
       }))
     : [];
-  return [...observations, ...samples, ...activities]
+  return [...observations, ...samples, ...aggregates, ...activities]
     .sort((left, right) => right.timestamp.localeCompare(left.timestamp) || left.id.localeCompare(right.id));
 }

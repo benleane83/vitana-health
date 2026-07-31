@@ -20,7 +20,7 @@ const markerName = ".vitana-duckdb-poc";
  * bumps the export format and may leave this alone. Backup/restore correctness depends on the
  * distinction — a restore validates the export format and is indifferent to the engine version.
  */
-const DB_SCHEMA_VERSION = 2;
+const DB_SCHEMA_VERSION = 3;
 
 export interface DuckDbOptions {
   httpfsExtensionPath?: string;
@@ -582,9 +582,32 @@ const healthConnectSyncSchemaSql = `
     (2, CURRENT_TIMESTAMP, 'Health Connect resumable sync sessions');
 `;
 
+const measurementAggregatesSchemaSql = `
+  CREATE TABLE IF NOT EXISTS measurement_aggregates (
+    ordinal BIGINT NOT NULL UNIQUE, id VARCHAR PRIMARY KEY, measurement_code VARCHAR NOT NULL,
+    granularity VARCHAR NOT NULL, start_at TIMESTAMPTZ NOT NULL, end_at TIMESTAMPTZ NOT NULL,
+    average DOUBLE NOT NULL, minimum DOUBLE NOT NULL, maximum DOUBLE NOT NULL,
+    measurement_count BIGINT NOT NULL, unit VARCHAR NOT NULL,
+    source_id VARCHAR NOT NULL REFERENCES sources(id), calendar_date DATE,
+    source_json_present BOOLEAN NOT NULL, source_json JSON,
+    CHECK (granularity IN ('15m', 'day')),
+    CHECK (end_at > start_at),
+    CHECK (measurement_count > 0),
+    CHECK (minimum <= average AND average <= maximum)
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS measurement_aggregates_bucket_idx
+    ON measurement_aggregates(source_id, measurement_code, granularity, start_at, end_at);
+  CREATE INDEX IF NOT EXISTS measurement_aggregates_code_end_idx
+    ON measurement_aggregates(measurement_code, granularity, end_at);
+
+  INSERT OR IGNORE INTO poc_metadata VALUES
+    (3, CURRENT_TIMESTAMP, 'Measurement aggregates');
+`;
+
 const schemaMigrations = [
   { version: 1, sql: baselineSchemaSql },
-  { version: 2, sql: healthConnectSyncSchemaSql }
+  { version: 2, sql: healthConnectSyncSchemaSql },
+  { version: 3, sql: measurementAggregatesSchemaSql }
 ] as const;
 
 const analyticalViewStatements = [

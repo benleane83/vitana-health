@@ -108,7 +108,13 @@ export async function recordHealthConnectSyncAcknowledgement(
  * bookkeeping and would inflate `accepted` by two on every chunk.
  */
 export function summarizeHealthConnectSyncCounts(outcome: ImportOutcome): HealthConnectSyncCounts {
-  const categories = [outcome.observations, outcome.observationGroups, outcome.timeSeriesSamples, outcome.activitySessions];
+  const categories = [
+    outcome.observations,
+    outcome.observationGroups,
+    outcome.timeSeriesSamples,
+    outcome.measurementAggregates,
+    outcome.activitySessions
+  ];
   return {
     accepted: categories.reduce((total, category) => total + category.accepted, 0),
     duplicates: categories.reduce((total, category) => total + category.duplicates, 0),

@@ -48,7 +48,7 @@ describe("DuckDbHealthStore lifecycle", () => {
         sourceImport: { ...fixture.sourceImports[0], id: "adapter-import", fileName: "adapter.csv", checksum: "adapter-checksum" },
         dataSource: { ...fixture.dataSources[0], id: "adapter-source", importId: "adapter-import" },
         observations: [{ ...fixture.observations[0], id: "adapter-observation", sourceId: "adapter-source" }],
-        observationGroups: [], timeSeriesSamples: [], activitySessions: []
+        observationGroups: [], timeSeriesSamples: [], measurementAggregates: [], activitySessions: []
       });
       expect(importResult.counts).toMatchObject({ imports: 2, observations: 3 });
       await Promise.all([

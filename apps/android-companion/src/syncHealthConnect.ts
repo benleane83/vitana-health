@@ -1,5 +1,6 @@
 import {
   SdkAvailabilityStatus,
+  aggregateGroupByDuration,
   aggregateGroupByPeriod,
   getSdkStatus,
   initialize,
@@ -33,13 +34,25 @@ interface HealthConnectProvenance {
   lastModifiedTime?: string;
   recordingMethod?: string;
   device?: Record<string, unknown>;
-  aggregation?: "health-connect-daily";
+  aggregation?: "health-connect-daily" | "health-connect-15m";
   dataOrigins?: string[];
 }
 
 interface HealthConnectPointValue {
   time: string;
   value: number;
+  provenance?: HealthConnectProvenance;
+}
+
+interface HealthConnectMeasurementAggregate {
+  startTime: string;
+  endTime: string;
+  granularity: "15m" | "day";
+  average: number;
+  minimum: number;
+  maximum: number;
+  count: number;
+  calendarDate?: string;
   provenance?: HealthConnectProvenance;
 }
 
@@ -51,7 +64,7 @@ export interface HealthConnectImportPayload {
   deviceLabel: string;
   batchId?: string;
   steps: Array<{ startTime: string; endTime: string; count: number; provenance?: HealthConnectProvenance }>;
-  heartRate: HealthConnectPointValue[];
+  heartRate: HealthConnectMeasurementAggregate[];
   oxygenSaturation: HealthConnectPointValue[];
   hrvRmssd: HealthConnectPointValue[];
   basalMetabolicRateKcalDay: HealthConnectPointValue[];
@@ -136,12 +149,7 @@ export const HEALTH_CONNECT_DESCRIPTORS = [
       provenance: extractProvenance(record)
     })).filter((record) => Number.isFinite(record.count))
   }), readDailyStepAggregates),
-  defineHealthConnectDescriptor("HeartRate", "HeartRate", ["heartRate"], (records) => ({
-    heartRate: records.flatMap((record) =>
-      record.samples.map((sample) => ({ time: sample.time, value: sample.beatsPerMinute, provenance: extractProvenance(record) }))
-        .filter((sample) => Number.isFinite(sample.value))
-    )
-  })),
+  defineHealthConnectDescriptor("HeartRate", "HeartRate", ["heartRate"], () => ({ heartRate: [] }), readHeartRateAggregates),
   defineHealthConnectDescriptor("OxygenSaturation", "OxygenSaturation", ["oxygenSaturation"], (records) => ({
     oxygenSaturation: records.map((record) => ({
       time: record.time, value: record.percentage, provenance: extractProvenance(record)
@@ -676,6 +684,127 @@ async function* readDailyStepAggregates(
   };
 }
 
+async function* readHeartRateAggregates(
+  options: ReadRecordsOptions
+): AsyncGenerator<Pick<HealthConnectPayloadCollections, "heartRate">> {
+  if (!options.timeRangeFilter || options.timeRangeFilter.operator !== "between") {
+    throw new Error("A bounded time range is required to aggregate Heart Rate.");
+  }
+
+  const dailyRange = completedLocalDayRange(options.timeRangeFilter.startTime, options.timeRangeFilter.endTime);
+  if (dailyRange) {
+    const groups = await aggregateGroupByDuration({
+      recordType: "HeartRate",
+      timeRangeFilter: dailyRange,
+      timeRangeSlicer: { duration: "DAYS", length: 1 }
+    });
+    yield {
+      heartRate: groups.flatMap((group) => {
+        const aggregate = heartRateAggregateValues(group.result);
+        return aggregate ? [{
+          startTime: new Date(group.startTime).toISOString(),
+          endTime: new Date(group.endTime).toISOString(),
+          granularity: "day" as const,
+          calendarDate: localCalendarDate(group.startTime),
+          ...aggregate,
+          provenance: {
+            aggregation: "health-connect-daily" as const,
+            dataOrigins: group.result.dataOrigins
+          }
+        }] : [];
+      })
+    };
+  }
+
+  const durationRange = completedQuarterHourRange(
+    options.timeRangeFilter.startTime,
+    options.timeRangeFilter.endTime
+  );
+  if (!durationRange) return;
+  for (const timeRangeFilter of splitTimeRange(durationRange, 7)) {
+    const groups = await aggregateGroupByDuration({
+      recordType: "HeartRate",
+      timeRangeFilter,
+      timeRangeSlicer: { duration: "MINUTES", length: 15 }
+    });
+    yield {
+      heartRate: groups.flatMap((group) => {
+        const aggregate = heartRateAggregateValues(group.result);
+        return aggregate ? [{
+          startTime: new Date(group.startTime).toISOString(),
+          endTime: new Date(group.endTime).toISOString(),
+          granularity: "15m" as const,
+          ...aggregate,
+          provenance: {
+            aggregation: "health-connect-15m" as const,
+            dataOrigins: group.result.dataOrigins
+          }
+        }] : [];
+      })
+    };
+  }
+}
+
+function heartRateAggregateValues(result: {
+  BPM_AVG: number;
+  BPM_MIN: number;
+  BPM_MAX: number;
+  MEASUREMENTS_COUNT: number;
+}) {
+  if (
+    !Number.isFinite(result.BPM_AVG) ||
+    !Number.isFinite(result.BPM_MIN) ||
+    !Number.isFinite(result.BPM_MAX) ||
+    !Number.isInteger(result.MEASUREMENTS_COUNT) ||
+    result.MEASUREMENTS_COUNT <= 0
+  ) {
+    return undefined;
+  }
+  return {
+    average: result.BPM_AVG,
+    minimum: result.BPM_MIN,
+    maximum: result.BPM_MAX,
+    count: result.MEASUREMENTS_COUNT
+  };
+}
+
+function completedQuarterHourRange(
+  startTime: string,
+  endTime: string
+): { operator: "between"; startTime: string; endTime: string } | undefined {
+  const quarterHourMs = 15 * 60 * 1000;
+  const retentionStart = new Date(endTime).getTime() - 90 * 24 * 60 * 60 * 1000;
+  const requestedStart = Math.max(new Date(startTime).getTime(), retentionStart);
+  const start = Math.ceil(requestedStart / quarterHourMs) * quarterHourMs;
+  const end = Math.floor(new Date(endTime).getTime() / quarterHourMs) * quarterHourMs;
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return undefined;
+  return {
+    operator: "between",
+    startTime: new Date(start).toISOString(),
+    endTime: new Date(end).toISOString()
+  };
+}
+
+function splitTimeRange(
+  range: { operator: "between"; startTime: string; endTime: string },
+  maximumDays: number
+): Array<{ operator: "between"; startTime: string; endTime: string }> {
+  const ranges = [];
+  const maximumDurationMs = maximumDays * 24 * 60 * 60 * 1000;
+  const end = new Date(range.endTime).getTime();
+  let start = new Date(range.startTime).getTime();
+  while (start < end) {
+    const sliceEnd = Math.min(start + maximumDurationMs, end);
+    ranges.push({
+      operator: "between" as const,
+      startTime: new Date(start).toISOString(),
+      endTime: new Date(sliceEnd).toISOString()
+    });
+    start = sliceEnd;
+  }
+  return ranges;
+}
+
 function completedLocalDayRange(startTime: string, endTime: string): ReadRecordsOptions["timeRangeFilter"] | undefined {
   const start = new Date(startTime);
   const end = new Date(endTime);
@@ -689,6 +818,15 @@ function localDateTimeToIso(value: string, offsetMs = 0): string {
   const parsed = new Date(new Date(value).getTime() + offsetMs);
   if (!Number.isFinite(parsed.getTime())) throw new Error("Health Connect returned an invalid aggregate timestamp.");
   return parsed.toISOString();
+}
+
+function localCalendarDate(value: string): string {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) throw new Error("Health Connect returned an invalid aggregate timestamp.");
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function parseCursor(value: string | null | undefined): Date | undefined {

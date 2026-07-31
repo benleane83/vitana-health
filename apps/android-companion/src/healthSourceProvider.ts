@@ -16,7 +16,7 @@ import { HEALTH_CONNECT_DESCRIPTORS, syncHealthConnect } from "./syncHealthConne
 export const healthConnectProvider: HealthSourceProvider = {
   id: "health-connect",
   label: "Health Connect",
-  categories: HEALTH_CONNECT_DESCRIPTORS.map((descriptor) => descriptor.category),
+  categories: [...new Set(HEALTH_CONNECT_DESCRIPTORS.map((descriptor) => descriptor.category))],
   sync: (endpointUrl, companionToken, profileId, publicKeyHash, options) =>
     syncHealthConnect(endpointUrl, companionToken, profileId, publicKeyHash, options)
 };

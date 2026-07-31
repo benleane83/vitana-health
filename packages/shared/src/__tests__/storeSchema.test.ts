@@ -6,7 +6,7 @@ function store(overrides: Record<string, unknown> = {}) {
     schemaVersion: EXPORT_FORMAT_VERSION,
     profile: { id: "self", displayName: "Test", units: "metric", updatedAt: "2026-01-01T00:00:00.000Z" },
     sourceImports: [], dataSources: [], devices: [], measurementTypes: [], observations: [], observationGroups: [],
-    timeSeriesSamples: [], activitySessions: [], personalReferenceRanges: [], pinnedMeasurements: [], insights: [], auditEvents: [],
+    timeSeriesSamples: [], measurementAggregates: [], activitySessions: [], personalReferenceRanges: [], pinnedMeasurements: [], insights: [], auditEvents: [],
     ...overrides
   };
 }
@@ -15,6 +15,17 @@ describe("persisted health store schema", () => {
   it("accepts the current persisted shape and rejects malformed collections", () => {
     expect(parsePersistedHealthStore(store()).schemaVersion).toBe(EXPORT_FORMAT_VERSION);
     expect(() => parsePersistedHealthStore(store({ observations: {} }))).toThrow();
+  });
+
+  it("preserves measurement aggregates", () => {
+    const aggregate = {
+      id: "aggregate-1", measurementCode: "heart_rate", granularity: "15m",
+      startAt: "2026-01-01T10:00:00.000Z", endAt: "2026-01-01T10:15:00.000Z",
+      average: 72, minimum: 60, maximum: 90, count: 20,
+      unit: "beats/min", sourceId: "source-1"
+    };
+    expect(parsePersistedHealthStore(store({ measurementAggregates: [aggregate] })).measurementAggregates)
+      .toEqual([aggregate]);
   });
 
   it("rejects any other format version rather than mis-parsing it", () => {

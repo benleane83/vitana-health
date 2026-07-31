@@ -12,7 +12,7 @@ import type { HealthStoreData, InsightModel } from "./types.js";
  * layout alone. Confusing them breaks backup/restore, which reads and writes this format and has
  * no knowledge of the storage engine that produced it.
  */
-export const EXPORT_FORMAT_VERSION = 8 as const;
+export const EXPORT_FORMAT_VERSION = 9 as const;
 
 export const sourceKindSchema = z.enum([
   "health-connect", "manual-entry", "blood-test-csv", "observation-csv", "structured-upload",
@@ -134,6 +134,13 @@ export const timeSeriesSampleSchema = z.object({
   sourceId: z.string(), deviceId: z.string().optional(), sourceJson: z.unknown().optional()
 }).strict();
 
+export const measurementAggregateSchema = z.object({
+  id: z.string(), measurementCode: z.string(), granularity: z.enum(["15m", "day"]),
+  startAt: z.string(), endAt: z.string(), average: z.number(), minimum: z.number(), maximum: z.number(),
+  count: z.number().int().positive(), unit: z.string(), sourceId: z.string(), calendarDate: z.string().optional(),
+  sourceJson: z.unknown().optional()
+}).strict();
+
 export const activitySessionSchema = z.object({
   id: z.string(), activityType: z.string(), startAt: z.string(), endAt: z.string().optional(), durationMinutes: z.number().optional(),
   energyKcal: z.number().optional(), distanceMeters: z.number().optional(), sourceId: z.string(), sourceJson: z.unknown().optional()
@@ -189,6 +196,7 @@ const storeFields = {
   observations: z.array(observationSchema),
   observationGroups: z.array(observationGroupSchema),
   timeSeriesSamples: z.array(timeSeriesSampleSchema),
+  measurementAggregates: z.array(measurementAggregateSchema),
   activitySessions: z.array(activitySessionSchema),
   healthEvents: z.array(persistedHealthEventSchema).default([]),
   careItems: z.array(persistedCareItemSchema).default([]),

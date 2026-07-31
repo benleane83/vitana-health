@@ -57,6 +57,7 @@ const collections: readonly ReplicaCollection[] = [
   collection("observation-group", "observationGroups", (value) => value.id),
   collection("observation", "observations", (value) => value.id),
   collection("time-series-sample", "timeSeriesSamples", (value) => value.id),
+  collection("measurement-aggregate", "measurementAggregates", (value) => value.id),
   collection("activity-session", "activitySessions", (value) => value.id),
   collection("health-event", "healthEvents", (value) => value.id),
   collection("care-item", "careItems", (value) => value.id)

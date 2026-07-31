@@ -4,6 +4,7 @@ import {
   healthConnectImportRequestSchema,
   type ActivitySession,
   type HealthConnectImportRequest,
+  type MeasurementAggregate,
   type Observation,
   type ParsedImport,
   type TimeSeriesSample
@@ -50,7 +51,7 @@ export function parseHealthConnectImport(payload: HealthConnectImportRequest): P
       sourceJson: item.provenance
     }));
 
-  const heartRate = toObservationSamples(payload.heartRate, "heart_rate", "bpm", sourceId);
+  const heartRate = toMeasurementAggregates(payload.heartRate, "heart_rate", "beats/min", sourceId);
   const oxygenSaturation = toObservationSamples(payload.oxygenSaturation, "oxygen_saturation", "%", sourceId);
   const hrvRmssd = toObservationSamples(payload.hrvRmssd, "hrv_rmssd", "ms", sourceId);
   const basalMetabolicRate = toObservationSamples(payload.basalMetabolicRateKcalDay, "basal_metabolic_rate", "kcal/day", sourceId);
@@ -79,7 +80,6 @@ export function parseHealthConnectImport(payload: HealthConnectImportRequest): P
   }
 
   const observations: Observation[] = [
-    ...heartRate,
     ...oxygenSaturation,
     ...hrvRmssd,
     ...basalMetabolicRate,
@@ -103,6 +103,17 @@ export function parseHealthConnectImport(payload: HealthConnectImportRequest): P
       rangeEnd,
       sourceId,
       observations: observations.map((item) => [item.measurementCode, item.observedAt, item.value, item.unit, item.sourceJson]),
+      measurementAggregates: heartRate.map((item) => [
+        item.measurementCode,
+        item.granularity,
+        item.startAt,
+        item.endAt,
+        item.average,
+        item.minimum,
+        item.maximum,
+        item.count,
+        item.unit
+      ]),
       timeSeriesSamples: timeSeriesSamples.map((item) => [item.measurementCode, item.startAt, item.endAt, item.value, item.unit, item.sourceJson]),
       activitySessions: activitySessions.map((item) => [
         item.activityType,
@@ -138,12 +149,11 @@ export function parseHealthConnectImport(payload: HealthConnectImportRequest): P
       sourceKind: "health-connect",
       fileName: `health-connect:${normalizedDeviceLabel}:${rangeStart}:${rangeEnd}`,
       importedAt,
-      parserVersion: "health-connect-v1",
+      parserVersion: "health-connect-v2",
       checksum: fingerprint,
       rowCount,
       status: diagnostics.length > 0 ? "needs-review" : "processed",
-      diagnostics: diagnostics.slice(0, 25),
-      rawContent: JSON.stringify(payload)
+      diagnostics: diagnostics.slice(0, 25)
     },
     dataSource: {
       id: sourceId,
@@ -155,8 +165,41 @@ export function parseHealthConnectImport(payload: HealthConnectImportRequest): P
     observations,
     observationGroups: [],
     timeSeriesSamples,
+    measurementAggregates: heartRate,
     activitySessions
   };
+}
+
+function toMeasurementAggregates(
+  rows: HealthConnectImportRequest["heartRate"],
+  measurementCode: string,
+  unit: string,
+  sourceId: string
+): MeasurementAggregate[] {
+  const aggregates: MeasurementAggregate[] = [];
+  for (const row of rows) {
+    const startAt = normalizeIso(row.startTime);
+    const endAt = normalizeIso(row.endTime);
+    if (!startAt || !endAt || endAt <= startAt) {
+      continue;
+    }
+    aggregates.push({
+      id: stableId("aggregate", [measurementCode, row.granularity, startAt, endAt, sourceId]),
+      measurementCode,
+      granularity: row.granularity,
+      startAt,
+      endAt,
+      average: row.average,
+      minimum: row.minimum,
+      maximum: row.maximum,
+      count: row.count,
+      unit,
+      sourceId,
+      calendarDate: row.calendarDate,
+      sourceJson: row.provenance
+    });
+  }
+  return aggregates;
 }
 
 function normalizeIso(value: string): string | undefined {
