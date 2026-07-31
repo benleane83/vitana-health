@@ -466,6 +466,7 @@ export interface AuditEvent {
     | "observation-deleted"
     | "observation-type-deleted"
     | "daily-step-aggregates-deleted"
+    | "step-samples-deleted"
     | "health-event-created"
     | "health-event-updated"
     | "health-event-deleted"

@@ -339,6 +339,28 @@ describe("central owner authorization", () => {
       .post("/api/import/health-connect")
       .set("x-companion-token", token)
       .send({ ...minimalHealthConnectPayload, profileId: "self" })).status).toBe(201);
+    const syncSession = await request(app)
+      .post("/api/import/health-connect/sessions")
+      .set("x-companion-token", token)
+      .send({
+        protocolVersion: 1,
+        sessionKey: "device-api:2026-07-01:2026-07-02",
+        deviceLabel: "API Phone",
+        rangeStart: "2026-07-01T00:00:00.000Z",
+        rangeEnd: "2026-07-02T00:00:00.000Z",
+        profileId: "self"
+      });
+    expect(syncSession.status).toBe(201);
+    expect((await request(app)
+      .post(`/api/import/health-connect/sessions/${syncSession.body.sessionId}/chunks`)
+      .set("x-companion-token", token)
+      .send({
+        ...minimalHealthConnectPayload,
+        protocolVersion: 1,
+        sessionId: syncSession.body.sessionId,
+        batchId: "batch-1",
+        profileId: "self"
+      })).status).toBe(200);
     expect((await request(app)
       .post("/api/import/health-connect")
       .set("x-companion-token", token)

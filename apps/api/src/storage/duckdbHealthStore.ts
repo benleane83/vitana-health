@@ -241,6 +241,12 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
     });
   }
 
+  deleteStepSamples(): Promise<DeleteObservationsByTypeResponse> {
+    return this.enqueueMutation(async () => {
+      return this.repository.deleteStepSamples();
+    });
+  }
+
   recordExportAudit(): Promise<void> {
     return this.enqueueMutation(() => this.repository.recordExportAudit());
   }

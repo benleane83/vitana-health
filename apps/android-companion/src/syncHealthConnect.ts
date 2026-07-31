@@ -1,5 +1,6 @@
 import {
   SdkAvailabilityStatus,
+  aggregateGroupByPeriod,
   getSdkStatus,
   initialize,
   readRecords,
@@ -25,8 +26,6 @@ import { retryPinnedRequest } from "./retryPinnedRequest";
 
 const OVERLAP_MS = 5 * 60 * 1000;
 const MAX_UPLOAD_BYTES = 2_000_000;
-const DAILY_AGGREGATE_MIN_DURATION_MS = 23 * 60 * 60 * 1000;
-
 interface HealthConnectProvenance {
   recordId?: string;
   dataOrigin?: string;
@@ -34,6 +33,8 @@ interface HealthConnectProvenance {
   lastModifiedTime?: string;
   recordingMethod?: string;
   device?: Record<string, unknown>;
+  aggregation?: "health-connect-daily";
+  dataOrigins?: string[];
 }
 
 interface HealthConnectPointValue {
@@ -97,7 +98,10 @@ function defineHealthConnectDescriptor<
   payloadKeys: Keys,
   toPayload: (
     records: Array<Awaited<ReturnType<typeof readRecords<HealthRecordType>>>["records"][number]>
-  ) => Pick<HealthConnectPayloadCollections, Keys[number]>
+  ) => Pick<HealthConnectPayloadCollections, Keys[number]>,
+  readPagesOverride?: (
+    options: ReadRecordsOptions
+  ) => AsyncGenerator<Pick<HealthConnectPayloadCollections, Keys[number]>>
 ) {
   return {
     category,
@@ -112,6 +116,10 @@ function defineHealthConnectDescriptor<
      * one array containing every record of every type before anything was uploaded.
      */
     readPages: async function* (options: ReadRecordsOptions) {
+      if (readPagesOverride) {
+        yield* readPagesOverride(options);
+        return;
+      }
       for await (const records of readRecordPages(recordType, options)) {
         yield toPayload(records);
       }
@@ -126,8 +134,8 @@ export const HEALTH_CONNECT_DESCRIPTORS = [
       endTime: record.endTime,
       count: record.count,
       provenance: extractProvenance(record)
-    })).filter((record) => Number.isFinite(record.count) && !isDailyAggregateInterval(record.startTime, record.endTime))
-  })),
+    })).filter((record) => Number.isFinite(record.count))
+  }), readDailyStepAggregates),
   defineHealthConnectDescriptor("HeartRate", "HeartRate", ["heartRate"], (records) => ({
     heartRate: records.flatMap((record) =>
       record.samples.map((sample) => ({ time: sample.time, value: sample.beatsPerMinute, provenance: extractProvenance(record) }))
@@ -200,9 +208,9 @@ export const HEALTH_CONNECT_DESCRIPTORS = [
       startTime: record.startTime,
       endTime: record.endTime,
       durationMinutes: Math.max(0, Math.round((new Date(record.endTime).getTime() - new Date(record.startTime).getTime()) / 60_000)),
-      stages: record.stages,
-      title: record.title,
-      notes: record.notes,
+      ...(Array.isArray(record.stages) ? { stages: record.stages } : {}),
+      ...(stringValue(record.title) ? { title: stringValue(record.title) } : {}),
+      ...(stringValue(record.notes) ? { notes: stringValue(record.notes) } : {}),
       provenance: extractProvenance(record)
     }))
   })),
@@ -387,12 +395,20 @@ export async function syncHealthConnect(
     details: [
       `Synced ${builder.totalRows} records from ${earliestStart.toLocaleDateString()} to ${rangeEnd.toLocaleDateString()} in ${uploads} upload${uploads === 1 ? "" : "s"}.`,
       builder.oldestTimestamp
-        ? `Oldest record returned by Health Connect: ${builder.oldestTimestamp.slice(0, 10)}.`
+        ? `Oldest record returned by Health Connect: ${localDateKey(builder.oldestTimestamp)}.`
         : "Health Connect returned no records in this window.",
       windowDays > 30 ? "Extended Health Connect history access was requested for this sync." : "",
       omittedCategories.length ? `Not synced (permission not granted): ${omittedCategories.join(", ")}.` : ""
     ].filter(Boolean).join("\n")
   };
+}
+
+function localDateKey(value: string): string {
+  const date = new Date(value);
+  const year = String(date.getFullYear());
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 type ChunkBase = Pick<HealthConnectImportPayload, "syncedAt" | "rangeStart" | "rangeEnd" | "deviceLabel"> & { profileId?: string };
@@ -630,8 +646,49 @@ function objectValue(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
 
-function isDailyAggregateInterval(startAt: string, endAt: string): boolean {
-  return new Date(endAt).getTime() - new Date(startAt).getTime() >= DAILY_AGGREGATE_MIN_DURATION_MS;
+async function* readDailyStepAggregates(
+  options: ReadRecordsOptions
+): AsyncGenerator<Pick<HealthConnectPayloadCollections, "steps">> {
+  if (!options.timeRangeFilter || options.timeRangeFilter.operator !== "between") {
+    throw new Error("A bounded time range is required to aggregate Steps.");
+  }
+  const timeRangeFilter = completedLocalDayRange(options.timeRangeFilter.startTime, options.timeRangeFilter.endTime);
+  if (!timeRangeFilter) {
+    yield { steps: [] };
+    return;
+  }
+  const groups = await aggregateGroupByPeriod({
+    recordType: "Steps",
+    timeRangeFilter,
+    timeRangeSlicer: { period: "DAYS", length: 1 }
+  });
+  yield {
+    steps: groups.map((group) => ({
+      startTime: localDateTimeToIso(group.startTime),
+      endTime: localDateTimeToIso(group.endTime, -1),
+      count: group.result.COUNT_TOTAL,
+      provenance: {
+        aggregation: "health-connect-daily" as const,
+        calendarDate: group.startTime.slice(0, 10),
+        dataOrigins: group.result.dataOrigins
+      }
+    })).filter((record) => Number.isFinite(record.count))
+  };
+}
+
+function completedLocalDayRange(startTime: string, endTime: string): ReadRecordsOptions["timeRangeFilter"] | undefined {
+  const start = new Date(startTime);
+  const end = new Date(endTime);
+  start.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+  if (end <= start) return undefined;
+  return { operator: "between", startTime: start.toISOString(), endTime: end.toISOString() };
+}
+
+function localDateTimeToIso(value: string, offsetMs = 0): string {
+  const parsed = new Date(new Date(value).getTime() + offsetMs);
+  if (!Number.isFinite(parsed.getTime())) throw new Error("Health Connect returned an invalid aggregate timestamp.");
+  return parsed.toISOString();
 }
 
 function parseCursor(value: string | null | undefined): Date | undefined {

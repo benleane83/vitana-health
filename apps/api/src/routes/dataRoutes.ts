@@ -377,6 +377,17 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
     }
   });
 
+  router.delete("/samples/steps", async (_request, response, next) => {
+    try {
+      const store = activeStore();
+      const deleted = await store.deleteStepSamples();
+      const analyticsStorage = describeAnalyticsStorage(deleted.counts);
+      sendJson(response, deleteObservationsByTypeResponseSchema, { ...deleted, analyticsStorage });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.get("/analytics/storage", async (_request, response, next) => {
     try {
       const result = describeAnalyticsStorage(await activeStore().storageCounts());

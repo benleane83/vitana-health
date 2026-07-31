@@ -4,6 +4,7 @@ import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { filterAndSortSummary, type SummarySort } from "@vitana/shared";
 import { useMobileApi } from "../MobileApiProvider";
+import { connectionStateLabel } from "../connectionState";
 import type { RootStackParamList } from "../navigationTypes";
 import { Button, Card, Loading, Message, Screen } from "../ui/components";
 import { colors, spacing } from "../ui/theme";
@@ -33,7 +34,7 @@ export function TrackScreen() {
         refreshControl={<RefreshControl refreshing={trackLoading} onRefresh={() => { void refreshTrack({ synchronize: true }); }} />}
       >
         {connectionState !== "online" ? (
-          <Message title={connectionState.replaceAll("-", " ")} detail={error ?? "Reconnect to refresh Track data."} />
+          <Message title={connectionStateLabel(connectionState)} detail={error ?? "Reconnect to refresh Track data."} />
         ) : null}
         <TextInput
           accessibilityLabel="Search metrics"

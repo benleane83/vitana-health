@@ -17,6 +17,17 @@ describe("userFacingError", () => {
       .toBe("Try again.");
   });
 
+  it("removes the native module wrapper from actionable errors", () => {
+    const error = new Error(
+      "Call to function 'VitanaPinnedHttp.request' has been rejected.\n" +
+      "→ Caused by: The request timed out. Check that your paired PC is awake and reachable, then try again."
+    );
+
+    expect(userFacingError(error, "Try again.")).toBe(
+      "The request timed out. Check that your paired PC is awake and reachable, then try again."
+    );
+  });
+
   it("keeps deliberate validation guidance", () => {
     expect(userFacingError(new Error("Select at least one data category to sync."), "Try again."))
       .toBe("Select at least one data category to sync.");

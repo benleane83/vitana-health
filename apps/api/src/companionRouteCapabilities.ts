@@ -63,6 +63,8 @@ export const companionRouteCapabilities: readonly CompanionRouteCapability[] = [
   { method: "POST", path: "/import/body-composition/commit", capability: "reports:commit", router: "makeImportRoutes" },
   { method: "POST", path: "/import/blood-test/commit", capability: "reports:commit", router: "makeImportRoutes" },
   { method: "POST", path: "/import/health-connect", capability: "health-connect:import", router: "makeImportRoutes" },
+  { method: "POST", path: "/import/health-connect/sessions", capability: "health-connect:import", router: "makeImportRoutes" },
+  { method: "POST", path: /^\/import\/health-connect\/sessions\/[^/]+\/chunks$/, capability: "health-connect:import", router: "makeImportRoutes" },
 
   // makePairingRoutes — routes/pairingRoutes.ts, mounted at both /api/pair and /api/pairing
   { method: "POST", path: "/pairing/revoke-self", capability: "pairing:self-revoke", router: "makePairingRoutes" },

@@ -83,6 +83,29 @@ describe("parseHealthConnectImport — steps → timeSeriesSamples", () => {
     expect(result.sourceImport.status).toBe("needs-review");
     expect(result.sourceImport.diagnostics).toContain("Skipped 1 daily aggregate Steps record(s).");
   });
+
+  it("accepts daily totals explicitly resolved by Health Connect", () => {
+    const result = parseHealthConnectImport({
+      ...baseRequest,
+      steps: [{
+        startTime: "2026-05-01T00:00:00.000Z",
+        endTime: "2026-05-02T00:00:00.000Z",
+        count: 8450,
+        provenance: {
+          aggregation: "health-connect-daily",
+          dataOrigins: ["com.google.android.apps.fitness"]
+        }
+      }]
+    });
+
+    expect(result.timeSeriesSamples).toHaveLength(1);
+    expect(result.timeSeriesSamples[0]).toMatchObject({
+      measurementCode: "steps",
+      value: 8450,
+      sourceJson: { aggregation: "health-connect-daily" }
+    });
+    expect(result.sourceImport.diagnostics).not.toContain("Skipped 1 daily aggregate Steps record(s).");
+  });
 });
 
 describe("parseHealthConnectImport — heart rate → observations", () => {

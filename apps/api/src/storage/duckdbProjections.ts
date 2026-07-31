@@ -563,7 +563,12 @@ function chartEntriesSql(): string {
     SELECT id, observed_at AS measured_at, value, unit
     FROM observations WHERE measurement_code = ?
     UNION ALL
-    SELECT id, end_at AS measured_at, value, unit
+    SELECT id,
+      CASE WHEN json_extract_string(source_json, '$.aggregation') = 'health-connect-daily'
+        THEN COALESCE(TRY_CAST(json_extract_string(source_json, '$.calendarDate') AS TIMESTAMP), end_at)
+        ELSE end_at
+      END AS measured_at,
+      value, unit
     FROM time_series_samples WHERE measurement_code = ?
     UNION ALL
     SELECT id, COALESCE(end_at, start_at) AS measured_at,

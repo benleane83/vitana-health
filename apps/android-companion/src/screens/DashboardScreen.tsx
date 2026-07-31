@@ -5,6 +5,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { ChevronRight, Database, MonitorSmartphone, Pin } from "lucide-react-native";
 import { isUtcMidnightTimestamp } from "@vitana/shared";
 import { useMobileApi } from "../MobileApiProvider";
+import { connectionStateLabel } from "../connectionState";
 import type { RootStackParamList, TabParamList } from "../navigationTypes";
 import { Button, Card, Loading, Message, Screen } from "../ui/components";
 import { colors, radii, spacing, type } from "../ui/theme";
@@ -65,7 +66,7 @@ export function DashboardScreen() {
         ? "Syncing encrypted data from your PC"
       : connectionState === "online"
         ? "Connected"
-        : `${connectionState.replaceAll("-", " ")} · showing read-only data`;
+        : `${connectionStateLabel(connectionState)} · showing read-only data`;
   return (
     <Screen>
       <ScrollView

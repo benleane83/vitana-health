@@ -113,7 +113,7 @@ export function buildBloodTestImportFromDraft(payload: BloodTestDraftCommitPaylo
   imported.sourceImport.parserVersion = "blood-test-report-v1";
   imported.sourceImport.rawContent = payload.sourceText;
   imported.dataSource.sourceKind = "blood-test-report";
-  imported.dataSource.label = `Blood test report: ${payload.fileName}`;
+  imported.dataSource.label = "Blood test report: scanned from phone";
   return imported;
 }
 

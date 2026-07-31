@@ -71,7 +71,7 @@ interface MobileApiContextValue {
   error?: string;
   transientRevision: number;
   migrationProgress?: { uploaded: number; total: number };
-  reloadConnection(): Promise<void>;
+  reloadConnection(options?: { preserveSession?: boolean }): Promise<void>;
   setDemoMode(enabled: boolean): Promise<void>;
   setOperatingMode(mode: CompanionOperatingMode): Promise<void>;
   standaloneMigrationManifest(): Promise<MobileMigrationManifest>;
@@ -143,18 +143,27 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
   }, [demoMode, operatingMode, preferencesLoaded]);
 
   const [connectedSource, setConnectedSource] = useState<ReturnType<typeof createConnectedDataSource>>();
+  const connectedSourceConnection = useMemo(() => connection, [
+    connection?.deviceId,
+    connection?.pairingId,
+    connection?.profileId,
+    connection?.publicKeyHash,
+    connection?.serverInstanceId,
+    connection?.token,
+    connection?.url
+  ]);
   useEffect(() => {
-    if (!preferencesLoaded || demoMode || operatingMode === "standalone" || !connection?.token) {
+    if (!preferencesLoaded || demoMode || operatingMode === "standalone" || !connectedSourceConnection?.token) {
       setConnectedSource(undefined);
       return;
     }
-    const created = createConnectedDataSource(connection);
+    const created = createConnectedDataSource(connectedSourceConnection);
     setConnectedSource(created);
     return () => {
       setConnectedSource((current) => (current === created ? undefined : current));
       void (created as Partial<CompanionLifecycleService>).dispose?.();
     };
-  }, [connection, demoMode, operatingMode, preferencesLoaded]);
+  }, [connectedSourceConnection, demoMode, operatingMode, preferencesLoaded]);
 
   const source = useMemo<CompanionDataSource | undefined>(() => {
     if (!preferencesLoaded) return undefined;
@@ -229,10 +238,11 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     return operation.promise;
   }, [classifyError, source]);
 
-  const reloadConnection = useCallback(async () => {
+  const reloadConnection = useCallback(async (options: { preserveSession?: boolean } = {}) => {
     const next = await loadConnection();
-    generation.current += 1;
     setConnection(next);
+    if (options.preserveSession) return;
+    generation.current += 1;
     clearHealthData();
     setError(undefined);
     setConnectionState(demoMode || operatingMode === "standalone" ? "online" : next?.token ? "connecting" : "unpaired");

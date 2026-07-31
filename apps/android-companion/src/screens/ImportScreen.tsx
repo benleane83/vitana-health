@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, AppState, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import * as ImagePicker from "expo-image-picker";
@@ -11,6 +11,7 @@ import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Picker } from "@react-native-picker/picker";
 import {
+  calendarDateToUtcMidnight,
   defaultMeasurementTypes,
   filterManualGroupTemplates,
   findKnownMeasurement,
@@ -30,7 +31,7 @@ import {
   type HealthConnectCategory,
   type HealthSourceCursors
 } from "../endpointStore";
-import { healthSourceSyncCoordinator } from "../healthSourceSyncCoordinator";
+import { healthSourceSyncCoordinator, shouldCancelHealthSourceSync } from "../healthSourceSyncCoordinator";
 import { activeHealthSourceProvider } from "../healthSourceProvider";
 import { useMobileApi } from "../MobileApiProvider";
 import type { RootStackParamList, TabParamList } from "../navigationTypes";
@@ -42,7 +43,9 @@ import {
   dateOnlyToLocalDate,
   groupScanRows,
   localDateOnly,
+  newScanReportRow,
   scanReportDate,
+  shouldRemoveScanReportRowOnExclude,
   toCommittedScanRows,
   toEditableScanRows,
   type ScanReportEditableRow
@@ -305,7 +308,7 @@ function ManualImport() {
         return { measurementCode: measurement.code, measurementName: measurement.display, value, unit: row.unit || measurement.canonicalUnit };
       });
       const payload: ManualObservationPayload = {
-        observedAt: date.toISOString(),
+        observedAt: calendarDateToUtcMidnight(localDateOnly(date))!,
         label: group,
         observations
       };
@@ -404,7 +407,8 @@ function ManualImport() {
 }
 
 function ScanImport() {
-  const { connection, refreshAfterImport, transientRevision } = useMobileApi();
+  const { bootstrap, connection, refreshAfterImport, transientRevision } = useMobileApi();
+  const measurements = bootstrap?.measurementTypes?.length ? bootstrap.measurementTypes : defaultMeasurementTypes;
   const [kind, setKind] = useState<ScanKind>("body-composition");
   const [draft, setDraft] = useState<BodyCompositionDraft>();
   const [rows, setRows] = useState<ScanReportEditableRow[]>([]);
@@ -474,6 +478,27 @@ function ScanImport() {
     setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
   }
 
+  function selectScanMeasurement(rowId: string, measurementCode: string) {
+    const measurement = measurements.find((entry) => entry.code === measurementCode);
+    setRows((current) => current.map((row) => row.id === rowId
+      ? {
+          ...row,
+          measurementCode,
+          label: measurement?.display ?? "Added measurement",
+          displayName: measurement?.display ?? "Added measurement",
+          unit: measurement ? getPreferredUnit(measurement, bootstrap?.profile.units ?? "metric") : ""
+        }
+      : row));
+  }
+
+  function setRowIncluded(row: ScanReportEditableRow, included: boolean) {
+    if (!included && shouldRemoveScanReportRowOnExclude(row)) {
+      setRows((current) => current.filter((entry) => entry.id !== row.id));
+      return;
+    }
+    patchRow(row.id, { included });
+  }
+
   async function commit() {
     if (!client || !draft) return;
     let approvedRows;
@@ -488,7 +513,7 @@ function ScanImport() {
     try {
       const payload = {
         fileName: draft.fileName,
-        reportDate,
+        reportDate: calendarDateToUtcMidnight(reportDate),
         sourceText: draft.sourceText,
         sourceChecksum: draft.checksum,
         rows: approvedRows
@@ -512,9 +537,31 @@ function ScanImport() {
   function renderRow(row: ScanReportEditableRow) {
     return (
       <Card key={row.id}>
-        <View style={styles.row}><Text style={[styles.heading, styles.flex]}>{row.label}</Text><Switch accessibilityLabel={`Include ${row.label}`} disabled={busy} value={row.included} onValueChange={(included) => patchRow(row.id, { included })} /></View>
-        <Text style={styles.meta}>OCR confidence: {row.confidence}</Text>
-        <TextInput accessibilityLabel={`Measurement for ${row.label}`} editable={!busy} style={styles.input} value={row.measurementCode} onChangeText={(measurementCode) => patchRow(row.id, { measurementCode })} />
+        <View style={styles.row}><Text style={[styles.heading, styles.flex]}>{row.label}</Text><Switch accessibilityLabel={`Include ${row.label}`} disabled={busy} value={row.included} onValueChange={(included) => setRowIncluded(row, included)} /></View>
+        {row.manuallyAdded ? (
+          <View style={styles.field}>
+            <Text style={styles.label}>Measurement</Text>
+            <View style={styles.pickerField}>
+              <Picker
+                accessibilityLabel="Measurement"
+                enabled={!busy}
+                onValueChange={(measurementCode) => selectScanMeasurement(row.id, String(measurementCode))}
+                selectedValue={row.measurementCode}
+                style={styles.picker}
+              >
+                <Picker.Item label="Choose a measurement" value="" />
+                {measurements.map((measurement) => (
+                  <Picker.Item key={measurement.code} label={measurement.display} value={measurement.code} />
+                ))}
+              </Picker>
+            </View>
+          </View>
+        ) : (
+          <>
+            <Text style={styles.meta}>OCR confidence: {row.confidence}</Text>
+            <TextInput accessibilityLabel={`Measurement for ${row.label}`} editable={!busy} style={styles.input} value={row.measurementCode} onChangeText={(measurementCode) => patchRow(row.id, { measurementCode })} />
+          </>
+        )}
         <View style={styles.row}>
           <TextInput accessibilityLabel={`Value for ${row.label}`} editable={!busy} style={[styles.input, styles.flex]} keyboardType="decimal-pad" value={row.value} onChangeText={(value) => patchRow(row.id, { value })} />
           <TextInput accessibilityLabel={`Unit for ${row.label}`} editable={!busy} style={[styles.input, styles.flex]} value={row.unit} onChangeText={(unit) => patchRow(row.id, { unit })} />
@@ -523,7 +570,7 @@ function ScanImport() {
     );
   }
 
-  function renderGroup(title: string, groupRows: ScanReportEditableRow[], emptyMessage: string) {
+  function renderGroup(title: string, groupRows: ScanReportEditableRow[], emptyMessage: string, allowAdd = false) {
     return (
       <View accessibilityLabel={`${title}, ${groupRows.length} ${groupRows.length === 1 ? "measurement" : "measurements"}`} style={styles.reviewGroup}>
         <View style={styles.reviewGroupHeading}>
@@ -531,6 +578,7 @@ function ScanImport() {
           <Text style={styles.reviewGroupCount}>{groupRows.length}</Text>
         </View>
         {groupRows.length ? groupRows.map(renderRow) : <Text style={styles.reviewGroupEmpty}>{emptyMessage}</Text>}
+        {allowAdd ? <Button disabled={busy} secondary onPress={() => setRows((current) => [...current, newScanReportRow()])}>Add row</Button> : null}
       </View>
     );
   }
@@ -546,6 +594,12 @@ function ScanImport() {
           <Text style={styles.body}>Images travel only over your local network for scanning on the PC. Nothing is committed until you approve the rows.</Text>
           <Button disabled={busy} onPress={() => { void acquire(true); }}>Take photo</Button>
           <Button disabled={busy} secondary onPress={() => { void acquire(false); }}>Choose from gallery</Button>
+          {busy ? (
+            <View accessibilityLiveRegion="polite" accessibilityRole="progressbar" style={styles.scanProgress}>
+              <ActivityIndicator color={colors.primary} />
+              <Text style={[styles.meta, styles.flex]}>Processing image on your paired PC…</Text>
+            </View>
+          ) : null}
         </Card>
       ) : (
         <>
@@ -578,7 +632,7 @@ function ScanImport() {
               </View>
             ) : null}
           </Card>
-          {renderGroup("Selected for save", groupedRows.selected, "Select at least one measurement to save it.")}
+          {renderGroup("Selected for save", groupedRows.selected, "Select at least one measurement to save it.", true)}
           {renderGroup("Not selected", groupedRows.notSelected, "All measurements are selected for save.")}
         </>
       )}
@@ -597,15 +651,16 @@ function HealthConnectImport() {
   const [syncProgress, setSyncProgress] = useState("");
   const [updating, setUpdating] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const syncStage = useRef<import("../syncHealthConnect").HealthConnectSyncProgress["stage"] | undefined>(undefined);
   // Rendered from the provider rather than a constant, so a device with no health source shows an
   // empty picker instead of offering categories nothing can read.
   const providerCategories = activeHealthSourceProvider()?.categories ?? [];
   useKeepAwake(syncing ? "health-connect-sync" : undefined);
-  // Leaving the app abandons the read rather than letting the OS kill it mid-batch; the persisted
-  // session key means the next sync resumes from the last acknowledged chunk.
+  // Leaving the app abandons active reads rather than letting the OS kill one mid-batch. The
+  // Health Connect permission activity is exempt because Android backgrounds this app while it is open.
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
-      if (state !== "active") healthSourceSyncCoordinator.cancel();
+      if (shouldCancelHealthSourceSync(state, syncStage.current)) healthSourceSyncCoordinator.cancel();
     });
     return () => subscription.remove();
   }, []);
@@ -621,7 +676,7 @@ function HealthConnectImport() {
     setUpdating(true);
     try {
       await saveConnection({ ...currentConnection, ...patch });
-      await reloadConnection();
+      await reloadConnection({ preserveSession: true });
       return true;
     } catch (caught) {
       setStatusTone("danger");
@@ -659,6 +714,7 @@ function HealthConnectImport() {
       return;
     }
     setSyncing(true);
+    syncStage.current = undefined;
     setSyncProgress(`Checking ${provider.label} on this phone…`);
     try {
       const result = await healthSourceSyncCoordinator.run((signal) => provider.sync(
@@ -672,7 +728,10 @@ function HealthConnectImport() {
           sessionKey: currentConnection.healthSourceSessionKey,
           syncWindowDays: currentConnection.healthConnectSyncWindowDays,
           categories: currentConnection.healthSourceCategories,
-          onProgress: ({ detail }) => setSyncProgress(detail),
+          onProgress: ({ detail, stage }) => {
+            syncStage.current = stage;
+            setSyncProgress(detail);
+          },
           onSessionKey: (sessionKey) => updateHealthSourceSessionKey(currentConnection.url, sessionKey),
           signal
         }
@@ -687,6 +746,7 @@ function HealthConnectImport() {
       setStatusTone("danger");
       setStatus(userFacingError(caught, "Sync failed. Check the connection to your paired PC and try again."));
     } finally {
+      syncStage.current = undefined;
       setSyncing(false);
       setSyncProgress("");
     }
@@ -872,6 +932,7 @@ const styles = StyleSheet.create({
   body: { color: colors.text, fontSize: type.body, lineHeight: 21 },
   meta: { color: colors.muted, fontSize: type.label, lineHeight: 18 },
   syncProgress: { alignItems: "center", backgroundColor: colors.infoMuted, borderRadius: radii.md, flexDirection: "row", gap: spacing.md, padding: spacing.md },
+  scanProgress: { alignItems: "center", flexDirection: "row", gap: spacing.sm, paddingVertical: spacing.xs },
   advancedToggle: { alignItems: "center", flexDirection: "row", minHeight: 44 },
   advancedTogglePressed: { opacity: 0.72 },
   advancedContent: { gap: spacing.md },

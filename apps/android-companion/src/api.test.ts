@@ -99,4 +99,10 @@ describe("connection state transitions", () => {
     const { connectionStateForError } = await import("./connectionState");
     expect(connectionStateForError(error)).toBe(expected);
   });
+
+  it("uses user-facing labels instead of internal state names", async () => {
+    const { connectionStateLabel } = await import("./connectionState");
+    expect(connectionStateLabel("unreachable")).toBe("PC unavailable");
+    expect(connectionStateLabel("re-pair-required")).toBe("Re-pair required");
+  });
 });

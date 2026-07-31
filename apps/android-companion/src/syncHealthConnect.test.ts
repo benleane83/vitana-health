@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { healthConnectImportRequestSchema } from "@vitana/shared";
 
 const mocks = vi.hoisted(() => {
   Object.defineProperty(globalThis, "__DEV__", { configurable: true, value: true });
   return {
     getSdkStatus: vi.fn(),
+    aggregateGroupByPeriod: vi.fn(),
     initialize: vi.fn(),
     readRecords: vi.fn(),
     requestPermission: vi.fn(),
@@ -14,6 +16,7 @@ const mocks = vi.hoisted(() => {
 vi.mock("react-native", () => ({ Platform: { OS: "android" } }));
 vi.mock("react-native-health-connect", () => ({
   SdkAvailabilityStatus: { SDK_AVAILABLE: "available" },
+  aggregateGroupByPeriod: mocks.aggregateGroupByPeriod,
   getSdkStatus: mocks.getSdkStatus,
   initialize: mocks.initialize,
   readRecords: mocks.readRecords,
@@ -25,7 +28,7 @@ vi.mock("./endpointStore", () => ({
 }));
 vi.mock("./pinnedFetch", () => ({ LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS: 60_000, pinnedFetch: mocks.pinnedFetch }));
 
-import { chunkPayload, syncHealthConnect, type HealthConnectImportPayload } from "./syncHealthConnect";
+import { HEALTH_CONNECT_DESCRIPTORS, chunkPayload, syncHealthConnect, type HealthConnectImportPayload } from "./syncHealthConnect";
 
 const sessionsPath = "/api/import/health-connect/sessions";
 
@@ -65,6 +68,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-01-11T12:00:00.000Z"));
   mocks.getSdkStatus.mockResolvedValue("available");
+  mocks.aggregateGroupByPeriod.mockResolvedValue([]);
   mocks.initialize.mockResolvedValue(true);
   mocks.requestPermission.mockResolvedValue([{ accessType: "read", recordType: "Steps" }]);
   mocks.readRecords.mockResolvedValue({ records: [], pageToken: undefined });
@@ -77,6 +81,24 @@ afterEach(() => {
 });
 
 describe("Health Connect sync", () => {
+  it("omits nullable sleep metadata returned by Health Connect", () => {
+    const descriptor = HEALTH_CONNECT_DESCRIPTORS.find((entry) => entry.category === "SleepSession")!;
+    const converted = descriptor.toPayload([{
+      startTime: "2026-01-10T22:00:00.000Z",
+      endTime: "2026-01-11T06:00:00.000Z",
+      stages: null,
+      title: null,
+      notes: null
+    } as never]);
+    const sleepSession = converted.sleepSessions[0]!;
+
+    expect(sleepSession).toMatchObject({ durationMinutes: 480 });
+    expect(sleepSession).not.toHaveProperty("stages");
+    expect(sleepSession).not.toHaveProperty("title");
+    expect(sleepSession).not.toHaveProperty("notes");
+    expect(() => healthConnectImportRequestSchema.parse({ ...emptyPayload(), ...converted })).not.toThrow();
+  });
+
   it("does not request permission when no categories are selected", async () => {
     await expect(syncHealthConnect("https://desktop.test", "companion-token", null, "pin", {
       deviceId: "device-1"
@@ -85,12 +107,11 @@ describe("Health Connect sync", () => {
     expect(mocks.requestPermission).not.toHaveBeenCalled();
   });
 
-  it("uses an overlapping cursor, follows pages, and leaves ungranted categories on their old cursor", async () => {
-    mocks.readRecords.mockImplementation(async (_recordType: string, options: { pageToken?: string }) => (
-      options.pageToken
-        ? { records: [{ startTime: "2026-01-10T11:00:00.000Z", endTime: "2026-01-10T11:05:00.000Z", count: 11 }], pageToken: undefined }
-        : { records: [{ startTime: "2026-01-10T10:00:00.000Z", endTime: "2026-01-10T10:05:00.000Z", count: 10 }], pageToken: "next" }
-    ));
+  it("aligns a Steps cursor to completed local days and leaves ungranted categories on their old cursor", async () => {
+    mocks.aggregateGroupByPeriod.mockResolvedValue([
+      { startTime: "2026-01-10T00:00:00", endTime: "2026-01-11T00:00:00", result: { COUNT_TOTAL: 10, dataOrigins: [] } },
+      { startTime: "2026-01-11T00:00:00", endTime: "2026-01-12T00:00:00", result: { COUNT_TOTAL: 11, dataOrigins: [] } }
+    ]);
 
     const result = await syncHealthConnect("https://desktop.test/", "companion-token", "profile-1", "pin", {
       deviceId: "device-1",
@@ -103,12 +124,14 @@ describe("Health Connect sync", () => {
       { accessType: "read", recordType: "Steps" },
       { accessType: "read", recordType: "Weight" }
     ]);
-    expect(mocks.readRecords).toHaveBeenCalledTimes(2);
-    expect(mocks.readRecords.mock.calls[0][1]).toMatchObject({
-      pageToken: undefined,
-      timeRangeFilter: { startTime: "2026-01-10T11:55:00.000Z", endTime: "2026-01-11T12:00:00.000Z" }
-    });
-    expect(mocks.readRecords.mock.calls[1][1].pageToken).toBe("next");
+    expect(mocks.aggregateGroupByPeriod).toHaveBeenCalledWith(expect.objectContaining({
+      timeRangeFilter: {
+        operator: "between",
+        startTime: localMidnightIso("2026-01-10T11:55:00.000Z"),
+        endTime: localMidnightIso("2026-01-11T12:00:00.000Z")
+      }
+    }));
+    expect(mocks.readRecords).not.toHaveBeenCalled();
     expect(mocks.pinnedFetch.mock.calls[1][0]).toBe("https://desktop.test/api/import/health-connect/sessions/session-1/chunks");
     expect(mocks.pinnedFetch.mock.calls[1][2].headers["x-companion-token"]).toBe("companion-token");
     expect(uploadedBodies()[0].steps).toHaveLength(2);
@@ -133,8 +156,8 @@ describe("Health Connect sync", () => {
       categories: ["Steps", "Weight"]
     });
 
-    expect(mocks.readRecords.mock.calls[0][1].timeRangeFilter.startTime).toBe("2026-01-10T11:55:00.000Z");
-    expect(mocks.readRecords.mock.calls[1][1].timeRangeFilter.startTime).toBe("2025-12-12T12:00:00.000Z");
+    expect(mocks.aggregateGroupByPeriod.mock.calls[0][0].timeRangeFilter.startTime).toBe(localMidnightIso("2026-01-10T11:55:00.000Z"));
+    expect(mocks.readRecords.mock.calls[0][1].timeRangeFilter.startTime).toBe("2025-12-12T12:00:00.000Z");
   });
 
   it("requests historical access for sync windows over 30 days", async () => {
@@ -153,14 +176,12 @@ describe("Health Connect sync", () => {
     expect(result.details).toContain("Health Connect returned no records in this window");
   });
 
-  it("does not upload near-24-hour daily aggregate step records", async () => {
-    mocks.readRecords.mockResolvedValue({
-      records: [
-        { startTime: "2026-01-09T00:00:00.000Z", endTime: "2026-01-09T23:59:59.999Z", count: 8450 },
-        { startTime: "2026-01-10T10:00:00.000Z", endTime: "2026-01-10T10:05:00.000Z", count: 120 }
-      ],
-      pageToken: undefined
-    });
+  it("uploads Health Connect-resolved daily step totals instead of overlapping raw records", async () => {
+    mocks.aggregateGroupByPeriod.mockResolvedValue([{
+      startTime: "2026-01-09T00:00:00",
+      endTime: "2026-01-10T00:00:00",
+      result: { COUNT_TOTAL: 8450, dataOrigins: ["com.google.android.apps.fitness"] }
+    }]);
 
     const result = await syncHealthConnect("https://desktop.test", "companion-token", null, "pin", {
       deviceId: "device-1",
@@ -168,9 +189,26 @@ describe("Health Connect sync", () => {
       categories: ["Steps"]
     });
 
-    expect(uploadedBodies()[0].steps).toEqual([
-      expect.objectContaining({ startTime: "2026-01-10T10:00:00.000Z", count: 120 })
-    ]);
+    expect(mocks.aggregateGroupByPeriod).toHaveBeenCalledWith(expect.objectContaining({
+      recordType: "Steps",
+      timeRangeFilter: {
+        operator: "between",
+        startTime: localMidnightIso("2025-12-12T12:00:00.000Z"),
+        endTime: localMidnightIso("2026-01-11T12:00:00.000Z")
+      },
+      timeRangeSlicer: { period: "DAYS", length: 1 }
+    }));
+    expect(mocks.readRecords).not.toHaveBeenCalled();
+    expect(uploadedBodies()[0].steps).toEqual([expect.objectContaining({
+      startTime: localDateTimeIso("2026-01-09T00:00:00"),
+      endTime: localDateTimeIso("2026-01-10T00:00:00", -1),
+      count: 8450,
+      provenance: {
+        aggregation: "health-connect-daily",
+        calendarDate: "2026-01-09",
+        dataOrigins: ["com.google.android.apps.fitness"]
+      }
+    })]);
     expect(result.details).toContain("Synced 1 records");
   });
 
@@ -346,4 +384,14 @@ function emptyPayload(): HealthConnectImportPayload {
     heightCm: [], vo2MaxMlKgMin: [], weightKg: [], exerciseSessions: [], distanceMeters: [],
     activeCaloriesKcal: [], totalCaloriesKcal: [], sleepSessions: [], bodyFatPct: []
   };
+}
+
+function localMidnightIso(value: string): string {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  return date.toISOString();
+}
+
+function localDateTimeIso(value: string, offsetMs = 0): string {
+  return new Date(new Date(value).getTime() + offsetMs).toISOString();
 }

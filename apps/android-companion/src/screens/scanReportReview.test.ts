@@ -4,7 +4,9 @@ import {
   dateOnlyToLocalDate,
   groupScanRows,
   localDateOnly,
+  newScanReportRow,
   scanReportDate,
+  shouldRemoveScanReportRowOnExclude,
   toCommittedScanRows,
   toEditableScanRows,
   type ScanReportEditableRow
@@ -40,6 +42,23 @@ describe("scan report review", () => {
 
     const regrouped = groupScanRows(rows.map((entry) => entry.id === "second" ? { ...entry, included: true } : entry));
     expect(regrouped.selected.map((entry) => entry.id)).toEqual(["first", "second", "third"]);
+  });
+
+  it("adds a blank manually entered row selected for save", () => {
+    expect(newScanReportRow("manual-1")).toEqual(expect.objectContaining({
+      id: "manual-1",
+      measurementCode: "",
+      value: "",
+      unit: "",
+      included: true,
+      manuallyAdded: true
+    }));
+  });
+
+  it("removes only empty manually added rows when they are excluded", () => {
+    expect(shouldRemoveScanReportRowOnExclude(newScanReportRow("manual-empty"))).toBe(true);
+    expect(shouldRemoveScanReportRowOnExclude({ ...newScanReportRow("manual-valued"), value: "72" })).toBe(false);
+    expect(shouldRemoveScanReportRowOnExclude(editableRow("ocr-empty", true, ""))).toBe(false);
   });
 
   it("uses the detected report date or a local calendar fallback without UTC conversion", () => {

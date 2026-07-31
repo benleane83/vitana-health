@@ -123,7 +123,7 @@ export function buildBodyCompositionImportFromDraft(payload: BodyCompositionDraf
       unit,
       sourceId,
       observationGroupId: groupId,
-      note: `Body composition report: ${payload.fileName}`,
+      note: "Body composition report: scanned from phone",
       sourceJson: {
         label: row.label,
         displayName: row.displayName,
@@ -150,7 +150,7 @@ export function buildBodyCompositionImportFromDraft(payload: BodyCompositionDraf
     dataSource: {
       id: sourceId,
       sourceKind: "body-composition-report",
-      label: `Body composition report: ${payload.fileName}`,
+      label: "Body composition report: scanned from phone",
       importId,
       createdAt: importedAt
     },

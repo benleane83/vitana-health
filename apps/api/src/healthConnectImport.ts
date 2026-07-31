@@ -32,13 +32,13 @@ export function parseHealthConnectImport(payload: HealthConnectImportRequest): P
     }))
     .filter((item) => item.startAt && item.endAt && item.value >= 0);
   const dailyAggregateStepCount = normalizedSteps.filter((item) =>
-    isDailyAggregateInterval(item.startAt!, item.endAt!)
+    isDailyAggregateInterval(item.startAt!, item.endAt!) && !isHealthConnectDailyAggregate(item.provenance)
   ).length;
   if (dailyAggregateStepCount > 0) {
     diagnostics.push(`Skipped ${dailyAggregateStepCount} daily aggregate Steps record(s).`);
   }
   const steps = normalizedSteps
-    .filter((item) => !isDailyAggregateInterval(item.startAt!, item.endAt!))
+    .filter((item) => !isDailyAggregateInterval(item.startAt!, item.endAt!) || isHealthConnectDailyAggregate(item.provenance))
     .map((item) => ({
       id: stableId("sample", ["steps", item.startAt ?? "", item.endAt ?? "", String(item.value), sourceId, JSON.stringify(item.provenance ?? {})]),
       measurementCode: "steps",
@@ -169,6 +169,10 @@ function normalizeIso(value: string): string | undefined {
 
 function isDailyAggregateInterval(startAt: string, endAt: string): boolean {
   return new Date(endAt).getTime() - new Date(startAt).getTime() >= DAILY_AGGREGATE_MIN_DURATION_MS;
+}
+
+function isHealthConnectDailyAggregate(provenance: Record<string, unknown> | undefined): boolean {
+  return provenance?.aggregation === "health-connect-daily";
 }
 
 function toObservationSamples(

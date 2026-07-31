@@ -91,7 +91,7 @@ describe("connected data source", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.createCompanionApi.mockReturnValue(mocks.live);
-    mocks.saveConnection.mockImplementation(async (updated) => updated);
+    mocks.saveConnection.mockImplementation(async (updated) => ({ ...connection, ...updated }));
     mocks.synchronize.mockResolvedValue({
       identity: {
         serverInstanceId: "server-1",
@@ -121,6 +121,7 @@ describe("connected data source", () => {
       profileId: "profile-1",
       pairingId: "pairing-1"
     }));
+    expect(mocks.saveConnection.mock.calls[0]?.[0]).not.toHaveProperty("healthSourceCategories");
     expect(prepared).toEqual(expect.objectContaining({
       serverInstanceId: "server-1",
       profileId: "profile-1",

@@ -13,7 +13,10 @@ export const dailyMetricsViewSql = `
     GROUP BY 1, 2
     UNION ALL
     SELECT
-      DATE(start_at) AS day,
+      CASE WHEN json_extract_string(source_json, '$.aggregation') = 'health-connect-daily'
+        THEN COALESCE(TRY_CAST(json_extract_string(source_json, '$.calendarDate') AS DATE), DATE(start_at))
+        ELSE DATE(start_at)
+      END AS day,
       measurement_code,
       CASE WHEN measurement_code = 'steps' THEN SUM(value) ELSE AVG(value) END AS avg_value,
       MIN(value) AS min_value,

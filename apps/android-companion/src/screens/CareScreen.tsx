@@ -22,6 +22,7 @@ import {
 } from "@vitana/shared";
 import { CalendarDays } from "lucide-react-native";
 import { useMobileApi } from "../MobileApiProvider";
+import { connectionStateLabel } from "../connectionState";
 import { Button, Card, Message, Screen } from "../ui/components";
 import { colors, radii, spacing, type } from "../ui/theme";
 import { userFacingError } from "../userFacingError";
@@ -303,7 +304,7 @@ export function CareScreen() {
               {canWrite && editorMode === "closed" ? <Button disabled={busy} onPress={startCreate}>{view === "items" ? "Add care item" : "Add health event"}</Button> : null}
             </View>
             {demoMode ? <Message title="Demo mode is read-only" detail="Connect to your paired PC to create, edit, or delete care records." /> : null}
-            {connectionState !== "online" ? <Message title={connectionState.replaceAll("-", " ")} detail={error ?? "Showing read-only Care data. Reconnect or pull to refresh."} tone="warning" /> : null}
+            {connectionState !== "online" ? <Message title={connectionStateLabel(connectionState)} detail={error ?? "Showing read-only Care data. Reconnect or pull to refresh."} tone="warning" /> : null}
             {feedback ? <Message title={feedback.tone === "success" ? "Care updated" : "Care error"} detail={feedback.detail} tone={feedback.tone} /> : null}
             {editorMode === "closed" ? (
               view === "items" ? (

@@ -335,6 +335,12 @@ describe("buildBodyCompositionImportFromDraft", () => {
     });
     expect(result.observationGroups).toEqual([expect.objectContaining({ kind: "body_composition_report", label: "Body" })]);
     expect(result.observations[0].observationGroupId).toBe(result.observationGroups[0].id);
+    expect(result.observations[0]).toMatchObject({
+      observedAt: "2026-06-15T00:00:00.000Z",
+      note: "Body composition report: scanned from phone"
+    });
+    expect(result.dataSource.label).toBe("Body composition report: scanned from phone");
+    expect(result.sourceImport.fileName).toBe("report.pdf");
   });
 });
 
@@ -346,6 +352,9 @@ describe("buildBloodTestImportFromDraft", () => {
     });
     expect(result.observationGroups).toEqual([expect.objectContaining({ kind: "lab_panel", label: "Lab" })]);
     expect(result.observations[0].observationGroupId).toBe(result.observationGroups[0].id);
+    expect(result.observations[0].observedAt).toBe("2026-06-15T00:00:00.000Z");
+    expect(result.dataSource.label).toBe("Blood test report: scanned from phone");
+    expect(result.sourceImport.fileName).toBe("results.pdf");
   });
 
   it("includes legacy rows unless they were explicitly excluded", () => {

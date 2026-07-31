@@ -141,6 +141,26 @@ describe("SQLite local store connection ownership", () => {
     expect(closeAsync).toHaveBeenCalledTimes(2);
   });
 
+  it("does not close a shared connection while another store is acquiring it", async () => {
+    const closeAsync = vi.fn(async () => undefined);
+    const database = {
+      closeAsync,
+      execAsync: vi.fn(),
+      getFirstAsync: vi.fn(async (sql: string) =>
+        sql === "PRAGMA cipher_version" ? { cipher_version: "4.6.1" } : null)
+    };
+    vi.mocked(SecureStore.getItemAsync).mockResolvedValue("a".repeat(64));
+    vi.mocked(openDatabaseAsync).mockResolvedValue(database as never);
+
+    const activeStore = await openSqliteLocalStore();
+    const acquiringStore = openSqliteLocalStore();
+    await activeStore.close();
+
+    expect(closeAsync).not.toHaveBeenCalled();
+    await (await acquiringStore).close();
+    expect(closeAsync).toHaveBeenCalledTimes(2);
+  });
+
   it("releases its lease when reset so the shared connection is actually torn down", async () => {
     const closeAsync = vi.fn(async () => undefined);
     const database = {
