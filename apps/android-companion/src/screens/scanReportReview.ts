@@ -2,10 +2,29 @@ import type { BodyCompositionDraftRow } from "@vitana/shared";
 
 export type ScanReportEditableRow = Omit<BodyCompositionDraftRow, "value"> & {
   value: string;
+  manuallyAdded?: boolean;
 };
 
 export function toEditableScanRows(rows: BodyCompositionDraftRow[]): ScanReportEditableRow[] {
-  return rows.map((row) => ({ ...row, value: Number.isFinite(row.value) ? String(row.value) : "" }));
+  return rows.map((row) => ({ ...row, value: Number.isFinite(row.value) ? String(row.value) : "", manuallyAdded: false }));
+}
+
+export function newScanReportRow(id = `manual-${Date.now()}`): ScanReportEditableRow {
+  return {
+    id,
+    label: "Added measurement",
+    measurementCode: "",
+    displayName: "Added measurement",
+    value: "",
+    unit: "",
+    confidence: "high",
+    included: true,
+    manuallyAdded: true
+  };
+}
+
+export function shouldRemoveScanReportRowOnExclude(row: ScanReportEditableRow): boolean {
+  return row.manuallyAdded === true && !row.value.trim();
 }
 
 export function groupScanRows(rows: ScanReportEditableRow[]): {
@@ -22,7 +41,7 @@ export function toCommittedScanRows(rows: ScanReportEditableRow[]): BodyComposit
   const selected = rows.filter((row) => row.included);
   if (selected.length === 0) throw new Error("Include at least one row.");
 
-  return selected.map((row) => {
+  return selected.map(({ manuallyAdded: _manuallyAdded, ...row }) => {
     const value = row.value.trim() ? Number(row.value) : Number.NaN;
     if (!row.measurementCode.trim() || !Number.isFinite(value) || !row.unit.trim()) {
       throw new Error("Every included row needs a measurement, numeric value, and unit.");

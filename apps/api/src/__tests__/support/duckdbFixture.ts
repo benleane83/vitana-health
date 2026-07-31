@@ -118,6 +118,7 @@ export function createDuckDbHealthStoreFixture(): HealthStoreData {
       deviceId: "device-1",
       sourceJson: { interval: true }
     }],
+    measurementAggregates: [],
     activitySessions: [{
       id: "activity-1",
       activityType: "walking",

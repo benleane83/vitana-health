@@ -4,6 +4,7 @@ import {
   dataSourceSchema,
   deviceSchema,
   healthEventObjectSchema,
+  measurementAggregateSchema,
   measurementTypeSchema,
   observationGroupSchema,
   observationSchema,
@@ -20,10 +21,10 @@ import {
  * range and settle on the highest version both support, so a phone that updates ahead of the desktop
  * (or vice versa) keeps syncing instead of hard-failing on a version literal.
  */
-export const COMPANION_REPLICA_MIN_PROTOCOL_VERSION = 2;
-export const COMPANION_REPLICA_MAX_PROTOCOL_VERSION = 2;
+export const COMPANION_REPLICA_MIN_PROTOCOL_VERSION = 3;
+export const COMPANION_REPLICA_MAX_PROTOCOL_VERSION = 3;
 /** The version used when the peer advertises no range at all. */
-export const COMPANION_REPLICA_PROTOCOL_VERSION = 2 as const;
+export const COMPANION_REPLICA_PROTOCOL_VERSION = 3 as const;
 export const COMPANION_REPLICA_PAGE_SIZE = 1_000;
 
 export const replicaEntityTypes = [
@@ -37,6 +38,7 @@ export const replicaEntityTypes = [
   "observation-group",
   "observation",
   "time-series-sample",
+  "measurement-aggregate",
   "activity-session",
   "health-event",
   "care-item"
@@ -131,6 +133,7 @@ const replicaPayloadSchemas: Record<ReplicaEntityType, z.ZodTypeAny> = {
   "observation-group": observationGroupSchema.passthrough(),
   "observation": observationSchema.passthrough(),
   "time-series-sample": timeSeriesSampleSchema.passthrough(),
+  "measurement-aggregate": measurementAggregateSchema.passthrough(),
   "activity-session": activitySessionSchema.passthrough(),
   "health-event": healthEventObjectSchema.passthrough(),
   "care-item": persistedCareItemSchema.passthrough()

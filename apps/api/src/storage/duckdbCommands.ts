@@ -437,6 +437,31 @@ export async function deleteDailyAggregateStepSamples(
   };
 }
 
+export async function deleteStepSamples(
+  connection: duckdb.Connection
+): Promise<DeleteObservationsByTypeResult> {
+  const rows = await all(
+    connection,
+    "SELECT id FROM time_series_samples WHERE measurement_code = 'steps';"
+  );
+  const deletedIds = rows.map((row) => String(row.id));
+  const deletedCount = deletedIds.length;
+  if (deletedCount > 0) {
+    await run(connection, "DELETE FROM time_series_samples WHERE measurement_code = 'steps';");
+    await insertAudit(
+      connection,
+      "step-samples-deleted",
+      `${deletedCount} Steps sample(s) deleted.`
+    );
+  }
+  return {
+    deletedCount,
+    deletedIds,
+    measurementCode: "steps",
+    counts: await storageCounts(connection)
+  };
+}
+
 export async function createHealthEvent(
   connection: duckdb.Connection,
   input: CreateHealthEventInput
@@ -865,6 +890,7 @@ type OrderedTable =
   | "observations"
   | "observation_groups"
   | "time_series_samples"
+  | "measurement_aggregates"
   | "activities"
   | "health_events"
   | "care_items"

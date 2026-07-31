@@ -199,6 +199,7 @@ export function createTestProfileFixture(options: TestProfileFixtureOptions = {}
     observations,
     observationGroups,
     timeSeriesSamples,
+    measurementAggregates: [],
     activitySessions,
     healthEvents: createHealthEvents(asOf),
     careItems: createCareItems(asOf),

@@ -283,7 +283,7 @@ describe("companion route profile isolation", () => {
     const handshake = await request(app).get("/api/companion/sync/handshake?profileId=active").set(headers);
     expect(handshake.status).toBe(200);
     expect(handshake.body).toMatchObject({
-      protocolVersion: 2,
+      protocolVersion: 3,
       serverInstanceId: pairings.getServerInstanceId(),
       profileId: "phone",
       pairingId: pairing.record.id,

@@ -39,6 +39,7 @@ describe("parseHealthConnectImport — minimal valid payload", () => {
           rangeEnd: baseRequest.rangeEnd,
           sourceId: result.dataSource.id,
           observations: [],
+          measurementAggregates: [],
           timeSeriesSamples: [],
           activitySessions: []
         })
@@ -50,7 +51,9 @@ describe("parseHealthConnectImport — minimal valid payload", () => {
     const result = parseHealthConnectImport(baseRequest);
     expect(result.observations).toHaveLength(0);
     expect(result.timeSeriesSamples).toHaveLength(0);
+    expect(result.measurementAggregates).toHaveLength(0);
     expect(result.activitySessions).toHaveLength(0);
+    expect(result.sourceImport.rawContent).toBeUndefined();
   });
 });
 
@@ -83,31 +86,78 @@ describe("parseHealthConnectImport — steps → timeSeriesSamples", () => {
     expect(result.sourceImport.status).toBe("needs-review");
     expect(result.sourceImport.diagnostics).toContain("Skipped 1 daily aggregate Steps record(s).");
   });
+
+  it("accepts daily totals explicitly resolved by Health Connect", () => {
+    const result = parseHealthConnectImport({
+      ...baseRequest,
+      steps: [{
+        startTime: "2026-05-01T00:00:00.000Z",
+        endTime: "2026-05-02T00:00:00.000Z",
+        count: 8450,
+        provenance: {
+          aggregation: "health-connect-daily",
+          dataOrigins: ["com.google.android.apps.fitness"]
+        }
+      }]
+    });
+
+    expect(result.timeSeriesSamples).toHaveLength(1);
+    expect(result.timeSeriesSamples[0]).toMatchObject({
+      measurementCode: "steps",
+      value: 8450,
+      sourceJson: { aggregation: "health-connect-daily" }
+    });
+    expect(result.sourceImport.diagnostics).not.toContain("Skipped 1 daily aggregate Steps record(s).");
+  });
 });
 
-describe("parseHealthConnectImport — heart rate → observations", () => {
-  it("maps heart rate records to observations", () => {
+describe("parseHealthConnectImport — heart rate aggregates", () => {
+  it("maps heart rate buckets without reducing them to observations", () => {
     const result = parseHealthConnectImport({
       ...baseRequest,
       heartRate: [
-        { time: "2026-05-01T08:00:00.000Z", value: 72 },
-        { time: "2026-05-01T09:00:00.000Z", value: 75 }
+        {
+          startTime: "2026-05-01T08:00:00.000Z",
+          endTime: "2026-05-01T08:15:00.000Z",
+          granularity: "15m",
+          average: 72,
+          minimum: 64,
+          maximum: 91,
+          count: 18
+        }
       ]
     });
-    expect(result.observations).toHaveLength(2);
-    expect(result.observations[0].measurementCode).toBe("heart_rate");
-    expect(result.observations[0].unit).toBe("bpm");
-    expect(result.observations[0].value).toBe(72);
+    expect(result.observations).toHaveLength(0);
+    expect(result.measurementAggregates).toEqual([expect.objectContaining({
+      measurementCode: "heart_rate",
+      granularity: "15m",
+      average: 72,
+      minimum: 64,
+      maximum: 91,
+      count: 18,
+      unit: "beats/min"
+    })]);
   });
 
-  it("is idempotent: calling twice produces the same observation IDs", () => {
+  it("uses stable bucket identity even when a retry changes aggregate values", () => {
     const payload: HealthConnectImportRequest = {
       ...baseRequest,
-      heartRate: [{ time: "2026-05-01T08:00:00.000Z", value: 72 }]
+      heartRate: [{
+        startTime: "2026-05-01T08:00:00.000Z",
+        endTime: "2026-05-01T08:15:00.000Z",
+        granularity: "15m",
+        average: 72,
+        minimum: 64,
+        maximum: 91,
+        count: 18
+      }]
     };
     const r1 = parseHealthConnectImport(payload);
-    const r2 = parseHealthConnectImport(payload);
-    expect(r1.observations[0].id).toBe(r2.observations[0].id);
+    const r2 = parseHealthConnectImport({
+      ...payload,
+      heartRate: [{ ...payload.heartRate[0], average: 73, count: 19 }]
+    });
+    expect(r1.measurementAggregates[0].id).toBe(r2.measurementAggregates[0].id);
   });
 });
 
@@ -166,7 +216,15 @@ describe("parseHealthConnectImport — rowCount", () => {
     const result = parseHealthConnectImport({
       ...baseRequest,
       steps: [{ startTime: "2026-05-01T08:00:00.000Z", endTime: "2026-05-01T08:30:00.000Z", count: 500 }],
-      heartRate: [{ time: "2026-05-01T08:00:00.000Z", value: 70 }],
+      heartRate: [{
+        startTime: "2026-05-01T08:00:00.000Z",
+        endTime: "2026-05-01T08:15:00.000Z",
+        granularity: "15m",
+        average: 70,
+        minimum: 65,
+        maximum: 80,
+        count: 12
+      }],
       exerciseSessions: [{ startTime: "2026-05-01T07:00:00.000Z", endTime: "2026-05-01T08:00:00.000Z", activityType: "Cycling" }]
     });
     expect(result.sourceImport.rowCount).toBe(3);

@@ -286,7 +286,7 @@ describe("DuckDbRepository fidelity", () => {
     const replacement = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe1]), Buffer.alloc(64 * 1024, 2), Buffer.from([0xff, 0xd9])]);
 
     try {
-      expect(await first.schemaVersions()).toEqual([1]);
+      expect(await first.schemaVersions()).toEqual([1, 2, 3]);
       const created = await first.replaceProfilePhoto("image/jpeg", original);
       expect(created.revision).toBe(createHash("sha256").update(original).digest("hex"));
       expect(await second.getProfilePhoto()).toBeUndefined();
@@ -943,6 +943,16 @@ describe("DuckDbRepository fidelity", () => {
         endAt: "2026-07-11T01:05:00.000Z",
         value: 900,
         unit: "count"
+      },
+      {
+        ...fixture.timeSeriesSamples[0],
+        id: "steps-daily-aggregate",
+        measurementCode: "steps",
+        startAt: "2026-07-12T07:00:00.000Z",
+        endAt: "2026-07-13T06:59:59.999Z",
+        value: 1_200,
+        unit: "count",
+        sourceJson: { aggregation: "health-connect-daily", calendarDate: "2026-07-12" }
       }
     );
     const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
@@ -953,13 +963,46 @@ describe("DuckDbRepository fidelity", () => {
       const rawWeight = await repository.measurementChartSeries("weight", { range: "all", mode: "auto" });
 
       expect(detail.entries).toHaveLength(1);
-      expect(chart).toMatchObject({ aggregation: "sum", granularity: "daily", totalPoints: 2, truncated: false });
+      expect(chart).toMatchObject({ aggregation: "sum", granularity: "daily", totalPoints: 3, truncated: false });
       expect(chart.points).toEqual([
         expect.objectContaining({ timestamp: "2026-07-10T00:00:00.000Z", value: 1000, count: 2, minValue: 400, maxValue: 600 }),
-        expect.objectContaining({ timestamp: "2026-07-11T00:00:00.000Z", value: 900, count: 1 })
+        expect.objectContaining({ timestamp: "2026-07-11T00:00:00.000Z", value: 900, count: 1 }),
+        expect.objectContaining({ timestamp: "2026-07-12T00:00:00.000Z", value: 1_200, count: 1 })
       ]);
       expect(rawWeight).toMatchObject({ aggregation: "latest", granularity: "raw", totalPoints: 3, truncated: false });
       expect(snapshotSpy).not.toHaveBeenCalled();
+    } finally {
+      await repository.close();
+    }
+  }, 30_000);
+
+  it.skipIf(!httpfsExtensionPath)("deletes all Step samples without deleting other measurements", async () => {
+    const databasePath = join(root, "databases", "health-store-delete-steps.duckdb-poc");
+    const fixture = createDuckDbHealthStoreFixture();
+    fixture.timeSeriesSamples.push(
+      {
+        ...fixture.timeSeriesSamples[0],
+        id: "steps-individual",
+        measurementCode: "steps",
+        value: 400,
+        unit: "count"
+      },
+      {
+        ...fixture.timeSeriesSamples[0],
+        id: "steps-daily",
+        measurementCode: "steps",
+        startAt: "2026-07-12T00:00:00.000Z",
+        endAt: "2026-07-12T23:59:59.999Z",
+        value: 4_400,
+        unit: "count",
+        sourceJson: { aggregation: "health-connect-daily", calendarDate: "2026-07-12" }
+      }
+    );
+    const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
+    try {
+      expect((await repository.deleteStepSamples()).deletedCount).toBe(2);
+      expect((await repository.deleteStepSamples()).deletedCount).toBe(0);
+      expect((await repository.snapshot()).timeSeriesSamples.map((entry) => entry.id)).toEqual(["sample-1"]);
     } finally {
       await repository.close();
     }
@@ -1065,6 +1108,7 @@ describe("DuckDbRepository fidelity", () => {
         id: "sample-2",
         sourceId: "source-2"
       }],
+      measurementAggregates: [],
       activitySessions: [{
         ...fixture.activitySessions[0],
         id: "activity-2",
@@ -1099,6 +1143,7 @@ describe("DuckDbRepository fidelity", () => {
         observations: { attempted: 2, accepted: 0, duplicates: 2, rejected: 0 },
         observationGroups: { attempted: 1, accepted: 0, duplicates: 1, rejected: 0 },
         timeSeriesSamples: { attempted: 1, accepted: 0, duplicates: 1, rejected: 0 },
+        measurementAggregates: { attempted: 0, accepted: 0, duplicates: 0, rejected: 0 },
         activitySessions: { attempted: 1, accepted: 0, duplicates: 1, rejected: 0 }
       });
       expect(firstImportResult.auditEvent.detail).toContain("observations: 1 accepted, 1 duplicate(s), 0 rejected");
@@ -1158,6 +1203,84 @@ describe("DuckDbRepository fidelity", () => {
     }
   }, 30_000);
 
+  it.skipIf(!httpfsExtensionPath)("replaces a corrected Heart Rate aggregate bucket", async () => {
+    const databasePath = join(root, "databases", "health-store-heart-rate-aggregates.duckdb-poc");
+    const fixture = createDuckDbHealthStoreFixture();
+    const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
+    const bucket = {
+      startTime: "2026-07-15T10:00:00.000Z",
+      endTime: "2026-07-15T10:15:00.000Z",
+      granularity: "15m" as const,
+      average: 72,
+      minimum: 64,
+      maximum: 91,
+      count: 18
+    };
+    const request = healthConnectImportRequestSchema.parse({
+      syncedAt: "2026-07-15T12:00:00.000Z",
+      rangeStart: "2026-07-15T00:00:00.000Z",
+      rangeEnd: "2026-07-15T12:00:00.000Z",
+      deviceLabel: "Pixel 8",
+      batchId: "first",
+      heartRate: [
+        bucket,
+        {
+          ...bucket,
+          startTime: "2026-07-15T09:45:00.000Z",
+          endTime: "2026-07-15T10:00:00.000Z",
+          average: 100,
+          minimum: 100,
+          maximum: 100,
+          count: 1
+        }
+      ]
+    });
+
+    try {
+      await repository.resetMeasurementTypeMetadataFromRegistry();
+      await repository.mergeImport(parseHealthConnectImport(request));
+      await repository.mergeImport(parseHealthConnectImport({
+        ...request,
+        syncedAt: "2026-07-15T12:05:00.000Z",
+        batchId: "retry",
+        heartRate: [{ ...bucket, average: 73, count: 19 }]
+      }));
+      expect(await repository.latestMeasurement("heart_rate")).toMatchObject({
+        timestamp: bucket.endTime,
+        value: 73,
+        unit: "beats/min"
+      });
+      const detail = await repository.measurementDetail("heart_rate");
+      expect(detail.counts).toMatchObject({ observations: 0, samples: 2, total: 2 });
+      const chart = await repository.measurementChartSeries("heart_rate", { range: "all", mode: "auto" });
+      expect(chart.points).toHaveLength(1);
+      expect(chart.points[0]).toMatchObject({
+        value: 74.35,
+        count: 20,
+        minValue: 64,
+        maxValue: 100
+      });
+    } finally {
+      await repository.close();
+    }
+
+    const database = await openEncryptedDuckDbDatabase(root, databasePath, key, { httpfsExtensionPath });
+    try {
+      const rows = await all(database.connection, `
+        SELECT average, minimum, maximum, measurement_count
+        FROM measurement_aggregates
+        WHERE measurement_code = 'heart_rate'
+        ORDER BY start_at DESC;
+      `);
+      expect(rows).toEqual([
+        { average: 73, minimum: 64, maximum: 91, measurement_count: 19n },
+        { average: 100, minimum: 100, maximum: 100, measurement_count: 1n }
+      ]);
+    } finally {
+      await closeEncryptedDuckDbDatabase(database);
+    }
+  }, 30_000);
+
   it.skipIf(!httpfsExtensionPath)("retains samples beyond the former ceiling across later imports", async () => {
     const databasePath = join(root, "databases", "health-store-unlimited-samples.duckdb-poc");
     const fixture = createDuckDbHealthStoreFixture();
@@ -1180,7 +1303,8 @@ describe("DuckDbRepository fidelity", () => {
           id: "unlimited-source", sourceKind: "manual-entry", label: "Unlimited fixture",
           importId: "unlimited-import-1", createdAt: "2026-07-15T00:00:00.000Z"
         },
-        observations: [], observationGroups: [], timeSeriesSamples: samples, activitySessions: []
+        observations: [], observationGroups: [], timeSeriesSamples: samples,
+        measurementAggregates: [], activitySessions: []
       });
       expect(first.outcome.timeSeriesSamples).toEqual({
         attempted: sampleCount, accepted: sampleCount, duplicates: 0, rejected: 0
@@ -1199,6 +1323,7 @@ describe("DuckDbRepository fidelity", () => {
         },
         observations: [], observationGroups: [],
         timeSeriesSamples: [{ ...samples[0], id: "unlimited-sample-later", startAt: "2026-07-16T00:00:00.000Z", endAt: "2026-07-16T00:01:00.000Z" }],
+        measurementAggregates: [],
         activitySessions: []
       });
       expect(second.outcome.timeSeriesSamples).toEqual({ attempted: 1, accepted: 1, duplicates: 0, rejected: 0 });
@@ -1349,7 +1474,7 @@ describe("DuckDbRepository fidelity", () => {
 
     const opened = await DuckDbRepository.open(root, databasePath, key, options);
     try {
-      expect(await opened.schemaVersions()).toEqual([1]);
+      expect(await opened.schemaVersions()).toEqual([1, 2, 3]);
       expect(await opened.dailyMetrics()).toEqual([]);
       expect(await opened.weeklyMetrics()).toEqual([]);
     } finally {
@@ -1401,9 +1526,38 @@ describe("DuckDbRepository fidelity", () => {
 
     const reopened = await DuckDbRepository.open(root, databasePath, key, options);
     try {
-      expect(await reopened.schemaVersions()).toEqual([1]);
+      expect(await reopened.schemaVersions()).toEqual([1, 2, 3]);
     } finally {
       await reopened.close();
+    }
+  }, 30_000);
+
+  it.skipIf(!httpfsExtensionPath)("adds resumable Health Connect tables to an existing version-1 profile", async () => {
+    const databasePath = join(root, "databases", "health-store-health-connect-migration.duckdb-poc");
+    const options = { httpfsExtensionPath };
+    await createDuckDbSchema(root, databasePath, key, options, 1);
+
+    const versionOneHandle = await openEncryptedDuckDbDatabase(root, databasePath, key, options);
+    try {
+      const tables = await querySql(versionOneHandle.connection, `SELECT table_name
+        FROM information_schema.tables
+        WHERE table_catalog = current_database() AND table_name = 'health_connect_sync_sessions';`);
+      expect(tables).toEqual([]);
+    } finally {
+      await closeEncryptedDuckDbDatabase(versionOneHandle);
+    }
+
+    const migrated = await DuckDbRepository.open(root, databasePath, key, options);
+    try {
+      expect(await migrated.schemaVersions()).toEqual([1, 2, 3]);
+      await expect(migrated.startHealthConnectSyncSession("pairing-1", {
+        sessionKey: "device-1:2026-07-01:2026-07-02",
+        deviceLabel: "Test Phone",
+        rangeStart: "2026-07-01T00:00:00.000Z",
+        rangeEnd: "2026-07-02T00:00:00.000Z"
+      })).resolves.toMatchObject({ protocolVersion: 1, processedBatchIds: [] });
+    } finally {
+      await migrated.close();
     }
   }, 30_000);
 
@@ -1430,7 +1584,7 @@ describe("DuckDbRepository fidelity", () => {
     const futurePath = join(root, "databases", "health-store-schema-future.duckdb-poc");
     await createDuckDbSchema(root, futurePath, key, options, 1);
     const futureHandle = await openEncryptedDuckDbDatabase(root, futurePath, key, options);
-    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (2, CURRENT_TIMESTAMP, 'future');");
+    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (2, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (3, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (4, CURRENT_TIMESTAMP, 'future');");
     await execSql(futureHandle.connection, "CHECKPOINT;");
     await closeEncryptedDuckDbDatabase(futureHandle);
     const futureHash = hashFile(futurePath);

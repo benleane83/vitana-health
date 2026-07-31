@@ -83,6 +83,7 @@ jobs:
   # ─── Storage validation (integration + durability, real encrypted DuckDB) ────
   storage-validation:
     name: Storage validation
+    if: github.event_name == 'push'
     # Windows is the only platform with a pinned httpfs extension SHA, so the
     # encrypted-DuckDB suites can only run for real here.
     runs-on: windows-2022

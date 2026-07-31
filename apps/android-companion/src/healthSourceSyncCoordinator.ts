@@ -1,4 +1,12 @@
-import type { SyncResult } from "./syncHealthConnect";
+import type { AppStateStatus } from "react-native";
+import type { HealthConnectSyncProgress, SyncResult } from "./syncHealthConnect";
+
+export function shouldCancelHealthSourceSync(
+  appState: AppStateStatus,
+  stage: HealthConnectSyncProgress["stage"] | undefined
+): boolean {
+  return appState !== "active" && stage !== "permissions";
+}
 
 /**
  * Module-scope guard for health source syncing. A component-local `if (syncing) return` only

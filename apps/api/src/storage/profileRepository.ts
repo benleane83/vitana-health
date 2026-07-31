@@ -23,6 +23,7 @@ import type {
   HealthStoreData,
   ImportCategoryOutcome,
   LinkedCareItemConflict,
+  MeasurementAggregate,
   MeasurementPinState,
   MobileMigrationBatch,
   MobileMigrationBatchAcknowledgement,
@@ -58,6 +59,7 @@ export interface ProfileImport {
   observations: HealthStoreData["observations"];
   observationGroups: HealthStoreData["observationGroups"];
   timeSeriesSamples: HealthStoreData["timeSeriesSamples"];
+  measurementAggregates: MeasurementAggregate[];
   activitySessions: HealthStoreData["activitySessions"];
 }
 
@@ -69,6 +71,7 @@ export interface ImportOutcome {
   observations: ImportCategoryOutcome;
   observationGroups: ImportCategoryOutcome;
   timeSeriesSamples: ImportCategoryOutcome;
+  measurementAggregates: ImportCategoryOutcome;
   activitySessions: ImportCategoryOutcome;
 }
 
@@ -165,6 +168,7 @@ export interface ProfileRepository {
   deleteObservation(id: string): Promise<DeleteObservationResponse | undefined>;
   deleteObservationsByMeasurementCode(measurementCode: string): Promise<DeleteObservationsByTypeResponse>;
   deleteDailyAggregateStepSamples(): Promise<DeleteObservationsByTypeResponse>;
+  deleteStepSamples(): Promise<DeleteObservationsByTypeResponse>;
   summary(): Promise<HealthDataSummary>;
   measurementDetail(measurementCode: string, page: MeasurementDetailPage): Promise<HealthDataDetail>;
   measurementChartSeries(measurementCode: string, options: HealthDataChartSeriesOptions): Promise<HealthDataChartSeries>;

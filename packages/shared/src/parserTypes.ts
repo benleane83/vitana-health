@@ -1,6 +1,7 @@
 import type {
   ActivitySession,
   DataSource,
+  MeasurementAggregate,
   Observation,
   ObservationGroup,
   SourceImport,
@@ -13,6 +14,7 @@ export interface ParsedImport {
   observations: Observation[];
   observationGroups: ObservationGroup[];
   timeSeriesSamples: TimeSeriesSample[];
+  measurementAggregates: MeasurementAggregate[];
   activitySessions: ActivitySession[];
 }
 

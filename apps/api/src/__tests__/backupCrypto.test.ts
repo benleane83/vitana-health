@@ -46,6 +46,7 @@ function createTestStoreData(profileId = "test-user", displayName = "Test User")
     ],
     observationGroups: [],
     timeSeriesSamples: [],
+    measurementAggregates: [],
     activitySessions: [],
     healthEvents: [],
     careItems: [],

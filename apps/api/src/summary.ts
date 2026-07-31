@@ -47,6 +47,13 @@ export function summarizeStoreData(store: HealthStoreData): HealthDataSummary {
     row.lastMeasuredAt = latestTimestamp(row.lastMeasuredAt, sample.endAt);
   }
 
+  for (const aggregate of store.measurementAggregates) {
+    const row = ensureRow(rows, measurementTypes, aggregate.measurementCode);
+    row.counts.samples += 1;
+    row.counts.total += 1;
+    row.lastMeasuredAt = latestTimestamp(row.lastMeasuredAt, aggregate.endAt);
+  }
+
   if (store.activitySessions.length > 0) {
     const row = ensureRow(rows, measurementTypes, "activity_sessions");
     row.displayName = "Activity sessions";

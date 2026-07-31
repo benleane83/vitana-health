@@ -262,6 +262,7 @@ export function buildStructuredUploadImportFromDraft(
     observations,
     observationGroups: [group],
     timeSeriesSamples: [],
+    measurementAggregates: [],
     activitySessions: []
   };
 }

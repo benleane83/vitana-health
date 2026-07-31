@@ -32,6 +32,11 @@ export const tableColumns = {
     "ordinal", "id", "measurement_code", "start_at", "end_at", "value", "unit", "source_id",
     "device_id", "source_json_present", "source_json", "source_unit"
   ],
+  measurement_aggregates: [
+    "ordinal", "id", "measurement_code", "granularity", "start_at", "end_at", "average",
+    "minimum", "maximum", "measurement_count", "unit", "source_id", "calendar_date",
+    "source_json_present", "source_json"
+  ],
   activities: [
     "ordinal", "id", "activity_type", "start_at", "end_at", "duration_minutes", "energy_kcal",
     "distance_meters", "source_id", "source_json_present", "source_json"

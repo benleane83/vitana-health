@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ReplicaPage } from "@vitana/shared";
+import { COMPANION_REPLICA_PROTOCOL_VERSION, type ReplicaPage } from "@vitana/shared";
 import { MemoryLocalStore } from "../standalone/memoryLocalStore";
 import { ReplicaClient, type ReplicaNetwork } from "./replicaClient";
 import { ReplicaSyncCoordinator } from "./syncCoordinator";
@@ -15,9 +15,15 @@ const identity = {
   pairingId: "pairing-1"
 };
 
+const protocol = {
+  protocolVersion: COMPANION_REPLICA_PROTOCOL_VERSION,
+  minProtocolVersion: COMPANION_REPLICA_PROTOCOL_VERSION,
+  maxProtocolVersion: COMPANION_REPLICA_PROTOCOL_VERSION
+};
+
 function page(kind: ReplicaPage["kind"], complete: boolean, changes: ReplicaPage["changes"]): ReplicaPage {
   return {
-    protocolVersion: 2,
+    protocolVersion: COMPANION_REPLICA_PROTOCOL_VERSION,
     ...identity,
     kind,
     changes,
@@ -60,7 +66,7 @@ describe("connected replica sync coordinator", () => {
     const get = vi.fn(async (path: string) => {
       if (path.includes("/handshake")) {
         await gate;
-        return { protocolVersion: 2, minProtocolVersion: 2, maxProtocolVersion: 2, ...identity, highWaterMark: { revision: 0, sequence: 0 } };
+        return { ...protocol, ...identity, highWaterMark: { revision: 0, sequence: 0 } };
       }
       if (path.includes("/snapshot")) {
         return page("snapshot", true, [{
@@ -131,9 +137,7 @@ describe("connected replica sync coordinator", () => {
     const coordinator = new ReplicaSyncCoordinator(
       new ReplicaClient({
         get: async () => ({
-          protocolVersion: 2,
-          minProtocolVersion: 2,
-          maxProtocolVersion: 2,
+          ...protocol,
           ...identity,
           serverInstanceId: "f60e92e9-f145-449e-ad3b-22dca8bc8ac7",
           highWaterMark: { revision: 0, sequence: 0 }
@@ -154,7 +158,7 @@ describe("connected replica sync coordinator", () => {
     const get = vi.fn(async (path: string) => {
       requested.push(path);
       if (path.includes("/handshake")) {
-        return { protocolVersion: 2, minProtocolVersion: 2, maxProtocolVersion: 2, ...identity, highWaterMark: { revision: 1, sequence: 1 } };
+        return { ...protocol, ...identity, highWaterMark: { revision: 1, sequence: 1 } };
       }
       if (path.includes("/snapshot")) {
         if (!path.includes("cursor=")) return page("snapshot", false, [profileChange]);
@@ -188,7 +192,7 @@ describe("connected replica sync coordinator", () => {
     const get = vi.fn(async (path: string) => {
       requested.push(path);
       if (path.includes("/handshake")) {
-        return { protocolVersion: 2, minProtocolVersion: 2, maxProtocolVersion: 2, ...identity, highWaterMark: { revision: 1, sequence: 1 } };
+        return { ...protocol, ...identity, highWaterMark: { revision: 1, sequence: 1 } };
       }
       if (path.includes("/snapshot")) return page("snapshot", true, [profileChange]);
       return page("delta", true, []);
@@ -210,7 +214,7 @@ describe("connected replica sync coordinator", () => {
     let snapshotFails = true;
     const get = vi.fn(async (path: string) => {
       if (path.includes("/handshake")) {
-        return { protocolVersion: 2, minProtocolVersion: 2, maxProtocolVersion: 2, ...identity, highWaterMark: { revision: 1, sequence: 1 } };
+        return { ...protocol, ...identity, highWaterMark: { revision: 1, sequence: 1 } };
       }
       if (path.includes("/snapshot")) {
         if (snapshotFails) throw new Error("network dropped");
@@ -235,7 +239,7 @@ describe("connected replica sync coordinator", () => {
     const store = new MemoryLocalStore();
     const get = vi.fn(async (path: string) => {
       if (path.includes("/handshake")) {
-        return { protocolVersion: 2, minProtocolVersion: 2, maxProtocolVersion: 2, ...identity, highWaterMark: { revision: 1, sequence: 1 } };
+        return { ...protocol, ...identity, highWaterMark: { revision: 1, sequence: 1 } };
       }
       // Always advertises another page, which is exactly the cursor bug the budget guards against.
       return page("snapshot", false, [profileChange]);
@@ -252,7 +256,7 @@ describe("connected replica sync coordinator", () => {
     let snapshotPages = 0;
     const get = vi.fn(async (path: string) => {
       if (path.includes("/handshake")) {
-        return { protocolVersion: 2, minProtocolVersion: 2, maxProtocolVersion: 2, ...identity, highWaterMark: { revision: 1, sequence: 1 } };
+        return { ...protocol, ...identity, highWaterMark: { revision: 1, sequence: 1 } };
       }
       snapshotPages += 1;
       if (snapshotPages === 1) void coordinator.dispose();

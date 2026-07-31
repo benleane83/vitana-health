@@ -17,13 +17,17 @@ export function userFacingError(caught: unknown, fallback: string): string {
 
   if (!(caught instanceof Error) || !caught.message.trim()) return fallback;
   const message = caught.message.trim();
+  const nativeCause = message.match(
+    /^Call to function '[^']+' has been rejected\.\s*(?:→|->)\s*Caused by:\s*(.+)$/is
+  );
+  const userMessage = nativeCause?.[1].trim() || message;
   if (
-    /https?:\/\//i.test(message) ||
-    /\b(?:java|javax|okhttp3)\./i.test(message) ||
-    /\b(?:IOException|SocketException|UnknownHostException|SyntaxError)\b/i.test(message) ||
-    /(?:unexpected token|JSON parse|network request failed|failed to fetch)/i.test(message)
+    /https?:\/\//i.test(userMessage) ||
+    /\b(?:java|javax|okhttp3)\./i.test(userMessage) ||
+    /\b(?:IOException|SocketException|UnknownHostException|SyntaxError)\b/i.test(userMessage) ||
+    /(?:unexpected token|JSON parse|network request failed|failed to fetch)/i.test(userMessage)
   ) {
     return fallback;
   }
-  return message;
+  return userMessage;
 }

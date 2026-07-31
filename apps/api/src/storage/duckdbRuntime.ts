@@ -20,7 +20,7 @@ const markerName = ".vitana-duckdb-poc";
  * bumps the export format and may leave this alone. Backup/restore correctness depends on the
  * distinction — a restore validates the export format and is indifferent to the engine version.
  */
-const DB_SCHEMA_VERSION = 1;
+const DB_SCHEMA_VERSION = 3;
 
 export interface DuckDbOptions {
   httpfsExtensionPath?: string;
@@ -130,29 +130,13 @@ export async function createDuckDbSchema(
 export async function migrateDuckDbSchema(
   database: EncryptedDuckDbDatabase,
   targetSchemaVersion = DB_SCHEMA_VERSION,
-  allowBootstrap = false
+  allowBootstrap = false,
+  backupPath?: string
 ): Promise<number> {
   if (!Number.isInteger(targetSchemaVersion) || targetSchemaVersion < 1 || targetSchemaVersion > DB_SCHEMA_VERSION) {
     throw new Error(`Encrypted DuckDB schema target version ${targetSchemaVersion} is unsupported.`);
   }
-  const metadataRows = await all(database.connection, `SELECT COUNT(*) AS count
-    FROM information_schema.tables
-    WHERE table_catalog = current_database() AND table_name = 'poc_metadata';`);
-  const hasMetadata = Number(metadataRows[0]?.count ?? 0) === 1;
-  if (!hasMetadata && !allowBootstrap) {
-    throw new Error("Encrypted DuckDB schema metadata is missing.");
-  }
-  const versionRows = hasMetadata
-    ? await all(database.connection, "SELECT schema_version FROM poc_metadata ORDER BY schema_version;")
-    : [];
-  const versions = versionRows.map((row) => Number(row.schema_version));
-  if (hasMetadata && (versions.length === 0 || versions.some((version, index) => version !== index + 1))) {
-    throw new Error("Encrypted DuckDB schema metadata history is malformed.");
-  }
-  const currentVersion = versions.at(-1) ?? 0;
-  if (currentVersion > DB_SCHEMA_VERSION) {
-    throw new SchemaVersionTooNewError(currentVersion, DB_SCHEMA_VERSION);
-  }
+  const currentVersion = await currentDuckDbSchemaVersion(database, allowBootstrap);
   const pending = schemaMigrations.filter(
     (migration) => migration.version > currentVersion && migration.version <= targetSchemaVersion
   );
@@ -160,8 +144,6 @@ export async function migrateDuckDbSchema(
     return currentVersion;
   }
 
-  // A file being bootstrapped has nothing worth preserving, so only a real upgrade pays for a copy.
-  const backupPath = currentVersion > 0 ? await backupDatabaseFile(database) : undefined;
   let appliedVersion = currentVersion;
   // Each version commits on its own so a failure halfway through a multi-step upgrade leaves the
   // store at a version that actually exists rather than an unrecorded blend of two.
@@ -182,21 +164,49 @@ export async function migrateDuckDbSchema(
   return appliedVersion;
 }
 
+async function currentDuckDbSchemaVersion(
+  database: EncryptedDuckDbDatabase,
+  allowBootstrap = false
+): Promise<number> {
+  const metadataRows = await all(database.connection, `SELECT COUNT(*) AS count
+    FROM information_schema.tables
+    WHERE table_catalog = current_database() AND table_name = 'poc_metadata';`);
+  const hasMetadata = Number(metadataRows[0]?.count ?? 0) === 1;
+  if (!hasMetadata && !allowBootstrap) {
+    throw new Error("Encrypted DuckDB schema metadata is missing.");
+  }
+  const versionRows = hasMetadata
+    ? await all(database.connection, "SELECT schema_version FROM poc_metadata ORDER BY schema_version;")
+    : [];
+  const versions = versionRows.map((row) => Number(row.schema_version));
+  if (hasMetadata && (versions.length === 0 || versions.some((version, index) => version !== index + 1))) {
+    throw new Error("Encrypted DuckDB schema metadata history is malformed.");
+  }
+  const currentVersion = versions.at(-1) ?? 0;
+  if (currentVersion > DB_SCHEMA_VERSION) {
+    throw new SchemaVersionTooNewError(currentVersion, DB_SCHEMA_VERSION);
+  }
+  return currentVersion;
+}
+
+export async function duckDbSchemaMigrationRequired(database: EncryptedDuckDbDatabase): Promise<boolean> {
+  return (await currentDuckDbSchemaVersion(database)) < DB_SCHEMA_VERSION;
+}
+
 function backupSuffix(): string {
   return `.pre-migration-${new Date().toISOString().replace(/[:.]/g, "-")}`;
 }
 
 /**
- * Snapshots the attached database file before a migration touches it. The checkpoint first flushes
- * the write-ahead log so the copy is a complete database on its own.
+ * Snapshots a closed database file before migration. Callers must checkpoint and detach it first;
+ * Windows refuses to copy an encrypted DuckDB file while it remains attached.
  */
-async function backupDatabaseFile(database: EncryptedDuckDbDatabase): Promise<string | undefined> {
-  if (!existsSync(database.databasePath)) {
+export function backupDatabaseFile(databasePath: string): string | undefined {
+  if (!existsSync(databasePath)) {
     return undefined;
   }
-  await exec(database.connection, "CHECKPOINT;");
-  const backupPath = `${database.databasePath}${backupSuffix()}`;
-  copyFileSync(database.databasePath, backupPath);
+  const backupPath = `${databasePath}${backupSuffix()}`;
+  copyFileSync(databasePath, backupPath);
   return backupPath;
 }
 
@@ -523,20 +533,6 @@ const baselineSchemaSql = `
     destination_id VARCHAR NOT NULL, PRIMARY KEY (session_id, entity_type, source_id)
   );
 
-  CREATE TABLE IF NOT EXISTS health_connect_sync_sessions (
-    session_id VARCHAR PRIMARY KEY, pairing_id VARCHAR NOT NULL, session_key VARCHAR NOT NULL,
-    device_label VARCHAR NOT NULL, range_start TIMESTAMPTZ NOT NULL, range_end TIMESTAMPTZ NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL
-  );
-  CREATE UNIQUE INDEX IF NOT EXISTS health_connect_sync_identity_idx
-    ON health_connect_sync_sessions(pairing_id, session_key);
-
-  CREATE TABLE IF NOT EXISTS health_connect_sync_batches (
-    session_id VARCHAR NOT NULL, batch_id VARCHAR NOT NULL, acknowledgement JSON NOT NULL,
-    processed_at TIMESTAMPTZ NOT NULL,
-    PRIMARY KEY (session_id, batch_id)
-  );
-
   CREATE TABLE IF NOT EXISTS companion_sync_state (
     singleton BOOLEAN PRIMARY KEY, revision BIGINT NOT NULL, next_sequence BIGINT NOT NULL,
     CHECK (singleton = TRUE)
@@ -567,8 +563,51 @@ const baselineSchemaSql = `
   CREATE INDEX IF NOT EXISTS imports_kind_checksum_idx ON imports(source_kind, checksum);
 `;
 
+const healthConnectSyncSchemaSql = `
+  CREATE TABLE IF NOT EXISTS health_connect_sync_sessions (
+    session_id VARCHAR PRIMARY KEY, pairing_id VARCHAR NOT NULL, session_key VARCHAR NOT NULL,
+    device_label VARCHAR NOT NULL, range_start TIMESTAMPTZ NOT NULL, range_end TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS health_connect_sync_identity_idx
+    ON health_connect_sync_sessions(pairing_id, session_key);
+
+  CREATE TABLE IF NOT EXISTS health_connect_sync_batches (
+    session_id VARCHAR NOT NULL, batch_id VARCHAR NOT NULL, acknowledgement JSON NOT NULL,
+    processed_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (session_id, batch_id)
+  );
+
+  INSERT OR IGNORE INTO poc_metadata VALUES
+    (2, CURRENT_TIMESTAMP, 'Health Connect resumable sync sessions');
+`;
+
+const measurementAggregatesSchemaSql = `
+  CREATE TABLE IF NOT EXISTS measurement_aggregates (
+    ordinal BIGINT NOT NULL UNIQUE, id VARCHAR PRIMARY KEY, measurement_code VARCHAR NOT NULL,
+    granularity VARCHAR NOT NULL, start_at TIMESTAMPTZ NOT NULL, end_at TIMESTAMPTZ NOT NULL,
+    average DOUBLE NOT NULL, minimum DOUBLE NOT NULL, maximum DOUBLE NOT NULL,
+    measurement_count BIGINT NOT NULL, unit VARCHAR NOT NULL,
+    source_id VARCHAR NOT NULL REFERENCES sources(id), calendar_date DATE,
+    source_json_present BOOLEAN NOT NULL, source_json JSON,
+    CHECK (granularity IN ('15m', 'day')),
+    CHECK (end_at > start_at),
+    CHECK (measurement_count > 0),
+    CHECK (minimum <= average AND average <= maximum)
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS measurement_aggregates_bucket_idx
+    ON measurement_aggregates(source_id, measurement_code, granularity, start_at, end_at);
+  CREATE INDEX IF NOT EXISTS measurement_aggregates_code_end_idx
+    ON measurement_aggregates(measurement_code, granularity, end_at);
+
+  INSERT OR IGNORE INTO poc_metadata VALUES
+    (3, CURRENT_TIMESTAMP, 'Measurement aggregates');
+`;
+
 const schemaMigrations = [
-  { version: 1, sql: baselineSchemaSql }
+  { version: 1, sql: baselineSchemaSql },
+  { version: 2, sql: healthConnectSyncSchemaSql },
+  { version: 3, sql: measurementAggregatesSchemaSql }
 ] as const;
 
 const analyticalViewStatements = [

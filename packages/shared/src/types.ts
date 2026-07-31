@@ -427,6 +427,22 @@ export interface TimeSeriesSample {
   sourceJson?: unknown;
 }
 
+export interface MeasurementAggregate {
+  id: string;
+  measurementCode: string;
+  granularity: "15m" | "day";
+  startAt: string;
+  endAt: string;
+  average: number;
+  minimum: number;
+  maximum: number;
+  count: number;
+  unit: string;
+  sourceId: string;
+  calendarDate?: string;
+  sourceJson?: unknown;
+}
+
 export interface ActivitySession {
   id: string;
   activityType: string;
@@ -466,6 +482,7 @@ export interface AuditEvent {
     | "observation-deleted"
     | "observation-type-deleted"
     | "daily-step-aggregates-deleted"
+    | "step-samples-deleted"
     | "health-event-created"
     | "health-event-updated"
     | "health-event-deleted"
@@ -499,7 +516,7 @@ export interface HealthStoreData {
    * Always the current version. Older persisted stores are upgraded by `parsePersistedHealthStore`
    * before they ever become a `HealthStoreData`.
    */
-  schemaVersion: 8;
+  schemaVersion: 9;
   profile: Profile;
   sourceImports: SourceImport[];
   dataSources: DataSource[];
@@ -510,6 +527,7 @@ export interface HealthStoreData {
   observations: Observation[];
   observationGroups: ObservationGroup[];
   timeSeriesSamples: TimeSeriesSample[];
+  measurementAggregates: MeasurementAggregate[];
   activitySessions: ActivitySession[];
   healthEvents?: HealthEvent[];
   careItems?: CareItem[];

@@ -84,18 +84,23 @@ export async function openSqliteLocalStore(): Promise<SqliteLocalStore> {
 }
 
 async function acquireSharedDatabase(): Promise<{ database: SQLiteDatabase; replicaDatabase: SQLiteDatabase }> {
-  sharedDatabase ??= openSqliteDatabase().catch((error) => {
-    sharedDatabase = undefined;
-    throw error;
-  });
-  const database = await sharedDatabase;
-  sharedReplicaDatabase ??= openReplicaDatabase().catch((error) => {
-    sharedReplicaDatabase = undefined;
-    throw error;
-  });
-  const replicaDatabase = await sharedReplicaDatabase;
   databaseLeases += 1;
-  return { database, replicaDatabase };
+  try {
+    sharedDatabase ??= openSqliteDatabase().catch((error) => {
+      sharedDatabase = undefined;
+      throw error;
+    });
+    const database = await sharedDatabase;
+    sharedReplicaDatabase ??= openReplicaDatabase().catch((error) => {
+      sharedReplicaDatabase = undefined;
+      throw error;
+    });
+    const replicaDatabase = await sharedReplicaDatabase;
+    return { database, replicaDatabase };
+  } catch (error) {
+    databaseLeases = Math.max(0, databaseLeases - 1);
+    throw error;
+  }
 }
 
 /**

@@ -73,6 +73,8 @@ describe("companion route capabilities", () => {
     expect(companionCapabilityFor("PATCH", "/care/items/care-1")).toBe("care:write");
     expect(companionCapabilityFor("POST", "/care/items/care-1/complete")).toBe("care:write");
     expect(companionCapabilityFor("POST", "/companion/migrations/session-1/batches")).toBe("standalone:migrate");
+    expect(companionCapabilityFor("POST", "/import/health-connect/sessions")).toBe("health-connect:import");
+    expect(companionCapabilityFor("POST", "/import/health-connect/sessions/session-1/chunks")).toBe("health-connect:import");
     expect(companionCapabilityFor("DELETE", "/observations/obs-1")).toBe("observations:write");
   });
 
@@ -80,7 +82,8 @@ describe("companion route capabilities", () => {
     expect(companionCapabilityFor("DELETE", "/profiles")).toBeNull();
     expect(companionCapabilityFor("GET", "/summary/vo2max/chart")).toBeNull();
     expect(companionCapabilityFor("PATCH", "/care/items/care-1/complete")).toBeNull();
-    expect(companionCapabilityFor("POST", "/import/health-connect/sessions")).toBeNull();
+    expect(companionCapabilityFor("GET", "/import/health-connect/sessions")).toBeNull();
+    expect(companionCapabilityFor("POST", "/import/health-connect/sessions/session-1")).toBeNull();
     expect(companionCapabilityFor("GET", "/export")).toBeNull();
   });
 });

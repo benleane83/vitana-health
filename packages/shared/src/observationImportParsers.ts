@@ -90,6 +90,7 @@ export function parseBloodTestCsv(fileName: string, content: string, importedAt 
     observations,
     observationGroups: [group],
     timeSeriesSamples: [],
+    measurementAggregates: [],
     activitySessions: []
   };
 }
@@ -159,6 +160,7 @@ export function parseObservationCsv(fileName: string, content: string, importedA
     observations,
     observationGroups: [group],
     timeSeriesSamples: [],
+    measurementAggregates: [],
     activitySessions: []
   };
 }
@@ -254,6 +256,7 @@ export function buildManualObservationImport(
     observations,
     observationGroups: [group],
     timeSeriesSamples: [],
+    measurementAggregates: [],
     activitySessions: []
   };
 }

@@ -40,8 +40,10 @@ import type { ClinicianReportSourceImport } from "../clinicianReport.js";
 import type { CompiledQuery } from "../queryCompiler.js";
 import {
   applyAnalyticalViews,
+  backupDatabaseFile,
   closeEncryptedDuckDbDatabase,
   createDuckDbSchema,
+  duckDbSchemaMigrationRequired,
   migrateDuckDbSchema,
   openEncryptedDuckDbDatabase,
   restoreDatabaseBackup,
@@ -77,6 +79,7 @@ import {
   deleteObservationRecordsByMeasurementCode as deleteDuckDbObservationRecordsByMeasurementCode,
   deleteObservationsByMeasurementCode as deleteDuckDbObservationsByMeasurementCode,
   deleteDailyAggregateStepSamples as deleteDuckDbDailyAggregateStepSamples,
+  deleteStepSamples as deleteDuckDbStepSamples,
   deleteProfilePhoto as deleteDuckDbProfilePhoto,
   getProfilePhoto as readProfilePhoto,
   getProfile as readProfile,
@@ -223,9 +226,16 @@ export class DuckDbRepository implements ProfileRepository {
     if (!existsSync(databasePath)) {
       throw new Error("DuckDB repository refuses to create an empty database while opening.");
     }
-    const handle = await openEncryptedDuckDbDatabase(root, databasePath, key, options);
+    let handle = await openEncryptedDuckDbDatabase(root, databasePath, key, options);
+    let migrationBackupPath: string | undefined;
     try {
-      await migrateDuckDbSchema(handle);
+      if (await duckDbSchemaMigrationRequired(handle)) {
+        await exec(handle.connection, "CHECKPOINT;");
+        await closeEncryptedDuckDbDatabase(handle);
+        migrationBackupPath = backupDatabaseFile(handle.databasePath);
+        handle = await openEncryptedDuckDbDatabase(root, databasePath, key, options);
+      }
+      await migrateDuckDbSchema(handle, undefined, false, migrationBackupPath);
       await applyAnalyticalViews(handle.connection);
       await pruneRetention(handle.connection);
       const repository = new DuckDbRepository(handle, options.testHooks);
@@ -235,8 +245,9 @@ export class DuckDbRepository implements ProfileRepository {
       await closeEncryptedDuckDbDatabase(handle).catch(() => undefined);
       // The file is only replaceable now that nothing holds it open, so the pre-migration copy goes
       // back here rather than inside the migrator.
-      if (error instanceof SchemaMigrationError && error.backupPath) {
-        restoreDatabaseBackup(error.backupPath, handle.databasePath);
+      const backupPath = error instanceof SchemaMigrationError ? error.backupPath : migrationBackupPath;
+      if (backupPath) {
+        restoreDatabaseBackup(backupPath, handle.databasePath);
       }
       throw error;
     }
@@ -617,6 +628,15 @@ export class DuckDbRepository implements ProfileRepository {
     this.assertOpen();
     const { deletedIds: _deletedIds, ...response } = await this.transaction(
       () => deleteDuckDbDailyAggregateStepSamples(this.connection),
+      (deleted) => deleted.deletedIds.map((id) => replicaTombstone("time-series-sample", id))
+    );
+    return response;
+  }
+
+  async deleteStepSamples(): Promise<DeleteObservationsByTypeResponse> {
+    this.assertOpen();
+    const { deletedIds: _deletedIds, ...response } = await this.transaction(
+      () => deleteDuckDbStepSamples(this.connection),
       (deleted) => deleted.deletedIds.map((id) => replicaTombstone("time-series-sample", id))
     );
     return response;

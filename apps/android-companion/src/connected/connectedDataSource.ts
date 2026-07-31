@@ -81,7 +81,7 @@ export function createConnectedDataSource(
     const result = await coordinator.synchronize();
     repository = new ConnectedReplicaRepository(await storePromise, result.identity);
     synchronizedConnection = await saveConnection({
-      ...synchronizedConnection,
+      url: synchronizedConnection.url,
       serverInstanceId: result.identity.serverInstanceId,
       profileId: result.identity.profileId,
       pairingId: result.identity.pairingId,
