@@ -3,7 +3,7 @@ param(
   [string]$Package,
   [Parameter(Mandatory = $true)]
   [string]$EvidenceDirectory,
-  [string]$IdentityName = "VitanaHealth.StoreTest",
+  [string]$IdentityName = "AdaptivaAI.VitanaHealth",
   [string]$ApplicationId = "VitanaHealth",
   [int]$HealthTimeoutSeconds = 120
 )

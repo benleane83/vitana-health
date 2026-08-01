@@ -84,15 +84,18 @@ test("every packaging path runs the Electron ABI gate before electron-builder", 
   assert.ok(!packageJson.build.files.includes("verify-native-abi.cjs"));
 });
 
-test("Store packages use an isolated AppX target and placeholder identity", () => {
+test("Store packages use an isolated AppX target and Partner Center identity", () => {
   const packageJson = JSON.parse(readFileSync(path.join(__dirname, "package.json"), "utf8"));
 
   assert.match(packageJson.scripts["package:store"], /--win appx --x64/);
   assert.match(packageJson.scripts["package:store"], /dist-store/);
   assert.match(packageJson.scripts["package:store"], /vitanaDistributionChannel=store/);
   assert.equal(packageJson.build.win.target, "nsis");
-  assert.equal(packageJson.build.appx.identityName, "VitanaHealth.StoreTest");
-  assert.equal(packageJson.build.appx.publisher, "CN=Vitana Health Store Test");
+  assert.equal(packageJson.build.appx.artifactName, "Vitana-Health-${version}.${ext}");
+  assert.equal(packageJson.build.appx.identityName, "AdaptivaAI.VitanaHealth");
+  assert.equal(packageJson.build.appx.publisher, "CN=ED882BA6-5AB9-46D8-927C-C72EC1A38D56");
+  assert.equal(packageJson.build.appx.publisherDisplayName, "Adaptiva AI");
+  assert.equal(packageJson.build.appx.displayName, "Vitana Health");
   assert.deepEqual(packageJson.build.appx.capabilities, [
     "runFullTrust",
     "internetClientServer",
@@ -120,7 +123,7 @@ test("desktop updater shutdown callback is available during main-process initial
   assert.ok(beforeQuitHandler >= 0);
   assert.ok(shutdownCallback < beforeQuitHandler);
   assert.match(mainProcess.slice(updaterController, beforeQuitHandler), /prepareToInstall: shutdownApiForUpdate/);
-  assert.match(mainProcess, /distributionChannel === "store" \? "Vitana Health Store Test" : "Vitana Health"/);
+  assert.match(mainProcess, /distributionChannel === "store" \? "Vitana Health Store" : "Vitana Health"/);
 });
 
 test("every local module main.cjs requires is packaged", () => {

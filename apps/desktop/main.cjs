@@ -21,7 +21,7 @@ const packageMetadata = require("./package.json");
 const distributionChannel = packageMetadata.vitanaDistributionChannel;
 const brandedUserDataPath = path.join(
   app.getPath("appData"),
-  distributionChannel === "store" ? "Vitana Health Store Test" : "Vitana Health"
+  distributionChannel === "store" ? "Vitana Health Store" : "Vitana Health"
 );
 app.setPath("userData", brandedUserDataPath);
 
@@ -159,6 +159,9 @@ if (!hasSingleInstanceLock) {
 
 async function launch() {
   if (startupPathError) throw startupPathError;
+  session.defaultSession.setCertificateVerifyProc((request, callback) => {
+    callback(request.hostname === "127.0.0.1" || request.hostname === "localhost" ? 0 : -3);
+  });
   const persisted = backgroundService.getSettings();
   if (backgroundLaunch && !persisted.backgroundServiceEnabled) {
     diagnostics.info("Ignoring stale disabled background launch");
@@ -222,9 +225,6 @@ async function launch() {
   diagnostics.info(`Embedded API listening on port ${process.env.PORT}`);
   desktopUpdater.start();
 
-  session.defaultSession.setCertificateVerifyProc((request, callback) => {
-    callback(request.hostname === "127.0.0.1" || request.hostname === "localhost" ? 0 : -3);
-  });
   if (!backgroundLaunch) await createOrFocusWindow();
 }
 
