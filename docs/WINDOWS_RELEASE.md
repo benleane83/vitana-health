@@ -16,8 +16,8 @@ protected your PC**. Smart App Control can block unsigned apps with no per-app
 override. Testers must understand these limitations and obtain builds only from the
 project's GitHub Releases page.
 
-The experimental Store-test AppX described below is a separate compatibility
-artifact. It is not a GitHub Release asset and does not change this NSIS channel.
+The Store AppX described below is a separate distribution artifact. It is not a
+GitHub Release asset and does not change this NSIS channel.
 
 This model does not protect against compromise of the repository's release-writing
 credentials. Keep GitHub accounts protected with strong MFA, restrict write access,
@@ -163,13 +163,13 @@ npm run package:store
 ```
 
 The unsigned package is written to `apps/desktop/dist-store`. To install locally,
-create a temporary code-signing certificate whose subject exactly matches
-`CN=Vitana Health Store Test`, trust only its public certificate in the current
-user's `TrustedPeople` store, and sign the AppX with Windows SDK SignTool:
+create a temporary code-signing certificate whose subject exactly matches the
+Partner Center publisher, trust only its public certificate in the current user's
+`TrustedPeople` store, and sign the AppX with Windows SDK SignTool:
 
 ```powershell
 $cert = New-SelfSignedCertificate -Type Custom `
-  -Subject "CN=Vitana Health Store Test" `
+  -Subject "CN=ED882BA6-5AB9-46D8-927C-C72EC1A38D56" `
   -KeyUsage DigitalSignature `
   -CertStoreLocation "Cert:\CurrentUser\My" `
   -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3")
@@ -183,8 +183,8 @@ signtool sign /fd SHA256 /sha1 $cert.Thumbprint /s My `
 Run this from an elevated session because AppX deployment requires trust in the
 local-machine certificate store. Delete the exported public certificate and remove
 both temporary certificate copies after testing. Do not export, commit, or upload
-private signing material. Partner Center will replace the placeholder identity and
-publisher values for a real submission.
+private signing material. Microsoft will sign the package for Store distribution
+after it passes certification.
 
 Run the installed-package smoke test from an elevated PowerShell session:
 
@@ -208,10 +208,10 @@ tagged release workflow remain unchanged.
   tray process, and filesystem-backed encrypted storage.
 - `internetClientServer` is required for network client/server behavior.
 - `privateNetworkClientServer` is required for private-LAN mobile companion access.
-- Store-test data is intentionally isolated beneath the package's redirected
+- Store data is intentionally isolated beneath the package's redirected
   per-user data root. It does not migrate or share `%APPDATA%\Vitana Health`.
-- Windows removes package-scoped Store-test data on package removal. The smoke
-  identity is disposable by design; do not put real health data in it.
+- Windows removes package-scoped Store data on package removal. Document this
+  behavior clearly before publishing if package removal is intended to delete data.
 - GitHub update checks, downloads, and restart-to-install are disabled. Store
   builds report that Microsoft Store owns updates.
 - AppX cannot use the NSIS installer firewall action. The smoke evidence records
@@ -233,9 +233,10 @@ submission must not proceed until all of the following are completed and retaine
    disposable test identity.
 5. Run the Windows App Certification Kit against the signed package and retain its
    report with the smoke evidence.
-6. Replace placeholders with the Partner Center package identity, publisher
-   identity, reserved product name, listing assets, privacy-policy URL,
-   certification notes, and reviewed capability justifications.
+6. Complete the Partner Center submission with the reserved product name, listing
+  assets, privacy-policy URL, certification notes, and reviewed capability
+  justifications. The package identity and publisher are now configured in the
+  repository.
 
 Passing CI proves packaging, local installation, process startup, UI/API startup,
 encrypted storage, native DuckDB loading, restart persistence, and channel

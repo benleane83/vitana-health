@@ -16,7 +16,7 @@
     "electron-builder": "26.15.3"
   },
   "scripts": {
-    "prepackage": "npm run build -w packages/shared --prefix ../.. && node ../../scripts/prepare-duckdb-httpfs.mjs --output build/duckdb-extensions --skip-runtime-verification",
+    "prepackage": "npm run build -w @vitana/shared --prefix ../.. && node ../../scripts/prepare-duckdb-httpfs.mjs --output build/duckdb-extensions --skip-runtime-verification",
     "start": "electron .",
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --test *.test.cjs",
@@ -77,12 +77,12 @@
       "verifyUpdateCodeSignature": false
     },
     "appx": {
-      "artifactName": "Vitana-Health-Store-Test-${version}.${ext}",
+      "artifactName": "Vitana-Health-${version}.${ext}",
       "applicationId": "VitanaHealth",
-      "identityName": "VitanaHealth.StoreTest",
-      "publisher": "CN=Vitana Health Store Test",
-      "publisherDisplayName": "Vitana Health",
-      "displayName": "Vitana Health Store Test",
+      "identityName": "AdaptivaAI.VitanaHealth",
+      "publisher": "CN=ED882BA6-5AB9-46D8-927C-C72EC1A38D56",
+      "publisherDisplayName": "Adaptiva AI",
+      "displayName": "Vitana Health",
       "backgroundColor": "#ffffff",
       "capabilities": [
         "runFullTrust",
