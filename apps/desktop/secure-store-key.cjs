@@ -87,6 +87,11 @@ function loadOrCreateSecureStoreKey(options) {
 
 function assertSecureStorageAvailable(safeStorage, platform) {
   if (!safeStorage.isEncryptionAvailable()) {
+    if (platform === "linux") {
+      throw new Error(
+        "GNOME Secret Service is unavailable. Unlock or configure GNOME Keyring, then relaunch Vitana Health; health storage was not opened."
+      );
+    }
     throw new Error("OS secure storage is unavailable; health storage will not be opened.");
   }
   if (
@@ -94,7 +99,9 @@ function assertSecureStorageAvailable(safeStorage, platform) {
     typeof safeStorage.getSelectedStorageBackend === "function" &&
     safeStorage.getSelectedStorageBackend() === "basic_text"
   ) {
-    throw new Error("Electron safeStorage selected the insecure Linux basic_text backend; health storage will not be opened.");
+    throw new Error(
+      "Electron safeStorage selected the insecure Linux basic_text backend. Unlock or configure GNOME Keyring, then relaunch Vitana Health; health storage was not opened."
+    );
   }
 }
 

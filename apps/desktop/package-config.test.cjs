@@ -18,8 +18,11 @@ test("electron-builder excludes DuckDB development files but keeps runtime files
   assert.ok(files.includes("desktop-updater.cjs"));
   assert.ok(files.includes("background-service.cjs"));
   assert.ok(files.includes("background-service-settings.cjs"));
+  assert.ok(files.includes("desktop-platform.cjs"));
+  assert.ok(files.includes("xdg-autostart.cjs"));
   assert.ok(files.includes("user-data-migration.cjs"));
   assert.ok(files.includes("build/*.ico"));
+  assert.ok(files.includes("build/*.png"));
   assert.equal(packageJson.build.win.icon, "build/icon.ico");
   assert.ok(files.includes("!**/node_modules/@vitana/api/data{,/**}"));
   assert.ok(files.includes("!**/node_modules/@vitana/api/src{,/**}"));
@@ -73,7 +76,7 @@ test("every packaging path runs the Electron ABI gate before electron-builder", 
   // only thing that proves the shipped binary matches the shipped runtime's module ABI.
   assert.equal(packageJson.build.npmRebuild, false);
   assert.equal(packageJson.scripts["verify:native-abi"], "electron verify-native-abi.cjs");
-  for (const script of ["package", "package:store"]) {
+  for (const script of ["package", "package:linux", "package:store"]) {
     assert.match(
       packageJson.scripts[script],
       /npm run verify:native-abi &&[^&]*electron-builder/,
@@ -82,6 +85,24 @@ test("every packaging path runs the Electron ABI gate before electron-builder", 
   }
   // The gate is build tooling, not runtime code, so it must not reach the packaged app.
   assert.ok(!packageJson.build.files.includes("verify-native-abi.cjs"));
+});
+
+test("Linux packages are x64 AppImages with manual updates and PNG assets", () => {
+  const packageJson = JSON.parse(readFileSync(path.join(__dirname, "package.json"), "utf8"));
+
+  assert.match(packageJson.scripts["package:linux"], /--linux AppImage --x64/);
+  assert.match(packageJson.scripts["package:linux"], /vitanaDistributionChannel=linux-appimage/);
+  assert.match(packageJson.scripts["package:linux"], /vitanaUpdateChannel=manual/);
+  assert.equal(packageJson.build.linux.target, "AppImage");
+  assert.equal(packageJson.build.linux.artifactName, "Vitana-Health-${version}-linux-x86_64.${ext}");
+  assert.equal(packageJson.build.linux.category, "Utility");
+  assert.equal(packageJson.build.linux.icon, "build/icon.png");
+  for (const asset of ["icon.png", "tray-icon.png"]) {
+    const assetPath = path.join(__dirname, "build", asset);
+    assert.ok(existsSync(assetPath), `${asset} must exist`);
+    const dimensions = readPngDimensions(assetPath);
+    assert.ok(dimensions.width >= 32 && dimensions.height >= 32);
+  }
 });
 
 test("Store packages use an isolated AppX target and Partner Center identity", () => {

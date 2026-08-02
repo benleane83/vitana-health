@@ -54,11 +54,30 @@ test("Store packages expose managed updates without initializing the GitHub upda
     channel: null,
     distributionChannel: "store"
   });
+
   assert.equal(updater.eventNames().length, 0);
   controller.start();
   await controller.check();
   await controller.download();
   await controller.restartToInstall();
+  assert.equal(scheduled.length, 0);
+  assert.equal(calls, 0);
+});
+
+test("Linux AppImages expose manual updates without initializing the GitHub updater", async () => {
+  const { controller, updater, scheduled } = fixture({ distributionChannel: "linux-appimage" });
+  let calls = 0;
+  updater.checkForUpdates = async () => { calls++; };
+
+  assert.deepEqual(controller.getState(), {
+    status: "unsupported",
+    currentVersion: "1.2.3",
+    channel: null,
+    distributionChannel: "linux-appimage"
+  });
+  assert.equal(updater.eventNames().length, 0);
+  controller.start();
+  await controller.check();
   assert.equal(scheduled.length, 0);
   assert.equal(calls, 0);
 });

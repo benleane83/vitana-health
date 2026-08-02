@@ -15,11 +15,17 @@ describe("duckdb host platform table", () => {
     }
   });
 
+  it("approves the reviewed Linux x64 extension", () => {
+    expect(supportedHostPlatform("linux", "x64")).toBe("linux_amd64");
+    expect(pinnedHttpfsSha256("linux", "x64"))
+      .toBe("ff726450b5374caaf9ffd9ef8fd9ec40df19b514117f079de3611326432a6646");
+  });
+
   it("refuses hosts that are not in the table instead of throwing", () => {
     // The startup gate treats `undefined` as "not approved"; a throw here would surface as an
     // unhandled crash rather than the intended message.
-    expect(supportedHostPlatform("linux", "x64")).toBeUndefined();
-    expect(pinnedHttpfsSha256("linux", "x64")).toBeUndefined();
+    expect(supportedHostPlatform("linux", "arm64")).toBeUndefined();
+    expect(pinnedHttpfsSha256("linux", "arm64")).toBeUndefined();
     expect(pinnedHttpfsSha256("plan9", "sparc")).toBeUndefined();
   });
 });

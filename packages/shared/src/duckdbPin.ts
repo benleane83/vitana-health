@@ -19,6 +19,7 @@ export const PINNED_DUCKDB_VERSION = "1.4.4";
 
 /** SHA-256 of the core-signed `httpfs.duckdb_extension` for each supported DuckDB platform. */
 export const PINNED_DUCKDB_HTTPFS_SHA256: Readonly<Record<string, string>> = Object.freeze({
+  linux_amd64: "ff726450b5374caaf9ffd9ef8fd9ec40df19b514117f079de3611326432a6646",
   windows_amd64: "21eea4547cf5aa5231f4838906e8935067c956f56a5efd09035a51189af8a77b"
 });
 
@@ -31,6 +32,7 @@ export const PINNED_DUCKDB_HTTPFS_SHA256: Readonly<Record<string, string>> = Obj
  * scattered platform checks that each have to be found and widened by hand.
  */
 export const SUPPORTED_HOST_PLATFORMS: Readonly<Record<string, string>> = Object.freeze({
+  "linux-x64": "linux_amd64",
   "win32-x64": "windows_amd64"
 });
 
