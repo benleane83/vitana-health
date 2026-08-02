@@ -27,8 +27,8 @@ function createDesktopPlatformCapabilities({
   executablePath = process.execPath,
   platform = process.platform,
   environment = process.env,
-  homeDirectory,
-  fileSystem
+  homeDirectory = undefined,
+  fileSystem = undefined
 }) {
   if (platform === "win32") {
     return {
