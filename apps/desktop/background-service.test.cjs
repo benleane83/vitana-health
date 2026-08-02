@@ -39,6 +39,57 @@ test("legacy login registration resolves beside the current executable", () => {
   );
 });
 
+test("unsupported desktop sessions report disabled and reject enablement", () => {
+  const value = fixture();
+  const controller = createBackgroundServiceController({
+    app: {},
+    settingsStore: value.settingsStore,
+    startupRegistration: { setEnabled() {} },
+    supported: false,
+    platform: "linux",
+    createTray: () => ({ destroy() {} }),
+    showNotification() {},
+    onOpen() {},
+    onQuit() {}
+  });
+  assert.deepEqual(controller.getSettings(), { supported: false, backgroundServiceEnabled: false });
+  assert.throws(() => controller.updateSettings({ backgroundServiceEnabled: true }), /unavailable/);
+});
+
+test("Linux uses the injected startup adapter without Windows legacy cleanup", () => {
+  const enabled = [];
+  const value = fixture({ version: 1, backgroundServiceEnabled: true, closeNotificationShown: false });
+  const controller = createBackgroundServiceController({
+    app: { setLoginItemSettings() { throw new Error("Windows API must not be called"); } },
+    settingsStore: value.settingsStore,
+    startupRegistration: { setEnabled: (next) => enabled.push(next) },
+    platform: "linux",
+    createTray: () => ({ destroy() {} }),
+    showNotification() {},
+    onOpen() {},
+    onQuit() {}
+  });
+  controller.reconcileStartup();
+  assert.deepEqual(enabled, [true]);
+});
+
+test("a failed tray probe disables background support and removes startup registration", () => {
+  const enabled = [];
+  const value = fixture({ version: 1, backgroundServiceEnabled: true, closeNotificationShown: false });
+  const controller = createBackgroundServiceController({
+    app: {},
+    settingsStore: value.settingsStore,
+    startupRegistration: { setEnabled: (next) => enabled.push(next) },
+    platform: "linux",
+    createTray: () => { throw new Error("tray unavailable"); },
+    showNotification() {},
+    onOpen() {},
+    onQuit() {}
+  });
+  assert.deepEqual(controller.reconcileStartup(), { supported: false, backgroundServiceEnabled: false });
+  assert.deepEqual(enabled, [true, false]);
+});
+
 test("enable and disable transitions update registration and tray immediately", () => {
   const value = fixture();
   assert.equal(value.controller.updateSettings({ backgroundServiceEnabled: true }).backgroundServiceEnabled, true);

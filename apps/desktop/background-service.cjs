@@ -16,6 +16,9 @@ function legacyExecutablePath(executablePath) {
 function createBackgroundServiceController({
   app,
   settingsStore,
+  startupRegistration,
+  supported = true,
+  platform = process.platform,
   createTray,
   showNotification,
   executablePath = process.execPath,
@@ -23,15 +26,23 @@ function createBackgroundServiceController({
   onQuit
 }) {
   let tray;
+  let backgroundSupported = supported;
 
   function settingsResponse() {
     return {
-      supported: true,
-      backgroundServiceEnabled: settingsStore.read().backgroundServiceEnabled
+      supported: backgroundSupported,
+      backgroundServiceEnabled: backgroundSupported && settingsStore.read().backgroundServiceEnabled
     };
   }
 
   function setLoginRegistration(enabled) {
+    if (!backgroundSupported && enabled) {
+      throw new Error("Background operation is unavailable in this desktop session.");
+    }
+    if (startupRegistration) {
+      startupRegistration.setEnabled(enabled);
+      return;
+    }
     const options = loginItemOptions(enabled, executablePath);
     app.setLoginItemSettings(options);
     const actual = app.getLoginItemSettings?.({ path: options.path, args: options.args });
@@ -41,7 +52,14 @@ function createBackgroundServiceController({
   }
 
   function ensureTray() {
-    if (!tray) tray = createTray({ onOpen, onQuit });
+    if (!tray) {
+      try {
+        tray = createTray({ onOpen, onQuit });
+      } catch (error) {
+        backgroundSupported = false;
+        throw error;
+      }
+    }
     return tray;
   }
 
@@ -57,10 +75,18 @@ function createBackgroundServiceController({
 
   function reconcileStartup() {
     const state = settingsStore.read();
-    const legacyPath = legacyExecutablePath(executablePath);
-    if (legacyPath !== executablePath) app.setLoginItemSettings(loginItemOptions(false, legacyPath));
-    setLoginRegistration(state.backgroundServiceEnabled);
-    applyRuntimeState(state.backgroundServiceEnabled);
+    if (platform === "win32") {
+      const legacyPath = legacyExecutablePath(executablePath);
+      if (legacyPath !== executablePath) app.setLoginItemSettings(loginItemOptions(false, legacyPath));
+    }
+    const enabled = backgroundSupported && state.backgroundServiceEnabled;
+    try {
+      setLoginRegistration(enabled);
+      applyRuntimeState(enabled);
+    } catch {
+      setLoginRegistration(false);
+      applyRuntimeState(false);
+    }
     return settingsResponse();
   }
 

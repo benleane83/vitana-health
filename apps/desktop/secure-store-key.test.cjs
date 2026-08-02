@@ -65,8 +65,12 @@ test("wraps a legacy key and removes plaintext only after finalize", () => {
 test("refuses unavailable and insecure Linux secure storage", () => {
   const root = makeRoot();
   assert.throws(
-    () => loadOrCreateSecureStoreKey({ safeStorage: makeSafeStorage({ available: false }), userDataPath: root }),
-    /unavailable/
+    () => loadOrCreateSecureStoreKey({
+      safeStorage: makeSafeStorage({ available: false }),
+      userDataPath: root,
+      platform: "linux"
+    }),
+    /GNOME Keyring/
   );
   assert.throws(
     () => loadOrCreateSecureStoreKey({
@@ -74,7 +78,7 @@ test("refuses unavailable and insecure Linux secure storage", () => {
       userDataPath: root,
       platform: "linux"
     }),
-    /basic_text/
+    /basic_text.*GNOME Keyring/
   );
 });
 

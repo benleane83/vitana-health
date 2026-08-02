@@ -10,6 +10,7 @@ const { createDesktopUpdaterController } = require("./desktop-updater.cjs");
 const { migrateUserDataDirectory } = require("./user-data-migration.cjs");
 const { createPreUpdateBackup } = require("./pre-update-backup.cjs");
 const { createDesktopLifecycle } = require("./desktop-lifecycle.cjs");
+const { createDesktopPlatformCapabilities } = require("./desktop-platform.cjs");
 
 let mainWindow;
 let launchPromise;
@@ -39,6 +40,7 @@ if (hasSingleInstanceLock) {
 const diagnostics = createStartupDiagnostics({ userDataPath: app.getPath("userData") });
 const lifecycle = createDesktopLifecycle({ app, diagnostics });
 const settingsStore = createBackgroundServiceSettingsStore({ userDataPath: app.getPath("userData") });
+const platformCapabilities = createDesktopPlatformCapabilities({ app });
 const updateChannel = packageMetadata.vitanaUpdateChannel;
 const desktopUpdater = createDesktopUpdaterController({
   app,
@@ -50,7 +52,7 @@ const desktopUpdater = createDesktopUpdaterController({
 });
 
 function trayIconPath() {
-  return path.join(__dirname, "build", "tray-icon.ico");
+  return platformCapabilities.trayIconPath;
 }
 
 function requestQuit() {
@@ -111,6 +113,8 @@ async function createOrFocusWindow() {
 const backgroundService = createBackgroundServiceController({
   app,
   settingsStore,
+  startupRegistration: platformCapabilities.startupRegistration,
+  supported: platformCapabilities.backgroundSupported,
   executablePath: process.execPath,
   onOpen: () => void createOrFocusWindow(),
   onQuit: requestQuit,

@@ -1,0 +1,105 @@
+name: Ubuntu AppImage package and smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      smoke_scope:
+        description: Validation tier (graphical requires the approved GNOME self-hosted runner)
+        required: true
+        default: headless
+        type: choice
+        options:
+          - headless
+          - graphical
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Ubuntu 24.04 x64 AppImage
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies without native lifecycle scripts
+        run: npm ci --ignore-scripts
+
+      - name: Rebuild Linux DuckDB binding
+        run: npm rebuild duckdb
+
+      - name: Build workspace
+        run: npm run build
+
+      - name: Run desktop tests
+        run: npm run test:desktop
+
+      - name: Stage and verify core-signed Linux HTTPFS
+        run: npm run prepare:duckdb -w @vitana/api
+
+      - name: Validate encrypted DuckDB storage
+        env:
+          VITANA_REQUIRE_DUCKDB: "1"
+        run: npm run test:integration
+
+      - name: Package Linux x64 AppImage
+        run: npm run package:linux -w @vitana/desktop
+
+      - name: Inspect Linux native and PDF/OCR resources
+        run: |
+          mkdir -p linux-package-evidence
+          node scripts/inspect-linux-desktop-package.mjs \
+            apps/desktop/dist/linux-unpacked \
+            linux-package-evidence/package-inspection.json
+          sha256sum apps/desktop/dist/*.AppImage > linux-package-evidence/SHA256SUMS-linux-x64.txt
+
+      - name: Upload AppImage and package evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ubuntu-appimage-package
+          path: |
+            apps/desktop/dist/*.AppImage
+            linux-package-evidence
+          if-no-files-found: error
+          retention-days: 30
+
+  graphical-smoke:
+    name: GNOME keyring, tray, and restart gate
+    if: inputs.smoke_scope == 'graphical'
+    needs: package
+    runs-on: [self-hosted, linux, x64, gnome, secret-service]
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout smoke harness
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Download exact packaged artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ubuntu-appimage-package
+          path: linux-package
+
+      - name: Smoke test packaged runtime in GNOME
+        run: |
+          appimage=$(find linux-package -name '*.AppImage' -type f -print -quit)
+          chmod +x "$appimage"
+          ./scripts/linux-appimage-smoke.sh "$appimage" ubuntu-gnome-runtime-evidence
+
+      - name: Upload graphical runtime evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ubuntu-gnome-runtime-evidence
+          path: ubuntu-gnome-runtime-evidence
+          if-no-files-found: error
+          retention-days: 90

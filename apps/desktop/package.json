@@ -22,6 +22,7 @@
     "test": "node --test *.test.cjs",
     "verify:native-abi": "electron verify-native-abi.cjs",
     "package": "npm run verify:native-abi && electron-builder --publish=never",
+    "package:linux": "npm run prepackage && npm run verify:native-abi && electron-builder --linux AppImage --x64 --publish=never --config.extraMetadata.vitanaDistributionChannel=linux-appimage --config.extraMetadata.vitanaUpdateChannel=manual",
     "package:store": "npm run prepackage && npm run verify:native-abi && electron-builder --win appx --x64 --publish=never --config.directories.output=dist-store --config.extraMetadata.vitanaDistributionChannel=store"
   },
   "license": "Elastic-2.0",
@@ -44,7 +45,10 @@
       "user-data-migration.cjs",
       "pre-update-backup.cjs",
       "desktop-lifecycle.cjs",
+      "desktop-platform.cjs",
+      "xdg-autostart.cjs",
       "build/*.ico",
+      "build/*.png",
       "package.json",
       "!**/node_modules/@vitana/api/data{,/**}",
       "!**/node_modules/@vitana/api/src{,/**}",
@@ -75,6 +79,13 @@
       "signExecutable": false,
       "target": "nsis",
       "verifyUpdateCodeSignature": false
+    },
+    "linux": {
+      "target": "AppImage",
+      "artifactName": "Vitana-Health-${version}-linux-x86_64.${ext}",
+      "category": "Utility",
+      "maintainer": "Ben Leane",
+      "icon": "build/icon.png"
     },
     "appx": {
       "artifactName": "Vitana-Health-${version}.${ext}",
