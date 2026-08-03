@@ -300,6 +300,7 @@ export const importMutationResponseSchema = z.object({
     observations: importCategoryOutcomeSchema,
     observationGroups: importCategoryOutcomeSchema,
     timeSeriesSamples: importCategoryOutcomeSchema,
+    measurementAggregates: importCategoryOutcomeSchema,
     activitySessions: importCategoryOutcomeSchema
   }).strict(),
   analyticsStorage: z.unknown().optional()
