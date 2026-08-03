@@ -51,6 +51,26 @@ describe("local profile repository", () => {
     expect((await afterReset.bootstrap()).counts.observations).toBe(0);
   });
 
+  it.each([
+    ["Body", "body"],
+    ["Lab", "lab"]
+  ] as const)("categorizes a custom %s measurement as %s", async (label, category) => {
+    const repository = new LocalProfileRepository(new MemoryLocalStore(), profile("profile-a"));
+    await repository.importManualObservations({
+      ...reading,
+      label,
+      observations: [{
+        measurementCode: "manual_custom_score",
+        measurementName: "Custom score",
+        value: 7,
+        unit: "points"
+      }]
+    });
+
+    expect((await repository.summary()).categories[0].key).toBe(category);
+    expect((await repository.healthDataDetail("manual_custom_score")).measurement.category).toBe(category);
+  });
+
   it("keeps the latest reading for every measurement code in analytics", async () => {
     const state = createMemoryLocalStoreState();
     state.observations.set("profile-a\u0000weight-old", {

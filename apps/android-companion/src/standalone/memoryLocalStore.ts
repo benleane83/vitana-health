@@ -237,6 +237,7 @@ export class MemoryLocalStore implements LocalStore {
 
   async observationAggregates(): Promise<LocalObservationAggregate[]> {
     const rows = new Map<string, LocalObservationAggregate>();
+    const groups = new Map(this.profileValues(this.state.observationGroups).map((group) => [group.id, group]));
     for (const observation of this.profileValues(this.state.observations)) {
       const current = rows.get(observation.measurementCode);
       rows.set(observation.measurementCode, {
@@ -244,7 +245,8 @@ export class MemoryLocalStore implements LocalStore {
         count: (current?.count ?? 0) + 1,
         lastMeasuredAt: current?.lastMeasuredAt && current.lastMeasuredAt > observation.observedAt
           ? current.lastMeasuredAt
-          : observation.observedAt
+          : observation.observedAt,
+        groupKind: current?.groupKind ?? groups.get(observation.observationGroupId ?? "")?.kind
       });
     }
     return [...rows.values()];

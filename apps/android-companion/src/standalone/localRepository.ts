@@ -93,7 +93,7 @@ export class LocalProfileRepository implements MobileProfileRepository {
     const grouped = new Map<string, HealthDataSummary["categories"][number]["rows"]>();
     for (const aggregate of aggregates) {
       const measurement = registry.get(aggregate.measurementCode);
-      const category = measurement?.category ?? "uncategorized";
+      const category = measurement?.category ?? categoryForObservationGroupKind(aggregate.groupKind) ?? "uncategorized";
       const rows = grouped.get(category) ?? [];
       rows.push({
         code: aggregate.measurementCode,
@@ -166,7 +166,9 @@ export class LocalProfileRepository implements MobileProfileRepository {
         code: measurementCode,
         displayName,
         description: measurement?.description,
-        category: measurement?.category ?? "uncategorized",
+        category: measurement?.category ??
+          categoryForObservationGroupKind(entries[0]?.observationGroup?.kind) ??
+          "uncategorized",
         aggregation: measurement?.aggregation,
         counts: { observations: result.total, samples: 0, activities: 0, total: result.total },
         lastMeasuredAt: entries[0]?.timestamp
@@ -256,7 +258,7 @@ export class LocalProfileRepository implements MobileProfileRepository {
 
   async importManualObservations(payload: ManualObservationPayload): Promise<MobileImportResult> {
     const profile = (await this.bootstrap()).profile;
-    const imported = buildManualObservationImport(payload, new Date().toISOString(), "custom", profile.units);
+    const imported = buildManualObservationImport(payload, new Date().toISOString(), undefined, profile.units);
     if (imported.observations.length === 0) throw new Error("The import did not contain any valid observations.");
     return this.mergeImport(imported);
   }
@@ -276,6 +278,12 @@ export class LocalProfileRepository implements MobileProfileRepository {
     this.initialized ??= this.store.initialize(this.defaultProfile);
     return this.initialized;
   }
+}
+
+function categoryForObservationGroupKind(kind: string | undefined): "body" | "lab" | undefined {
+  if (kind === "body_composition_report") return "body";
+  if (kind === "lab_panel") return "lab";
+  return undefined;
 }
 
 function categoryLabel(category: string): string {
