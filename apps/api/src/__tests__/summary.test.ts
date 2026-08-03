@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { chartPointsForEntries, summarizeMeasurementEntries } from "../summary.js";
+import type { HealthStoreData } from "@vitana/shared";
+import { chartPointsForEntries, summarizeMeasurementEntries, summarizeStoreData } from "../summary.js";
 
 describe("chartPointsForEntries", () => {
   it("preserves a measurement reference range for detail charts", () => {
@@ -37,5 +38,32 @@ describe("summarizeMeasurementEntries", () => {
 
     expect(detail.measurement.description).toBe("The number of steps you have taken.");
     expect(detail.measurement.aggregation).toBe("sum");
+  });
+
+  describe("summarizeStoreData", () => {
+    it.each([
+      ["body_composition_report", "body"],
+      ["lab_panel", "lab"]
+    ] as const)("categorizes an unregistered measurement from a %s group as %s", (kind, category) => {
+      const store = {
+        profile: { id: "self", displayName: "Test", units: "metric", updatedAt: "2026-01-01" },
+        measurementTypes: [],
+        observations: [{
+          id: "custom-1",
+          measurementCode: "manual_custom_score",
+          observedAt: "2026-06-15T00:00:00.000Z",
+          value: 7,
+          unit: "points",
+          sourceId: "source-1",
+          observationGroupId: "group-1"
+        }],
+        observationGroups: [{ id: "group-1", kind, label: category === "body" ? "Body" : "Lab" }],
+        timeSeriesSamples: [],
+        measurementAggregates: [],
+        activitySessions: []
+      } as unknown as HealthStoreData;
+
+      expect(summarizeStoreData(store).categories[0].key).toBe(category);
+    });
   });
 });

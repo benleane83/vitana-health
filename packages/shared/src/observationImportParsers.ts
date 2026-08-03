@@ -177,7 +177,7 @@ export function buildManualLabEntryImport(payload: ManualLabEntryPayload, import
 export function buildManualObservationImport(
   payload: ManualObservationPayload,
   importedAt = new Date().toISOString(),
-  groupKind: ObservationGroup["kind"] = "custom",
+  groupKind: ObservationGroup["kind"] = manualObservationGroupKind(payload.label),
   units: UnitSystem = "metric"
 ): ParsedImport {
   const diagnostics: ImportDiagnostic[] = [];
@@ -211,6 +211,7 @@ export function buildManualObservationImport(
       diagnostics.push({ severity: "error", message: `Skipped manual observation with invalid value: ${JSON.stringify(row).slice(0, 180)}` });
       continue;
     }
+
     if (!measurementType && !markerName && !markerCode) {
       diagnostics.push({ severity: "error", message: `Skipped manual observation with no name or code: ${JSON.stringify(row).slice(0, 180)}` });
       continue;
@@ -259,4 +260,11 @@ export function buildManualObservationImport(
     measurementAggregates: [],
     activitySessions: []
   };
+}
+
+function manualObservationGroupKind(label: string): ObservationGroup["kind"] {
+  const normalized = label.trim().toLowerCase();
+  if (normalized === "body") return "body_composition_report";
+  if (normalized === "lab") return "lab_panel";
+  return "custom";
 }

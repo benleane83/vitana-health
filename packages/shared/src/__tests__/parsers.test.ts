@@ -183,6 +183,20 @@ describe("generic observation imports", () => {
     expect(result.observations[0].sourceJson).toStrictEqual({ measurementName: "Weight", value: 82, unit: "kg" });
   });
 
+  it.each([
+    ["Body", "body_composition_report"],
+    ["Lab", "lab_panel"],
+    ["Home readings", "custom"]
+  ] as const)("assigns the %s manual group its matching kind", (label, kind) => {
+    const result = buildManualObservationImport({
+      observedAt: "2026-06-15",
+      label,
+      observations: [{ measurementName: "Custom score", value: 7, unit: "points" }]
+    });
+
+    expect(result.observationGroups[0].kind).toBe(kind);
+  });
+
   it("preserves a note supplied with a manual observation", () => {
     const result = buildManualObservationImport({
       observedAt: "2026-06-15", label: "Manual Glucose",

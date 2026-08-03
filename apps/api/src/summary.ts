@@ -35,9 +35,21 @@ export function summarizeStoreData(store: HealthStoreData): HealthDataSummary {
 
   for (const observation of store.observations) {
     const row = ensureRow(rows, measurementTypes, observation.measurementCode);
+    if (!measurementTypes.has(observation.measurementCode) && row.category === "uncategorized") {
+      const group = store.observationGroups.find((candidate) => candidate.id === observation.observationGroupId);
+      row.category = categoryForObservationGroupKind(group?.kind) ?? row.category;
+    }
     row.counts.observations += 1;
     row.counts.total += 1;
     row.lastMeasuredAt = latestTimestamp(row.lastMeasuredAt, observation.observedAt);
+  }
+
+  function categoryForObservationGroupKind(
+    kind: HealthStoreData["observationGroups"][number]["kind"] | undefined
+  ): HealthDataSummaryTypeRow["category"] | undefined {
+    if (kind === "body_composition_report") return "body";
+    if (kind === "lab_panel") return "lab";
+    return undefined;
   }
 
   for (const sample of store.timeSeriesSamples) {
