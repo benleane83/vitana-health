@@ -1,5 +1,6 @@
-import type { AnalyticsSummary, Profile } from "@vitana/shared";
-import { Pin } from "lucide-react";
+import { careItemKindLabels } from "@vitana/shared";
+import type { AnalyticsSummary, CareItem, Profile } from "@vitana/shared";
+import { AlertTriangle, CalendarClock, CheckCircle2, ChevronRight, Pin } from "lucide-react";
 import { MiniChart } from "../components/Charts.js";
 import { formatBloodType, formatDetailValue, formatProfileSex, formatProfileType, formatShortTimestamp } from "../utils.js";
 
@@ -15,15 +16,21 @@ function Stat({ label, value }: { label: string; value: number }) {
 export function DashboardPage({
   analytics,
   profile,
+  upcomingCare,
   onEditProfile,
   onNavigateSummary,
-  onNavigateMeasurement
+  onNavigateMeasurement,
+  onNavigateCare,
+  onRetryUpcomingCare
 }: {
   analytics?: AnalyticsSummary;
   profile?: Profile;
+  upcomingCare: { items: CareItem[]; total: number; busy: boolean; error?: string };
   onEditProfile: () => void;
   onNavigateSummary: () => void;
   onNavigateMeasurement: (measurementCode: string) => void;
+  onNavigateCare: (careItemId?: string) => void;
+  onRetryUpcomingCare: () => void;
 }) {
   const latestObservedAt = analytics?.latestMetrics
     .map((metric) => metric.observedAt)
@@ -102,6 +109,64 @@ export function DashboardPage({
         </article>
       </section>
 
+      <section className={`dashboard-upcoming-care${upcomingCare.items.some(isOverdue) ? " has-overdue" : ""}`} aria-labelledby="upcoming-care-heading">
+        <div className="dashboard-upcoming-care-heading">
+          <div>
+            <h2 id="upcoming-care-heading">Upcoming care</h2>
+            <p>{upcomingCare.total > 0 ? formatCareSummary(upcomingCare.total) : "A 30-day view of care that needs attention."}</p>
+          </div>
+          {!upcomingCare.busy && !upcomingCare.error && upcomingCare.total > 0 ? (
+            <button className="dashboard-care-view-all" type="button" onClick={() => onNavigateCare()}>
+              View all <ChevronRight aria-hidden="true" size={17} />
+            </button>
+          ) : null}
+        </div>
+
+        {upcomingCare.busy ? (
+          <div className="dashboard-care-loading" role="status" aria-label="Loading upcoming care">
+            {[0, 1, 2].map((index) => <span key={index} aria-hidden="true" />)}
+          </div>
+        ) : upcomingCare.error ? (
+          <div className="dashboard-care-state dashboard-care-error" role="alert">
+            <AlertTriangle aria-hidden="true" size={19} />
+            <span>Upcoming care could not be loaded.</span>
+            <button type="button" onClick={onRetryUpcomingCare}>Try again</button>
+          </div>
+        ) : upcomingCare.items.length ? (
+          <div className="dashboard-care-items">
+            {upcomingCare.items.map((item) => {
+              const dueText = formatRelativeDueDate(item.dueStart);
+              const overdue = isOverdue(item);
+              return (
+                <button
+                  className="dashboard-care-item"
+                  data-overdue={overdue || undefined}
+                  type="button"
+                  key={item.id}
+                  onClick={() => onNavigateCare(item.id)}
+                  aria-label={`${item.title}, ${careItemKindLabels[item.kind]}, ${dueText}. Open in Care.`}
+                >
+                  <span className="dashboard-care-item-icon" aria-hidden="true">
+                    {overdue ? <AlertTriangle size={18} /> : <CalendarClock size={18} />}
+                  </span>
+                  <span className="dashboard-care-item-copy">
+                    <strong>{item.title}</strong>
+                    <span>{careItemKindLabels[item.kind]}</span>
+                  </span>
+                  <span className="dashboard-care-due">{dueText}</span>
+                  <ChevronRight className="dashboard-care-item-arrow" aria-hidden="true" size={18} />
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="dashboard-care-state dashboard-care-clear" role="status">
+            <CheckCircle2 aria-hidden="true" size={19} />
+            <span>Nothing due in the next 30 days.</span>
+          </div>
+        )}
+      </section>
+
       <details className="dashboard-deeper-review" open>
         <summary>Explore trends and lab ranges</summary>
         <div className="dashboard-deeper-grid">
@@ -149,4 +214,31 @@ export function DashboardPage({
       </details>
     </>
   );
+}
+
+function formatCareSummary(total: number): string {
+  return `${total} ${total === 1 ? "item needs" : "items need"} attention in the next 30 days.`;
+}
+
+function isOverdue(item: CareItem): boolean {
+  if (!item.dueStart) return false;
+  return daysFromToday(item.dueStart) < 0;
+}
+
+function formatRelativeDueDate(value?: string): string {
+  if (!value) return "Due date unavailable";
+  const days = daysFromToday(value);
+  if (days < 0) return `Overdue by ${Math.abs(days)} ${Math.abs(days) === 1 ? "day" : "days"}`;
+  if (days === 0) return "Due today";
+  if (days === 1) return "Due tomorrow";
+  return `Due in ${days} days`;
+}
+
+function daysFromToday(value: string): number {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return 0;
+  const now = new Date();
+  const dueDay = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((dueDay - today) / 86_400_000);
 }

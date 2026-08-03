@@ -50,6 +50,7 @@ const defaultCareItemDraft: CareItemDraft = {
 export function CareRoute({
   view,
   activeProfileId,
+  selectedCareItemId,
   onViewChange,
   onDataChanged,
   onNotice,
@@ -57,6 +58,7 @@ export function CareRoute({
 }: {
   view: CareView;
   activeProfileId?: string;
+  selectedCareItemId?: string;
   onViewChange: (view: CareView) => void;
   onDataChanged: () => Promise<void>;
   onNotice: (message: string) => void;
@@ -94,7 +96,7 @@ export function CareRoute({
       return;
     }
     void loadCareItems(true);
-  }, [view, activeProfileId]);
+  }, [view, activeProfileId, selectedCareItemId]);
 
   async function loadHealthEvents(reset = false) {
     const query = {
@@ -121,7 +123,8 @@ export function CareRoute({
     const query = {
       ...careItemFilters,
       offset: reset ? 0 : careItemFilters.offset ?? 0,
-      limit: careItemFilters.limit ?? 20
+      limit: careItemFilters.limit ?? 20,
+      includeId: selectedCareItemId
     };
     setCareItems((current) => ({ ...current, busy: true, error: undefined }));
     try {
@@ -133,6 +136,10 @@ export function CareRoute({
           items: [...current.data.items, ...next.items.filter((entry) => !current.data?.items.some((existing) => existing.id === entry.id))]
         } : next
       }));
+      if (reset && selectedCareItemId) {
+        const selected = next.items.find((entry) => entry.id === selectedCareItemId);
+        if (selected) beginEditCareItem(selected);
+      }
     } catch (error) {
       setCareItems({ busy: false, error: error instanceof Error ? error.message : "Unable to load care items." });
     }

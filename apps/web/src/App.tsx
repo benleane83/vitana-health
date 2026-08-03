@@ -23,6 +23,9 @@ export function App() {
   const [route, setRoute] = useState<AppRoute>(() => routeFromPathname(window.location.pathname));
   const [insightsTab, setInsightsTab] = useState<InsightsTab>(() => insightsTabFromPathname(window.location.pathname));
   const [careView, setCareView] = useState(() => careViewFromPathname(window.location.pathname));
+  const [selectedCareItemId, setSelectedCareItemId] = useState<string | undefined>(
+    () => careItemIdFromPathname(window.location.pathname)
+  );
   const [importMode, setImportMode] = useState<ImportMode>(() => importModeFromPathname(window.location.pathname));
   const [settingsView, setSettingsView] = useState<SettingsView>(() => settingsViewFromPathname(window.location.pathname));
   const [summaryDetailCode, setSummaryDetailCode] = useState<string | undefined>(
@@ -59,6 +62,7 @@ export function App() {
       setRoute(routeFromPathname(window.location.pathname));
       setInsightsTab(insightsTabFromPathname(window.location.pathname));
       setCareView(careViewFromPathname(window.location.pathname));
+      setSelectedCareItemId(careItemIdFromPathname(window.location.pathname));
       setImportMode(importModeFromPathname(window.location.pathname));
       setSettingsView(settingsViewFromPathname(window.location.pathname));
       setSummaryDetailCode(summaryDetailCodeFromPathname(window.location.pathname));
@@ -106,6 +110,15 @@ export function App() {
     const nextPath = carePath(nextView);
     if (window.location.pathname !== nextPath) window.history.pushState({}, "", nextPath);
     setCareView(nextView);
+    setSelectedCareItemId(undefined);
+    setRoute("care");
+  }
+
+  function navigateUpcomingCare(careItemId?: string) {
+    const nextPath = carePath("items", careItemId);
+    if (window.location.pathname !== nextPath) window.history.pushState({}, "", nextPath);
+    setCareView("items");
+    setSelectedCareItemId(careItemId);
     setRoute("care");
   }
 
@@ -349,6 +362,7 @@ export function App() {
               onEditProfile={profileLifecycle.openEditor}
               onNavigateSummary={() => navigate("track")}
               onNavigateMeasurement={navigateSummaryDetail}
+              onNavigateCare={navigateUpcomingCare}
             />
           </ErrorBoundary>
         ) : null}
@@ -412,6 +426,7 @@ export function App() {
             <CareRoute
               view={careView}
               activeProfileId={activeProfileId}
+              selectedCareItemId={selectedCareItemId}
               onViewChange={navigateCare}
               onDataChanged={() => profileLifecycle.refresh({ profiles: false })}
               onNotice={setMessage}
@@ -531,6 +546,19 @@ function trackPath(measurementCode?: string): string {
   return measurementCode ? `/track/${encodeURIComponent(measurementCode)}` : "/track";
 }
 
-function carePath(view: "items" | "health-events"): string {
-  return view === "health-events" ? "/care/health-events" : "/care/items";
+function carePath(view: "items" | "health-events", careItemId?: string): string {
+  if (view === "health-events") return "/care/health-events";
+  return careItemId ? `/care/items/${encodeURIComponent(careItemId)}` : "/care/items";
+}
+
+function careItemIdFromPathname(pathname: string): string | undefined {
+  const prefix = "/care/items/";
+  if (!pathname.startsWith(prefix)) return undefined;
+  const raw = pathname.slice(prefix.length);
+  if (!raw) return undefined;
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
 }

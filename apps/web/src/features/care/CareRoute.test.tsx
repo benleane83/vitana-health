@@ -36,6 +36,24 @@ afterEach(() => {
 });
 
 describe("CareRoute", () => {
+  it("loads and opens a care item selected from the Dashboard", async () => {
+    render(
+      <CareRoute
+        view="items"
+        activeProfileId="self"
+        selectedCareItemId="care-1"
+        onViewChange={vi.fn()}
+        onDataChanged={vi.fn().mockResolvedValue(undefined)}
+        onNotice={vi.fn()}
+        confirm={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(api.care.listCareItems).toHaveBeenCalledWith(expect.objectContaining({ includeId: "care-1" })));
+    expect(await screen.findByRole("heading", { name: "Annual check-up" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Title")).toHaveValue("Annual check-up");
+  });
+
   it("filters by care kind and completes an open item through the review panel", async () => {
     const complete = vi.spyOn(api.care, "completeCareItem").mockResolvedValue({
       careItem: { ...openCareItem, status: "completed", completedAt: "2026-07-25T09:30:00.000Z", completedHealthEventId: "event-1" },
