@@ -405,6 +405,13 @@ function SyncImportPanel({
   const [pairedDevices, setPairedDevices] = useState<PairedDevice[]>([]);
   const [selectedProfiles, setSelectedProfiles] = useState<Record<string, string>>({});
   const [pendingActionId, setPendingActionId] = useState<string>();
+  const visiblePairedDevices = [
+    ...pairedDevices.filter((device) => !device.revokedAt),
+    ...pairedDevices
+      .filter((device) => device.revokedAt)
+      .sort((left, right) => Date.parse(right.revokedAt!) - Date.parse(left.revokedAt!))
+      .slice(0, 5)
+  ];
   const activeProfileExists = activeProfileId !== undefined && profiles.some((profile) => profile.id === activeProfileId);
   const defaultProfileId = activeProfileExists ? activeProfileId : profiles[0]?.id ?? "";
 
@@ -534,10 +541,10 @@ function SyncImportPanel({
         </div>
       ) : null}
 
-      {pairedDevices.length > 0 ? (
+      {visiblePairedDevices.length > 0 ? (
         <div className="pairing-requests" aria-label="Paired devices">
           <h3>Connected devices</h3>
-          {pairedDevices.map((device) => (
+          {visiblePairedDevices.map((device) => (
             <div key={device.id} className="pairing-request-row">
               <div className="pairing-request-info">
                 <strong>{device.deviceName}</strong>
