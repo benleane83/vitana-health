@@ -241,6 +241,28 @@ describe("parseBloodTestScanText", () => {
     expect(result.reportDate).toBe("2026-07-08T18:49:00.000Z");
   });
 
+  it("skips OCR-spaced date metadata while preserving nearby lab measurements", () => {
+    const result = parseBloodTestScanText(
+      "BloodTestResults_Aug2026.pdf",
+      [
+        "Authorised Date 18 05 2026 22:50",
+        "Collection Date: 18 05 2026",
+        "Receiving Date 18 05 2026",
+        "Haemoglobin 13.8 g/dL"
+      ].join("\n")
+    );
+
+    expect(result.rows).toEqual([
+      expect.objectContaining({
+        measurementCode: "haemoglobin",
+        value: 13.8,
+        unit: "g/dL",
+        included: true
+      })
+    ]);
+    expect(result.reportDate).toBe("2026-05-18T22:50:00.000Z");
+  });
+
   it("prioritizes report dates and excludes the active profile birth date", () => {
     const result = parseBloodTestScanText(
       "LabResults_CliniPath_2.pdf",

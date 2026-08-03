@@ -54,6 +54,52 @@ describe("CareRoute", () => {
     expect(screen.getByLabelText("Title")).toHaveValue("Annual check-up");
   });
 
+  it("opens records directly and exposes a mobile back-to-list action", async () => {
+    render(<CareRoute view="items" activeProfileId="self" onViewChange={vi.fn()} onDataChanged={vi.fn().mockResolvedValue(undefined)} onNotice={vi.fn()} confirm={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Edit Annual check-up" }));
+
+    expect(screen.getByRole("heading", { name: "Annual check-up" })).toBeInTheDocument();
+    expect(screen.getByRole("tabpanel", { name: "Care items" })).toHaveClass("has-editor");
+    fireEvent.click(screen.getByRole("button", { name: "Back to care items" }));
+    expect(screen.getByRole("tabpanel", { name: "Care items" })).not.toHaveClass("has-editor");
+  });
+
+  it("guides an empty Care view into the real creation workflow", async () => {
+    vi.mocked(api.care.listCareItems).mockResolvedValue({ items: [], total: 0, offset: 0, limit: 20, hasMore: false });
+
+    render(<CareRoute view="items" activeProfileId="self" onViewChange={vi.fn()} onDataChanged={vi.fn().mockResolvedValue(undefined)} onNotice={vi.fn()} confirm={vi.fn()} />);
+
+    expect(await screen.findByRole("heading", { name: "Nothing needs your attention" })).toBeInTheDocument();
+    expect(screen.getByText(/Completed care is recorded in Health events/)).toBeInTheDocument();
+    expect(screen.queryByText("Select a record to edit it, or add a new one.")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Search care items")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "View all statuses" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Add care item" }));
+    expect(screen.getByRole("heading", { name: "Care item" })).toBeInTheDocument();
+  });
+
+  it("distinguishes filtered empty results and clears them", async () => {
+    vi.mocked(api.care.listCareItems).mockImplementation(async (query) => ({
+      items: query.kind ? [] : [openCareItem],
+      total: query.kind ? 0 : 1,
+      offset: 0,
+      limit: 20,
+      hasMore: false
+    }));
+
+    render(<CareRoute view="items" activeProfileId="self" onViewChange={vi.fn()} onDataChanged={vi.fn().mockResolvedValue(undefined)} onNotice={vi.fn()} confirm={vi.fn()} />);
+    await screen.findByText("Annual check-up");
+    fireEvent.change(screen.getByLabelText("Filter care item kind"), { target: { value: "routine-checkup" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+
+    expect(await screen.findByRole("heading", { name: "No matches found" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(await screen.findByText("Annual check-up")).toBeInTheDocument();
+    expect(screen.getByLabelText("Filter care item kind")).toHaveValue("");
+  });
+
   it("filters by care kind and completes an open item through the review panel", async () => {
     const complete = vi.spyOn(api.care, "completeCareItem").mockResolvedValue({
       careItem: { ...openCareItem, status: "completed", completedAt: "2026-07-25T09:30:00.000Z", completedHealthEventId: "event-1" },

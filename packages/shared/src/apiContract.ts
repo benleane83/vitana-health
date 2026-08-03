@@ -36,7 +36,7 @@ import type {
   ReferenceRangeState,
   UpdateObservationResponse
 } from "./types.js";
-import type { BodyCompositionDraft, UploadImportDraft } from "./parsers.js";
+import type { BloodTestDraft, BodyCompositionDraft, UploadImportDraft } from "./parsers.js";
 
 export const apiErrorResponseSchema = z.object({
   error: z.string(),
@@ -736,6 +736,28 @@ export const bodyCompositionDraftResponseSchema: z.ZodType<BodyCompositionDraft>
   sourceText: z.string(),
   checksum: z.string(),
   parserVersion: z.literal("body-composition-text-v1"),
+  diagnostics: z.array(z.string()),
+  rows: z.array(z.object({
+    id: z.string(),
+    label: z.string(),
+    measurementCode: z.string(),
+    displayName: z.string(),
+    value: z.number(),
+    unit: z.string(),
+    observedAt: z.string().optional(),
+    confidence: draftRowConfidenceSchema,
+    sourceText: z.string().optional(),
+    included: z.boolean(),
+    generatedCode: z.boolean().optional()
+  }).strict())
+}).strict();
+
+export const bloodTestDraftResponseSchema: z.ZodType<BloodTestDraft> = z.object({
+  fileName: z.string(),
+  reportDate: z.string().optional(),
+  sourceText: z.string(),
+  checksum: z.string(),
+  parserVersion: z.literal("blood-test-text-v1"),
   diagnostics: z.array(z.string()),
   rows: z.array(z.object({
     id: z.string(),

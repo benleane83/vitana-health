@@ -2,6 +2,7 @@ import express from "express";
 import { z } from "zod";
 import {
   bodyCompositionDraftResponseSchema,
+  bloodTestDraftResponseSchema,
   buildBodyCompositionImportFromDraft,
   buildBloodTestImportFromDraft,
   buildManualLabEntryImport,
@@ -262,7 +263,7 @@ export function makeImportRoutes(storeManager: ProfileStoreManager): express.Rou
       const draft = parseBloodTestScanText(parsed.fileName, extracted.text, undefined, {
         excludedDates: profile.birthDate ? [profile.birthDate] : []
       });
-      sendJson(response, bodyCompositionDraftResponseSchema, {
+      sendJson(response, bloodTestDraftResponseSchema, {
         ...draft,
         diagnostics: [...extracted.diagnostics, ...draft.diagnostics].slice(0, 75)
       });

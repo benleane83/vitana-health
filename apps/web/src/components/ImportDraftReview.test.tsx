@@ -62,6 +62,29 @@ describe("ImportDraftReview", () => {
     expect(screen.getByRole("option", { name: /Weight Body/ })).toBeInTheDocument();
     expect(screen.queryByText(/Weight \(weight\)/)).not.toBeInTheDocument();
   });
+
+  it("keeps Add row at the bottom of the selected group", () => {
+    render(<ReviewHarness initialRows={initialRows} />);
+
+    const selected = screen.getByRole("rowgroup", { name: "Selected for save, 2 measurements" });
+    expect(selected).toContainElement(screen.getByRole("button", { name: "Add row" }));
+    expect(selected.lastElementChild).toHaveTextContent("Add row");
+  });
+
+  it("removes an empty manually added row when it is excluded", () => {
+    const addedRow: UploadEditableRow = {
+      ...row("manual", "Added measurement", true, "low"),
+      value: "",
+      manuallyAdded: true
+    };
+    render(<ReviewHarness initialRows={[...initialRows, addedRow]} />);
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Row 5: save Added measurement" }));
+
+    expect(screen.queryByRole("checkbox", { name: "Row 5: save Added measurement" })).not.toBeInTheDocument();
+    expect(screen.getByRole("rowgroup", { name: "Selected for save, 2 measurements" })).toBeInTheDocument();
+    expect(screen.getByRole("rowgroup", { name: "Not selected, 2 measurements" })).toBeInTheDocument();
+  });
 });
 
 function ReviewHarness({ initialRows: startingRows }: { initialRows: UploadEditableRow[] }) {
@@ -79,6 +102,7 @@ function ReviewHarness({ initialRows: startingRows }: { initialRows: UploadEdita
       onRowChange={(id, patch) => setRows((current) => current.map((entry) =>
         entry.id === id ? { ...entry, ...patch } : entry
       ))}
+      onRemoveRow={(id) => setRows((current) => current.filter((entry) => entry.id !== id))}
       onAddRow={() => undefined}
       onCommit={(event) => event.preventDefault()}
     />

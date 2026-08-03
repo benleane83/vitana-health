@@ -22,6 +22,7 @@ export function ImportDraftReview({
   measurementTypes,
   units,
   onRowChange,
+  onRemoveRow,
   onAddRow,
   onCommit
 }: {
@@ -37,6 +38,7 @@ export function ImportDraftReview({
   measurementTypes: MeasurementType[];
   units: UnitSystem;
   onRowChange: (id: string, patch: Partial<UploadEditableRow>) => void;
+  onRemoveRow: (id: string) => void;
   onAddRow: () => void;
   onCommit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
@@ -72,7 +74,13 @@ export function ImportDraftReview({
             checked={row.included}
             id={`upload-include-${row.id}`}
             aria-label={`Row ${rowNumber}: save ${row.displayName}`}
-            onChange={(event) => onRowChange(row.id, { included: event.target.checked })}
+            onChange={(event) => {
+              if (!event.target.checked && row.manuallyAdded === true && !row.value.trim()) {
+                onRemoveRow(row.id);
+                return;
+              }
+              onRowChange(row.id, { included: event.target.checked });
+            }}
           />
         </span>
         <span role="cell" className="bodycomp-measurement-cell">
@@ -209,6 +217,9 @@ export function ImportDraftReview({
           {selectedRows.length > 0
             ? selectedRows.map(renderRow)
             : <p className="bodycomp-row-group-empty">Select at least one measurement to save it.</p>}
+          <div className="bodycomp-row-group-actions">
+            <button disabled={busy} type="button" onClick={onAddRow}>Add row</button>
+          </div>
         </div>
         <div
           className="bodycomp-row-group"
@@ -226,7 +237,6 @@ export function ImportDraftReview({
       </div>
 
       <div className="labs-actions">
-        <button disabled={busy} type="button" onClick={onAddRow}>Add row</button>
         <span className="empty">Only selected rows will be saved as observations.</span>
         <button disabled={busy || includedCount === 0 || Boolean(staleMappingWarning)} type="submit">
           Save approved rows

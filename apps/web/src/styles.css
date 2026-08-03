@@ -2048,6 +2048,30 @@ h3 {
   justify-items: start;
 }
 
+.report-upload-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.report-upload-status::before {
+  width: 0.85rem;
+  height: 0.85rem;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: report-upload-spin 0.8s linear infinite;
+  content: "";
+  flex: 0 0 auto;
+}
+
+@keyframes report-upload-spin {
+  to { transform: rotate(360deg); }
+}
+
 .labs-manual-meta {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -4580,11 +4604,27 @@ button.stat {
 }
 
 .care-switch,
-.care-filters,
 .care-editor-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
+}
+
+.care-filters {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.4fr) minmax(136px, 1fr) minmax(126px, 0.9fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.care-filters input,
+.care-filters select {
+  min-width: 0;
+}
+
+.care-filters button {
+  min-height: 44px;
+  white-space: nowrap;
 }
 
 .care-switch button,
@@ -4608,6 +4648,14 @@ button.stat {
   align-items: start;
 }
 
+.care-layout.is-empty {
+  grid-template-columns: 1fr;
+}
+
+.care-layout.is-empty .care-editor-panel {
+  display: none;
+}
+
 .care-list-panel,
 .care-editor-panel {
   display: grid;
@@ -4617,6 +4665,59 @@ button.stat {
 .care-results {
   display: grid;
   gap: var(--space-3);
+}
+
+.care-empty-state {
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: var(--space-3);
+  padding: var(--space-6);
+  border-block: 1px solid var(--line);
+  text-align: center;
+}
+
+.care-empty-state-icon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+}
+
+.care-empty-state h2 {
+  margin: 0;
+  font-size: 1.28rem;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+
+.care-empty-copy {
+  width: 100%;
+}
+
+.care-empty-state p {
+  width: 100%;
+  margin: var(--space-2) auto 0;
+  color: var(--muted);
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.care-empty-state .care-empty-secondary {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.care-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
 }
 
 .care-row {
@@ -4633,6 +4734,35 @@ button.stat {
 .care-row-content {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+.care-row-select {
+  min-height: 44px;
+  display: grid;
+  justify-items: start;
+  gap: var(--space-1);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  padding: 0;
+  color: var(--text);
+  font-weight: inherit;
+  text-align: left;
+}
+
+.care-row-select:hover:not(:disabled) {
+  background: transparent;
+  color: var(--primary-strong);
+  transform: none;
+}
+
+.care-row-select[aria-pressed="true"] strong {
+  color: var(--primary-strong);
+}
+
+.care-row-select span {
+  color: var(--muted);
+  line-height: 1.45;
 }
 
 .care-row-actions {
@@ -4712,6 +4842,10 @@ button.stat {
   background: var(--surface-2);
 }
 
+.care-editor-mobile-back {
+  display: none;
+}
+
 .care-editor label {
   display: grid;
   gap: var(--space-1);
@@ -4771,5 +4905,36 @@ button.stat {
 @media (max-width: 900px) {
   .care-layout {
     grid-template-columns: 1fr;
+  }
+
+  .care-layout.has-editor .care-list-panel {
+    display: none;
+  }
+
+  .care-layout.has-editor .care-editor-panel {
+    min-width: 0;
+  }
+
+  .care-editor-mobile-back {
+    min-height: 44px;
+    display: inline-flex;
+    justify-self: start;
+    align-items: center;
+    gap: var(--space-2);
+    border-color: var(--line);
+    background: var(--surface);
+    color: var(--text);
+  }
+
+  .care-filters {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .care-filters input {
+    grid-column: 1 / -1;
+  }
+
+  .care-filters button {
+    grid-column: 1 / -1;
   }
 }

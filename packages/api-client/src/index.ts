@@ -4,6 +4,7 @@ import {
   appBootstrapResponseSchema,
   assignedProfilesResponseSchema,
   bodyCompositionDraftResponseSchema,
+  bloodTestDraftResponseSchema,
   careItemMutationResponseSchema,
   careItemListQuerySchema,
   completeCareItemInputSchema,
@@ -213,7 +214,7 @@ export function createApiClient(transport: ApiTransport) {
     previewBodyCompositionReport: (payload: ReportPreviewPayload) =>
       request(bodyCompositionDraftResponseSchema, "/api/import/body-composition/preview", { method: "POST", body: payload }),
     previewBloodTestReport: (payload: ReportPreviewPayload) =>
-      request(bodyCompositionDraftResponseSchema, "/api/import/blood-test/preview", { method: "POST", body: payload }),
+      request(bloodTestDraftResponseSchema, "/api/import/blood-test/preview", { method: "POST", body: payload }),
     commitBodyCompositionReport: (payload: BodyCompositionDraftCommitPayload) =>
       request(importMutationResponseSchema, "/api/import/body-composition/commit", { method: "POST", body: payload }),
     commitBloodTestReport: (payload: BodyCompositionDraftCommitPayload) =>
