@@ -42,6 +42,7 @@ export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Rout
         question: parsed.question,
         timezone: parsed.timezone,
         debug: parsed.debug,
+        context: parsed.context,
         allowCloud: hasCloudAiConsent(await activeStore().getProfile())
       });
       response.status(result.ok ? 200 : result.status).json(result.body);

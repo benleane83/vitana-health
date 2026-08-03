@@ -70,6 +70,83 @@ describe("AI query planner domain sources", () => {
 });
 
 describe("AI query planner reliability contract", () => {
+  it("provides only bounded semantic context for an elliptical follow-up", async () => {
+    callConfiguredModel.mockResolvedValue(modelResponse({
+      intent: "top_n",
+      metric: "steps",
+      aggregation: "max",
+      groupBy: "day",
+      timeRange: { start: "2026-07-01", end: "2026-07-31" },
+      sort: "desc",
+      limit: 1,
+      chartType: "none"
+    }));
+
+    const result = await planAiQuery("Which day was that on?", {
+      context: {
+        version: 1,
+        profileId: "self",
+        source: "metrics",
+        metric: "steps",
+        intent: "aggregation",
+        aggregation: "max",
+        groupBy: null,
+        sort: "desc",
+        resolvedTimeRange: { start: "2026-07-01", end: "2026-07-31" }
+      }
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      dsl: {
+        metric: "steps",
+        intent: "top_n",
+        timeRange: { start: "2026-07-01", end: "2026-07-31" },
+        limit: 1
+      }
+    });
+    const prompt = String(callConfiguredModel.mock.calls[0][0]);
+    expect(prompt).toContain('"metric":"steps"');
+    expect(prompt).toContain('"start":"2026-07-01"');
+    expect(prompt).not.toContain("profileId");
+    expect(prompt).not.toContain("self");
+  });
+
+  it("redacts and flattens free-text filter context before prompting", async () => {
+    callConfiguredModel.mockResolvedValue(modelResponse({
+      source: "health_events",
+      intent: "count",
+      metric: null,
+      aggregation: "count",
+      groupBy: "kind",
+      timeRange: { start: "2026-07-01", end: "2026-07-31" },
+      sort: "desc",
+      limit: 20,
+      chartType: "bar",
+      filters: { provider: "Clinic" }
+    }));
+
+    await planAiQuery("How many were there?", {
+      context: {
+        version: 1,
+        profileId: "self",
+        source: "health_events",
+        metric: null,
+        intent: "count",
+        aggregation: "count",
+        groupBy: "kind",
+        sort: "desc",
+        filters: { provider: "<tag>\nuser@example.com" },
+        resolvedTimeRange: { start: "2026-07-01", end: "2026-07-31" }
+      }
+    });
+
+    const prompt = String(callConfiguredModel.mock.calls[0][0]);
+    expect(prompt).not.toContain("<tag>");
+    expect(prompt).not.toContain("user@example.com");
+    expect(prompt).toContain("[redacted-email]");
+  });
+
   it("uses the JSON Schema subset supported by Foundry structured outputs", () => {
     const schema = JSON.stringify(QUERY_DSL_JSON_SCHEMA);
 

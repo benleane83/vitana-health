@@ -1266,16 +1266,28 @@ describe("DuckDbRepository fidelity", () => {
 
     const database = await openEncryptedDuckDbDatabase(root, databasePath, key, { httpfsExtensionPath });
     try {
-      const rows = await all(database.connection, `
+      const aggregateRows = await all(database.connection, `
         SELECT average, minimum, maximum, measurement_count
         FROM measurement_aggregates
         WHERE measurement_code = 'heart_rate'
         ORDER BY start_at DESC;
       `);
-      expect(rows).toEqual([
+      expect(aggregateRows).toEqual([
         { average: 73, minimum: 64, maximum: 91, measurement_count: 19n },
         { average: 100, minimum: 100, maximum: 100, measurement_count: 1n }
       ]);
+      const dailyRows = await all(database.connection, `
+        SELECT avg_value, min_value, max_value, n, unit
+        FROM v_daily_metrics
+        WHERE measurement_code = 'heart_rate';
+      `);
+      expect(dailyRows).toEqual([{
+        avg_value: 74.35,
+        min_value: 64,
+        max_value: 100,
+        n: 20n,
+        unit: "beats/min"
+      }]);
     } finally {
       await closeEncryptedDuckDbDatabase(database);
     }

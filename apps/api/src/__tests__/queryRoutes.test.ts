@@ -79,8 +79,77 @@ describe("POST /api/query/ai domain sources", () => {
     const response = await request(app).post("/api/query/ai").send({ question: "average heart rate" });
 
     expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({ outcome: "no_data", rowCount: 0, rows: [] });
+    expect(response.body).toMatchObject({
+      outcome: "no_data",
+      rowCount: 0,
+      rows: [],
+      context: {
+        version: 1,
+        profileId: "self",
+        metric: "heart_rate",
+        resolvedTimeRange: { start: expect.any(String), end: expect.any(String) }
+      },
+      suggestedFollowUps: ["Try the last 90 days"]
+    });
     expect(callConfiguredModel).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses matching prior context but excludes its profile scope from the model prompt", async () => {
+    const { app } = queryApp([]);
+    callConfiguredModel.mockResolvedValueOnce(modelText(JSON.stringify({
+      intent: "top_n",
+      metric: "steps",
+      aggregation: "max",
+      groupBy: "day",
+      timeRange: { start: "2026-07-01", end: "2026-07-31" },
+      sort: "desc",
+      limit: 1,
+      chartType: "none"
+    })));
+
+    const response = await request(app).post("/api/query/ai").send({
+      question: "Which day was that on?",
+      context: {
+        version: 1,
+        profileId: "self",
+        source: "metrics",
+        metric: "steps",
+        intent: "aggregation",
+        aggregation: "max",
+        groupBy: null,
+        sort: "desc",
+        resolvedTimeRange: { start: "2026-07-01", end: "2026-07-31" }
+      }
+    });
+
+    expect(response.status).toBe(200);
+    const prompt = String(callConfiguredModel.mock.calls[0][0]);
+    expect(prompt).toContain('"metric":"steps"');
+    expect(prompt).not.toContain("profileId");
+    expect(prompt).not.toContain('"self"');
+  });
+
+  it("ignores prior context scoped to another profile", async () => {
+    const { app } = queryApp([]);
+    callConfiguredModel.mockResolvedValueOnce(modelText(JSON.stringify(metricPlan())));
+
+    const response = await request(app).post("/api/query/ai").send({
+      question: "What about this month?",
+      context: {
+        version: 1,
+        profileId: "someone-else",
+        source: "metrics",
+        metric: "steps",
+        intent: "aggregation",
+        aggregation: "max",
+        groupBy: null,
+        sort: "desc",
+        resolvedTimeRange: { start: "2026-07-01", end: "2026-07-31" }
+      }
+    });
+
+    expect(response.status).toBe(200);
+    expect(String(callConfiguredModel.mock.calls[0][0])).not.toContain("prior_context");
   });
 
   it("does not ask the model to repair an execution failure", async () => {
@@ -96,6 +165,31 @@ describe("POST /api/query/ai domain sources", () => {
     expect(response.body).toMatchObject({
       code: "QUERY_EXECUTION_FAILED",
       diagnostics: { attempts: 1, repaired: false, failureCategory: "execution" }
+    });
+    expect(callConfiguredModel).toHaveBeenCalledTimes(1);
+  });
+
+  it("summarizes a dated latest result without contradicting its local evidence", async () => {
+    const { app } = queryApp([{ day: "2026-08-02T00:00:00.000Z", value: 463, unit: "min" }]);
+    callConfiguredModel.mockResolvedValueOnce(modelText(JSON.stringify({
+      source: "metrics",
+      intent: "latest",
+      metric: "sleep_duration",
+      aggregation: "latest",
+      groupBy: null,
+      timeRange: { start: "2026-07-04", end: "2026-08-03" },
+      sort: "desc",
+      limit: 1,
+      chartType: "none"
+    })));
+
+    const response = await request(app).post("/api/query/ai").send({ question: "Which day was that on?" });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      answer: "Latest sleep duration was 463 min on August 2, 2026.",
+      rows: [{ day: "2026-08-02T00:00:00.000Z", value: 463, unit: "min" }],
+      model: "deterministic-summary"
     });
     expect(callConfiguredModel).toHaveBeenCalledTimes(1);
   });
@@ -155,6 +249,33 @@ describe("POST /api/query/ai domain sources", () => {
     });
     expect(runActiveCompiledQuery).toHaveBeenCalledWith(
       expect.objectContaining({ dialect: "duckdb", sql: expect.stringContaining("FROM v_ai_care_items") })
+    );
+  });
+
+  it("returns grouped exercise counts when DuckDB supplies BigInt values", async () => {
+    const { app, runActiveCompiledQuery } = queryApp([{ activity_type: "walking", count: 3n }]);
+    planThenFailSummary({
+      source: "activities",
+      intent: "list_activities",
+      metric: null,
+      aggregation: "count",
+      groupBy: null,
+      timeRange: { start: "2026-08-01", end: "2026-08-31" },
+      sort: "desc",
+      limit: 1,
+      chartType: "bar"
+    });
+
+    const response = await request(app).post("/api/query/ai").send({ question: "Top exercise this month" });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      question: "Top exercise this month",
+      sourceResolved: "activities",
+      rows: [{ activity_type: "walking", count: 3 }]
+    });
+    expect(runActiveCompiledQuery).toHaveBeenCalledWith(
+      expect.objectContaining({ dialect: "duckdb", sql: expect.stringContaining("COUNT(*) AS count") })
     );
   });
 });

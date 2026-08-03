@@ -18,12 +18,16 @@ const dsl: QueryDSL = {
   chartType: "line"
 };
 
-function fakeStoreManager(backend: string, onQuery?: (query: CompiledQuery) => void): ProfileStoreManager {
+function fakeStoreManager(
+  backend: string,
+  onQuery?: (query: CompiledQuery) => void,
+  rows: Array<Record<string, unknown>> = []
+): ProfileStoreManager {
   return {
     getStorageBackend: () => backend,
     runActiveCompiledQuery: async (query: CompiledQuery) => {
       onQuery?.(query);
-      return [];
+      return rows;
     }
   } as unknown as ProfileStoreManager;
 }
@@ -49,5 +53,19 @@ describe("analytics backend dispatch", () => {
     void runAnalyticsQuery(fakeStoreManager("duckdb", (query) => { received = query; }), compiled);
     expect(received?.dialect).toBe("duckdb");
     expect(received?.sql).toBe(compiled.sql);
+  });
+
+  it("normalizes DuckDB BigInt values for JSON responses", async () => {
+    const compiled = analyticsQueryCompilerFor(fakeStoreManager("duckdb")).compile(dsl);
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+
+    const rows = await runAnalyticsQuery(fakeStoreManager("duckdb", undefined, [{
+      count: 3n,
+      oversized: BigInt(Number.MAX_SAFE_INTEGER) + 1n
+    }]), compiled);
+
+    expect(rows).toEqual([{ count: 3, oversized: "9007199254740992" }]);
+    expect(() => JSON.stringify(rows)).not.toThrow();
   });
 });

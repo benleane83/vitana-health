@@ -21,6 +21,7 @@ import type {
   UpdateObservationResponse,
   UploadImportCommitPayload,
   UploadImportPreviewPayload,
+  AiQueryTurnContext,
   AiQueryResponse as SharedAiQueryResponse,
   AiSettingsResponse as SharedAiSettingsResponse,
   DesktopRuntimeSettingsResponse as SharedDesktopRuntimeSettingsResponse,
@@ -328,10 +329,21 @@ export const api = {
       request(profileDeleteResponseSchema, `/api/profiles/${encodeURIComponent(profileId)}`, { method: "DELETE" })
   },
   query: {
-    ai: (question: string, options?: { timezone?: string; debug?: boolean }) =>
+    ai: (question: string, options?: {
+      timezone?: string;
+      debug?: boolean;
+      context?: AiQueryTurnContext;
+      signal?: AbortSignal;
+    }) =>
       request(aiQueryResponseSchema, "/api/query/ai", {
         method: "POST",
-        body: { question, ...options }
+        body: {
+          question,
+          timezone: options?.timezone,
+          debug: options?.debug,
+          context: options?.context
+        },
+        signal: options?.signal
       })
   },
   llm: {

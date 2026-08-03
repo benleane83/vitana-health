@@ -1,4 +1,5 @@
-export const dailyMetricsViewSql = `
+function buildDailyMetricsViewSql(measurementAggregateSource: string): string {
+  return `
   CREATE OR REPLACE VIEW v_daily_metrics AS
   WITH daily_source_metrics AS (
     SELECT
@@ -25,6 +26,7 @@ export const dailyMetricsViewSql = `
       MIN(unit) AS unit
     FROM time_series_samples
     GROUP BY 1, 2
+    ${measurementAggregateSource}
   )
   SELECT
     day,
@@ -37,6 +39,30 @@ export const dailyMetricsViewSql = `
   FROM daily_source_metrics
   GROUP BY 1, 2
 `;
+}
+
+const measurementAggregateDailySourceSql = `
+    UNION ALL
+    SELECT
+      COALESCE(calendar_date, DATE(start_at)) AS day,
+      measurement_code,
+      average AS avg_value,
+      minimum AS min_value,
+      maximum AS max_value,
+      measurement_count AS n,
+      unit
+    FROM measurement_aggregates a
+    WHERE a.granularity = '15m' OR (
+      a.granularity = 'day' AND a.end_at <= COALESCE((
+        SELECT MIN(recent.start_at)
+        FROM measurement_aggregates recent
+        WHERE recent.measurement_code = a.measurement_code AND recent.granularity = '15m'
+      ), TIMESTAMPTZ 'infinity')
+    )
+`;
+
+export const dailyMetricsViewSql = buildDailyMetricsViewSql(measurementAggregateDailySourceSql);
+export const dailyMetricsWithoutAggregatesViewSql = buildDailyMetricsViewSql("");
 
 export const weeklyMetricsViewSql = `
   CREATE OR REPLACE VIEW v_weekly_metrics AS

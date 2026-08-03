@@ -51,10 +51,48 @@ export const healthResponseSchema = z.object({
 }).strict();
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
 
+export const aiQueryContextFiltersSchema = z.object({
+  kind: z.string().trim().min(1).max(80).optional(),
+  status: z.enum(["completed", "entered-in-error", "open", "cancelled", "skipped"]).optional(),
+  source: z.enum([
+    "health-connect",
+    "manual-entry",
+    "blood-test-csv",
+    "observation-csv",
+    "structured-upload",
+    "blood-test-report",
+    "body-composition-report",
+    "derived"
+  ]).optional(),
+  provider: z.string().trim().min(1).max(120).optional(),
+  priority: z.enum(["low", "normal", "high"]).optional(),
+  code: z.string().trim().min(1).max(80).optional(),
+  completion: z.enum(["completed", "incomplete"]).optional(),
+  dueWithinRange: z.boolean().optional()
+}).strict();
+
+export const aiQueryTurnContextSchema = z.object({
+  version: z.literal(1),
+  profileId: z.string().trim().min(1).max(120),
+  source: z.enum(["metrics", "activities", "health_events", "care_items"]),
+  metric: z.string().trim().min(1).max(80).nullable(),
+  intent: z.enum(["timeseries", "aggregation", "top_n", "latest", "list_activities", "list", "count", "overdue"]),
+  aggregation: z.enum(["avg", "max", "min", "sum", "count", "latest"]),
+  groupBy: z.enum(["day", "week", "month", "kind", "status", "source", "priority", "due_bucket"]).nullable(),
+  sort: z.enum(["asc", "desc"]),
+  filters: aiQueryContextFiltersSchema.optional(),
+  resolvedTimeRange: z.object({
+    start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+  }).strict()
+}).strict();
+export type AiQueryTurnContext = z.infer<typeof aiQueryTurnContextSchema>;
+
 export const aiQueryRequestSchema = z.object({
   question: z.string().min(3).max(500),
   timezone: z.string().max(80).optional(),
-  debug: z.boolean().optional().default(false)
+  debug: z.boolean().optional().default(false),
+  context: aiQueryTurnContextSchema.optional()
 }).strict();
 export type AiQueryRequest = z.input<typeof aiQueryRequestSchema>;
 
@@ -112,6 +150,8 @@ export const aiQueryResponseSchema = z.object({
   model: z.string().optional(),
   modelError: z.string().optional(),
   suggestedRephrase: z.string().optional(),
+  context: aiQueryTurnContextSchema.optional(),
+  suggestedFollowUps: z.array(z.string().trim().min(3).max(120)).max(3).default([]),
   debug: aiQueryDiagnosticsSchema.optional()
 }).passthrough();
 export type AiQueryResponse = z.infer<typeof aiQueryResponseSchema>;

@@ -5,7 +5,7 @@ The AI query endpoint provides broad natural-language coverage over your local w
 ## Architecture
 
 ```text
-question -> AI DSL planner -> validate shape and semantics -> compile to SQL -> validate SQL -> execute DuckDB -> summarize answer
+question + optional bounded prior context -> AI DSL planner -> validate shape and semantics -> compile to SQL -> validate SQL -> execute DuckDB -> summarize answer
 ```
 
 1. **AI DSL Planner** (`aiQueryPlanner.ts`) requests a strict JSON query DSL (not raw SQL), then validates its Zod shape and source/intent/metric semantics. Compatible models receive a JSON Schema; BYO endpoints that reject schema controls fall back to the same prompt contract.
@@ -27,6 +27,9 @@ Optional fields:
 
 - `timezone` (IANA string)
 - `debug` (boolean, adds planner timing to response)
+- `context` (the strict, profile-scoped semantic context returned by the previous successful response)
+
+The desktop app keeps one conversation in memory for the active profile. Follow-up requests send only the previous validated source, metric, intent, aggregation, grouping, filters, sort direction, and resolved absolute dates. They do not send the visible transcript, previous answer, SQL, or unrestricted result rows. Context is cleared when the profile changes, the app restarts, or the user starts a new conversation.
 
 ## Response fields
 
@@ -42,6 +45,21 @@ Optional fields:
 | `confidence` | Internal heuristic retained for diagnostics; it is not displayed as calibrated certainty |
 | `limitations` | Any caveats or planner assumptions |
 | `resolvedTimeRange` | The exact date range applied to the query |
+| `context` | Bounded semantic context that can accompany the next follow-up request |
+| `suggestedFollowUps` | Up to three deterministic follow-ups supported by the current compiler |
+
+## Conversational follow-ups
+
+The planner may use prior context only to fill details omitted by an elliptical follow-up. Explicit details in the current question always take precedence, and a complete question on another topic ignores prior context. Inherited relative periods are frozen to the previous response's absolute dates so "Which day was that on?" does not silently shift as calendar time changes.
+
+For example:
+
+1. `What were my max daily steps last month?`
+2. `Which day was that on?`
+
+The second turn inherits the `steps` metric and prior absolute month, then creates and validates a new top-day DSL, compiles fresh SQL, and executes it against local data. Prior context helps interpretation only; it is never treated as evidence for an answer.
+
+Conversation history is session-only and capped at 25 questions. The first version does not persist, name, archive, export, or synchronize conversations.
 
 ## Supported query classes
 
@@ -62,6 +80,8 @@ Optional fields:
 - **Graceful fallback**: unsupported questions return a clarifying limitations message and suggested rephrase rather than raw model output.
 - **Bounded repair**: model-controlled plan failures permit one repair call; compiler safety and execution failures permit none.
 - **Private diagnostics**: `debug: true` adds categories, attempt counts, structured-output mode, and timings, but never raw questions, result rows, API keys, or full model responses.
+- **Bounded follow-up context**: strict schemas reject transcript, answer, SQL, raw-row, and unknown fields. Context from another active profile is ignored.
+- **Fresh evidence per turn**: every follow-up creates a new validated DSL and executes fresh local SQL; prior answers are never reused as query evidence.
 
 ## Time semantics
 
@@ -80,6 +100,7 @@ Calendar month/week boundaries are resolved server-side before SQL compilation:
 - The AI planner requires a running model runtime (Ollama or OpenAI-compatible). If the model is unavailable, a graceful error with suggested rephrases is returned.
 - Compound queries (for example, steps and heart rate together) may be simplified to the first metric.
 - Cross-source comparisons are not supported; each query targets one dataset.
+- Conversation context covers the latest successful semantic query only; it is not general-purpose chat memory.
 - Health events support list, count, latest, and day/week count trends. Care items support list, grouped count, due-window, and overdue queries.
 - Lab marker questions are not currently supported by the AI query endpoint; review lab results in the Labs and Summary views.
 
