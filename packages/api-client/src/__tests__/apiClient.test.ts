@@ -173,7 +173,7 @@ describe("createApiClient", () => {
           diagnostics: []
         },
         outcome: Object.fromEntries([
-          "sourceImport", "dataSource", "observations", "observationGroups", "timeSeriesSamples", "activitySessions"
+          "sourceImport", "dataSource", "observations", "observationGroups", "timeSeriesSamples", "measurementAggregates", "activitySessions"
         ].map((key) => [key, { attempted: 0, accepted: 0, duplicates: 0, rejected: 0 }]))
       });
     };
@@ -302,7 +302,7 @@ describe("createApiClient", () => {
           diagnostics: []
         },
         outcome: Object.fromEntries([
-          "sourceImport", "dataSource", "observations", "observationGroups", "timeSeriesSamples", "activitySessions"
+          "sourceImport", "dataSource", "observations", "observationGroups", "timeSeriesSamples", "measurementAggregates", "activitySessions"
         ].map((key) => [key, { attempted: 0, accepted: 0, duplicates: 0, rejected: 0 }]))
       });
     };

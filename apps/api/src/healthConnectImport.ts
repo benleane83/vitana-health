@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  calendarDateToUtcMidnight,
   checksum,
   healthConnectImportRequestSchema,
   type ActivitySession,
@@ -38,18 +39,25 @@ export function parseHealthConnectImport(payload: HealthConnectImportRequest): P
   if (dailyAggregateStepCount > 0) {
     diagnostics.push(`Skipped ${dailyAggregateStepCount} daily aggregate Steps record(s).`);
   }
-  const steps = normalizedSteps
+  const normalizedStepSamples = normalizedSteps
     .filter((item) => !isDailyAggregateInterval(item.startAt!, item.endAt!) || isHealthConnectDailyAggregate(item.provenance))
-    .map((item) => ({
-      id: stableId("sample", ["steps", item.startAt ?? "", item.endAt ?? "", String(item.value), sourceId, JSON.stringify(item.provenance ?? {})]),
-      measurementCode: "steps",
-      startAt: item.startAt ?? importedAt,
-      endAt: item.endAt ?? importedAt,
-      value: item.value,
-      unit: "count",
-      sourceId,
-      sourceJson: item.provenance
-    }));
+    .map((item) => {
+      const calendarDate = stepCalendarDate(item.endAt!, item.provenance);
+      const dayTimestamp = calendarDateToUtcMidnight(calendarDate);
+      if (!dayTimestamp) return undefined;
+      return {
+        id: stableId("sample", ["steps", calendarDate, sourceId]),
+        measurementCode: "steps",
+        startAt: dayTimestamp,
+        endAt: dayTimestamp,
+        value: item.value,
+        unit: "count",
+        sourceId,
+        sourceJson: item.provenance
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== undefined);
+  const steps = [...new Map(normalizedStepSamples.map((item) => [item.id, item])).values()];
 
   const heartRate = toMeasurementAggregates(payload.heartRate, "heart_rate", "beats/min", sourceId);
   const oxygenSaturation = toObservationSamples(payload.oxygenSaturation, "oxygen_saturation", "%", sourceId);
@@ -216,6 +224,14 @@ function isDailyAggregateInterval(startAt: string, endAt: string): boolean {
 
 function isHealthConnectDailyAggregate(provenance: Record<string, unknown> | undefined): boolean {
   return provenance?.aggregation === "health-connect-daily";
+}
+
+function stepCalendarDate(endAt: string, provenance: Record<string, unknown> | undefined): string {
+  const calendarDate = provenance?.calendarDate;
+  if (typeof calendarDate === "string" && calendarDateToUtcMidnight(calendarDate)) {
+    return calendarDate;
+  }
+  return endAt.slice(0, 10);
 }
 
 function toObservationSamples(

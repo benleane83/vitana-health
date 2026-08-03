@@ -437,6 +437,62 @@ export async function deleteDailyAggregateStepSamples(
   };
 }
 
+export async function normalizeHealthConnectStepSamples(
+  connection: duckdb.Connection,
+  sourceId: string,
+  replacementDates: readonly string[]
+): Promise<string[]> {
+  const dates = [...new Set(replacementDates.map((value) => value.slice(0, 10)))];
+  const deletedIds: string[] = [];
+  if (dates.length > 0) {
+    const placeholders = dates.map(() => "?").join(", ");
+    const rows = await allWithParams(
+      connection,
+      `SELECT id FROM time_series_samples
+       WHERE measurement_code = 'steps' AND source_id = ? AND CAST(end_at AS DATE) IN (${placeholders});`,
+      sourceId,
+      ...dates
+    );
+    deletedIds.push(...rows.map((row) => String(row.id)));
+    if (deletedIds.length > 0) {
+      await run(
+        connection,
+        `DELETE FROM time_series_samples WHERE id IN (${deletedIds.map(() => "?").join(", ")});`,
+        ...deletedIds
+      );
+    }
+  }
+
+  const duplicateRows = await allWithParams(connection, `
+    SELECT duplicate.id
+    FROM time_series_samples AS duplicate
+    JOIN time_series_samples AS keeper
+      ON keeper.measurement_code = duplicate.measurement_code
+      AND keeper.source_id = duplicate.source_id
+      AND CAST(keeper.end_at AS DATE) = CAST(duplicate.end_at AS DATE)
+      AND (keeper.end_at > duplicate.end_at OR (keeper.end_at = duplicate.end_at AND keeper.id > duplicate.id))
+    WHERE duplicate.measurement_code = 'steps' AND duplicate.source_id = ?;
+  `, sourceId);
+  const duplicateIds = duplicateRows.map((row) => String(row.id));
+  if (duplicateIds.length > 0) {
+    deletedIds.push(...duplicateIds);
+    await run(
+      connection,
+      `DELETE FROM time_series_samples WHERE id IN (${duplicateIds.map(() => "?").join(", ")});`,
+      ...duplicateIds
+    );
+  }
+
+  await run(
+    connection,
+    `UPDATE time_series_samples
+     SET start_at = DATE_TRUNC('day', end_at), end_at = DATE_TRUNC('day', end_at)
+     WHERE measurement_code = 'steps' AND source_id = ?;`,
+    sourceId
+  );
+  return deletedIds;
+}
+
 export async function deleteStepSamples(
   connection: duckdb.Connection
 ): Promise<DeleteObservationsByTypeResult> {

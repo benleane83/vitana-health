@@ -1,11 +1,12 @@
 import type duckdb from "duckdb";
 import type { DataSource, Observation, SourceImport } from "@vitana/shared";
-import { insertAudit, nextOrdinal } from "./duckdbCommands.js";
+import { insertAudit, nextOrdinal, normalizeHealthConnectStepSamples } from "./duckdbCommands.js";
 import { storageCounts } from "./duckdbProjections.js";
 import {
   isReplicatedMeasurementCode,
   replicaObservationUpsert,
   replicaSourceImport,
+  replicaTombstone,
   replicaUpsert,
   type ReplicaChangeInput
 } from "./duckdbReplicaChanges.js";
@@ -81,6 +82,19 @@ export async function mergeImport(
     }
   }
 
+  const healthConnectStepDeletes = parsed.sourceImport.sourceKind === "health-connect"
+    ? await normalizeHealthConnectStepSamples(
+      connection,
+      parsed.dataSource.id,
+      parsed.timeSeriesSamples
+        .filter((entry) => entry.measurementCode === "steps")
+        .map((entry) => entry.startAt)
+    )
+    : [];
+  for (const id of healthConnectStepDeletes) {
+    replicaChanges.push(replicaTombstone("time-series-sample", id));
+  }
+
   const observations = await insertObservationRows(
     connection, parsed.observations, await nextOrdinal(connection, "observations", parsed.observations.length));
   rejections.push(...observations.rejections);
@@ -88,14 +102,23 @@ export async function mergeImport(
     replicaChanges.push(...replicaObservationUpsert(entry));
   }
 
+  const stepSamples = parsed.timeSeriesSamples.filter((entry) => entry.measurementCode === "steps");
+  const otherSamples = parsed.timeSeriesSamples.filter((entry) => entry.measurementCode !== "steps");
+  const sampleFirstOrdinal = await nextOrdinal(connection, "time_series_samples", parsed.timeSeriesSamples.length);
+  const steps = await insertTimeSeriesSampleRows(
+    connection,
+    stepSamples,
+    sampleFirstOrdinal,
+    { updateDuplicatesById: true, returningIds: true }
+  );
   const samples = await insertTimeSeriesSampleRows(
     connection,
-    parsed.timeSeriesSamples,
-    await nextOrdinal(connection, "time_series_samples", parsed.timeSeriesSamples.length),
+    otherSamples,
+    sampleFirstOrdinal + stepSamples.length,
     { ignoreDuplicates: true, returningIds: true }
   );
-  rejections.push(...samples.rejections);
-  for (const entry of samples.inserted) {
+  rejections.push(...steps.rejections, ...samples.rejections);
+  for (const entry of [...steps.inserted, ...samples.inserted]) {
     if (isReplicatedMeasurementCode(entry.measurementCode)) {
       replicaChanges.push(replicaUpsert("time-series-sample", entry.id, entry));
     }
@@ -151,7 +174,9 @@ export async function mergeImport(
       parsed.observations.length, observations.inserted.length, observations.rejections.length),
     observationGroups: categoryOutcome(parsed.observationGroups.length, insertedGroupIds.size, 0),
     timeSeriesSamples: categoryOutcome(
-      parsed.timeSeriesSamples.length, samples.inserted.length, samples.rejections.length),
+      parsed.timeSeriesSamples.length,
+      steps.inserted.length + samples.inserted.length,
+      steps.rejections.length + samples.rejections.length),
     measurementAggregates: categoryOutcome(parsed.measurementAggregates.length, aggregateIds.length, 0),
     activitySessions: categoryOutcome(parsed.activitySessions.length, activities.length, 0)
   };
