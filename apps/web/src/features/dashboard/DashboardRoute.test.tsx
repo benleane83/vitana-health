@@ -35,12 +35,51 @@ function renderDashboard(onNavigateCare = vi.fn()) {
   return onNavigateCare;
 }
 
+const analyticsWithTrend = {
+  counts: { imports: 1, observations: 2, samples: 0, activities: 0, insights: 0, healthEvents: 0, careItems: 0 },
+  latestMetrics: [],
+  trendCards: [{
+    code: "weight",
+    label: "Weight",
+    unit: "kg",
+    points: [
+      { date: "2026-08-01T00:00:00.000Z", value: 75 },
+      { date: "2026-08-02T00:00:00.000Z", value: 74 }
+    ],
+    direction: "down" as const,
+    summary: "Weight is down over the latest 2 reading(s)."
+  }],
+  labAlerts: [],
+  evidenceDigest: []
+};
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
 });
 
 describe("DashboardRoute upcoming care", () => {
+  it("does not repeat the measurement name in trend descriptions", async () => {
+    vi.spyOn(api.care, "listCareItems").mockResolvedValue({
+      items: [], total: 0, offset: 0, limit: 3, hasMore: false
+    });
+
+    render(
+      <DashboardRoute
+        analytics={analyticsWithTrend}
+        profile={{ id: "self", displayName: "Local user", units: "metric", updatedAt: dateOffset(0) }}
+        onEditProfile={vi.fn()}
+        onNavigateSummary={vi.fn()}
+        onNavigateMeasurement={vi.fn()}
+        onNavigateCare={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("Weight", { selector: "strong" })).toBeInTheDocument();
+    expect(screen.getByText("is down over the latest 2 reading(s).")).toBeInTheDocument();
+    expect(screen.queryByText("Weight is down over the latest 2 reading(s).")).not.toBeInTheDocument();
+  });
+
   it("loads overdue and next-30-day items, caps the preview, and routes item actions", async () => {
     const listCareItems = vi.spyOn(api.care, "listCareItems").mockResolvedValue({
       items: [

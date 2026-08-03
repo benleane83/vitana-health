@@ -32,6 +32,7 @@ export function App() {
     () => summaryDetailCodeFromPathname(window.location.pathname)
   );
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const pathnameRef = useRef(window.location.pathname);
 
   // Accessible confirmation dialog state (replaces window.confirm)
   const [confirmState, setConfirmState] = useState<{
@@ -59,6 +60,10 @@ export function App() {
   // Popstate (browser back/forward)
   useEffect(() => {
     const onPopState = () => {
+      if (pathnameRef.current !== window.location.pathname) {
+        setMessage(undefined);
+        pathnameRef.current = window.location.pathname;
+      }
       setRoute(routeFromPathname(window.location.pathname));
       setInsightsTab(insightsTabFromPathname(window.location.pathname));
       setCareView(careViewFromPathname(window.location.pathname));
@@ -89,6 +94,13 @@ export function App() {
     };
   }, [profileMenuOpen]);
 
+  function pushPath(nextPath: string) {
+    if (window.location.pathname === nextPath) return;
+    setMessage(undefined);
+    window.history.pushState({}, "", nextPath);
+    pathnameRef.current = nextPath;
+  }
+
   function navigate(nextRoute: AppRoute, nextImportMode: ImportMode = importMode) {
     const routePaths: Record<AppRoute, string> = {
       dashboard: "/",
@@ -100,7 +112,7 @@ export function App() {
       settings: settingsPath(settingsView)
     };
     const nextPath = routePaths[nextRoute] ?? "/";
-    if (window.location.pathname !== nextPath) window.history.pushState({}, "", nextPath);
+    pushPath(nextPath);
     if (nextRoute === "import") setImportMode(nextImportMode);
     if (nextRoute === "track") setSummaryDetailCode(undefined);
     setRoute(nextRoute);
@@ -108,7 +120,7 @@ export function App() {
 
   function navigateCare(nextView: "items" | "health-events") {
     const nextPath = carePath(nextView);
-    if (window.location.pathname !== nextPath) window.history.pushState({}, "", nextPath);
+    pushPath(nextPath);
     setCareView(nextView);
     setSelectedCareItemId(undefined);
     setRoute("care");
@@ -116,7 +128,7 @@ export function App() {
 
   function navigateUpcomingCare(careItemId?: string) {
     const nextPath = carePath("items", careItemId);
-    if (window.location.pathname !== nextPath) window.history.pushState({}, "", nextPath);
+    pushPath(nextPath);
     setCareView("items");
     setSelectedCareItemId(careItemId);
     setRoute("care");
@@ -124,21 +136,21 @@ export function App() {
 
   function navigateInsights(nextTab: InsightsTab) {
     const nextPath = insightsPath(nextTab);
-    if (window.location.pathname !== nextPath) window.history.pushState({}, "", nextPath);
+    pushPath(nextPath);
     setInsightsTab(nextTab);
     setRoute("insights");
   }
 
   function navigateSettings(nextView: SettingsView) {
     const nextPath = settingsPath(nextView);
-    if (window.location.pathname !== nextPath) window.history.pushState({}, "", nextPath);
+    pushPath(nextPath);
     setSettingsView(nextView);
     setRoute("settings");
   }
 
   function navigateSummaryDetail(measurementCode: string) {
     const nextPath = trackPath(measurementCode);
-    if (window.location.pathname !== nextPath) window.history.pushState({}, "", nextPath);
+    pushPath(nextPath);
     setRoute("track");
     setSummaryDetailCode(measurementCode);
   }

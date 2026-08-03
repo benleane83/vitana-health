@@ -178,7 +178,7 @@ export function DashboardPage({
                     <div className="trend" key={card.code}>
                       <div>
                         <strong>{card.label}</strong>
-                        <span>{card.summary}</span>
+                        <span>{formatTrendSummary(card.label, card.summary)}</span>
                       </div>
                       <MiniChart label={card.label} points={card.points} />
                     </div>
@@ -218,6 +218,11 @@ export function DashboardPage({
 
 function formatCareSummary(total: number): string {
   return `${total} ${total === 1 ? "item needs" : "items need"} attention in the next 30 days.`;
+}
+
+function formatTrendSummary(label: string, summary: string): string {
+  const labelPrefix = `${label} `;
+  return summary.startsWith(labelPrefix) ? summary.slice(labelPrefix.length) : summary;
 }
 
 function isOverdue(item: CareItem): boolean {
