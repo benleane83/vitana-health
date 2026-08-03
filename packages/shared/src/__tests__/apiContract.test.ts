@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   analyticsSummaryResponseSchema,
+  aiQueryRequestSchema,
+  aiQueryTurnContextSchema,
   appBootstrapResponseSchema,
   bloodTestDraftResponseSchema,
   bodyCompositionDraftResponseSchema,
@@ -14,6 +16,27 @@ import {
  * under the hood, so an empty object satisfied every one of them and drift went unnoticed.
  */
 describe("response contracts", () => {
+  it("accepts bounded AI Query context and rejects transcript fields", () => {
+    const context = {
+      version: 1,
+      profileId: "self",
+      source: "metrics",
+      metric: "steps",
+      intent: "aggregation",
+      aggregation: "max",
+      groupBy: null,
+      sort: "desc",
+      resolvedTimeRange: { start: "2026-07-01", end: "2026-07-31" }
+    };
+
+    expect(aiQueryRequestSchema.safeParse({ question: "Which day was that on?", context }).success).toBe(true);
+    expect(aiQueryTurnContextSchema.safeParse({
+      ...context,
+      priorAnswer: "Your maximum was 12,345 steps.",
+      sql: "SELECT * FROM private_data"
+    }).success).toBe(false);
+  });
+
   it("keeps blood-test and body-composition preview parser contracts distinct", () => {
     const draft = {
       fileName: "results.pdf",

@@ -1,10 +1,16 @@
-import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { aiQueryErrorResponseSchema, type AppBootstrap, type BiologicalAgeReport, type CloudAiConsent } from "@vitana/shared";
-import { api, ApiError, type AiQueryResult, type LlmConfig } from "../../api.js";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import {
+  aiQueryErrorResponseSchema,
+  type AiQueryTurnContext,
+  type AppBootstrap,
+  type BiologicalAgeReport,
+  type CloudAiConsent
+} from "@vitana/shared";
+import { api, ApiError, type LlmConfig } from "../../api.js";
 import { ConfirmDialog } from "../../components/ConfirmDialog.js";
 import { AiReviewPage } from "../../pages/AiReviewPage.js";
 import { BiologicalAgePage } from "../../pages/BiologicalAgePage.js";
-import { QueryPage, type QueryFailure } from "../../pages/QueryPage.js";
+import { QueryPage, type QueryFailure, type QueryTurn } from "../../pages/QueryPage.js";
 import type { InsightsTab } from "../../types.js";
 
 type RemoteState<T, TError = string> = {
@@ -14,6 +20,7 @@ type RemoteState<T, TError = string> = {
 };
 
 const insightTabs: InsightsTab[] = ["biological-age", "ai-query", "ai-review"];
+const maxConversationTurns = 25;
 
 export function InsightsRoute({
   tab,
@@ -41,16 +48,34 @@ export function InsightsRoute({
     document.getElementById(`insight-tab-${resolvedTab}`)?.focus();
   }
   const [biologicalAge, setBiologicalAge] = useState<RemoteState<BiologicalAgeReport>>({ busy: false });
-  const [query, setQuery] = useState<RemoteState<AiQueryResult, QueryFailure>>({ busy: false });
+  const [queryTurns, setQueryTurns] = useState<QueryTurn[]>([]);
+  const [queryContext, setQueryContext] = useState<AiQueryTurnContext>();
   const [question, setQuestion] = useState("");
   const [llmConfig, setLlmConfig] = useState<LlmConfig>();
   const [consentBusy, setConsentBusy] = useState(false);
   const [reviewBusy, setReviewBusy] = useState(false);
   const [consentDialogOpen, setConsentDialogOpen] = useState(false);
+  const queryAbortRef = useRef<AbortController | null>(null);
+  const queryGenerationRef = useRef(0);
+  const queryTurnIdRef = useRef(0);
+  const queryBusy = queryTurns.some((turn) => turn.status === "pending");
 
   useEffect(() => {
     void api.llm.config().then(setLlmConfig).catch(() => setLlmConfig(undefined));
   }, []);
+
+  useEffect(() => {
+    queryGenerationRef.current += 1;
+    queryAbortRef.current?.abort();
+    queryAbortRef.current = null;
+    setQueryTurns([]);
+    setQueryContext(undefined);
+    setQuestion("");
+    return () => {
+      queryGenerationRef.current += 1;
+      queryAbortRef.current?.abort();
+    };
+  }, [bootstrap?.profile.id]);
 
   useEffect(() => {
     if (tab !== "biological-age") return;
@@ -72,34 +97,67 @@ export function InsightsRoute({
   async function submitQuery(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const prompt = question.trim();
-    if (!prompt) return;
+    if (!prompt || queryBusy) return;
+    if (queryTurns.length >= maxConversationTurns) {
+      onNotice("This conversation has reached 25 questions. Start a new conversation to continue.");
+      return;
+    }
     const consent = bootstrap?.profile.cloudAiConsent;
     const cloudEnabled = consent?.enabled === true && consent.providerScopeAccepted === true;
     if (llmConfig?.provider === "openai" && !cloudEnabled) {
-      setQuery({
-        busy: false,
+      setQueryTurns((current) => [...current, {
+        id: `query-turn-${++queryTurnIdRef.current}`,
+        question: prompt,
+        status: "error",
         error: {
           code: "CLOUD_CONSENT_REQUIRED",
           message: "Cloud model prompts are disabled. Open provider details to enable cloud prompts."
         }
-      });
+      }]);
       return;
     }
-    setQuery({ busy: true });
+
+    const turnId = `query-turn-${++queryTurnIdRef.current}`;
+    const generation = ++queryGenerationRef.current;
+    const controller = new AbortController();
+    queryAbortRef.current?.abort();
+    queryAbortRef.current = controller;
+    setQueryTurns((current) => [...current, { id: turnId, question: prompt, status: "pending" }]);
+    setQuestion("");
     try {
       const data = await api.query.ai(prompt, {
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        debug: true
+        debug: true,
+        context: queryContext,
+        signal: controller.signal
       });
-      setQuery({ data, busy: false });
+      if (generation !== queryGenerationRef.current) return;
+      setQueryTurns((current) => current.map((turn) => (
+        turn.id === turnId ? { ...turn, status: "answered", result: data } : turn
+      )));
+      setQueryContext(data.context);
     } catch (error) {
-      setQuery({ busy: false, error: queryFailureFrom(error) });
+      if (controller.signal.aborted || generation !== queryGenerationRef.current) return;
+      setQueryTurns((current) => current.map((turn) => (
+        turn.id === turnId ? { ...turn, status: "error", error: queryFailureFrom(error) } : turn
+      )));
+    } finally {
+      if (queryAbortRef.current === controller) queryAbortRef.current = null;
     }
+  }
+
+  function startNewConversation() {
+    queryGenerationRef.current += 1;
+    queryAbortRef.current?.abort();
+    queryAbortRef.current = null;
+    setQueryTurns([]);
+    setQueryContext(undefined);
+    setQuestion("");
+    document.getElementById("ai-question")?.focus();
   }
 
   async function setCloudConsent(enabled: boolean) {
     setConsentBusy(true);
-    setQuery((current) => ({ ...current, error: undefined }));
     try {
       const payload: CloudAiConsent = {
         enabled,
@@ -110,10 +168,7 @@ export function InsightsRoute({
       await onDataChanged();
       onNotice(enabled ? "Cloud prompt consent enabled." : "Cloud prompt consent disabled.");
     } catch (error) {
-      setQuery((current) => ({
-        ...current,
-        error: { message: error instanceof Error ? error.message : "Could not update cloud consent." }
-      }));
+      onNotice(error instanceof Error ? error.message : "Could not update cloud consent.");
     } finally {
       setConsentBusy(false);
     }
@@ -218,13 +273,14 @@ export function InsightsRoute({
               question={question}
               onQuestionChange={setQuestion}
               onSubmit={submitQuery}
-              busy={query.busy}
+              busy={queryBusy}
+              turns={queryTurns}
+              maxTurns={maxConversationTurns}
+              onNewConversation={startNewConversation}
               cloudProvider={llmConfig?.provider}
               cloudConsent={bootstrap?.profile.cloudAiConsent}
               cloudConsentBusy={consentBusy}
               onCloudConsentChange={(enabled) => { void setCloudConsent(enabled); }}
-              result={query.data}
-              error={query.error}
             />
           </div>
         ) : (

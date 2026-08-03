@@ -6,6 +6,7 @@ import {
   aiCareItemsViewSql,
   aiHealthEventsViewSql,
   dailyMetricsViewSql,
+  dailyMetricsWithoutAggregatesViewSql,
   weeklyMetricsViewSql
 } from "../analyticalViews.js";
 
@@ -623,6 +624,15 @@ const analyticalViewStatements = [
  * fingerprint check keeps this a no-op write-wise on every open after the first.
  */
 export async function applyAnalyticalViews(connection: duckdb.Connection): Promise<void> {
+  const aggregateTableRows = await all(connection, `SELECT COUNT(*) AS count
+    FROM information_schema.tables
+    WHERE table_catalog = current_database() AND table_name = 'measurement_aggregates';`);
+  const selectedDailyMetricsViewSql = Number(aggregateTableRows[0]?.count ?? 0) === 1
+    ? dailyMetricsViewSql
+    : dailyMetricsWithoutAggregatesViewSql;
+  const selectedViews = analyticalViewStatements.map((view) => view.name === "v_daily_metrics"
+    ? { ...view, sql: selectedDailyMetricsViewSql }
+    : view);
   const fingerprintRows = await all(connection, "SELECT name, fingerprint FROM schema_objects;");
   const stored = new Map(fingerprintRows.map((row) => [String(row.name), String(row.fingerprint)]));
   const existingRows = await all(
@@ -630,7 +640,7 @@ export async function applyAnalyticalViews(connection: duckdb.Connection): Promi
     "SELECT table_name FROM information_schema.views WHERE table_catalog = current_database();"
   );
   const existing = new Set(existingRows.map((row) => String(row.table_name)));
-  const pending = analyticalViewStatements
+  const pending = selectedViews
     .map((view) => ({ ...view, fingerprint: createHash("sha256").update(view.sql).digest("hex") }))
     .filter((view) => !existing.has(view.name) || stored.get(view.name) !== view.fingerprint);
   if (pending.length === 0) {

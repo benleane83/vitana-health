@@ -3678,6 +3678,29 @@ button.stat {
   margin-inline: auto;
 }
 
+.query-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.query-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 0.48rem 0.78rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.query-reset:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
 .query-provider-badge {
   display: inline-flex;
   align-items: center;
@@ -3710,7 +3733,9 @@ button.stat {
 }
 
 .query-form {
-  margin: var(--space-5) 0 var(--space-2);
+  margin: var(--space-5) 0 0;
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--line);
 }
 
 .query-form label {
@@ -3756,6 +3781,85 @@ button.stat {
   color: var(--muted);
   font-size: 0.88rem;
   margin-bottom: var(--space-3);
+}
+
+.query-transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  list-style: none;
+  padding: 0;
+  margin: var(--space-5) 0 0;
+}
+
+.query-turn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5) 0 var(--space-6);
+  border-top: 1px solid var(--line);
+}
+
+.query-turn:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.query-user-turn {
+  align-self: flex-end;
+  width: min(72%, 650px);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  padding: var(--space-3) var(--space-4);
+}
+
+.query-user-turn > p:last-child,
+.query-assistant-turn > p:last-child {
+  margin: 0;
+  text-wrap: pretty;
+}
+
+.query-assistant-turn {
+  min-width: 0;
+}
+
+.query-speaker {
+  margin: 0 0 var(--space-2);
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.query-pending {
+  color: var(--muted);
+}
+
+.query-follow-ups {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.query-follow-ups button {
+  min-height: 40px;
+  padding: 0.48rem 0.78rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.query-follow-ups button:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.query-limit {
+  margin: var(--space-2) 0 0;
+  color: var(--warning-strong);
+  font-size: 0.9rem;
 }
 
 .query-provider > summary {
@@ -3805,19 +3909,19 @@ button.stat {
 .query-result {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
-  margin-top: var(--space-5);
+  gap: var(--space-4);
+  margin-top: 0;
 }
 
 .query-answer {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  padding: var(--space-4);
+  max-width: 72ch;
 }
 
 .query-answer.no-data {
+  max-width: none;
+  border-radius: var(--radius-md);
   background: var(--surface-2);
+  padding: var(--space-4);
 }
 
 .query-error {
@@ -3825,7 +3929,7 @@ button.stat {
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--danger) 7%, var(--surface));
   padding: var(--space-4);
-  margin-top: var(--space-4);
+  margin-top: 0;
   text-align: left;
 }
 
@@ -3881,6 +3985,38 @@ button.stat {
   gap: var(--space-4);
   font-size: 0.9rem;
   color: var(--muted);
+}
+
+.query-evidence {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+}
+
+.query-evidence > h3 {
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.query-prior-evidence {
+  color: var(--muted);
+}
+
+.query-prior-evidence > summary {
+  width: fit-content;
+  min-height: 36px;
+  padding: var(--space-2) 0;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.query-prior-evidence[open] > summary {
+  margin-bottom: var(--space-2);
 }
 
 .query-meta strong[data-level="high"] { color: var(--success); }
@@ -4032,6 +4168,29 @@ button.stat {
   font-size: 0.82rem;
   color: var(--muted);
   line-height: 1.6;
+}
+
+@media (max-width: 680px) {
+  .query-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .query-reset {
+    align-self: flex-start;
+  }
+
+  .query-user-turn {
+    width: 92%;
+  }
+
+  .query-composer {
+    grid-template-columns: 1fr;
+  }
+
+  .query-composer > button {
+    justify-self: stretch;
+  }
 }
 
 @media (max-width: 1050px) {

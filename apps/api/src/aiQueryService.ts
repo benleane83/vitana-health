@@ -1,4 +1,9 @@
-import { safetyNotice, type AiQueryErrorResponse, type AiQueryResponse } from "@vitana/shared";
+import {
+  safetyNotice,
+  type AiQueryErrorResponse,
+  type AiQueryResponse,
+  type AiQueryTurnContext
+} from "@vitana/shared";
 import { planAiQuery, type PlannerResult, type QueryDSL } from "./aiQueryPlanner.js";
 import { callConfiguredModel } from "./modelClient.js";
 import { sanitizeQuestionForModel, sanitizeRowsForPrompt } from "./privacy.js";
@@ -15,11 +20,20 @@ export type AiQueryServiceResult =
 
 export async function executeAiQuery(
   storeManager: ProfileStoreManager,
-  input: { question: string; timezone?: string; debug?: boolean; allowCloud: boolean }
+  input: {
+    question: string;
+    timezone?: string;
+    debug?: boolean;
+    allowCloud: boolean;
+    context?: AiQueryTurnContext;
+  }
 ): Promise<AiQueryServiceResult> {
+  const activeProfile = await storeManager.getActiveStore().getProfile();
+  const context = input.context?.profileId === activeProfile?.id ? input.context : undefined;
   const planner = await planAiQuery(input.question, {
     timezone: input.timezone,
     allowCloud: input.allowCloud,
+    context,
     validatePlan: (dsl) => {
       const compiled = compileAnalyticsQuery(storeManager, dsl);
       return compiled.ok ? [] : [compiled.error];
@@ -85,6 +99,7 @@ export async function executeAiQuery(
     firstFailureCategory: planner.firstFailureCategory,
     structuredOutputMode: planner.structuredOutputMode
   } : undefined;
+  const turnContext = buildTurnContext(activeProfile.id, planner.dsl, compiled.resolvedTimeRange);
 
   if (rows.length === 0) {
     return {
@@ -105,27 +120,29 @@ export async function executeAiQuery(
         rowCount: 0,
         rows: [],
         chart: buildChartSeries(planner.dsl, []),
+        context: turnContext,
+        suggestedFollowUps: buildSuggestedFollowUps(planner.dsl, "no_data"),
         debug: plannerDebug
       }
     };
   }
 
-  const summaryPrompt = [
+  const deterministicAnswer = buildDeterministicTemporalAnswer(planner.dsl, rows);
+  const modelResult = deterministicAnswer ? undefined : await callConfiguredModel([
     "You are a wellness analytics assistant. Answer the question using only the SQL result rows below.",
     "Provide one concise sentence. Do not diagnose or recommend treatments.",
     `Safety notice: ${safetyNotice}`,
     `Question: ${sanitizeQuestionForModel(input.question)}`,
     `Time range: ${compiled.resolvedTimeRange.label}`,
     `SQL result (first 20 rows): ${JSON.stringify(sanitizeRowsForPrompt(rows.slice(0, 20)))}`
-  ].join("\n");
-
-  const modelResult = await callConfiguredModel(summaryPrompt, {
+  ].join("\n"), {
     allowCloud: input.allowCloud,
     task: "query-summary"
   });
-  const answer = modelResult.ok && modelResult.text
-    ? modelResult.text
-    : buildFallbackAnswer(planner.dsl, rows, compiled.resolvedTimeRange.label);
+  const answer = deterministicAnswer
+    ?? (modelResult?.ok && modelResult.text
+      ? modelResult.text
+      : buildFallbackAnswer(planner.dsl, rows, compiled.resolvedTimeRange.label));
 
   return {
     ok: true,
@@ -144,9 +161,15 @@ export async function executeAiQuery(
       rowCount: rows.length,
       rows: rows.slice(0, 100),
       chart: buildChartSeries(planner.dsl, rows),
-      model: modelResult.ok ? `${modelResult.provider}:${modelResult.model}` : "deterministic-fallback",
-      modelError: modelResult.ok ? undefined : modelResult.error,
-      debug: plannerDebug ? { ...plannerDebug, summaryElapsedMs: modelResult.elapsedMs } : undefined
+      model: deterministicAnswer
+        ? "deterministic-summary"
+        : modelResult?.ok ? `${modelResult.provider}:${modelResult.model}` : "deterministic-fallback",
+      modelError: modelResult && !modelResult.ok ? modelResult.error : undefined,
+      context: turnContext,
+      suggestedFollowUps: buildSuggestedFollowUps(planner.dsl, "answered"),
+      debug: plannerDebug && modelResult
+        ? { ...plannerDebug, summaryElapsedMs: modelResult.elapsedMs }
+        : plannerDebug
     }
   };
 }
@@ -240,6 +263,81 @@ function buildFallbackAnswer(
   return `Found ${rows.length} result(s) for ${metric} over ${timeLabel}.`;
 }
 
+function buildDeterministicTemporalAnswer(
+  dsl: QueryDSL,
+  rows: Array<Record<string, unknown>>
+): string | undefined {
+  if (!(["latest", "top_n"] as QueryDSL["intent"][]).includes(dsl.intent)) return undefined;
+  const row = rows[0];
+  if (!row) return undefined;
+  const temporalValue = row.day ?? row.date ?? row.recorded_at ?? row.observed_at;
+  const date = formatIsoDate(temporalValue);
+  const value = row.value ?? (dsl.metric ? row[dsl.metric] : undefined);
+  if (!date || value === undefined || value === null) return undefined;
+
+  const metric = (dsl.metric ?? "value").replaceAll("_", " ");
+  const unit = typeof row.unit === "string" && row.unit.trim() ? ` ${row.unit.trim()}` : "";
+  const label = dsl.intent === "latest"
+    ? `Latest ${metric}`
+    : dsl.aggregation === "min" ? `Minimum ${metric}` : `Maximum ${metric}`;
+  return `${label} was ${value}${unit} on ${date}.`;
+}
+
+function formatIsoDate(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (!match) return undefined;
+  const month = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ][Number(match[2]) - 1];
+  if (!month) return undefined;
+  return `${month} ${Number(match[3])}, ${match[1]}`;
+}
+
 function resolveQuerySource(dsl: QueryDSL): NonNullable<QueryDSL["source"]> {
   return dsl.source ?? (dsl.intent === "list_activities" ? "activities" : "metrics");
+}
+
+function buildTurnContext(
+  profileId: string,
+  dsl: QueryDSL,
+  resolvedTimeRange: { start: string; end: string }
+): AiQueryTurnContext {
+  return {
+    version: 1,
+    profileId,
+    source: resolveQuerySource(dsl),
+    metric: dsl.metric,
+    intent: dsl.intent,
+    aggregation: dsl.aggregation,
+    groupBy: dsl.groupBy,
+    sort: dsl.sort,
+    filters: dsl.filters,
+    resolvedTimeRange: {
+      start: resolvedTimeRange.start,
+      end: resolvedTimeRange.end
+    }
+  };
+}
+
+function buildSuggestedFollowUps(
+  dsl: QueryDSL,
+  outcome: AiQueryResponse["outcome"]
+): string[] {
+  if (outcome === "no_data") return ["Try the last 90 days"];
+
+  const source = resolveQuerySource(dsl);
+  if (source !== "metrics") {
+    if (dsl.intent === "count" && dsl.groupBy === null) return ["Group these by kind"];
+    return ["Show the last 90 days"];
+  }
+
+  if (dsl.intent === "aggregation" && ["max", "min"].includes(dsl.aggregation)) {
+    return ["Which day was that on?", "Show the daily trend"];
+  }
+  if (dsl.intent === "timeseries") return ["What was the highest day?", "What was the average?"];
+  if (dsl.intent === "latest") return ["Show the last 30 days"];
+  if (dsl.intent === "top_n") return ["Show the daily trend", "What was the average?"];
+  return ["Show the daily trend", "What was the highest day?"];
 }

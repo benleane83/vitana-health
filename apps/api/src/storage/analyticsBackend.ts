@@ -33,11 +33,21 @@ export function describeAnalyticsStorage(counts: AnalyticsStorageCounts): Analyt
   return { counts };
 }
 
-export function runAnalyticsQuery(
+export async function runAnalyticsQuery(
   storeManager: ProfileStoreManager,
   query: CompiledQuery
 ): Promise<Array<Record<string, unknown>>> {
-  return storeManager.runActiveCompiledQuery(query);
+  const rows = await storeManager.runActiveCompiledQuery(query);
+  return rows.map((row) => Object.fromEntries(
+    Object.entries(row).map(([key, value]) => [key, jsonSafeAnalyticsValue(value)])
+  ));
+}
+
+function jsonSafeAnalyticsValue(value: unknown): unknown {
+  if (typeof value !== "bigint") return value;
+  return value <= BigInt(Number.MAX_SAFE_INTEGER) && value >= BigInt(Number.MIN_SAFE_INTEGER)
+    ? Number(value)
+    : value.toString();
 }
 
 export function compileAnalyticsQuery(
