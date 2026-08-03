@@ -18,6 +18,7 @@ import {
   getPreferredUnit,
   manualGroupDefaults,
   normalizeGroupLabel,
+  type BloodTestDraft,
   type BodyCompositionDraft,
   type ManualObservationPayload
 } from "@vitana/shared";
@@ -410,7 +411,7 @@ function ScanImport() {
   const { bootstrap, connection, refreshAfterImport, transientRevision } = useMobileApi();
   const measurements = bootstrap?.measurementTypes?.length ? bootstrap.measurementTypes : defaultMeasurementTypes;
   const [kind, setKind] = useState<ScanKind>("body-composition");
-  const [draft, setDraft] = useState<BodyCompositionDraft>();
+  const [draft, setDraft] = useState<BodyCompositionDraft | BloodTestDraft>();
   const [rows, setRows] = useState<ScanReportEditableRow[]>([]);
   const [reportDate, setReportDate] = useState("");
   const [datePickerOpen, setDatePickerOpen] = useState(false);
