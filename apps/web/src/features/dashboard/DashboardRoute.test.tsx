@@ -59,6 +59,30 @@ afterEach(() => {
 });
 
 describe("DashboardRoute upcoming care", () => {
+  it("opens measurement detail when a trend trace is selected", async () => {
+    vi.spyOn(api.care, "listCareItems").mockResolvedValue({
+      items: [], total: 0, offset: 0, limit: 3, hasMore: false
+    });
+    const onNavigateMeasurement = vi.fn();
+
+    render(
+      <DashboardRoute
+        analytics={analyticsWithTrend}
+        profile={{ id: "self", displayName: "Local user", units: "metric", updatedAt: dateOffset(0) }}
+        onEditProfile={vi.fn()}
+        onNavigateSummary={vi.fn()}
+        onNavigateMeasurement={onNavigateMeasurement}
+        onNavigateCare={vi.fn()}
+      />
+    );
+
+    const trend = screen.getByRole("button", { name: "View details for Weight trend" });
+    expect(trend).toHaveClass("trend", "trend-link");
+    fireEvent.click(trend);
+
+    expect(onNavigateMeasurement).toHaveBeenCalledWith("weight");
+  });
+
   it("does not repeat the measurement name in trend descriptions", async () => {
     vi.spyOn(api.care, "listCareItems").mockResolvedValue({
       items: [], total: 0, offset: 0, limit: 3, hasMore: false

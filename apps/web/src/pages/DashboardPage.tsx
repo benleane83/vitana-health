@@ -175,13 +175,19 @@ export function DashboardPage({
             <div className="trend-grid">
               {analytics?.trendCards.length
                 ? analytics.trendCards.map((card) => (
-                    <div className="trend" key={card.code}>
+                    <button
+                      type="button"
+                      className="trend trend-link"
+                      key={card.code}
+                      onClick={() => onNavigateMeasurement(card.code)}
+                      aria-label={`View details for ${card.label} trend`}
+                    >
                       <div>
                         <strong>{card.label}</strong>
                         <span>{formatTrendSummary(card.label, card.summary)}</span>
                       </div>
                       <MiniChart label={card.label} points={card.points} />
-                    </div>
+                    </button>
                   ))
                 : <p className="empty">Two or more dated readings are needed for trend traces.</p>}
             </div>

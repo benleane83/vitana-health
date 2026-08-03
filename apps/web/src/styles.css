@@ -3539,6 +3539,45 @@ button.stat {
   padding: var(--space-4);
 }
 
+.trend-link {
+  position: relative;
+  width: 100%;
+  border-color: var(--line);
+  color: var(--text);
+  font-weight: 400;
+  text-align: left;
+  transform: none;
+}
+
+.trend-link::after {
+  content: "›";
+  color: var(--muted-2);
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1;
+  position: absolute;
+  right: var(--space-2);
+  top: var(--space-2);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .trend-link:hover:not(:disabled) {
+    border-color: var(--line-strong);
+    background: var(--surface-2);
+    color: var(--text);
+    transform: none;
+  }
+
+  .trend-link:hover::after {
+    color: var(--primary);
+  }
+}
+
+.trend-link:active:not(:disabled) {
+  background: var(--primary-soft);
+  transform: none;
+}
+
 .trend-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
