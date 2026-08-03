@@ -102,6 +102,7 @@ test("Linux packages are x64 AppImages with manual updates and PNG assets", () =
   assert.match(packageJson.scripts["package:linux"], /--linux AppImage --x64/);
   assert.match(packageJson.scripts["package:linux"], /vitanaDistributionChannel=linux-appimage/);
   assert.match(packageJson.scripts["package:linux"], /vitanaUpdateChannel=manual/);
+  assert.equal(packageJson.build.executableName, "vitana-health");
   assert.equal(packageJson.build.linux.target, "AppImage");
   assert.equal(packageJson.build.linux.artifactName, "Vitana-Health-${version}-linux-x86_64.${ext}");
   assert.equal(packageJson.build.linux.category, "Utility");
