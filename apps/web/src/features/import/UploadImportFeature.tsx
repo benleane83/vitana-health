@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import type {
+  BloodTestDraft,
   BodyCompositionDraft,
   BodyCompositionDraftRow,
   MeasurementType,
@@ -228,6 +229,7 @@ function StructuredUploadFeature({
           units={units}
           onRowChange={(id, patch) => setRows((current) =>
             current.map((row) => row.id === id ? { ...row, ...patch } : row))}
+          onRemoveRow={(id) => setRows((current) => current.filter((row) => row.id !== id))}
           onAddRow={() => setRows((current) => [...current, createEditableRow()])}
           onCommit={commit}
         />
@@ -251,7 +253,7 @@ function ReportUploadFeature({
 }) {
   const [file, setFile] = useState<File>();
   const [busy, setBusy] = useState(false);
-  const [draft, setDraft] = useState<BodyCompositionDraft>();
+  const [draft, setDraft] = useState<BodyCompositionDraft | BloodTestDraft>();
   const [rows, setRows] = useState<UploadEditableRow[]>([]);
   const [reportDate, setReportDate] = useState(todayIsoDate());
   const inputRef = useRef<HTMLInputElement>(null);
@@ -357,7 +359,14 @@ function ReportUploadFeature({
         />
         <p className="empty">PDF, JPEG, or PNG. Parsed locally before save.</p>
         <div className="labs-upload-actions">
-          <button disabled={busy || !file} type="submit">Preview report</button>
+          <button disabled={busy || !file} type="submit">
+            {busy ? "Processing report..." : "Preview report"}
+          </button>
+          {busy ? (
+            <p className="report-upload-status" role="status" aria-live="polite">
+              Reading report pages and extracting measurements. This may take a moment for scanned PDFs.
+            </p>
+          ) : null}
         </div>
       </form>
 
@@ -384,6 +393,7 @@ function ReportUploadFeature({
           units={units}
           onRowChange={(id, patch) => setRows((current) =>
             current.map((row) => row.id === id ? { ...row, ...patch } : row))}
+          onRemoveRow={(id) => setRows((current) => current.filter((row) => row.id !== id))}
           onAddRow={() => setRows((current) => [...current, createEditableRow()])}
           onCommit={commit}
         />
@@ -481,6 +491,7 @@ function createEditableRow(): UploadEditableRow {
     unit: "",
     confidence: "low",
     included: true,
-    generatedCode: true
+    generatedCode: true,
+    manuallyAdded: true
   };
 }

@@ -42,6 +42,12 @@ function detailKindLabel(kind: HealthDataDetailEntry["kind"]): string {
   return { observation: "Observation", sample: "Sample", activity: "Activity" }[kind];
 }
 
+function formatEntryTimestamp(entry: HealthDataDetailEntry): string {
+  return entry.measurementCode === "steps"
+    ? formatShortTimestamp(entry.timestamp)
+    : formatTimestamp(entry.timestamp);
+}
+
 function formatReferenceRange(range: HealthDataDetail["referenceRange"]["effective"]): string {
   if (!range) return "Not set";
   if (range.low !== undefined && range.high !== undefined) {
@@ -622,7 +628,7 @@ export function ObservationTypeDetailPage({
                     <tbody>
                       {detail.entries.map((entry) => (
                         <tr key={`${entry.kind}-${entry.id}`}>
-                          <td data-label="Timestamp">{formatTimestamp(entry.timestamp)}</td>
+                          <td data-label="Timestamp">{formatEntryTimestamp(entry)}</td>
                           {showKind ? <td data-label="Kind">{detailKindLabel(entry.kind)}</td> : null}
                           <td data-label="Value" className="summary-entry-value">
                             <strong>{formatDetailValue(entry.value)}</strong>
@@ -637,7 +643,7 @@ export function ObservationTypeDetailPage({
                                   className="summary-row-edit"
                                   onClick={() => onEditObservation(entry)}
                                   disabled={actionBusy}
-                                  aria-label={`Edit ${entry.displayName} observation from ${formatTimestamp(entry.timestamp)}`}
+                                  aria-label={`Edit ${entry.displayName} observation from ${formatEntryTimestamp(entry)}`}
                                   title="Edit observation"
                                 >
                                   <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -649,7 +655,7 @@ export function ObservationTypeDetailPage({
                                   className="summary-row-delete"
                                   onClick={() => void onDeleteObservation(entry)}
                                   disabled={actionBusy}
-                                  aria-label={`Delete ${entry.displayName} observation from ${formatTimestamp(entry.timestamp)}`}
+                                  aria-label={`Delete ${entry.displayName} observation from ${formatEntryTimestamp(entry)}`}
                                   title="Delete observation"
                                 >
                                   <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">

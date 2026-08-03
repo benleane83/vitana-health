@@ -19,6 +19,7 @@ function outcome() {
     observations: empty,
     observationGroups: empty,
     timeSeriesSamples: empty,
+    measurementAggregates: empty,
     activitySessions: empty
   };
 }

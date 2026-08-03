@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   analyticsSummaryResponseSchema,
   appBootstrapResponseSchema,
+  bloodTestDraftResponseSchema,
+  bodyCompositionDraftResponseSchema,
   careItemSchema,
   healthDataSummaryResponseSchema,
   healthEventSchema
@@ -12,6 +14,20 @@ import {
  * under the hood, so an empty object satisfied every one of them and drift went unnoticed.
  */
 describe("response contracts", () => {
+  it("keeps blood-test and body-composition preview parser contracts distinct", () => {
+    const draft = {
+      fileName: "results.pdf",
+      sourceText: "Glucose: 5.2 mmol/L",
+      checksum: "checksum",
+      parserVersion: "blood-test-text-v1",
+      diagnostics: [],
+      rows: []
+    };
+
+    expect(bloodTestDraftResponseSchema.safeParse(draft).success).toBe(true);
+    expect(bodyCompositionDraftResponseSchema.safeParse(draft).success).toBe(false);
+  });
+
   it("rejects an empty object as every major response", () => {
     for (const schema of [
       appBootstrapResponseSchema,

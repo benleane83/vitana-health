@@ -1281,6 +1281,51 @@ describe("DuckDbRepository fidelity", () => {
     }
   }, 30_000);
 
+  it.skipIf(!httpfsExtensionPath)("replaces legacy Health Connect Step rows by calendar day", async () => {
+    const databasePath = join(root, "databases", "health-store-steps-daily.duckdb-poc");
+    const fixture = createDuckDbHealthStoreFixture();
+    const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
+    const request = healthConnectImportRequestSchema.parse({
+      syncedAt: "2026-08-02T12:00:00.000Z",
+      rangeStart: "2026-08-01T00:00:00.000Z",
+      rangeEnd: "2026-08-03T00:00:00.000Z",
+      deviceLabel: "Pixel 8",
+      batchId: "corrected",
+      steps: [{
+        startTime: "2026-08-02T00:00:00.000Z",
+        endTime: "2026-08-03T00:00:00.000Z",
+        count: 9586,
+        provenance: { aggregation: "health-connect-daily", calendarDate: "2026-08-02" }
+      }]
+    });
+    const corrected = parseHealthConnectImport(request);
+    const legacy = {
+      ...corrected,
+      sourceImport: { ...corrected.sourceImport, id: "legacy-health-connect-import", batchId: undefined },
+      dataSource: { ...corrected.dataSource, importId: "legacy-health-connect-import" },
+      timeSeriesSamples: [{
+        ...corrected.timeSeriesSamples[0],
+        id: "legacy-evening-step-row",
+        startAt: "2026-08-02T14:25:00.000Z",
+        endAt: "2026-08-02T14:25:00.000Z",
+        value: 2491
+      }]
+    };
+
+    try {
+      await repository.mergeImport(legacy);
+      await repository.mergeImport(corrected);
+      const detail = await repository.measurementDetail("steps");
+      expect(detail.entries).toHaveLength(1);
+      expect(detail.entries[0]).toMatchObject({
+        value: 9586,
+        timestamp: "2026-08-02T00:00:00.000Z"
+      });
+    } finally {
+      await repository.close();
+    }
+  }, 30_000);
+
   it.skipIf(!httpfsExtensionPath)("retains samples beyond the former ceiling across later imports", async () => {
     const databasePath = join(root, "databases", "health-store-unlimited-samples.duckdb-poc");
     const fixture = createDuckDbHealthStoreFixture();

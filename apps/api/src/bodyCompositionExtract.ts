@@ -11,7 +11,7 @@ export interface BodyCompositionExtractResult {
 }
 
 const minUsefulPdfTextChars = 80;
-const maxOcrPages = 3;
+const pdfPageMarkerPattern = /--\s*\d+\s+of\s+\d+\s*--/g;
 
 export async function extractBodyCompositionText(buffer: Buffer, mimeType: string): Promise<BodyCompositionExtractResult> {
   if (mimeType === "application/pdf") {
@@ -35,21 +35,27 @@ async function extractPdfText(buffer: Buffer): Promise<BodyCompositionExtractRes
   const parser = new PDFParse({ data: buffer });
   try {
     const textResult = await parser.getText();
-    const embeddedText = textResult.text.trim();
+    const embeddedText = textResult.text.replace(pdfPageMarkerPattern, "").trim();
     if (embeddedText.length >= minUsefulPdfTextChars) {
       return { text: embeddedText, diagnostics };
     }
 
     diagnostics.push("Embedded PDF text was sparse; rendered pages locally for OCR.");
-    const screenshotResult = await parser.getScreenshot({ scale: 2, partial: [1, maxOcrPages], imageBuffer: true });
+    const pageCount = Math.max(0, textResult.total);
+    const screenshotResult = await parser.getScreenshot({ scale: 2, first: pageCount, imageBuffer: true });
     const pageTexts: string[] = [];
-    for (const page of screenshotResult.pages.slice(0, maxOcrPages)) {
-      if (!page.data) {
-        continue;
+    const worker = await createOcrWorker();
+    try {
+      for (const page of screenshotResult.pages) {
+        if (!page.data) {
+          continue;
+        }
+        const ocr = await recognizeWithWorker(worker, Buffer.from(page.data));
+        diagnostics.push(`PDF page ${page.pageNumber} OCR confidence: ${Math.round(ocr.confidence)}%.`);
+        pageTexts.push(ocr.text);
       }
-      const ocr = await runOcr(Buffer.from(page.data));
-      diagnostics.push(`PDF page ${page.pageNumber} OCR confidence: ${Math.round(ocr.confidence)}%.`);
-      pageTexts.push(ocr.text);
+    } finally {
+      await worker.terminate();
     }
     return { text: pageTexts.join("\n").trim(), diagnostics };
   } finally {
@@ -58,22 +64,30 @@ async function extractPdfText(buffer: Buffer): Promise<BodyCompositionExtractRes
 }
 
 async function runOcr(image: Buffer): Promise<{ text: string; confidence: number }> {
-  const worker = await Tesseract.createWorker("eng", undefined, {
+  const worker = await createOcrWorker();
+  try {
+    return await recognizeWithWorker(worker, image);
+  } finally {
+    await worker.terminate();
+  }
+}
+
+async function createOcrWorker(): ReturnType<typeof Tesseract.createWorker> {
+  return Tesseract.createWorker("eng", undefined, {
     langPath: englishData.langPath,
     gzip: englishData.gzip,
     cacheMethod: "none"
   });
-  try {
-    await worker.setParameters({
-      preserve_interword_spaces: "1",
-      user_defined_dpi: "300"
-    });
-    const result = await worker.recognize(image);
-    return {
-      text: result.data.text.trim(),
-      confidence: result.data.confidence
-    };
-  } finally {
-    await worker.terminate();
+}
+
+async function recognizeWithWorker(worker: Awaited<ReturnType<typeof Tesseract.createWorker>>, image: Buffer): Promise<{ text: string; confidence: number }> {
+  await worker.setParameters({
+    preserve_interword_spaces: "1",
+    user_defined_dpi: "300"
+  });
+  const result = await worker.recognize(image);
+  return {
+    text: result.data.text.trim(),
+    confidence: result.data.confidence
   }
 }

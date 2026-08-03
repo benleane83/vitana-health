@@ -23,4 +23,7 @@ export interface ManualMarkerRow {
  * Editable form of an `UploadDraftRow` for the review table: identical apart from `value`, which is
  * held as raw text while the user is mid-edit and only parsed back to a number on submit.
  */
-export type UploadEditableRow = Omit<UploadDraftRow, "value"> & { value: string };
+export type UploadEditableRow = Omit<UploadDraftRow, "value"> & {
+  value: string;
+  manuallyAdded?: boolean;
+};

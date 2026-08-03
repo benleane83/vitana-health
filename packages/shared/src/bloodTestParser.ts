@@ -56,7 +56,7 @@ export function parseBloodTestScanText(
       }
       continue;
     }
-    if (containsCalendarDate(line)) continue;
+    if (isBloodTestMetadataLine(line) || containsCalendarDate(line)) continue;
     const match = line.match(/^(.{2,100}?)\s*(?::|\s{2,}|-)\s*(-?\d+(?:[.,]\d+)?)\s*([A-Za-z%/]+)?(?:\s|$)/);
     if (!match) continue;
     const label = match[1].trim();
@@ -154,11 +154,18 @@ function containsCalendarDate(value: string): boolean {
   return /\b\d{1,4}[\/\-.]\d{1,2}[\/\-.]\d{1,4}\b/.test(value);
 }
 
+function isBloodTestMetadataLine(value: string): boolean {
+  return /\b(?:authori[sz]ed|collection|collected|receiving|report(?:ed)?|requested)\s*date\b|\b(?:birth\s*date|birthdate|date\s*of\s*birth|dob)\b/i.test(
+    value.replace(/[_|]+/g, " ").replace(/\s+/g, " ")
+  );
+}
+
 function readBloodTestReportDate(text: string, includeCollection = true): string | undefined {
   const dateLabel = includeCollection
     ? "(?:collection|collected|receiving|authorised|authorized|report)"
     : "(?:receiving|authorised|authorized|report)";
-  const match = text.match(new RegExp(`${dateLabel}\\s+date\\s*[:\\-]?\\s*(\\d{1,2})[\\/\\-.](\\d{1,2})[\\/\\-.](\\d{2,4})(?:\\s+(\\d{1,2}):(\\d{2})(?::(\\d{2}))?)?`, "i"));
+  const datePart = `(\\d{1,2})\\s*(?:[\\/\\-.]\\s*|\\s+)(\\d{1,2})\\s*(?:[\\/\\-.]\\s*|\\s+)(\\d{2,4})`;
+  const match = text.match(new RegExp(`${dateLabel}\\s+date\\s*[:\\-]?\\s*${datePart}(?:\\s+(\\d{1,2})\\s*:\\s*(\\d{2})(?:\\s*:\\s*(\\d{2}))?)?`, "i"));
   if (!match) return undefined;
   const structured = normalizeStructuredDate(
     Number.parseInt(match[3], 10),

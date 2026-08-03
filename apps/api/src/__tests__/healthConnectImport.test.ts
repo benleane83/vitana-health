@@ -72,6 +72,22 @@ describe("parseHealthConnectImport — steps → timeSeriesSamples", () => {
     expect(result.timeSeriesSamples[0].unit).toBe("count");
   });
 
+  it("uses one date-only identity for readings from the same calendar day", () => {
+    const result = parseHealthConnectImport({
+      ...baseRequest,
+      steps: [
+        { startTime: "2026-05-01T08:00:00.000Z", endTime: "2026-05-01T09:00:00.000Z", count: 1200 },
+        { startTime: "2026-05-01T18:00:00.000Z", endTime: "2026-05-01T19:00:00.000Z", count: 8450 }
+      ]
+    });
+    expect(result.timeSeriesSamples).toHaveLength(1);
+    expect(result.timeSeriesSamples[0]).toMatchObject({
+      startAt: "2026-05-01T00:00:00.000Z",
+      endAt: "2026-05-01T00:00:00.000Z",
+      value: 8450
+    });
+  });
+
   it("skips near-24-hour daily aggregate step records", () => {
     const result = parseHealthConnectImport({
       ...baseRequest,

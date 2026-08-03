@@ -120,6 +120,23 @@ afterEach(() => {
 });
 
 describe("App smoke", () => {
+  it("clears notices when navigating to a different page", async () => {
+    const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
+    const defaultFetch = fetchMock.getMockImplementation() as ((input: string | URL | Request, init?: RequestInit) => Promise<Response>);
+    fetchMock.mockImplementation((input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      return url.includes("/api/bootstrap")
+        ? Promise.reject(new Error("Offline"))
+        : defaultFetch!(input, init);
+    });
+    render(<App />);
+
+    expect(await screen.findByText("Offline")).toHaveClass("notice-message");
+    fireEvent.click(screen.getByRole("tab", { name: "Export" }));
+
+    expect(screen.queryByText("Offline")).not.toBeInTheDocument();
+  });
+
   it("formats lab range review values to at most two decimal places", async () => {
     render(<App />);
 
