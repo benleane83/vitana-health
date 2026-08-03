@@ -79,6 +79,7 @@ export interface LocalObservationAggregate {
   measurementCode: string;
   count: number;
   lastMeasuredAt: string;
+  groupKind?: string;
 }
 
 export interface LocalObservationRecord extends Observation {

@@ -298,19 +298,27 @@ export async function clinicianReportLatestMeasurements(
 export async function summary(connection: duckdb.Connection) {
   const rows = await all(connection, `
     WITH measurement_entries AS (
-      SELECT measurement_code, 'observation' AS entry_kind, observed_at AS measured_at FROM observations
+      SELECT measurement_code, 'observation' AS entry_kind, observed_at AS measured_at,
+        CASE
+          WHEN observation_groups.kind = 'body_composition_report' THEN 'body'
+          WHEN observation_groups.kind = 'lab_panel' THEN 'lab'
+        END AS category_hint
+      FROM observations
+      LEFT JOIN observation_groups ON observation_groups.id = observations.observation_group_id
       UNION ALL
-      SELECT measurement_code, 'sample' AS entry_kind, end_at AS measured_at FROM time_series_samples
+      SELECT measurement_code, 'sample' AS entry_kind, end_at AS measured_at, NULL AS category_hint FROM time_series_samples
       UNION ALL
-      SELECT measurement_code, 'sample' AS entry_kind, end_at AS measured_at FROM measurement_aggregates
+      SELECT measurement_code, 'sample' AS entry_kind, end_at AS measured_at, NULL AS category_hint FROM measurement_aggregates
       UNION ALL
-      SELECT 'activity_sessions' AS measurement_code, 'activity' AS entry_kind, COALESCE(end_at, start_at) AS measured_at FROM activities
+      SELECT 'activity_sessions' AS measurement_code, 'activity' AS entry_kind,
+        COALESCE(end_at, start_at) AS measured_at, 'activity' AS category_hint
+      FROM activities
     )
     SELECT
       measurement_code,
       MIN(display) AS display_name,
       MIN(json_extract_string(custom_properties, '$.description')) AS description,
-      MIN(category) AS category,
+      COALESCE(MIN(category), MIN(category_hint)) AS category,
       SUM(CASE WHEN entry_kind = 'observation' THEN 1 ELSE 0 END) AS observations,
       SUM(CASE WHEN entry_kind = 'sample' THEN 1 ELSE 0 END) AS samples,
       SUM(CASE WHEN entry_kind = 'activity' THEN 1 ELSE 0 END) AS activities,

@@ -699,10 +699,14 @@ export class SqliteLocalStore implements LocalStore {
 
   async observationAggregates(): Promise<LocalObservationAggregate[]> {
     return this.database.getAllAsync<LocalObservationAggregate>(`
-      SELECT measurement_code AS measurementCode, COUNT(*) AS count, MAX(observed_at) AS lastMeasuredAt
+      SELECT observations.measurement_code AS measurementCode, COUNT(*) AS count,
+        MAX(observations.observed_at) AS lastMeasuredAt, MIN(observation_groups.kind) AS groupKind
       FROM observations
-      WHERE profile_id = ?
-      GROUP BY measurement_code
+      LEFT JOIN observation_groups
+        ON observation_groups.profile_id = observations.profile_id
+        AND observation_groups.id = observations.observation_group_id
+      WHERE observations.profile_id = ?
+      GROUP BY observations.measurement_code
     `, this.requireProfileId());
   }
 

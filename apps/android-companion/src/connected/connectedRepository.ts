@@ -393,7 +393,9 @@ function appendIncluded<T extends { id: string }>(items: T[], allItems: T[], inc
 }
 
 function summarize(projection: ReplicaProjection): HealthDataSummary {
-  const rows = [...projection.measurements.keys()].map((code) => summaryRowFor(projection, code));
+  const categoryHints = indexObservationCategories(projection.data);
+  const rows = [...projection.measurements.keys()].map((code) =>
+    summaryRowFor(projection, code, categoryHints.get(code)));
   const grouped = new Map<HealthDataSummaryTypeRow["category"], HealthDataSummaryTypeRow[]>();
   for (const row of rows) {
     const category = grouped.get(row.category);
@@ -431,7 +433,11 @@ function summarize(projection: ReplicaProjection): HealthDataSummary {
   };
 }
 
-function summaryRowFor(projection: ReplicaProjection, code: string): HealthDataSummaryTypeRow {
+function summaryRowFor(
+  projection: ReplicaProjection,
+  code: string,
+  categoryHint?: HealthDataSummaryTypeRow["category"]
+): HealthDataSummaryTypeRow {
   const type = projection.types.get(code);
   const counts = projection.measurements.get(code) ?? { observations: 0, samples: 0, activities: 0 };
   const isActivity = code === ACTIVITY_SESSIONS_CODE;
@@ -439,7 +445,7 @@ function summaryRowFor(projection: ReplicaProjection, code: string): HealthDataS
     code,
     displayName: isActivity ? "Activity sessions" : (type?.display ?? code),
     description: type?.description,
-    category: isActivity ? "activity" : (type?.category ?? "uncategorized"),
+    category: isActivity ? "activity" : (type?.category ?? categoryHint ?? "uncategorized"),
     counts: {
       observations: counts.observations,
       samples: counts.samples,
@@ -448,6 +454,18 @@ function summaryRowFor(projection: ReplicaProjection, code: string): HealthDataS
     },
     lastMeasuredAt: counts.lastMeasuredAt
   };
+}
+
+function indexObservationCategories(data: HealthStoreData) {
+  const groups = new Map(data.observationGroups.map((group) => [group.id, group]));
+  const categories = new Map<string, HealthDataSummaryTypeRow["category"]>();
+  for (const observation of data.observations) {
+    if (categories.has(observation.measurementCode)) continue;
+    const kind = groups.get(observation.observationGroupId ?? "")?.kind;
+    if (kind === "body_composition_report") categories.set(observation.measurementCode, "body");
+    if (kind === "lab_panel") categories.set(observation.measurementCode, "lab");
+  }
+  return categories;
 }
 
 function detailEntries(projection: ReplicaProjection, measurementCode: string): HealthDataDetailEntry[] {
