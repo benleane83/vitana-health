@@ -76,7 +76,16 @@ test("every packaging path runs the Electron ABI gate before electron-builder", 
   // only thing that proves the shipped binary matches the shipped runtime's module ABI.
   assert.equal(packageJson.build.npmRebuild, false);
   assert.equal(packageJson.scripts["verify:native-abi"], "electron verify-native-abi.cjs");
-  for (const script of ["package", "package:linux", "package:store"]) {
+  assert.equal(
+    packageJson.scripts["verify:native-abi:linux"],
+    "electron --headless --disable-gpu --no-sandbox verify-native-abi.cjs"
+  );
+  assert.match(
+    packageJson.scripts["package:linux"],
+    /npm run verify:native-abi:linux &&[^&]*electron-builder/,
+    "package:linux must run the Linux ABI gate before electron-builder"
+  );
+  for (const script of ["package", "package:store"]) {
     assert.match(
       packageJson.scripts[script],
       /npm run verify:native-abi &&[^&]*electron-builder/,
