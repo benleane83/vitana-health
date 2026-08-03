@@ -62,6 +62,30 @@ Replace the subnet with the actual trusted LAN. Do not expose port `4317` to pub
 
 Linux builds report in-app updates as unsupported and never initialize `electron-updater`. Download the next AppImage and checksum manually, verify it, close Vitana cleanly, then replace the old AppImage. User data is outside the AppImage and remains in the XDG data directory.
 
+## Build host prerequisites
+
+The package workflow runs on Ubuntu 24.04, whose GitHub-hosted runner already has Electron's desktop runtime libraries. Install them before running `npm run package:linux` on a minimal Ubuntu 24.04 Server VM:
+
+```bash
+sudo apt-get update
+sudo apt-get install --yes \
+   libasound2t64 libatk-bridge2.0-0 libatk1.0-0 libatspi2.0-0 \
+   libcups2 libdrm2 libgbm1 libgtk-3-0 libnotify4 libnss3 \
+   libsecret-1-0 libx11-xcb1 libxcomposite1 libxdamage1 libxfixes3 \
+   libxkbcommon0 libxrandr2 libxss1 libxtst6 xdg-utils
+```
+
+`--headless`, `--disable-gpu`, and `--no-sandbox` do not remove Electron's dynamic GTK library requirements. After `npm ci`, confirm that its executable has no unresolved shared libraries:
+
+```bash
+if ldd node_modules/electron/dist/electron | grep 'not found'; then
+   echo "Electron has unresolved runtime libraries." >&2
+   exit 1
+fi
+```
+
+This installs enough runtime support to build and execute the native-ABI gate. It does not provide a graphical GNOME session or Secret Service; run the graphical smoke tier only on the approved GNOME/Keyring runner.
+
 ## Build and release gates
 
 Both Linux workflows are manual-only:
