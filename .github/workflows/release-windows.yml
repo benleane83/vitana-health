@@ -40,6 +40,9 @@ jobs:
       - name: Install DuckDB native binding
         run: npm rebuild duckdb
 
+      - name: Build shared package
+        run: npm run build -w packages/shared
+
       - name: Prepare DuckDB encryption extension
         run: npm run prepare:duckdb -w @vitana/api
 
