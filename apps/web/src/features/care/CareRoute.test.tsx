@@ -82,8 +82,8 @@ describe("CareRoute", () => {
 
   it("distinguishes filtered empty results and clears them", async () => {
     vi.mocked(api.care.listCareItems).mockImplementation(async (query) => ({
-      items: query.kind ? [] : [openCareItem],
-      total: query.kind ? 0 : 1,
+      items: query?.kind ? [] : [openCareItem],
+      total: query?.kind ? 0 : 1,
       offset: 0,
       limit: 20,
       hasMore: false
