@@ -21,8 +21,10 @@
 export const HEALTH_SOURCE_CATEGORIES = [
   "Steps",
   "HeartRate",
+  "RestingHeartRate",
   "OxygenSaturation",
   "HeartRateVariabilityRmssd",
+  "RespiratoryRate",
   "BasalMetabolicRate",
   "Height",
   "Vo2Max",

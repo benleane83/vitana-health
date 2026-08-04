@@ -320,6 +320,19 @@ const measurementTypeDefinitions: MeasurementType[] = [
     aggregation: "average"
   },
   {
+    code: "resting_heart_rate",
+    display: "Resting heart rate",
+    description: "Your heart rate while at rest, typically measured during sleep or a quiet period.",
+    category: "cardio",
+    kind: "point",
+    canonicalUnit: "beats/min",
+    aliases: ["resting heart rate", "resting pulse", "rhr"],
+    openMHealthSchema: "heart-rate",
+    normalLow: 50,
+    normalHigh: 100,
+    aggregation: "average"
+  },
+  {
     code: "body_temperature",
     display: "Body temperature",
     description: "The temperature of your body.",

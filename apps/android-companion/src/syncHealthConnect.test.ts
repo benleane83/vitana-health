@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("react-native", () => ({ Platform: { OS: "android" } }));
 vi.mock("react-native-health-connect", () => ({
+  ExerciseType: { RUNNING: 56 },
   SdkAvailabilityStatus: { SDK_AVAILABLE: "available" },
   aggregateGroupByDuration: mocks.aggregateGroupByDuration,
   aggregateGroupByPeriod: mocks.aggregateGroupByPeriod,
@@ -26,7 +27,9 @@ vi.mock("react-native-health-connect", () => ({
 }));
 vi.mock("./endpointStore", () => ({
   DEFAULT_HEALTH_CONNECT_SYNC_WINDOW_DAYS: 365,
-  HEALTH_CONNECT_CATEGORIES: ["Steps", "Weight", "ExerciseSession"]
+  HEALTH_CONNECT_CATEGORIES: [
+    "Steps", "Weight", "ExerciseSession", "HeartRateVariabilityRmssd", "RestingHeartRate", "RespiratoryRate"
+  ]
 }));
 vi.mock("./pinnedFetch", () => ({ LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS: 60_000, pinnedFetch: mocks.pinnedFetch }));
 
@@ -84,6 +87,24 @@ afterEach(() => {
 });
 
 describe("Health Connect sync", () => {
+  it("uses the Health Connect exercise type name for activity sessions", () => {
+    const descriptor = HEALTH_CONNECT_DESCRIPTORS.find((entry) => entry.category === "ExerciseSession")!;
+    const converted = descriptor.toPayload([{
+      startTime: "2026-01-10T10:00:00.000Z",
+      endTime: "2026-01-10T11:00:00.000Z",
+      exerciseType: 56
+    }, {
+      startTime: "2026-01-10T12:00:00.000Z",
+      endTime: "2026-01-10T13:00:00.000Z",
+      exerciseType: 999
+    }] as never);
+
+    expect(converted.exerciseSessions).toMatchObject([
+      { activityType: "Running", details: { exerciseType: 56 } },
+      { activityType: "exercise_type_999", details: { exerciseType: 999 } }
+    ]);
+  });
+
   it("omits nullable sleep metadata returned by Health Connect", () => {
     const descriptor = HEALTH_CONNECT_DESCRIPTORS.find((entry) => entry.category === "SleepSession")!;
     const converted = descriptor.toPayload([{
@@ -166,6 +187,86 @@ describe("Health Connect sync", () => {
     expect(mocks.requestPermission).not.toHaveBeenCalled();
   });
 
+  it("reads and uploads Heart Rate Variability RMSSD readings", async () => {
+    mocks.requestPermission.mockResolvedValue([{ accessType: "read", recordType: "HeartRateVariabilityRmssd" }]);
+    mocks.readRecords.mockResolvedValue({
+      records: [{
+        time: "2026-01-10T08:00:00.000Z",
+        heartRateVariabilityMillis: 36.5,
+        metadata: { id: "hrv-record-1", dataOrigin: "com.samsung.android.app.shealth" }
+      }],
+      pageToken: undefined
+    });
+
+    const result = await syncHealthConnect("https://desktop.test", "companion-token", null, "pin", {
+      deviceId: "device-1",
+      syncWindowDays: 30,
+      categories: ["HeartRateVariabilityRmssd"]
+    });
+
+    expect(mocks.requestPermission).toHaveBeenCalledWith([
+      { accessType: "read", recordType: "HeartRateVariabilityRmssd" }
+    ]);
+    expect(mocks.readRecords).toHaveBeenCalledWith("HeartRateVariabilityRmssd", expect.objectContaining({
+      timeRangeFilter: expect.objectContaining({ operator: "between" })
+    }));
+    expect(uploadedBodies()[0]?.hrvRmssd).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        granularity: "day",
+        average: 36.5,
+        minimum: 36.5,
+        maximum: 36.5,
+        count: 1,
+        provenance: { aggregation: "companion-daily", dataOrigins: ["com.samsung.android.app.shealth"] }
+      }),
+      expect.objectContaining({
+        granularity: "15m",
+        average: 36.5,
+        minimum: 36.5,
+        maximum: 36.5,
+        count: 1,
+        provenance: { aggregation: "companion-15m", dataOrigins: ["com.samsung.android.app.shealth"] }
+      })
+    ]));
+    expect(result.syncCursors).toEqual({ HeartRateVariabilityRmssd: "2026-01-11T12:00:00.000Z" });
+  });
+
+  it("aggregates and uploads resting heart rate and respiratory rate readings", async () => {
+    mocks.requestPermission.mockResolvedValue([
+      { accessType: "read", recordType: "RestingHeartRate" },
+      { accessType: "read", recordType: "RespiratoryRate" }
+    ]);
+    mocks.readRecords.mockImplementation(async (recordType: string) => ({
+      records: recordType === "RestingHeartRate"
+        ? [{ time: "2026-01-10T08:00:00.000Z", beatsPerMinute: 54 }]
+        : [{ time: "2026-01-10T08:05:00.000Z", rate: 14.5 }],
+      pageToken: undefined
+    }));
+
+    const result = await syncHealthConnect("https://desktop.test", "companion-token", null, "pin", {
+      deviceId: "device-1",
+      syncWindowDays: 30,
+      categories: ["RestingHeartRate", "RespiratoryRate"]
+    });
+
+    expect(mocks.requestPermission).toHaveBeenCalledWith([
+      { accessType: "read", recordType: "RestingHeartRate" },
+      { accessType: "read", recordType: "RespiratoryRate" }
+    ]);
+    expect(uploadedBodies()[0]?.restingHeartRate).toEqual(expect.arrayContaining([
+      expect.objectContaining({ granularity: "day", average: 54, minimum: 54, maximum: 54, count: 1 }),
+      expect.objectContaining({ granularity: "15m", average: 54, minimum: 54, maximum: 54, count: 1 })
+    ]));
+    expect(uploadedBodies()[0]?.respiratoryRate).toEqual(expect.arrayContaining([
+      expect.objectContaining({ granularity: "day", average: 14.5, minimum: 14.5, maximum: 14.5, count: 1 }),
+      expect.objectContaining({ granularity: "15m", average: 14.5, minimum: 14.5, maximum: 14.5, count: 1 })
+    ]));
+    expect(result.syncCursors).toEqual({
+      RestingHeartRate: "2026-01-11T12:00:00.000Z",
+      RespiratoryRate: "2026-01-11T12:00:00.000Z"
+    });
+  });
+
   it("aligns a Steps cursor to completed local days and leaves ungranted categories on their old cursor", async () => {
     mocks.aggregateGroupByPeriod.mockResolvedValue([
       { startTime: "2026-01-10T00:00:00", endTime: "2026-01-11T00:00:00", result: { COUNT_TOTAL: 10, dataOrigins: [] } },
@@ -219,7 +320,7 @@ describe("Health Connect sync", () => {
     expect(mocks.readRecords.mock.calls[0][1].timeRangeFilter.startTime).toBe("2025-12-12T12:00:00.000Z");
   });
 
-  it("requests historical access for sync windows over 30 days", async () => {
+  it("keeps an empty category's cursor open while requesting historical access", async () => {
     const result = await syncHealthConnect("https://desktop.test", "companion-token", null, "pin", {
       deviceId: "device-1",
       syncWindowDays: 90,
@@ -230,9 +331,10 @@ describe("Health Connect sync", () => {
       { accessType: "read", recordType: "Steps" },
       { accessType: "read", recordType: "ReadHealthDataHistory" }
     ]);
-    expect(result.syncCursors).toEqual({ Steps: "2026-01-11T12:00:00.000Z" });
+    expect(result.syncCursors).toEqual({});
     expect(result.details).toContain("Extended Health Connect history access was requested");
     expect(result.details).toContain("Health Connect returned no records in this window");
+    expect(result.details).toContain("No records returned: Steps. The sync start date was kept for those categories.");
   });
 
   it("uploads Health Connect-resolved daily step totals instead of overlapping raw records", async () => {
@@ -439,7 +541,7 @@ function emptyPayload(): HealthConnectImportPayload {
     rangeStart: "2026-01-01T12:00:00.000Z",
     rangeEnd: "2026-01-11T12:00:00.000Z",
     deviceLabel: "android-companion:device-1",
-    steps: [], heartRate: [], oxygenSaturation: [], hrvRmssd: [], basalMetabolicRateKcalDay: [],
+    steps: [], heartRate: [], restingHeartRate: [], oxygenSaturation: [], hrvRmssd: [], respiratoryRate: [], basalMetabolicRateKcalDay: [],
     heightCm: [], vo2MaxMlKgMin: [], weightKg: [], exerciseSessions: [], distanceMeters: [],
     activeCaloriesKcal: [], totalCaloriesKcal: [], sleepSessions: [], bodyFatPct: []
   };

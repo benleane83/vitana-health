@@ -1,4 +1,5 @@
 import {
+  ExerciseType,
   SdkAvailabilityStatus,
   aggregateGroupByDuration,
   aggregateGroupByPeriod,
@@ -34,7 +35,7 @@ interface HealthConnectProvenance {
   lastModifiedTime?: string;
   recordingMethod?: string;
   device?: Record<string, unknown>;
-  aggregation?: "health-connect-daily" | "health-connect-15m";
+  aggregation?: "health-connect-daily" | "health-connect-15m" | "companion-daily" | "companion-15m";
   dataOrigins?: string[];
 }
 
@@ -65,8 +66,10 @@ export interface HealthConnectImportPayload {
   batchId?: string;
   steps: Array<{ startTime: string; endTime: string; count: number; provenance?: HealthConnectProvenance }>;
   heartRate: HealthConnectMeasurementAggregate[];
+  restingHeartRate: HealthConnectMeasurementAggregate[];
   oxygenSaturation: HealthConnectPointValue[];
-  hrvRmssd: HealthConnectPointValue[];
+  hrvRmssd: HealthConnectMeasurementAggregate[];
+  respiratoryRate: HealthConnectMeasurementAggregate[];
   basalMetabolicRateKcalDay: HealthConnectPointValue[];
   heightCm: HealthConnectPointValue[];
   vo2MaxMlKgMin: HealthConnectPointValue[];
@@ -150,16 +153,14 @@ export const HEALTH_CONNECT_DESCRIPTORS = [
     })).filter((record) => Number.isFinite(record.count))
   }), readDailyStepAggregates),
   defineHealthConnectDescriptor("HeartRate", "HeartRate", ["heartRate"], () => ({ heartRate: [] }), readHeartRateAggregates),
+  defineHealthConnectDescriptor("RestingHeartRate", "RestingHeartRate", ["restingHeartRate"], () => ({ restingHeartRate: [] }), readRestingHeartRateAggregates),
   defineHealthConnectDescriptor("OxygenSaturation", "OxygenSaturation", ["oxygenSaturation"], (records) => ({
     oxygenSaturation: records.map((record) => ({
       time: record.time, value: record.percentage, provenance: extractProvenance(record)
     })).filter((record) => Number.isFinite(record.value))
   })),
-  defineHealthConnectDescriptor("HeartRateVariabilityRmssd", "HeartRateVariabilityRmssd", ["hrvRmssd"], (records) => ({
-    hrvRmssd: records.map((record) => ({
-      time: record.time, value: record.heartRateVariabilityMillis, provenance: extractProvenance(record)
-    })).filter((record) => Number.isFinite(record.value))
-  })),
+  defineHealthConnectDescriptor("HeartRateVariabilityRmssd", "HeartRateVariabilityRmssd", ["hrvRmssd"], () => ({ hrvRmssd: [] }), readHrvRmssdAggregates),
+  defineHealthConnectDescriptor("RespiratoryRate", "RespiratoryRate", ["respiratoryRate"], () => ({ respiratoryRate: [] }), readRespiratoryRateAggregates),
   defineHealthConnectDescriptor("BasalMetabolicRate", "BasalMetabolicRate", ["basalMetabolicRateKcalDay"], (records) => ({
     basalMetabolicRateKcalDay: toPointSamples(records, (record) => ({
       time: record.time, value: extractBasalMetabolicRateKcalDay(record), provenance: extractProvenance(record)
@@ -186,7 +187,7 @@ export const HEALTH_CONNECT_DESCRIPTORS = [
       return {
         startTime: record.startTime,
         endTime: record.endTime,
-        activityType: stringValue(details.exerciseType) ?? `exercise_type_${record.exerciseType}`,
+        activityType: exerciseTypeDisplayName(record.exerciseType),
         energyKcal: numberValue(details.energyKcal),
         distanceMeters: numberValue(details.distanceMeters),
         title: stringValue(details.title),
@@ -356,6 +357,7 @@ export async function syncHealthConnect(
     sessionKey
   );
   let uploads = 0;
+  const categoriesWithRecords = new Set<HealthConnectCategory>();
   const upload = async (chunk: HealthConnectImportPayload) => {
     if (alreadyProcessed.has(chunk.batchId!)) return;
     options.onProgress?.({ stage: "uploading", detail: `Uploading batch ${uploads + 1} to your paired PC…` });
@@ -378,15 +380,19 @@ export async function syncHealthConnect(
       pageSize: 1000,
       ascendingOrder: true
     };
+    let foundRecord = false;
     for await (const page of descriptor.readPages(readOptions)) {
       throwIfAborted(options.signal);
       for (const key of descriptor.payloadKeys) {
-        for (const value of (page as HealthConnectPayloadCollections)[key]) {
+        const values = (page as HealthConnectPayloadCollections)[key];
+        if (values.length > 0) foundRecord = true;
+        for (const value of values) {
           const completed = builder.add(key, value);
           if (completed) await upload(completed);
         }
       }
     }
+    if (foundRecord) categoriesWithRecords.add(descriptor.category);
   }
   await upload(builder.flush());
 
@@ -394,8 +400,13 @@ export async function syncHealthConnect(
   await options.onSessionKey?.(null);
   const advanced: HealthConnectSyncCursors = { ...cursors };
   for (const descriptor of grantedDescriptors) {
-    advanced[descriptor.category] = rangeEnd.toISOString();
+    if (categoriesWithRecords.has(descriptor.category)) {
+      advanced[descriptor.category] = rangeEnd.toISOString();
+    }
   }
+  const emptyCategories = grantedDescriptors
+    .filter((descriptor) => !categoriesWithRecords.has(descriptor.category))
+    .map((descriptor) => descriptor.category);
 
   return {
     status: "Sync complete.",
@@ -405,6 +416,7 @@ export async function syncHealthConnect(
       builder.oldestTimestamp
         ? `Oldest record returned by Health Connect: ${localDateKey(builder.oldestTimestamp)}.`
         : "Health Connect returned no records in this window.",
+      emptyCategories.length ? `No records returned: ${emptyCategories.join(", ")}. The sync start date was kept for those categories.` : "",
       windowDays > 30 ? "Extended Health Connect history access was requested for this sync." : "",
       omittedCategories.length ? `Not synced (permission not granted): ${omittedCategories.join(", ")}.` : ""
     ].filter(Boolean).join("\n")
@@ -602,6 +614,13 @@ function extractExerciseDetails(record: unknown): Record<string, unknown> {
   return details;
 }
 
+function exerciseTypeDisplayName(exerciseType: number): string {
+  const typeName = Object.entries(ExerciseType).find(([, value]) => value === exerciseType)?.[0];
+  return typeName
+    ? typeName.split("_").map((word) => `${word[0]}${word.slice(1).toLowerCase()}`).join(" ")
+    : `exercise_type_${exerciseType}`;
+}
+
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
 }
@@ -768,6 +787,158 @@ function heartRateAggregateValues(result: {
   };
 }
 
+interface VitalAggregateBucket {
+  startTime: string;
+  endTime: string;
+  granularity: HealthConnectMeasurementAggregate["granularity"];
+  calendarDate?: string;
+  sum: number;
+  minimum: number;
+  maximum: number;
+  count: number;
+  dataOrigins: Set<string>;
+}
+
+/**
+ * Health Connect does not expose aggregate metrics for every instantaneous vital. Fold raw records
+ * into the same bounded day and 15-minute buckets before upload.
+ */
+async function* readHrvRmssdAggregates(
+  options: ReadRecordsOptions
+): AsyncGenerator<Pick<HealthConnectPayloadCollections, "hrvRmssd">> {
+  for await (const aggregates of readInstantaneousVitalAggregates(
+    "HeartRateVariabilityRmssd", "heartRateVariabilityMillis", options
+  )) {
+    yield { hrvRmssd: aggregates };
+  }
+}
+
+async function* readRestingHeartRateAggregates(
+  options: ReadRecordsOptions
+): AsyncGenerator<Pick<HealthConnectPayloadCollections, "restingHeartRate">> {
+  for await (const aggregates of readInstantaneousVitalAggregates("RestingHeartRate", "beatsPerMinute", options)) {
+    yield { restingHeartRate: aggregates };
+  }
+}
+
+async function* readRespiratoryRateAggregates(
+  options: ReadRecordsOptions
+): AsyncGenerator<Pick<HealthConnectPayloadCollections, "respiratoryRate">> {
+  for await (const aggregates of readInstantaneousVitalAggregates("RespiratoryRate", "rate", options)) {
+    yield { respiratoryRate: aggregates };
+  }
+}
+
+async function* readInstantaneousVitalAggregates(
+  recordType: RecordType,
+  valueField: string,
+  options: ReadRecordsOptions
+): AsyncGenerator<HealthConnectMeasurementAggregate[]> {
+  if (!options.timeRangeFilter || options.timeRangeFilter.operator !== "between") {
+    throw new Error(`A bounded time range is required to aggregate ${recordType}.`);
+  }
+
+  const dailyRange = completedLocalDayRange(options.timeRangeFilter.startTime, options.timeRangeFilter.endTime);
+  const quarterHourRange = completedQuarterHourRange(options.timeRangeFilter.startTime, options.timeRangeFilter.endTime);
+  const dailyBuckets = new Map<string, VitalAggregateBucket>();
+  const quarterHourBuckets = new Map<string, VitalAggregateBucket>();
+
+  for await (const records of readRecordPages(recordType, options)) {
+    for (const record of records) {
+      const fields = record as unknown as Record<string, unknown>;
+      const time = stringValue(fields.time);
+      const timestamp = time ? new Date(time).getTime() : Number.NaN;
+      const value = numberValue(fields[valueField]);
+      if (value === undefined || !Number.isFinite(timestamp)) continue;
+      const provenance = extractProvenance(record);
+      if (dailyRange && isWithinTimeRange(timestamp, dailyRange)) {
+        const bounds = localDayBounds(time!);
+        addVitalAggregateValue(dailyBuckets, bounds.startTime, {
+          ...bounds,
+          granularity: "day",
+          calendarDate: localCalendarDate(time!)
+        }, value, provenance?.dataOrigin);
+      }
+      if (quarterHourRange && isWithinTimeRange(timestamp, quarterHourRange)) {
+        const bounds = quarterHourBounds(timestamp);
+        addVitalAggregateValue(quarterHourBuckets, bounds.startTime, {
+          ...bounds,
+          granularity: "15m"
+        }, value, provenance?.dataOrigin);
+      }
+    }
+  }
+
+  yield [...dailyBuckets.values()].map(toVitalAggregate);
+  yield [...quarterHourBuckets.values()].map(toVitalAggregate);
+}
+
+function isWithinTimeRange(
+  timestamp: number,
+  range: { operator: "between"; startTime: string; endTime: string }
+): boolean {
+  const start = new Date(range.startTime).getTime();
+  const end = new Date(range.endTime).getTime();
+  return timestamp >= start && timestamp < end;
+}
+
+function localDayBounds(value: string): Pick<VitalAggregateBucket, "startTime" | "endTime"> {
+  const start = new Date(value);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { startTime: start.toISOString(), endTime: end.toISOString() };
+}
+
+function quarterHourBounds(timestamp: number): Pick<VitalAggregateBucket, "startTime" | "endTime"> {
+  const quarterHourMs = 15 * 60 * 1000;
+  const start = Math.floor(timestamp / quarterHourMs) * quarterHourMs;
+  return { startTime: new Date(start).toISOString(), endTime: new Date(start + quarterHourMs).toISOString() };
+}
+
+function addVitalAggregateValue(
+  buckets: Map<string, VitalAggregateBucket>,
+  key: string,
+  bounds: Pick<VitalAggregateBucket, "startTime" | "endTime" | "granularity" | "calendarDate">,
+  value: number,
+  dataOrigin: string | undefined
+): void {
+  const existing = buckets.get(key);
+  if (existing) {
+    existing.sum += value;
+    existing.minimum = Math.min(existing.minimum, value);
+    existing.maximum = Math.max(existing.maximum, value);
+    existing.count += 1;
+    if (dataOrigin) existing.dataOrigins.add(dataOrigin);
+    return;
+  }
+  buckets.set(key, {
+    ...bounds,
+    sum: value,
+    minimum: value,
+    maximum: value,
+    count: 1,
+    dataOrigins: new Set(dataOrigin ? [dataOrigin] : [])
+  });
+}
+
+function toVitalAggregate(bucket: VitalAggregateBucket): HealthConnectMeasurementAggregate {
+  return {
+    startTime: bucket.startTime,
+    endTime: bucket.endTime,
+    granularity: bucket.granularity,
+    average: bucket.sum / bucket.count,
+    minimum: bucket.minimum,
+    maximum: bucket.maximum,
+    count: bucket.count,
+    ...(bucket.calendarDate ? { calendarDate: bucket.calendarDate } : {}),
+    provenance: {
+      aggregation: bucket.granularity === "day" ? "companion-daily" : "companion-15m",
+      ...(bucket.dataOrigins.size ? { dataOrigins: [...bucket.dataOrigins].sort() } : {})
+    }
+  };
+}
+
 function completedQuarterHourRange(
   startTime: string,
   endTime: string
@@ -805,7 +976,10 @@ function splitTimeRange(
   return ranges;
 }
 
-function completedLocalDayRange(startTime: string, endTime: string): ReadRecordsOptions["timeRangeFilter"] | undefined {
+function completedLocalDayRange(
+  startTime: string,
+  endTime: string
+): { operator: "between"; startTime: string; endTime: string } | undefined {
   const start = new Date(startTime);
   const end = new Date(endTime);
   start.setHours(0, 0, 0, 0);
