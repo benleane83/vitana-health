@@ -17,6 +17,11 @@ import {
   type AnalyticsSummary,
   type AppBootstrap,
   type BiologicalAgeSource,
+  type BodyTrendDateDetail,
+  type BodyTrendDateQuery,
+  type BodyTrendReadingGroup,
+  type BodyTrendTimeline,
+  type BodyTrendQuery,
   type HealthDataChartSeries,
   type HealthDataChartSeriesOptions,
   type HealthDataChartSeriesPoint,
@@ -636,6 +641,190 @@ export async function calendarMonth(
       kinds: [...summary.kinds].sort()
     }))
   };
+}
+
+export async function bodyTrendTimeline(
+  connection: duckdb.Connection,
+  query: BodyTrendQuery
+): Promise<BodyTrendTimeline> {
+  const { rows, types, units } = await bodyTrendRows(connection, query.timezone, chartRangeCutoff(query.range));
+  const groups = bodyTrendReadingGroups(rows, types, units);
+  const complete = groups.filter(isCompleteBodyTrendReading);
+  const latestByDate = new Map<string, BodyTrendReadingGroupInternal>();
+  for (const group of complete) {
+    const current = latestByDate.get(group.date);
+    if (!current || group.observedAt > current.observedAt || (group.observedAt === current.observedAt && group.sessionId > current.sessionId)) {
+      latestByDate.set(group.date, group);
+    }
+  }
+  const allPoints = [...latestByDate.values()].sort((left, right) => left.date.localeCompare(right.date));
+  const truncated = allPoints.length > maxBodyTrendPoints;
+  const visible = truncated ? allPoints.slice(-maxBodyTrendPoints) : allPoints;
+  const massType = types.get("skeletal_muscle_mass");
+  if (!massType) throw new Error("Body Trend requires the skeletal muscle mass measurement type.");
+
+  return {
+    generatedAt: new Date().toISOString(),
+    range: query.range,
+    timezone: query.timezone,
+    unit: getPreferredUnit(massType, units),
+    points: visible.map((group) => ({
+      sessionId: group.sessionId,
+      date: group.date,
+      observedAt: group.observedAt,
+      ...(group.sourceLabel ? { sourceLabel: group.sourceLabel } : {}),
+      components: {
+        skeletalMuscleMass: requiredBodyTrendMetric(group, "skeletal_muscle_mass").value,
+        fatMass: requiredBodyTrendMetric(group, "fat_mass").value,
+        boneMineralContent: requiredBodyTrendMetric(group, "bone_mineral_content").value,
+        ...(optionalBodyTrendMetric(group, "weight") ? { weight: optionalBodyTrendMetric(group, "weight")!.value } : {})
+      }
+    })),
+    totalPoints: allPoints.length,
+    truncated
+  };
+}
+
+export async function bodyTrendDateDetail(
+  connection: duckdb.Connection,
+  date: string,
+  query: BodyTrendDateQuery
+): Promise<BodyTrendDateDetail> {
+  const { rows, types, units } = await bodyTrendRows(connection, query.timezone, undefined, date);
+  const groups = bodyTrendReadingGroups(rows, types, units);
+  const complete = groups.filter(isCompleteBodyTrendReading).sort((left, right) =>
+    right.observedAt.localeCompare(left.observedAt) || right.sessionId.localeCompare(left.sessionId)
+  );
+  const selectedSession = complete[0];
+  const otherReadings = groups
+    .filter((group) => group.sessionId !== selectedSession?.sessionId)
+    .sort((left, right) => right.observedAt.localeCompare(left.observedAt) || right.sessionId.localeCompare(left.sessionId));
+  return {
+    date,
+    timezone: query.timezone,
+    ...(selectedSession ? { selectedSession: publicBodyTrendReadingGroup(selectedSession) } : {}),
+    otherReadings: otherReadings.map(publicBodyTrendReadingGroup)
+  };
+}
+
+type BodyTrendProjectionRow = {
+  id: string;
+  session_id: string;
+  group_label?: string;
+  measurement_code: string;
+  display_name?: string;
+  observed_at: unknown;
+  local_date: unknown;
+  value: number;
+  unit: string;
+  source_label?: string;
+};
+
+type BodyTrendReadingGroupInternal = BodyTrendReadingGroup & { date: string };
+
+async function bodyTrendRows(
+  connection: duckdb.Connection,
+  timezone: string,
+  cutoff?: string,
+  date?: string
+): Promise<{ rows: BodyTrendProjectionRow[]; types: Map<string, MeasurementType>; units: Profile["units"] }> {
+  const filters = ["m.category = 'body'"];
+  const params: unknown[] = [timezone];
+  if (cutoff) {
+    filters.push("o.observed_at >= ?");
+    params.push(cutoff);
+  }
+  if (date) {
+    filters.push("COALESCE(TRY_CAST(json_extract_string(o.source_json, '$.calendarDate') AS DATE), CAST(timezone(?, o.observed_at) AS DATE)) = CAST(? AS DATE)");
+    params.push(timezone, date);
+  }
+  const [profileRows, typeRows, rows] = await Promise.all([
+    all(connection, "SELECT units FROM profile;"),
+    all(connection, `SELECT ${measurementTypeColumns} FROM measurement_types WHERE category = 'body';`),
+    allWithParams(connection, `
+      SELECT
+        o.id,
+        COALESCE(o.observation_group_id, CONCAT('ungrouped:', COALESCE(o.source_id, ''), ':', CAST(o.observed_at AS VARCHAR))) AS session_id,
+        g.label AS group_label,
+        o.measurement_code,
+        m.display AS display_name,
+        o.observed_at,
+        COALESCE(TRY_CAST(json_extract_string(o.source_json, '$.calendarDate') AS DATE), CAST(timezone(?, o.observed_at) AS DATE)) AS local_date,
+        o.value,
+        o.unit,
+        COALESCE(s.label, s.source_kind, o.source_id) AS source_label
+      FROM observations o
+      JOIN measurement_types m ON m.code = o.measurement_code
+      LEFT JOIN observation_groups g ON g.id = o.observation_group_id
+      LEFT JOIN sources s ON s.id = o.source_id
+      WHERE ${filters.join(" AND ")}
+      ORDER BY local_date, o.observed_at, o.id;
+    `, ...params)
+  ]);
+  return {
+    rows: rows as unknown as BodyTrendProjectionRow[],
+    types: new Map(typeRows.map((row) => {
+      const type = measurementTypeFromRow(row);
+      return [type.code, type];
+    })),
+    units: String(profileRows[0]?.units ?? "metric") as Profile["units"]
+  };
+}
+
+function bodyTrendReadingGroups(
+  rows: BodyTrendProjectionRow[],
+  types: Map<string, MeasurementType>,
+  units: Profile["units"]
+): BodyTrendReadingGroupInternal[] {
+  const groups = new Map<string, BodyTrendReadingGroupInternal>();
+  for (const row of rows) {
+    const type = types.get(row.measurement_code);
+    if (!type) continue;
+    const observedAt = isoTimestamp(row.observed_at);
+    const date = dateOnly(row.local_date);
+    const converted = toPreferredMeasurementValue(Number(row.value), row.unit, type, units);
+    const existing = groups.get(row.session_id) ?? {
+      sessionId: row.session_id,
+      date,
+      observedAt,
+      ...(row.group_label ? { label: row.group_label } : {}),
+      ...(row.source_label ? { sourceLabel: row.source_label } : {}),
+      metrics: []
+    };
+    if (observedAt >= existing.observedAt) existing.observedAt = observedAt;
+    existing.metrics.push({
+      id: row.id,
+      measurementCode: row.measurement_code,
+      displayName: row.display_name ?? type.display,
+      observedAt,
+      value: converted.value,
+      unit: converted.unit,
+      ...(row.source_label ? { sourceLabel: row.source_label } : {})
+    });
+    groups.set(row.session_id, existing);
+  }
+  return [...groups.values()].map((group) => ({
+    ...group,
+    metrics: group.metrics.sort((left, right) => left.observedAt.localeCompare(right.observedAt) || left.id.localeCompare(right.id))
+  }));
+}
+
+function optionalBodyTrendMetric(group: BodyTrendReadingGroup, code: string) {
+  return [...group.metrics].reverse().find((metric) => metric.measurementCode === code);
+}
+
+function requiredBodyTrendMetric(group: BodyTrendReadingGroup, code: string) {
+  const metric = optionalBodyTrendMetric(group, code);
+  if (!metric) throw new Error(`Body Trend complete session missing ${code}.`);
+  return metric;
+}
+
+function isCompleteBodyTrendReading(group: BodyTrendReadingGroup) {
+  return ["skeletal_muscle_mass", "fat_mass", "bone_mineral_content"].every((code) => optionalBodyTrendMetric(group, code));
+}
+
+function publicBodyTrendReadingGroup({ date: _date, ...group }: BodyTrendReadingGroupInternal): BodyTrendReadingGroup {
+  return group;
 }
 
 async function chartEntryCount(connection: duckdb.Connection, measurementCode: string, cutoff?: string) {
@@ -1443,6 +1632,7 @@ export interface DuckDbActivityCount {
 
 const maxAnalyticalRows = 200;
 const maxRawChartPoints = 500;
+const maxBodyTrendPoints = 500;
 const maxDailyChartBuckets = 366;
 const maxAggregatedChartBuckets = 1000;
 /** Ceiling for the raw per-measurement history read. Generous, but no longer unbounded. */

@@ -351,6 +351,65 @@ export interface CalendarMonthData {
   events: CalendarEventSummary[];
 }
 
+export interface BodyTrendQuery {
+  range: HealthDataChartRange;
+  timezone: string;
+}
+
+export interface BodyTrendComponentValues {
+  skeletalMuscleMass: number;
+  fatMass: number;
+  boneMineralContent: number;
+  weight?: number;
+}
+
+export interface BodyTrendPoint {
+  sessionId: string;
+  date: string;
+  observedAt: string;
+  sourceLabel?: string;
+  components: BodyTrendComponentValues;
+}
+
+export interface BodyTrendTimeline {
+  generatedAt: string;
+  range: HealthDataChartRange;
+  timezone: string;
+  unit: string;
+  points: BodyTrendPoint[];
+  totalPoints: number;
+  truncated: boolean;
+}
+
+export interface BodyTrendDateQuery {
+  timezone: string;
+}
+
+export interface BodyTrendMetric {
+  id: string;
+  measurementCode: string;
+  displayName: string;
+  observedAt: string;
+  value: number;
+  unit: string;
+  sourceLabel?: string;
+}
+
+export interface BodyTrendReadingGroup {
+  sessionId: string;
+  label?: string;
+  observedAt: string;
+  sourceLabel?: string;
+  metrics: BodyTrendMetric[];
+}
+
+export interface BodyTrendDateDetail {
+  date: string;
+  timezone: string;
+  selectedSession?: BodyTrendReadingGroup;
+  otherReadings: BodyTrendReadingGroup[];
+}
+
 export interface ReferenceRange {
   low?: number;
   high?: number;

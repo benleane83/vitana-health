@@ -14,6 +14,8 @@ import type {
   AnalyticsSummary,
   AppBootstrap,
   BiologicalAgeReport,
+  BodyTrendDateDetail,
+  BodyTrendTimeline,
   CalendarMonthData,
   CareItem,
   CareItemMutationResponse,
@@ -517,6 +519,65 @@ export const calendarMonthResponseSchema: z.ZodType<CalendarMonthData> = z.objec
     count: z.number().int().positive(),
     kinds: z.array(z.enum(healthEventKindCodes))
   }).strict())
+}).strict();
+
+const bodyTrendRangeSchema = z.enum(["all", "1y", "3m", "1m"]);
+const bodyTrendTimezoneSchema = z.string().trim().min(1).max(80)
+  .refine(isIanaTimezone, "Timezone must be a valid IANA timezone.");
+
+export const bodyTrendQuerySchema = z.object({
+  range: bodyTrendRangeSchema.default("all"),
+  timezone: bodyTrendTimezoneSchema
+}).strict();
+
+export const bodyTrendDateQuerySchema = z.object({
+  timezone: bodyTrendTimezoneSchema
+}).strict();
+
+const bodyTrendMetricSchema = z.object({
+  id: z.string().min(1).max(160),
+  measurementCode: calendarMeasurementCodeSchema,
+  displayName: z.string().min(1).max(160),
+  observedAt: isoTimestampSchema,
+  value: z.number().finite(),
+  unit: z.string().min(1).max(40),
+  sourceLabel: z.string().min(1).max(160).optional()
+}).strict();
+
+const bodyTrendReadingGroupSchema = z.object({
+  sessionId: z.string().min(1).max(160),
+  label: z.string().min(1).max(160).optional(),
+  observedAt: isoTimestampSchema,
+  sourceLabel: z.string().min(1).max(160).optional(),
+  metrics: z.array(bodyTrendMetricSchema)
+}).strict();
+
+export const bodyTrendTimelineResponseSchema: z.ZodType<BodyTrendTimeline> = z.object({
+  generatedAt: isoTimestampSchema,
+  range: bodyTrendRangeSchema,
+  timezone: z.string().min(1).max(80),
+  unit: z.string().min(1).max(40),
+  points: z.array(z.object({
+    sessionId: z.string().min(1).max(160),
+    date: calendarDateSchema,
+    observedAt: isoTimestampSchema,
+    sourceLabel: z.string().min(1).max(160).optional(),
+    components: z.object({
+      skeletalMuscleMass: z.number().finite(),
+      fatMass: z.number().finite(),
+      boneMineralContent: z.number().finite(),
+      weight: z.number().finite().optional()
+    }).strict()
+  }).strict()),
+  totalPoints: z.number().int().nonnegative(),
+  truncated: z.boolean()
+}).strict();
+
+export const bodyTrendDateDetailResponseSchema: z.ZodType<BodyTrendDateDetail> = z.object({
+  date: calendarDateSchema,
+  timezone: z.string().min(1).max(80),
+  selectedSession: bodyTrendReadingGroupSchema.optional(),
+  otherReadings: z.array(bodyTrendReadingGroupSchema)
 }).strict();
 
 export const careItemListQuerySchema = z.object({

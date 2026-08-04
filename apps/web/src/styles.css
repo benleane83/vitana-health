@@ -5140,6 +5140,259 @@ button.stat {
   margin: 0 0 var(--space-4);
 }
 
+.body-trend-page {
+  display: grid;
+  gap: var(--space-6);
+}
+
+.body-trend-header,
+.body-trend-detail-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-5);
+}
+
+.body-trend-header h1,
+.body-trend-detail-heading h2,
+.body-trend-other h3 {
+  margin: 0;
+  color: var(--text);
+}
+
+.body-trend-header p,
+.body-trend-detail-heading p,
+.body-trend-note,
+.body-trend-other p {
+  margin: var(--space-1) 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.body-trend-header p {
+  max-width: 66ch;
+}
+
+.body-trend-chart {
+  min-width: 0;
+  border-block: 1px solid var(--line);
+  padding-block: var(--space-5) var(--space-3);
+}
+
+.body-trend-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.body-trend-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.body-trend-legend i {
+  width: 0.75rem;
+  height: 0.75rem;
+  display: inline-block;
+  border-radius: 2px;
+}
+
+.body-trend-muscle { fill: oklch(63% 0.12 205); background: oklch(63% 0.12 205); }
+.body-trend-fat { fill: oklch(70% 0.14 75); background: oklch(70% 0.14 75); }
+.body-trend-bone { fill: oklch(64% 0.1 330); background: oklch(64% 0.1 330); }
+.body-trend-weight { background: var(--text); height: 2px !important; border-radius: 0 !important; }
+
+.body-trend-chart-scroll {
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.body-trend-comparison {
+  margin: 0 0 var(--space-3);
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.body-trend-comparison > span {
+  display: block;
+  margin-bottom: var(--space-1);
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.body-trend-comparison svg {
+  display: block;
+  min-width: 680px;
+}
+
+.body-trend-comparison-line {
+  fill: none;
+  stroke: var(--primary-strong);
+  stroke-width: 2;
+}
+
+.body-trend-comparison-point {
+  fill: var(--surface);
+  stroke: var(--primary-strong);
+  stroke-width: 2;
+}
+
+.body-trend-comparison-point.is-selected {
+  fill: var(--primary-strong);
+}
+
+.body-trend-chart-svg {
+  display: block;
+  min-width: 680px;
+  min-height: 280px;
+}
+
+.body-trend-weight-line {
+  stroke: var(--text);
+  stroke-width: 2;
+}
+
+.body-trend-hit-target {
+  cursor: pointer;
+  fill: transparent;
+  outline: none;
+}
+
+.body-trend-chart-svg g.is-selected .body-trend-hit-target,
+.body-trend-hit-target:focus {
+  stroke: var(--primary-strong);
+  stroke-width: 2;
+}
+
+.body-trend-chart-tooltip,
+.body-trend-note {
+  min-height: 1.4rem;
+  font-size: 0.88rem;
+}
+
+.body-trend-chart-tooltip {
+  margin: var(--space-2) 0 0;
+  color: var(--text);
+}
+
+.body-trend-empty {
+  max-width: 58ch;
+  min-height: 180px;
+  display: grid;
+  align-content: center;
+  gap: var(--space-2);
+  border-block: 1px solid var(--line);
+  padding-block: var(--space-6);
+}
+
+.body-trend-empty h2,
+.body-trend-empty p {
+  margin: 0;
+}
+
+.body-trend-empty p {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.body-trend-detail {
+  display: grid;
+  gap: var(--space-4);
+  border-top: 1px solid var(--line);
+  padding-top: var(--space-6);
+}
+
+.body-trend-detail-heading > span {
+  color: var(--muted);
+  font-size: 0.86rem;
+  text-align: right;
+}
+
+.body-trend-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+}
+
+.body-trend-metrics button {
+  min-height: 84px;
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--surface-2);
+  color: var(--text);
+  text-align: left;
+}
+
+.body-trend-metrics button:hover:not(:disabled),
+.body-trend-metrics button:focus-visible {
+  background: var(--primary-soft);
+  color: var(--text);
+  transform: none;
+}
+
+.body-trend-metrics span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.body-trend-metrics strong {
+  font-size: 1.1rem;
+}
+
+.body-trend-metrics small {
+  color: var(--muted);
+  font-size: 0.78em;
+  font-weight: 650;
+}
+
+.body-trend-other {
+  display: grid;
+  gap: var(--space-3);
+  border-top: 1px solid var(--line);
+  padding-top: var(--space-5);
+}
+
+.body-trend-other > div {
+  padding: var(--space-3);
+  background: var(--surface-2);
+}
+
+.body-trend-other ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 640px) {
+  .body-trend-header,
+  .body-trend-detail-heading {
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .body-trend-detail-heading > span {
+    text-align: left;
+  }
+}
+
 .calendar-page {
   display: grid;
   gap: var(--space-5);

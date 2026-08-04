@@ -101,6 +101,43 @@ beforeEach(() => {
         events: []
       }));
     }
+    if (url.includes("/api/body-trend/2026-08-01")) {
+      return Promise.resolve(mockResponse({
+        date: "2026-08-01",
+        timezone: "UTC",
+        selectedSession: {
+          sessionId: "body-reading-1",
+          observedAt: "2026-08-01T09:00:00.000Z",
+          sourceLabel: "Body composition scale",
+          metrics: [{
+            id: "muscle-1",
+            measurementCode: "skeletal_muscle_mass",
+            displayName: "Skeletal muscle mass",
+            value: 31.6,
+            unit: "kg",
+            observedAt: "2026-08-01T09:00:00.000Z"
+          }]
+        },
+        otherReadings: []
+      }));
+    }
+    if (url.includes("/api/body-trend?")) {
+      return Promise.resolve(mockResponse({
+        generatedAt: "2026-08-01T10:00:00.000Z",
+        range: "all",
+        timezone: "UTC",
+        unit: "kg",
+        points: [{
+          sessionId: "body-reading-1",
+          date: "2026-08-01",
+          observedAt: "2026-08-01T09:00:00.000Z",
+          sourceLabel: "Body composition scale",
+          components: { skeletalMuscleMass: 31.6, fatMass: 17.8, boneMineralContent: 3.1, weight: 68.8 }
+        }],
+        totalPoints: 1,
+        truncated: false
+      }));
+    }
     if (url.includes("/api/care/health-events")) {
       return Promise.resolve(mockResponse({ items: [], total: 0, offset: 0, limit: 20, hasMore: false }));
     }
@@ -129,6 +166,18 @@ afterEach(() => {
 });
 
 describe("App smoke", () => {
+  it("routes a Body Trend date deep link without requesting a matching summary detail", async () => {
+    globalThis.history.replaceState({}, "", "/track/body-trend/2026-08-01");
+    render(<App />);
+
+    expect(screen.getByRole("tab", { name: /^body trend$/i })).toHaveAttribute("aria-selected", "true");
+  const detailHeading = await screen.findByRole("heading", { level: 2 });
+  expect(detailHeading).toHaveTextContent("2026");
+  expect(detailHeading).toHaveTextContent(/\d{1,2}:\d{2}/);
+    expect(screen.queryByText("Body composition scale")).not.toBeInTheDocument();
+    expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls.map(([url]) => String(url))).not.toContain("/api/summary/body-trend/2026-08-01");
+  });
+
   it("routes Track calendar as a subview and restores it on popstate", async () => {
     globalThis.history.replaceState({}, "", "/track/calendar");
     render(<App />);

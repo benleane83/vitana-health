@@ -15,6 +15,8 @@ exports[`companion route capabilities > records a deliberate decision for every 
   "GET /analytics": "assigned-profile:read",
   "GET /analytics/storage": null,
   "GET /biological-age": null,
+  "GET /body-trend": "assigned-profile:read",
+  "GET /body-trend/sample": "assigned-profile:read",
   "GET /bootstrap": "assigned-profile:read",
   "GET /calendar": "assigned-profile:read",
   "GET /care/health-events": "care:read",

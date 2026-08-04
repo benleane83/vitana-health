@@ -16,6 +16,7 @@ import { api } from "../../api.js";
 import { ObservationEditDialog } from "../../components/ObservationEditDialog.js";
 import { ObservationTypeDetailPage, SummaryPage } from "../../pages/SummaryPage.js";
 import type { TrackView } from "../../types.js";
+import { BodyTrendRoute } from "./BodyTrendRoute.js";
 import { CalendarRoute } from "./CalendarRoute.js";
 
 type RemoteState<T> = {
@@ -38,6 +39,8 @@ export function TrackRoute({
   measurementTypes,
   latestMetrics,
   onViewChange,
+  bodyTrendDate,
+  onSelectBodyTrendDate,
   onBack,
   onSelectDetail,
   onDataChanged,
@@ -50,6 +53,8 @@ export function TrackRoute({
   measurementTypes: MeasurementType[];
   latestMetrics: LatestMetric[];
   onViewChange: (view: TrackView) => void;
+  bodyTrendDate?: string;
+  onSelectBodyTrendDate: (date: string) => void;
   onBack: () => void;
   onSelectDetail: (measurementCode: string) => void;
   onDataChanged: () => Promise<void>;
@@ -71,10 +76,11 @@ export function TrackRoute({
   function handleTabKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, currentView: TrackView) {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
-    const nextView: TrackView = event.key === "ArrowRight" || event.key === "End" ? "calendar" : "measurements";
-    const resolved = event.key.startsWith("Arrow") && nextView === currentView
-      ? currentView === "measurements" ? "calendar" : "measurements"
-      : nextView;
+    const views: TrackView[] = ["measurements", "body-trend", "calendar"];
+    const currentIndex = views.indexOf(currentView);
+    const resolved = event.key === "Home" ? views[0]! : event.key === "End" ? views.at(-1)! : views[
+      (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + views.length) % views.length
+    ]!;
     onViewChange(resolved);
     document.getElementById(`track-tab-${resolved}`)?.focus();
   }
@@ -299,7 +305,7 @@ export function TrackRoute({
   return (
     <>
       <div className="care-switch track-switch" role="tablist" aria-label="Track views">
-        {(["measurements", "calendar"] as const).map((value) => (
+        {(["measurements", "body-trend", "calendar"] as const).map((value) => (
           <button
             key={value}
             id={`track-tab-${value}`}
@@ -312,12 +318,19 @@ export function TrackRoute({
             onClick={() => onViewChange(value)}
             onKeyDown={(event) => handleTabKeyDown(event, value)}
           >
-            {value === "measurements" ? "Measurements" : "Calendar"}
+            {value === "measurements" ? "Measurements" : value === "body-trend" ? "Body Trend" : "Calendar"}
           </button>
         ))}
       </div>
       <div id="track-view-panel" role="tabpanel" aria-labelledby={`track-tab-${view}`}>
-      {view === "calendar" ? (
+      {view === "body-trend" ? (
+        <BodyTrendRoute
+          activeProfileId={activeProfileId}
+          selectedDateFromPath={bodyTrendDate}
+          onSelectDate={onSelectBodyTrendDate}
+          onSelectMeasurement={onSelectDetail}
+        />
+      ) : view === "calendar" ? (
         <CalendarRoute
           activeProfileId={activeProfileId}
           measurementTypes={measurementTypes}
