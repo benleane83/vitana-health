@@ -3,6 +3,10 @@ import {
   apiErrorResponseSchema,
   appBootstrapResponseSchema,
   assignedProfilesResponseSchema,
+  bodyTrendDateDetailResponseSchema,
+  bodyTrendDateQuerySchema,
+  bodyTrendQuerySchema,
+  bodyTrendTimelineResponseSchema,
   bodyCompositionDraftResponseSchema,
   calendarMonthQuerySchema,
   calendarMonthResponseSchema,
@@ -47,6 +51,8 @@ import {
 export { BRAND_NAME, FORMAL_BRAND_NAME, PAIRING_APP, PUBLIC_DOMAIN } from "@vitana/shared";
 import type {
   BodyCompositionDraftCommitPayload,
+  BodyTrendDateQuery,
+  BodyTrendQuery,
   CalendarMonthQuery,
   CareItemListQuery,
   CompleteCareItemInput,
@@ -156,6 +162,19 @@ export function createApiClient(transport: ApiTransport) {
     },
     analytics: (signal?: AbortSignal) => request(analyticsSummaryResponseSchema, "/api/analytics", { signal }),
     summary: (signal?: AbortSignal) => request(healthDataSummaryResponseSchema, "/api/summary", { signal }),
+    bodyTrendTimeline: (query: BodyTrendQuery, signal?: AbortSignal) => {
+      const validated = bodyTrendQuerySchema.parse(query);
+      const params = `range=${encodeURIComponent(validated.range)}&timezone=${encodeURIComponent(validated.timezone)}`;
+      return request(bodyTrendTimelineResponseSchema, `/api/body-trend?${params}`, { signal });
+    },
+    bodyTrendDateDetail: (date: string, query: BodyTrendDateQuery, signal?: AbortSignal) => {
+      const validated = bodyTrendDateQuerySchema.parse(query);
+      return request(
+        bodyTrendDateDetailResponseSchema,
+        `/api/body-trend/${encodeURIComponent(date)}?timezone=${encodeURIComponent(validated.timezone)}`,
+        { signal }
+      );
+    },
     calendarMonth: (query: CalendarMonthQuery, signal?: AbortSignal) => {
       const validated = calendarMonthQuerySchema.parse(query);
       const params = [

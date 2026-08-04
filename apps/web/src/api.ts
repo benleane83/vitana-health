@@ -260,6 +260,8 @@ export const api = {
     }
   },
   summary: sharedApi.summary,
+  bodyTrendTimeline: sharedApi.bodyTrendTimeline,
+  bodyTrendDateDetail: sharedApi.bodyTrendDateDetail,
   calendarMonth: sharedApi.calendarMonth,
   healthDataDetail: sharedApi.healthDataDetail,
   healthDataChartSeries: sharedApi.healthDataChartSeries,

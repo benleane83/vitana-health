@@ -7,7 +7,7 @@ import type { UploadDraftRow } from "@vitana/shared";
 export type AppRoute = "dashboard" | "import" | "track" | "care" | "insights" | "export" | "settings";
 export type InsightsTab = "biological-age" | "ai-query" | "ai-review";
 export type CareView = "items" | "health-events";
-export type TrackView = "measurements" | "calendar";
+export type TrackView = "measurements" | "body-trend" | "calendar";
 export type SummarySort = "name" | "count" | "recency";
 export type ImportMode = "manual" | "upload" | "sync";
 export type SettingsView = "app" | "ai";

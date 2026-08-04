@@ -4,6 +4,10 @@ import {
   analyticsSummaryResponseSchema,
   appBootstrapResponseSchema,
   biologicalAgeResponseSchema,
+  bodyTrendDateDetailResponseSchema,
+  bodyTrendDateQuerySchema,
+  bodyTrendQuerySchema,
+  bodyTrendTimelineResponseSchema,
   calculateBiologicalAge,
   calendarMonthQuerySchema,
   calendarMonthResponseSchema,
@@ -48,6 +52,7 @@ const measurementCodeParamSchema = z
   .min(1)
   .max(120)
   .regex(/^[A-Za-z0-9_-]+$/, "Measurement code contains unsupported characters.");
+const calendarDateParamSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must use YYYY-MM-DD.");
 
 const recordIdParamSchema = z
   .string()
@@ -115,6 +120,25 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
   router.get("/summary", async (_request, response, next) => {
     try {
       sendJson(response, healthDataSummaryResponseSchema, await requestStore(response).summary());
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/body-trend", async (request, response, next) => {
+    try {
+      const query = bodyTrendQuerySchema.parse(request.query);
+      sendJson(response, bodyTrendTimelineResponseSchema, await requestStore(response).bodyTrendTimeline(query));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/body-trend/:date", async (request, response, next) => {
+    try {
+      const date = calendarDateParamSchema.parse(request.params.date);
+      const query = bodyTrendDateQuerySchema.parse(request.query);
+      sendJson(response, bodyTrendDateDetailResponseSchema, await requestStore(response).bodyTrendDateDetail(date, query));
     } catch (error) {
       next(error);
     }

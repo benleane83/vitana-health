@@ -1060,6 +1060,51 @@ describe("DuckDbRepository fidelity", () => {
     }
   }, 30_000);
 
+  it.skipIf(!httpfsExtensionPath)("returns schema-compatible Body Trend date detail groups", async () => {
+    const databasePath = join(root, "databases", "health-store-body-trend-detail.duckdb-poc");
+    const fixture = createDuckDbHealthStoreFixture();
+    const bodyCompositionCodes = new Set(["skeletal_muscle_mass", "fat_mass", "bone_mineral_content"]);
+    fixture.measurementTypes.push(...defaultMeasurementTypes.filter((measurement) => bodyCompositionCodes.has(measurement.code)));
+    fixture.observationGroups.push({
+      id: "body-trend-group",
+      kind: "body_composition_report",
+      label: "Body composition report",
+      sourceId: "source-1",
+      collectedAt: "2026-08-01T09:00:00.000Z"
+    });
+    const bodyCompositionObservations: Array<[string, string, number]> = [
+      ["body-muscle", "skeletal_muscle_mass", 31.6],
+      ["body-fat", "fat_mass", 17.8],
+      ["body-bone", "bone_mineral_content", 3.1]
+    ];
+    fixture.observations.push(...bodyCompositionObservations.map(([id, measurementCode, value]) => ({
+      id,
+      measurementCode,
+      observedAt: "2026-08-01T09:00:00.000Z",
+      value,
+      unit: "kg",
+      sourceId: "source-1",
+      observationGroupId: "body-trend-group"
+    })));
+    const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
+    try {
+      const detail = await repository.bodyTrendDateDetail("2026-08-01", { timezone: "UTC" });
+
+      expect(detail.selectedSession).toMatchObject({
+        sessionId: "body-trend-group",
+        metrics: expect.arrayContaining([
+          expect.objectContaining({ measurementCode: "skeletal_muscle_mass", observedAt: "2026-08-01T09:00:00.000Z" }),
+          expect.objectContaining({ measurementCode: "fat_mass" }),
+          expect.objectContaining({ measurementCode: "bone_mineral_content" })
+        ])
+      });
+      expect(detail.selectedSession).not.toHaveProperty("date");
+      expect(detail.otherReadings).toEqual([]);
+    } finally {
+      await repository.close();
+    }
+  }, 30_000);
+
   it.skipIf(!httpfsExtensionPath)("deletes all Step samples without deleting other measurements", async () => {
     const databasePath = join(root, "databases", "health-store-delete-steps.duckdb-poc");
     const fixture = createDuckDbHealthStoreFixture();

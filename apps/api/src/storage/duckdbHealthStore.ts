@@ -1,4 +1,6 @@
 import type {
+  BodyTrendDateQuery,
+  BodyTrendQuery,
   CalendarMonthQuery,
   AppBootstrap,
   CareItemListQuery,
@@ -119,6 +121,14 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
 
   summary() {
     return this.repository.summary();
+  }
+
+  bodyTrendTimeline(query: BodyTrendQuery) {
+    return this.repository.bodyTrendTimeline(query);
+  }
+
+  bodyTrendDateDetail(date: string, query: BodyTrendDateQuery) {
+    return this.repository.bodyTrendDateDetail(date, query);
   }
 
   measurementDetail(measurementCode: string, page: MeasurementDetailPage = { offset: 0, limit: 100 }) {

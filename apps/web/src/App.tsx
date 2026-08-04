@@ -32,6 +32,9 @@ export function App() {
     () => summaryDetailCodeFromPathname(window.location.pathname)
   );
   const [trackView, setTrackView] = useState<TrackView>(() => trackViewFromPathname(window.location.pathname));
+  const [bodyTrendDate, setBodyTrendDate] = useState<string | undefined>(
+    () => bodyTrendDateFromPathname(window.location.pathname)
+  );
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const pathnameRef = useRef(window.location.pathname);
 
@@ -73,6 +76,7 @@ export function App() {
       setSettingsView(settingsViewFromPathname(window.location.pathname));
       setSummaryDetailCode(summaryDetailCodeFromPathname(window.location.pathname));
       setTrackView(trackViewFromPathname(window.location.pathname));
+      setBodyTrendDate(bodyTrendDateFromPathname(window.location.pathname));
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -162,9 +166,18 @@ export function App() {
   }
 
   function navigateTrackView(nextView: TrackView) {
-    pushPath(nextView === "calendar" ? "/track/calendar" : "/track");
+    pushPath(nextView === "calendar" ? "/track/calendar" : nextView === "body-trend" ? "/track/body-trend" : "/track");
     setSummaryDetailCode(undefined);
     setTrackView(nextView);
+    setBodyTrendDate(undefined);
+    setRoute("track");
+  }
+
+  function navigateBodyTrendDate(date: string) {
+    pushPath(`/track/body-trend/${encodeURIComponent(date)}`);
+    setSummaryDetailCode(undefined);
+    setTrackView("body-trend");
+    setBodyTrendDate(date);
     setRoute("track");
   }
 
@@ -438,6 +451,8 @@ export function App() {
               measurementTypes={recordedMeasurementTypes}
               latestMetrics={analytics?.latestMetrics ?? []}
               onViewChange={navigateTrackView}
+              bodyTrendDate={bodyTrendDate}
+              onSelectBodyTrendDate={navigateBodyTrendDate}
               onBack={() => navigate("track")}
               onSelectDetail={navigateSummaryDetail}
               onDataChanged={() => profileLifecycle.refresh({ profiles: false })}
@@ -548,7 +563,7 @@ function summaryDetailCodeFromPathname(pathname: string): string | undefined {
   const prefix = pathname.startsWith("/track/") ? "/track/" : undefined;
   if (!prefix) return undefined;
   const raw = pathname.slice(prefix.length);
-  if (!raw || raw === "calendar") return undefined;
+  if (!raw || raw === "calendar" || raw === "body-trend" || raw.startsWith("body-trend/")) return undefined;
   try {
     return decodeURIComponent(raw);
   } catch {
@@ -557,8 +572,17 @@ function summaryDetailCodeFromPathname(pathname: string): string | undefined {
 
 }
 
+function bodyTrendDateFromPathname(pathname: string): string | undefined {
+  const match = /^\/track\/body-trend\/(\d{4}-\d{2}-\d{2})$/.exec(pathname);
+  return match?.[1];
+}
+
 function trackViewFromPathname(pathname: string): TrackView {
-  return pathname === "/track/calendar" ? "calendar" : "measurements";
+  return pathname === "/track/calendar" || pathname.startsWith("/track/calendar/")
+    ? "calendar"
+    : pathname === "/track/body-trend" || bodyTrendDateFromPathname(pathname)
+      ? "body-trend"
+      : "measurements";
 }
 
 function importModeFromPathname(pathname: string): ImportMode {
