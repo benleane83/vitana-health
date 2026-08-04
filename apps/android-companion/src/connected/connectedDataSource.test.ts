@@ -161,7 +161,7 @@ describe("connected data source", () => {
     // The item was created on the PC, so the user must not be told the save failed - that is how
     // duplicates appear.
     await expect(source.createCareItem({
-      kind: "follow-up",
+      kind: "visit",
       title: "Book follow-up",
       priority: "normal",
       status: "open"

@@ -68,7 +68,7 @@ describe("calendar page helpers", () => {
     )).toBe("steps");
   });
 
-  it("keeps selected-day detail available through closed disclosures", () => {
+  it("keeps selected-day detail available through disclosures", () => {
     render(
       <CalendarPage
         month="2026-08"
@@ -138,9 +138,9 @@ describe("calendar page helpers", () => {
     expect(screen.getByLabelText("Make Weight primary")).toHaveAttribute("title", "Make Weight primary");
     expect(inspector.getByText("Steps")).toBeInTheDocument();
     expect(inspector.getByText("7,425")).toBeInTheDocument();
-    expect(inspector.getByText("1 completed health event")).toBeInTheDocument();
+    expect(inspector.getByText("1 health event")).toBeInTheDocument();
     expect(inspector.getByText("Measurement details").closest("details")).not.toHaveAttribute("open");
-    expect(inspector.getByText("1 completed health event").closest("details")).not.toHaveAttribute("open");
+    expect(inspector.getByText("1 health event").closest("details")).toHaveAttribute("open");
     expect(inspector.getByText("Health Connect")).toBeInTheDocument();
     expect(inspector.getByText("Provider: Northside Clinic")).toBeInTheDocument();
     expect(inspector.getByText("Annual review")).toBeInTheDocument();

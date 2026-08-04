@@ -90,16 +90,7 @@ export class PairingStore {
     this.dataPath = resolve(dataDir, "paired-devices.json");
     const serverInstancePath = resolve(dataDir, "server-instance-id");
     mkdirSync(dataDir, { recursive: true });
-    if (existsSync(serverInstancePath)) {
-      const stored = readFileSync(serverInstancePath, "utf8").trim();
-      if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(stored)) {
-        throw new Error(`Could not read server identity at ${serverInstancePath}.`);
-      }
-      this.serverInstanceId = stored;
-    } else {
-      this.serverInstanceId = randomUUID();
-      writeFileSync(serverInstancePath, `${this.serverInstanceId}\n`, { mode: 0o600, flag: "wx" });
-    }
+    this.serverInstanceId = readOrCreateServerInstanceId(serverInstancePath);
     if (!existsSync(this.dataPath)) return;
     try {
       const records = JSON.parse(readFileSync(this.dataPath, "utf8")) as InternalPairingRecord[];
@@ -313,4 +304,29 @@ export class PairingStore {
     }, 250);
     this.usagePersistTimer.unref?.();
   }
+}
+
+function readOrCreateServerInstanceId(serverInstancePath: string): string {
+  try {
+    return parseServerInstanceId(readFileSync(serverInstancePath, "utf8"), serverInstancePath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+
+  const generated = randomUUID();
+  try {
+    writeFileSync(serverInstancePath, `${generated}\n`, { mode: 0o600, flag: "wx" });
+    return generated;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    return parseServerInstanceId(readFileSync(serverInstancePath, "utf8"), serverInstancePath);
+  }
+}
+
+function parseServerInstanceId(value: string, serverInstancePath: string): string {
+  const stored = value.trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(stored)) {
+    throw new Error(`Could not read server identity at ${serverInstancePath}.`);
+  }
+  return stored;
 }

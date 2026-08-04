@@ -110,7 +110,7 @@ describe("response contracts", () => {
   it("rejects unknown fields rather than silently forwarding them", () => {
     const result = careItemSchema.safeParse({
       id: "care-1",
-      kind: "follow-up",
+      kind: "visit",
       title: "Follow up",
       priority: "normal",
       status: "open",

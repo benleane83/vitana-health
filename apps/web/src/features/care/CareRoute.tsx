@@ -41,7 +41,7 @@ const defaultHealthEventDraft: HealthEventDraft = {
 
 const defaultCareItemDraft: CareItemDraft = {
   title: "",
-  kind: "follow-up",
+  kind: "visit",
   priority: "normal",
   status: "open",
   reminderAt: undefined,
@@ -265,7 +265,9 @@ export function CareRoute({
     await runAction(async () => {
       await api.care.completeCareItem(completingCareItem.id, completionDraft);
       await Promise.all([loadCareItems(true), onDataChanged()]);
-      onNotice(`${completingCareItem.title} completed and added to Health events.`);
+      onNotice(completingCareItem.kind === "monitoring"
+        ? `${completingCareItem.title} completed.`
+        : `${completingCareItem.title} completed and added to Health events.`);
       setCompletingCareItem(undefined);
     });
   }
@@ -583,11 +585,12 @@ function CareItemEditor({ draft, busy, onChange, onCancel, onSave }: { draft: Ca
 }
 
 function CareItemCompletionEditor({ item, draft, busy, onChange, onCancel, onComplete }: { item: CareItem; draft: CompletionDraft; busy: boolean; onChange: (next: CompletionDraft) => void; onCancel: () => void; onComplete: () => void; }) {
+  const createsHealthEvent = item.kind !== "monitoring";
   return (
     <form className="care-editor care-completion-editor" onSubmit={(event) => { event.preventDefault(); onComplete(); }}>
-      <div><h2 tabIndex={-1}>Complete {item.title}</h2><p>Review the health event that will be created.</p></div>
+      <div><h2 tabIndex={-1}>Complete {item.title}</h2><p>{createsHealthEvent ? "Review the health event that will be created." : "Record when this monitoring item was completed."}</p></div>
       <label>Date<input type="date" value={toDateOnly(draft.occurredAt)} onChange={(event) => onChange({ ...draft, occurredAt: fromDateOnly(event.target.value) || draft.occurredAt })} /></label>
-      <label>Kind<select value={draft.kind} onChange={(event) => onChange({ ...draft, kind: event.target.value as CompletionDraft["kind"] })}>{healthEventKindCodes.map((kind) => <option key={kind} value={kind}>{healthEventKindLabels[kind]}</option>)}</select></label>
+      {createsHealthEvent ? <label>Kind<select value={draft.kind} onChange={(event) => onChange({ ...draft, kind: event.target.value as CompletionDraft["kind"] })}>{healthEventKindCodes.map((kind) => <option key={kind} value={kind}>{healthEventKindLabels[kind]}</option>)}</select></label> : null}
       <div className="care-editor-actions"><button type="submit" disabled={busy}>{busy ? "Completing…" : "Complete care item"}</button><button type="button" onClick={onCancel} disabled={busy}>Cancel</button></div>
     </form>
   );

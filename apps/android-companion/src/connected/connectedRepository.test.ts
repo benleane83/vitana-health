@@ -63,14 +63,14 @@ describe("connected replica repository", () => {
       }),
       upsert("health-event", "event-2", {
         id: "event-2",
-        kind: "test",
+        kind: "procedure",
         status: "completed",
         occurredAt: "2026-07-20T10:00:00.000Z",
         source: "manual-entry"
       }),
       upsert("care-item", "care-1", {
         id: "care-1",
-        kind: "follow-up",
+        kind: "visit",
         title: "Book clinic follow-up",
         dueStart: "2026-08-01",
         priority: "high",
@@ -79,7 +79,7 @@ describe("connected replica repository", () => {
       }),
       upsert("care-item", "care-2", {
         id: "care-2",
-        kind: "dental",
+        kind: "visit",
         title: "Book dentist",
         priority: "normal",
         status: "open"

@@ -7,7 +7,7 @@ import { CareRoute } from "./CareRoute.js";
 const openCareItem = {
   id: "care-1",
   title: "Annual check-up",
-  kind: "routine-checkup" as const,
+  kind: "visit" as const,
   priority: "normal" as const,
   status: "open" as const,
   dueStart: "2026-08-18T14:00:00.000Z"
@@ -91,7 +91,7 @@ describe("CareRoute", () => {
 
     render(<CareRoute view="items" activeProfileId="self" onViewChange={vi.fn()} onDataChanged={vi.fn().mockResolvedValue(undefined)} onNotice={vi.fn()} confirm={vi.fn()} />);
     await screen.findByText("Annual check-up");
-    fireEvent.change(screen.getByLabelText("Filter care item kind"), { target: { value: "routine-checkup" } });
+    fireEvent.change(screen.getByLabelText("Filter care item kind"), { target: { value: "visit" } });
     fireEvent.click(screen.getByRole("button", { name: "Apply" }));
 
     expect(await screen.findByRole("heading", { name: "No matches found" })).toBeInTheDocument();
@@ -112,9 +112,9 @@ describe("CareRoute", () => {
     render(<CareRoute view="items" activeProfileId="self" onViewChange={vi.fn()} onDataChanged={onDataChanged} onNotice={onNotice} confirm={vi.fn()} />);
 
     expect(await screen.findByText("Plan and track appointments, follow-ups, and other care that still needs attention.")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Filter care item kind"), { target: { value: "routine-checkup" } });
+    fireEvent.change(screen.getByLabelText("Filter care item kind"), { target: { value: "visit" } });
     fireEvent.click(screen.getByRole("button", { name: "Apply" }));
-    await waitFor(() => expect(api.care.listCareItems).toHaveBeenLastCalledWith(expect.objectContaining({ kind: "routine-checkup" })));
+    await waitFor(() => expect(api.care.listCareItems).toHaveBeenLastCalledWith(expect.objectContaining({ kind: "visit" })));
 
     fireEvent.click(screen.getByRole("button", { name: "Complete" }));
     expect(screen.getByRole("heading", { name: "Complete Annual check-up" })).toBeInTheDocument();
@@ -127,6 +127,26 @@ describe("CareRoute", () => {
     expect(complete.mock.calls[0]?.[1].occurredAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
     expect(onDataChanged).toHaveBeenCalledOnce();
     expect(onNotice).toHaveBeenCalledWith("Annual check-up completed and added to Health events.");
+  });
+
+  it("completes monitoring without offering or claiming a Health Event", async () => {
+    const monitoringItem = { ...openCareItem, id: "care-monitoring", title: "Review blood pressure", kind: "monitoring" as const };
+    vi.mocked(api.care.listCareItems).mockResolvedValue({ items: [monitoringItem], total: 1, offset: 0, limit: 20, hasMore: false });
+    const complete = vi.spyOn(api.care, "completeCareItem").mockResolvedValue({
+      careItem: { ...monitoringItem, status: "completed", completedAt: "2026-07-25T09:30:00.000Z" },
+      counts: { imports: 0, observations: 0, samples: 0, activities: 0, healthEvents: 0, careItems: 1 }
+    });
+    const onNotice = vi.fn();
+
+    render(<CareRoute view="items" activeProfileId="self" onViewChange={vi.fn()} onDataChanged={vi.fn().mockResolvedValue(undefined)} onNotice={onNotice} confirm={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Complete" }));
+    expect(screen.getByText("Record when this monitoring item was completed.")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Kind")).not.toBeInTheDocument();
+
+    fireEvent.submit(screen.getByRole("button", { name: "Complete care item" }).closest("form")!);
+    await waitFor(() => expect(complete).toHaveBeenCalledWith("care-monitoring", expect.objectContaining({ kind: undefined })));
+    expect(onNotice).toHaveBeenCalledWith("Review blood pressure completed.");
   });
 
   it("uses direct reminder dates and only enables due-date presets when a due date exists", async () => {

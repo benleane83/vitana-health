@@ -7,6 +7,7 @@ import {
   createCareItemInputSchema,
   createHealthEventInputSchema,
   convertMeasurementValue,
+  defaultHealthEventKindForCareItem,
   describeMeasurementRejection,
   isHealthEventKind,
   insightSchema,
@@ -577,7 +578,7 @@ export async function updateHealthEvent(
   if (event.kind !== "immunization") {
     await run(connection, "DELETE FROM immunizations WHERE health_event_id = ?;", id);
   }
-  if (event.kind !== "medication-administration") {
+  if (event.kind !== "medication") {
     await run(connection, "DELETE FROM medication_administrations WHERE health_event_id = ?;", id);
   }
   await insertAudit(connection, "health-event-updated", `${event.kind} event updated for ${event.occurredAt}.`);
@@ -696,35 +697,45 @@ export async function completeCareItem(
     throw new CareItemCompletionConflictError();
   }
   const validated = completeCareItemInputSchema.parse(input);
-  const { healthEvent } = await createHealthEvent(connection, {
-    kind: validated.kind,
-    status: "completed",
-    occurredAt: validated.occurredAt,
-    notes: `Completed care item: ${current.title}.`
-  });
+  const eventKind = defaultHealthEventKindForCareItem[current.kind];
+  const healthEvent = eventKind
+    ? (await createHealthEvent(connection, {
+        kind: validated.kind ?? eventKind,
+        status: "completed",
+        occurredAt: validated.occurredAt,
+        notes: `Completed care item: ${current.title}.`
+      })).healthEvent
+    : undefined;
   await run(
     connection,
     `UPDATE care_items
       SET status = 'completed', completed_at = ?, completed_health_event_id = ?
       WHERE id = ?;`,
     validated.occurredAt,
-    healthEvent.id,
+    healthEvent?.id ?? null,
     id
   );
   await insertAudit(connection, "care-item-completed", `${current.title} care item completed.`);
-  const careItem = careItemSchema.parse({
+  const careItemInput: CareItem = {
     ...current,
     status: "completed",
     completedAt: validated.occurredAt,
-    completedHealthEventId: healthEvent.id,
-    completedHealthEvent: {
-      id: healthEvent.id,
-      kind: healthEvent.kind,
-      occurredAt: healthEvent.occurredAt,
-      provider: healthEvent.provider
-    }
-  });
-  return { careItem, healthEvent, counts: await storageCounts(connection) };
+    ...(healthEvent ? {
+      completedHealthEventId: healthEvent.id,
+      completedHealthEvent: {
+        id: healthEvent.id,
+        kind: healthEvent.kind,
+        occurredAt: healthEvent.occurredAt,
+        provider: healthEvent.provider
+      }
+    } : {})
+  };
+  if (!healthEvent) {
+    delete careItemInput.completedHealthEventId;
+    delete careItemInput.completedHealthEvent;
+  }
+  const careItem = careItemSchema.parse(careItemInput);
+  return { careItem, ...(healthEvent ? { healthEvent } : {}), counts: await storageCounts(connection) };
 }
 
 export async function deleteCareItem(
@@ -832,10 +843,10 @@ function healthEventRecord(input: CreateHealthEventInput & { id: string; source:
       notes: input.notes
     };
   }
-  if (input.kind === "medication-administration") {
+  if (input.kind === "medication") {
     return {
       id: input.id,
-      kind: "medication-administration",
+      kind: "medication",
       status: input.status,
       occurredAt: input.occurredAt,
       source: input.source,
@@ -871,8 +882,8 @@ function healthEventFromRow(row: Record<string, unknown>): HealthEvent {
   if (kind === "immunization") {
     return { ...base, kind: "immunization" };
   }
-  if (kind === "medication-administration") {
-    return { ...base, kind: "medication-administration" };
+  if (kind === "medication") {
+    return { ...base, kind: "medication" };
   }
   return { ...base, kind };
 }

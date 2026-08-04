@@ -523,7 +523,9 @@ export class DuckDbRepository implements ProfileRepository {
       () => completeDuckDbCareItem(this.connection, id, input),
       (result) => result ? [
         replicaUpsert("care-item", result.careItem.id, replicaCareItem(result.careItem)),
-        replicaUpsert("health-event", result.healthEvent.id, result.healthEvent)
+        ...(result.healthEvent
+          ? [replicaUpsert("health-event", result.healthEvent.id, result.healthEvent)]
+          : [])
       ] : []
     );
   }

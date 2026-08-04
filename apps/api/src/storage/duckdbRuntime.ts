@@ -21,7 +21,7 @@ const markerName = ".vitana-duckdb-poc";
  * bumps the export format and may leave this alone. Backup/restore correctness depends on the
  * distinction — a restore validates the export format and is indifferent to the engine version.
  */
-const DB_SCHEMA_VERSION = 3;
+const DB_SCHEMA_VERSION = 6;
 
 export interface DuckDbOptions {
   httpfsExtensionPath?: string;
@@ -605,10 +605,51 @@ const measurementAggregatesSchemaSql = `
     (3, CURRENT_TIMESTAMP, 'Measurement aggregates');
 `;
 
+const unlinkObsoleteHealthEventsSchemaSql = `
+  UPDATE care_items
+    SET completed_health_event_id = NULL
+    WHERE completed_health_event_id IN (
+      SELECT id FROM health_events WHERE kind IN ('treatment', 'dental', 'test', 'injury')
+    );
+  DELETE FROM immunizations
+    WHERE health_event_id IN (
+      SELECT id FROM health_events WHERE kind IN ('treatment', 'dental', 'test', 'injury')
+    );
+  DELETE FROM medication_administrations
+    WHERE health_event_id IN (
+      SELECT id FROM health_events WHERE kind IN ('treatment', 'dental', 'test', 'injury')
+    );
+
+  INSERT OR IGNORE INTO poc_metadata VALUES
+    (4, CURRENT_TIMESTAMP, 'Unlink obsolete health events');
+`;
+
+const healthEventKindConceptsSchemaSql = `
+  DELETE FROM health_events WHERE kind IN ('treatment', 'dental', 'test', 'injury');
+  UPDATE health_events SET kind = 'medication' WHERE kind = 'medication-administration';
+  UPDATE health_events SET kind = 'allergy-intolerance' WHERE kind = 'allergy-reaction';
+
+  INSERT OR IGNORE INTO poc_metadata VALUES
+    (5, CURRENT_TIMESTAMP, 'Health event coded concepts');
+`;
+
+const careItemKindConsolidationSchemaSql = `
+  UPDATE care_items SET kind = 'visit'
+    WHERE kind IN ('routine-checkup', 'follow-up', 'dental');
+  UPDATE care_items SET kind = 'procedure'
+    WHERE kind IN ('test-screening', 'treatment-therapy');
+
+  INSERT OR IGNORE INTO poc_metadata VALUES
+    (6, CURRENT_TIMESTAMP, 'Consolidated care item kinds');
+`;
+
 const schemaMigrations = [
   { version: 1, sql: baselineSchemaSql },
   { version: 2, sql: healthConnectSyncSchemaSql },
-  { version: 3, sql: measurementAggregatesSchemaSql }
+  { version: 3, sql: measurementAggregatesSchemaSql },
+  { version: 4, sql: unlinkObsoleteHealthEventsSchemaSql },
+  { version: 5, sql: healthEventKindConceptsSchemaSql },
+  { version: 6, sql: careItemKindConsolidationSchemaSql }
 ] as const;
 
 const analyticalViewStatements = [

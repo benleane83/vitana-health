@@ -409,7 +409,7 @@ export const healthEventSchema: z.ZodType<HealthEvent> = z.discriminatedUnion("k
   }).strict(),
   z.object({
     ...healthEventBaseShape,
-    kind: z.literal("medication-administration"),
+    kind: z.literal("medication"),
     medicationAdministration: medicationAdministrationDetailsSchema.optional()
   }).strict(),
   z.object({
@@ -564,7 +564,7 @@ export type UpdateCareItemInput = CreateCareItemInput;
 
 export const completeCareItemInputSchema = z.object({
   occurredAt: isoTimestampSchema,
-  kind: z.enum(healthEventKindCodes)
+  kind: z.enum(healthEventKindCodes).optional()
 }).strict();
 export type CompleteCareItemInput = z.infer<typeof completeCareItemInputSchema>;
 
@@ -941,7 +941,7 @@ export const careItemMutationResponseSchema: z.ZodType<CareItemMutationResponse>
 }).strict();
 export const completeCareItemResponseSchema: z.ZodType<CompleteCareItemResponse> = z.object({
   careItem: careItemSchema,
-  healthEvent: healthEventSchema,
+  healthEvent: healthEventSchema.optional(),
   counts: entityCountsSchema
 }).strict();
 export const deleteHealthEventResponseSchema: z.ZodType<DeleteHealthEventResponse> = z.object({

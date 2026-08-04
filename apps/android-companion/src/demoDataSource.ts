@@ -5,6 +5,7 @@ import {
   type CreateCareItemInput,
   type CreateHealthEventInput,
   classifyValue,
+  defaultHealthEventKindForCareItem,
   defaultMeasurementTypes,
   getReferenceRange,
   resolveReferenceRange,
@@ -52,7 +53,7 @@ export function createDemoDataSource(
 ): CompanionDataSource & CompanionCareService & CompanionMutationService & CompanionObservationMutationService {
   const details = new Map(metrics.map((metric) => [metric.code, makeDetail(metric, now)]));
   let healthEvents = makeHealthEvents(now);
-  let careItems = makeCareItems(now, healthEvents);
+  let careItems = makeCareItems(now);
   let nextHealthEventId = healthEvents.length + 1;
   let nextCareItemId = careItems.length + 1;
   let nextObservationId = 1;
@@ -191,28 +192,31 @@ export function createDemoDataSource(
       const existing = careItems.find((entry) => entry.id === id);
       if (!existing) throw new Error("Care item not found.");
       if (existing.status !== "open") throw new Error("Only open care items can be completed.");
-      const healthEvent: HealthEvent = {
+      const eventKind = defaultHealthEventKindForCareItem[existing.kind];
+      const healthEvent: HealthEvent | undefined = eventKind ? {
         id: `demo-event-${nextHealthEventId++}`,
-        kind: payload.kind,
+        kind: payload.kind ?? eventKind,
         status: "completed",
         occurredAt: payload.occurredAt,
         source: "manual-entry",
         notes: `Completed care item: ${existing.title}`
-      };
+      } : undefined;
       const careItem: CareItem = {
         ...existing,
         status: "completed",
         completedAt: payload.occurredAt,
-        completedHealthEventId: healthEvent.id,
-        completedHealthEvent: {
-          id: healthEvent.id,
-          kind: healthEvent.kind,
-          occurredAt: healthEvent.occurredAt
-        }
+        ...(healthEvent ? {
+          completedHealthEventId: healthEvent.id,
+          completedHealthEvent: {
+            id: healthEvent.id,
+            kind: healthEvent.kind,
+            occurredAt: healthEvent.occurredAt
+          }
+        } : {})
       };
-      healthEvents = [healthEvent, ...healthEvents];
+      if (healthEvent) healthEvents = [healthEvent, ...healthEvents];
       careItems = careItems.map((entry) => entry.id === id ? careItem : entry);
-      return { careItem, healthEvent, counts: makeBootstrap(details, now).counts };
+      return { careItem, ...(healthEvent ? { healthEvent } : {}), counts: makeBootstrap(details, now).counts };
     },
     async deleteCareItem(id: string) {
       const deletedCareItem = careItems.find((entry) => entry.id === id);
@@ -400,11 +404,11 @@ function makeHealthEvents(now: Date): HealthEvent[] {
   }];
 }
 
-function makeCareItems(now: Date, events: HealthEvent[]): CareItem[] {
+function makeCareItems(now: Date): CareItem[] {
   return [{
     id: "demo-care-1",
     title: "Book review visit",
-    kind: "routine-checkup",
+    kind: "visit",
     dueStart: daysBefore(now, -2).toISOString(),
     reminderAt: daysBefore(now, -3).toISOString(),
     priority: "normal",
@@ -417,8 +421,7 @@ function makeCareItems(now: Date, events: HealthEvent[]): CareItem[] {
     dueStart: daysBefore(now, -1).toISOString(),
     priority: "low",
     status: "completed",
-    completedAt: daysBefore(now, 20).toISOString(),
-    completedHealthEventId: events[1]?.id
+    completedAt: daysBefore(now, 20).toISOString()
   }];
 }
 

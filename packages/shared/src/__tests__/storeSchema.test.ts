@@ -72,6 +72,73 @@ describe("persisted health store schema", () => {
     expect(result.auditEvents[0]?.eventType).toBe("migration-applied");
   });
 
+  it("migrates version 9 Health Event kinds and removes obsolete events", () => {
+    const legacyEvent = (id: string, kind: string, day: string) => ({
+      id,
+      kind,
+      status: "completed",
+      occurredAt: `2026-01-${day}T00:00:00.000Z`,
+      source: "manual-entry"
+    });
+    const result = parsePersistedHealthStore(store({
+      schemaVersion: 9,
+      healthEvents: [
+        { ...legacyEvent("medication", "medication-administration", "01"),
+          medicationAdministration: { medication: "Test", dose: 10, unit: "mg" } },
+        legacyEvent("allergy", "allergy-reaction", "02"),
+        legacyEvent("treatment", "treatment", "03"),
+        legacyEvent("dental", "dental", "04"),
+        legacyEvent("test", "test", "05"),
+        legacyEvent("injury", "injury", "06")
+      ],
+      careItems: [{
+        id: "care-1",
+        kind: "test-screening",
+        title: "Screening",
+        priority: "normal",
+        status: "completed",
+        completedHealthEventId: "test",
+        completedAt: "2026-01-05T00:00:00.000Z"
+      }]
+    }));
+
+    expect(result.schemaVersion).toBe(EXPORT_FORMAT_VERSION);
+    expect(result.healthEvents).toEqual([
+      expect.objectContaining({ id: "medication", kind: "medication" }),
+      expect.objectContaining({ id: "allergy", kind: "allergy-intolerance" })
+    ]);
+    expect(result.careItems[0]).toMatchObject({
+      id: "care-1",
+      status: "completed",
+      completedAt: "2026-01-05T00:00:00.000Z"
+    });
+    expect(result.careItems[0]?.completedHealthEventId).toBeUndefined();
+  });
+
+  it("migrates version 10 Care Item kinds to the consolidated taxonomy", () => {
+    const result = parsePersistedHealthStore(store({
+      schemaVersion: 10,
+      careItems: [
+        { id: "routine", kind: "routine-checkup", title: "Routine", priority: "normal", status: "open" },
+        { id: "follow-up", kind: "follow-up", title: "Follow-up", priority: "normal", status: "open" },
+        { id: "dental", kind: "dental", title: "Dental", priority: "normal", status: "open" },
+        { id: "screening", kind: "test-screening", title: "Screening", priority: "normal", status: "open" },
+        { id: "therapy", kind: "treatment-therapy", title: "Therapy", priority: "normal", status: "open" },
+        { id: "monitoring", kind: "monitoring", title: "Monitoring", priority: "normal", status: "open" }
+      ]
+    }));
+
+    expect(result.schemaVersion).toBe(EXPORT_FORMAT_VERSION);
+    expect(result.careItems?.map(({ id, kind }) => ({ id, kind }))).toEqual([
+      { id: "routine", kind: "visit" },
+      { id: "follow-up", kind: "visit" },
+      { id: "dental", kind: "visit" },
+      { id: "screening", kind: "procedure" },
+      { id: "therapy", kind: "procedure" },
+      { id: "monitoring", kind: "monitoring" }
+    ]);
+  });
+
   it("accepts base-only health event kinds without specialist payloads", () => {
     const result = parsePersistedHealthStore(store({
       healthEvents: [{
@@ -82,7 +149,7 @@ describe("persisted health store schema", () => {
         source: "manual-entry"
       }, {
         id: "event-2",
-        kind: "medication-administration",
+        kind: "medication",
         status: "completed",
         occurredAt: "2026-01-02T00:00:00.000Z",
         source: "manual-entry"
@@ -97,7 +164,7 @@ describe("persisted health store schema", () => {
 
     expect(result.healthEvents).toEqual([
       expect.objectContaining({ id: "event-1", kind: "immunization" }),
-      expect.objectContaining({ id: "event-2", kind: "medication-administration" }),
+      expect.objectContaining({ id: "event-2", kind: "medication" }),
       expect.objectContaining({ id: "event-3", kind: "visit" })
     ]);
   });

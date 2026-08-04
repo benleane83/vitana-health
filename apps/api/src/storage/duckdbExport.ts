@@ -176,7 +176,7 @@ export async function snapshot(
     const immunization = immunizations.get(String(row.id));
     const medication = medications.get(String(row.id));
     if (immunization) return { ...base, kind: "immunization", immunization: compact({ vaccine: immunization.vaccine, targetDisease: immunization.target_disease, doseNumber: optionalNumber(immunization.dose_number), series: immunization.series, manufacturer: immunization.manufacturer, lotNumber: immunization.lot_number, expiresAt: immunization.expires_at ? String(immunization.expires_at).slice(0, 10) : undefined, route: immunization.route, site: immunization.site, reaction: immunization.reaction }) };
-    if (medication) return { ...base, kind: "medication-administration", medicationAdministration: compact({ medication: medication.medication, activeIngredient: medication.active_ingredient, dose: Number(medication.dose), unit: medication.unit, route: medication.route }) };
+    if (medication) return { ...base, kind: "medication", medicationAdministration: compact({ medication: medication.medication, activeIngredient: medication.active_ingredient, dose: Number(medication.dose), unit: medication.unit, route: medication.route }) };
     const kind = String(row.kind);
     if (!isHealthEventKind(kind)) throw new Error(`Unsupported health event kind "${kind}".`);
     return { ...base, kind };
@@ -324,7 +324,7 @@ async function insertHealthEventRows(connection: duckdb.Connection, events: Heal
       event.immunization.expiresAt ?? null, event.immunization.route ?? null, event.immunization.site ?? null, event.immunization.reaction ?? null
     ]));
   await insertRows(connection, "medication_administrations",
-    events.filter((event): event is Extract<HealthEvent, { kind: "medication-administration" }> & { medicationAdministration: NonNullable<Extract<HealthEvent, { kind: "medication-administration" }>["medicationAdministration"]> } => event.kind === "medication-administration" && !!event.medicationAdministration).map((event) => [
+    events.filter((event): event is Extract<HealthEvent, { kind: "medication" }> & { medicationAdministration: NonNullable<Extract<HealthEvent, { kind: "medication" }>["medicationAdministration"]> } => event.kind === "medication" && !!event.medicationAdministration).map((event) => [
       event.id, event.medicationAdministration.medication, event.medicationAdministration.activeIngredient ?? null,
       event.medicationAdministration.dose, event.medicationAdministration.unit, event.medicationAdministration.route ?? null
     ]));

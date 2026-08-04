@@ -11,6 +11,7 @@ import {
   careItemReminderLead,
   careItemKindCodes,
   defaultHealthEventKindForCareItem,
+  healthEventKindConcepts,
   healthEventKindCodes,
   normalizedCareItemKind
 } from "../types.js";
@@ -33,6 +34,23 @@ describe("care taxonomies", () => {
     }
   });
 
+  it("defines each health event kind as a coded concept with a FHIR resource mapping", () => {
+    expect(healthEventKindConcepts).toEqual([
+      { code: "visit", display: "Visit or consultation", fhirCode: "Encounter" },
+      { code: "condition", display: "Condition or diagnosis", fhirCode: "Condition" },
+      { code: "symptom", display: "Symptom or concern", fhirCode: "Condition" },
+      { code: "procedure", display: "Procedure or surgery", fhirCode: "Procedure" },
+      { code: "medication", display: "Medication", fhirCode: "MedicationStatement" },
+      { code: "immunization", display: "Immunization", fhirCode: "Immunization" },
+      { code: "allergy-intolerance", display: "Allergy or intolerance", fhirCode: "AllergyIntolerance" },
+      { code: "other", display: "Other health event", fhirCode: "Basic" }
+    ]);
+    expect(healthEventKindCodes).not.toContain("treatment");
+    expect(healthEventKindCodes).not.toContain("dental");
+    expect(healthEventKindCodes).not.toContain("test");
+    expect(healthEventKindCodes).not.toContain("injury");
+  });
+
   it("accepts only stable care item kind codes for mutations", () => {
     for (const kind of careItemKindCodes) {
       expect(createCareItemInputSchema.parse({
@@ -51,8 +69,9 @@ describe("care taxonomies", () => {
   });
 
   it("maps common legacy care item values to the closest stable kind", () => {
-    expect(normalizedCareItemKind("Follow-up")).toBe("follow-up");
-    expect(normalizedCareItemKind("Appointment")).toBe("routine-checkup");
+    expect(normalizedCareItemKind("Follow-up")).toBe("visit");
+    expect(normalizedCareItemKind("Appointment")).toBe("visit");
+    expect(normalizedCareItemKind("Test screening")).toBe("procedure");
     expect(normalizedCareItemKind("Custom legacy value")).toBe("other");
   });
 
@@ -69,20 +88,25 @@ describe("care taxonomies", () => {
   it("accepts independent reminder dates and care item kind filters", () => {
     expect(createCareItemInputSchema.parse({
       title: "Care task",
-      kind: "follow-up",
+      kind: "visit",
       reminderAt: "2026-08-20T12:00:00.000Z",
       priority: "normal",
       status: "open"
     }).reminderAt).toBe("2026-08-20T12:00:00.000Z");
-    expect(careItemListQuerySchema.parse({ kind: "dental" }).kind).toBe("dental");
+    expect(careItemListQuerySchema.parse({ kind: "procedure" }).kind).toBe("procedure");
   });
 
   it("maps care kinds to completion event defaults and validates completion input", () => {
-    expect(defaultHealthEventKindForCareItem["routine-checkup"]).toBe("visit");
-    expect(defaultHealthEventKindForCareItem.medication).toBe("medication-administration");
+    expect(defaultHealthEventKindForCareItem.visit).toBe("visit");
+    expect(defaultHealthEventKindForCareItem.procedure).toBe("procedure");
+    expect(defaultHealthEventKindForCareItem.medication).toBe("medication");
+    expect(defaultHealthEventKindForCareItem.monitoring).toBeUndefined();
     expect(completeCareItemInputSchema.parse({
       occurredAt: "2026-08-20T12:00:00.000Z",
       kind: "visit"
     })).toEqual({ occurredAt: "2026-08-20T12:00:00.000Z", kind: "visit" });
+    expect(completeCareItemInputSchema.parse({
+      occurredAt: "2026-08-20T12:00:00.000Z"
+    })).toEqual({ occurredAt: "2026-08-20T12:00:00.000Z" });
   });
 });
