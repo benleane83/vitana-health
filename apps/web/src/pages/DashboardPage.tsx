@@ -89,7 +89,7 @@ export function DashboardPage({
                       className="metric metric-link"
                       key={metric.code}
                       onClick={() => onNavigateMeasurement(metric.code)}
-                      aria-label={`View details for ${metric.label}, ${metric.value} ${metric.unit}, ${metric.status}${metric.isPinned ? ", pinned" : ""}`}
+                      aria-label={`View details for ${metric.label}, ${formatDetailValue(metric.value)} ${metric.unit}, ${metric.status}${metric.isPinned ? ", pinned" : ""}`}
                     >
                       <span className="metric-label">
                         {metric.label}
@@ -99,7 +99,7 @@ export function DashboardPage({
                           </span>
                         ) : null}
                       </span>
-                      <strong>{metric.value} {metric.unit}</strong>
+                      <strong>{formatDetailValue(metric.value)} {metric.unit}</strong>
                       <em data-status={metric.status}>{metric.status}</em>
                     </button>
                   ))
