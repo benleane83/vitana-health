@@ -1072,11 +1072,12 @@ describe("DuckDbRepository fidelity", () => {
       sourceId: "source-1",
       collectedAt: "2026-08-01T09:00:00.000Z"
     });
-    fixture.observations.push(...[
+    const bodyCompositionObservations: Array<[string, string, number]> = [
       ["body-muscle", "skeletal_muscle_mass", 31.6],
       ["body-fat", "fat_mass", 17.8],
       ["body-bone", "bone_mineral_content", 3.1]
-    ].map(([id, measurementCode, value]) => ({
+    ];
+    fixture.observations.push(...bodyCompositionObservations.map(([id, measurementCode, value]) => ({
       id,
       measurementCode,
       observedAt: "2026-08-01T09:00:00.000Z",
