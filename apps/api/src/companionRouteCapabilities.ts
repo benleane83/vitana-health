@@ -28,6 +28,7 @@ export const companionRouteCapabilities: readonly CompanionRouteCapability[] = [
   { method: "GET", path: "/bootstrap", capability: "assigned-profile:read", router: "makeDataRoutes" },
   { method: "GET", path: "/analytics", capability: "assigned-profile:read", router: "makeDataRoutes" },
   { method: "GET", path: "/summary", capability: "assigned-profile:read", router: "makeDataRoutes" },
+  { method: "GET", path: "/calendar", capability: "assigned-profile:read", router: "makeDataRoutes" },
   { method: "GET", path: /^\/summary\/[^/]+$/, capability: "assigned-profile:read", router: "makeDataRoutes" },
   { method: "PATCH", path: /^\/observations\/[^/]+$/, capability: "observations:write", router: "makeDataRoutes" },
   { method: "DELETE", path: /^\/observations\/[^/]+$/, capability: "observations:write", router: "makeDataRoutes" },

@@ -70,6 +70,7 @@ describe("companion route capabilities", () => {
   it("resolves the companion-reachable routes to their capability", () => {
     expect(companionCapabilityFor("GET", "/profiles")).toBe("profiles:list-minimal");
     expect(companionCapabilityFor("GET", "/summary/vo2max")).toBe("assigned-profile:read");
+    expect(companionCapabilityFor("GET", "/calendar")).toBe("assigned-profile:read");
     expect(companionCapabilityFor("PATCH", "/care/items/care-1")).toBe("care:write");
     expect(companionCapabilityFor("POST", "/care/items/care-1/complete")).toBe("care:write");
     expect(companionCapabilityFor("POST", "/companion/migrations/session-1/batches")).toBe("standalone:migrate");
