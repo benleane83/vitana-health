@@ -3,13 +3,13 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
 import { App } from "../App.js";
 import { api } from "../api.js";
-import { defaultMeasurementTypes, type HealthStoreData } from "@vitana/shared";
+import { defaultMeasurementTypes, EXPORT_FORMAT_VERSION, type HealthStoreData } from "@vitana/shared";
 
 // ─── Minimal fetch mock ────────────────────────────────────────────────────────
 
 function makeEmptyStore(): HealthStoreData {
   return {
-    schemaVersion: 9,
+    schemaVersion: EXPORT_FORMAT_VERSION,
     profile: { id: "self", displayName: "Local user", units: "metric", updatedAt: "2026-01-01T00:00:00.000Z" },
     sourceImports: [],
     dataSources: [],

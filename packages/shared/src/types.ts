@@ -35,45 +35,29 @@ export interface Profile {
   updatedAt: string;
 }
 
-export const healthEventKindCodes = [
-  "visit",
-  "condition",
-  "symptom",
-  "injury",
-  "test",
-  "procedure",
-  "treatment",
-  "medication-administration",
-  "immunization",
-  "allergy-reaction",
-  "dental",
-  "other"
+export const healthEventKindConcepts = [
+  { code: "visit", display: "Visit or consultation", fhirCode: "Encounter" },
+  { code: "condition", display: "Condition or diagnosis", fhirCode: "Condition" },
+  { code: "symptom", display: "Symptom or concern", fhirCode: "Condition" },
+  { code: "procedure", display: "Procedure or surgery", fhirCode: "Procedure" },
+  { code: "medication", display: "Medication", fhirCode: "MedicationStatement" },
+  { code: "immunization", display: "Immunization", fhirCode: "Immunization" },
+  { code: "allergy-intolerance", display: "Allergy or intolerance", fhirCode: "AllergyIntolerance" },
+  { code: "other", display: "Other health event", fhirCode: "Basic" }
 ] as const;
-export type HealthEventKind = typeof healthEventKindCodes[number];
-export const healthEventKindLabels: Record<HealthEventKind, string> = {
-  visit: "Visit or consultation",
-  condition: "Illness or diagnosis",
-  symptom: "Symptom or concern",
-  injury: "Injury or accident",
-  test: "Test or screening",
-  procedure: "Procedure or surgery",
-  treatment: "Treatment or therapy",
-  "medication-administration": "Medication",
-  immunization: "Immunization",
-  "allergy-reaction": "Allergy or reaction",
-  dental: "Dental or oral care",
-  other: "Other health event"
-};
+export type HealthEventKindConcept = typeof healthEventKindConcepts[number];
+export type HealthEventKind = HealthEventKindConcept["code"];
+export const healthEventKindCodes = healthEventKindConcepts
+  .map(({ code }) => code) as [HealthEventKind, ...HealthEventKind[]];
+export const healthEventKindLabels = Object.fromEntries(
+  healthEventKindConcepts.map(({ code, display }) => [code, display])
+) as Record<HealthEventKind, string>;
 export const generalHealthEventKindCodes = [
   "visit",
   "condition",
   "symptom",
-  "injury",
-  "test",
   "procedure",
-  "treatment",
-  "allergy-reaction",
-  "dental",
+  "allergy-intolerance",
   "other"
 ] as const satisfies readonly HealthEventKind[];
 export type GeneralHealthEventKind = typeof generalHealthEventKindCodes[number];
@@ -111,39 +95,31 @@ export interface ImmunizationEvent extends HealthEventBase {
   kind: "immunization";
   immunization?: ImmunizationDetails;
 }
-export interface MedicationAdministrationEvent extends HealthEventBase {
-  kind: "medication-administration";
+export interface MedicationEvent extends HealthEventBase {
+  kind: "medication";
   medicationAdministration?: MedicationAdministrationDetails;
 }
 export interface GeneralHealthEvent extends HealthEventBase { kind: GeneralHealthEventKind; }
 export type OtherHealthEvent = GeneralHealthEvent & { kind: "other" };
-export type HealthEvent = ImmunizationEvent | MedicationAdministrationEvent | GeneralHealthEvent;
+export type HealthEvent = ImmunizationEvent | MedicationEvent | GeneralHealthEvent;
 
 export type CareItemStatus = "open" | "completed" | "cancelled" | "skipped";
 export type CareItemPriority = "low" | "normal" | "high";
 export const careItemKindCodes = [
-  "routine-checkup",
-  "follow-up",
+  "visit",
+  "procedure",
   "immunization",
   "medication",
-  "test-screening",
-  "procedure",
-  "treatment-therapy",
   "monitoring",
-  "dental",
   "other"
 ] as const;
 export type CareItemKind = typeof careItemKindCodes[number];
 export const careItemKindLabels: Record<CareItemKind, string> = {
-  "routine-checkup": "Routine check-up",
-  "follow-up": "Follow-up or recheck",
+  visit: "Visit or appointment",
+  procedure: "Procedure, test, or therapy",
   immunization: "Immunization or booster",
   medication: "Medication or refill",
-  "test-screening": "Test or screening",
-  procedure: "Procedure or surgery",
-  "treatment-therapy": "Treatment or therapy",
-  monitoring: "Monitoring or measurement",
-  dental: "Dental or oral care",
+  monitoring: "Monitoring or review",
   other: "Other care item"
 };
 export const careItemReminderLeadCodes = ["one-day", "one-week"] as const;
@@ -164,8 +140,8 @@ export function isCareItemKind(value: string): value is CareItemKind {
 export function normalizedCareItemKind(value: string): CareItemKind {
   const normalized = value.trim().toLowerCase().replaceAll("_", "-").replace(/\s+/g, "-");
   if (isCareItemKind(normalized)) return normalized;
-  if (normalized === "appointment" || normalized === "check-up" || normalized === "checkup") return "routine-checkup";
-  if (normalized === "followup") return "follow-up";
+  if (["appointment", "check-up", "checkup", "routine-checkup", "follow-up", "followup", "dental"].includes(normalized)) return "visit";
+  if (["test-screening", "treatment-therapy"].includes(normalized)) return "procedure";
   return "other";
 }
 
@@ -190,16 +166,12 @@ export function careItemReminderLead(
   });
 }
 
-export const defaultHealthEventKindForCareItem: Record<CareItemKind, HealthEventKind> = {
-  "routine-checkup": "visit",
-  "follow-up": "visit",
-  immunization: "immunization",
-  medication: "medication-administration",
-  "test-screening": "test",
+export const defaultHealthEventKindForCareItem: Record<CareItemKind, HealthEventKind | undefined> = {
+  visit: "visit",
   procedure: "procedure",
-  "treatment-therapy": "treatment",
-  monitoring: "other",
-  dental: "dental",
+  immunization: "immunization",
+  medication: "medication",
+  monitoring: undefined,
   other: "other"
 };
 export interface HealthEventReference {
@@ -252,7 +224,7 @@ export interface CareItemMutationResponse {
 
 export interface CompleteCareItemResponse {
   careItem: CareItem;
-  healthEvent: HealthEvent;
+  healthEvent?: HealthEvent;
   counts: AppBootstrap["counts"];
 }
 
@@ -547,7 +519,7 @@ export interface HealthStoreData {
    * Always the current version. Older persisted stores are upgraded by `parsePersistedHealthStore`
    * before they ever become a `HealthStoreData`.
    */
-  schemaVersion: 9;
+  schemaVersion: 11;
   profile: Profile;
   sourceImports: SourceImport[];
   dataSources: DataSource[];

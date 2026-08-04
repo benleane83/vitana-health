@@ -43,7 +43,7 @@ const defaultHealthEvent: CreateHealthEventInput = {
 
 const defaultCareItem: CreateCareItemInput = {
   title: "",
-  kind: "follow-up",
+  kind: "visit",
   priority: "normal",
   status: "open",
   notes: ""
@@ -175,12 +175,13 @@ export function CareScreen() {
 
   async function confirmCompletion() {
     if (!editingId) return;
+    const completingItem = items.find((entry) => entry.id === editingId);
     setBusy(true);
     try {
       await completeCareItem(editingId, completionDraft);
       setEditorMode("closed");
       setEditingId(undefined);
-      setFeedback({ detail: "Care item completed and health event recorded.", tone: "success" });
+      setFeedback({ detail: completingItem?.kind === "monitoring" ? "Care item completed." : "Care item completed and health event recorded.", tone: "success" });
       await load();
     } catch (caught) {
       setFeedback({ detail: userFacingError(caught, "Unable to complete this care item. Try again."), tone: "danger" });
@@ -365,13 +366,13 @@ export function CareScreen() {
                     value={completionDraft.occurredAt}
                   />
                 </FormField>
-                <FormField label="Kind">
+                {items.find((entry) => entry.id === editingId)?.kind !== "monitoring" ? <FormField label="Kind">
                   <View style={styles.pickerField}>
                     <Picker accessibilityLabel="Completion health event kind" enabled={!busy} selectedValue={completionDraft.kind} style={styles.picker} onValueChange={(value) => setCompletionDraft((current) => ({ ...current, kind: value as HealthEventKind }))}>
                       {healthEventKindCodes.map((kind) => <Picker.Item key={kind} label={healthEventKindLabels[kind]} value={kind} />)}
                     </Picker>
                   </View>
-                </FormField>
+                </FormField> : null}
                 <View style={styles.actions}>
                   <Button disabled={busy || !canWrite} onPress={() => { void confirmCompletion(); }}>{busy ? "Completing…" : "Confirm completion"}</Button>
                   <Button disabled={busy} secondary onPress={() => setEditorMode("closed")}>Cancel</Button>

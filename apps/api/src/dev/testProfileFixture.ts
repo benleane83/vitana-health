@@ -366,7 +366,7 @@ function createHealthEvents(asOf: Date): HealthEvent[] {
       kind,
       immunization: { vaccine: "Seasonal influenza", targetDisease: "Influenza", doseNumber: 1, route: "intramuscular", site: "left arm" }
     };
-    if (kind === "medication-administration") return {
+    if (kind === "medication") return {
       ...base,
       kind,
       medicationAdministration: { medication: "Synthetic test medication", dose: 10, unit: "mg", route: "oral" }

@@ -130,7 +130,7 @@ describe("demo data source", () => {
     });
     await source.createCareItem({
       title: "Schedule follow-up",
-      kind: "routine-checkup",
+      kind: "visit",
       priority: "normal",
       status: "open"
     });
@@ -154,11 +154,12 @@ describe("demo data source", () => {
       occurredAt: "2026-07-18T00:00:00.000Z",
       kind: "visit"
     });
+    expect(completed.healthEvent).toBeDefined();
 
     expect(completed.careItem).toMatchObject({
       status: "completed",
       completedAt: "2026-07-18T00:00:00.000Z",
-      completedHealthEventId: completed.healthEvent.id
+      completedHealthEventId: completed.healthEvent!.id
     });
     expect(completed.healthEvent).toMatchObject({ kind: "visit", status: "completed" });
     expect((await source.listHealthEvents({ kind: "visit" })).items).toContainEqual(completed.healthEvent);
@@ -166,5 +167,19 @@ describe("demo data source", () => {
       occurredAt: "2026-07-19T00:00:00.000Z",
       kind: "visit"
     })).rejects.toThrow("Only open care items can be completed");
+
+    const monitoring = await source.createCareItem({
+      title: "Review blood pressure",
+      kind: "monitoring",
+      priority: "normal",
+      status: "open"
+    });
+    const eventCount = (await source.listHealthEvents()).total;
+    const completedMonitoring = await source.completeCareItem(monitoring.careItem.id, {
+      occurredAt: "2026-07-18T00:00:00.000Z"
+    });
+    expect(completedMonitoring).not.toHaveProperty("healthEvent");
+    expect(completedMonitoring.careItem).not.toHaveProperty("completedHealthEventId");
+    expect((await source.listHealthEvents()).total).toBe(eventCount);
   });
 });

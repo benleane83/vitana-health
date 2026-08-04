@@ -62,17 +62,27 @@ export function certificatePublicKeyHash(certificatePem: string): string {
 
 function loadOrCreateOwnerToken(dataDir: string): string {
   const securityPath = path.join(dataDir, "security.json");
-  if (existsSync(securityPath)) {
-    const stored = JSON.parse(readFileSync(securityPath, "utf8")) as StoredSecurity;
-    if (typeof stored.ownerToken === "string" && stored.ownerToken.length >= 24) return stored.ownerToken;
-    throw new Error(`Invalid security settings at ${securityPath}.`);
+  try {
+    return parseOwnerToken(readFileSync(securityPath, "utf8"), securityPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
+
   const ownerToken = randomBytes(32).toString("base64url");
-  writeFileSync(securityPath, JSON.stringify({ ownerToken } satisfies StoredSecurity, null, 2), {
-    encoding: "utf8",
-    mode: 0o600
-  });
-  return ownerToken;
+  const content = JSON.stringify({ ownerToken } satisfies StoredSecurity, null, 2);
+  try {
+    writeFileSync(securityPath, content, { encoding: "utf8", mode: 0o600, flag: "wx" });
+    return ownerToken;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    return parseOwnerToken(readFileSync(securityPath, "utf8"), securityPath);
+  }
+}
+
+function parseOwnerToken(value: string, securityPath: string): string {
+  const stored = JSON.parse(value) as StoredSecurity;
+  if (typeof stored.ownerToken === "string" && stored.ownerToken.length >= 24) return stored.ownerToken;
+  throw new Error(`Invalid security settings at ${securityPath}.`);
 }
 
 /** Reads a file, treating "not there" as a value rather than an error. */

@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { careItemKindCodes, healthEventKindCodes } from "@vitana/shared";
 import { initializeDuckDbRoot } from "../storage/duckdbRuntime.js";
 import { createDuckDbHealthStoreFixture } from "./support/duckdbFixture.js";
 import { DuckDbHealthStore } from "../storage/duckdbHealthStore.js";
@@ -108,8 +109,8 @@ describe("DuckDbHealthStore lifecycle", () => {
       expect(await reopened.storageCounts()).toMatchObject(expectedCounts);
       expect((await reopened.measurementDetail("heart_rate", { offset: 0, limit: 10 })).entries).toHaveLength(10);
       expect((await reopened.measurementChartSeries("steps", { range: "3m", mode: "auto" })).points.length).toBeGreaterThan(80);
-      expect((await reopened.listCareItems({ limit: 20 })).items).toHaveLength(10);
-      expect((await reopened.listHealthEvents({ limit: 20 })).items).toHaveLength(12);
+      expect((await reopened.listCareItems({ limit: 20 })).items).toHaveLength(careItemKindCodes.length);
+      expect((await reopened.listHealthEvents({ limit: 20 })).items).toHaveLength(healthEventKindCodes.length);
       expect((await reopened.summary()).totals.types).toBe(fixture.measurementTypes.length);
     } finally {
       await reopened.close();

@@ -136,7 +136,7 @@ export function CalendarPage({
         : `${measurement.display}: no reading`);
     }
     const events = data?.events.find((summary) => summary.date === date)?.count ?? 0;
-    parts.push(events === 1 ? "1 completed health event" : `${events} completed health events`);
+    parts.push(events === 1 ? "1 health event" : `${events} health events`);
     return parts.join(". ");
   }
 
@@ -308,8 +308,8 @@ export function CalendarPage({
             {eventLoading ? <p role="status">Loading event details…</p> : null}
             {eventError ? <p role="alert">{eventError} <button type="button" onClick={onRetryEvents}>Retry</button></p> : null}
             {!eventLoading && !eventError && selectedSummary ? (
-              <details className="calendar-event-details">
-                <summary>{selectedSummary.count} completed health event{selectedSummary.count === 1 ? "" : "s"}</summary>
+              <details className="calendar-event-details" open>
+                <summary>{selectedSummary.count} health event{selectedSummary.count === 1 ? "" : "s"}</summary>
                 <ul className="calendar-events">
                   {eventDetails.map((event) => (
                     <li key={event.id}>
@@ -321,7 +321,7 @@ export function CalendarPage({
                 </ul>
               </details>
             ) : null}
-            {!selectedSummary ? <p>No completed health events.</p> : null}
+            {!selectedSummary ? <p>No health events.</p> : null}
           </section>
         </aside>
       </div>

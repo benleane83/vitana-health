@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { buildClinicianReport } from "../clinicianReport.js";
-import { analyticsCountsFromStore, computeAnalytics, type HealthStoreData } from "@vitana/shared";
+import { analyticsCountsFromStore, computeAnalytics, EXPORT_FORMAT_VERSION, type HealthStoreData } from "@vitana/shared";
 
 const analyticsOf = (data: HealthStoreData) => computeAnalytics({ ...data, counts: analyticsCountsFromStore(data) });
 
 function store(): HealthStoreData {
   return {
-    schemaVersion: 9,
+    schemaVersion: EXPORT_FORMAT_VERSION,
     profile: { id: "self", displayName: "Alex", units: "metric", updatedAt: "2026-01-01T00:00:00.000Z" },
     sourceImports: [{ id: "import-1", sourceKind: "blood-test-csv", fileName: "labs.csv", importedAt: "2026-01-02T00:00:00.000Z", parserVersion: "1", checksum: "private", rowCount: 1, status: "processed", diagnostics: [], rawContent: "private" }],
     dataSources: [], devices: [],

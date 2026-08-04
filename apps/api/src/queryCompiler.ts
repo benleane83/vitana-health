@@ -405,7 +405,7 @@ function buildHealthEventsSql(
   if (dsl.filters?.status && !["completed", "entered-in-error"].includes(dsl.filters.status)) {
     return { error: `Health event status "${dsl.filters.status}" is unsupported.` };
   }
-  if (dsl.filters?.kind && !["immunization", "medication-administration", "other"].includes(dsl.filters.kind)) {
+  if (dsl.filters?.kind && !["immunization", "medication", "other"].includes(dsl.filters.kind)) {
     return { error: `Health event kind "${dsl.filters.kind}" is unsupported.` };
   }
   if (dsl.filters?.priority || dsl.filters?.code || dsl.filters?.completion || dsl.filters?.dueWithinRange) {

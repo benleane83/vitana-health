@@ -72,10 +72,10 @@ function store(profileId: string) {
     listHealthEvents: vi.fn(async () => ({ items: [{ id: `${profileId}-event`, kind: "other", status: "completed", occurredAt: "2026-01-01T00:00:00.000Z", source: "manual-entry" }], total: 1, offset: 0, limit: 20, hasMore: false })),
     createHealthEvent: vi.fn(async () => ({ healthEvent: { id: `${profileId}-event`, kind: "other", status: "completed", occurredAt: "2026-01-01T00:00:00.000Z", source: "manual-entry" }, counts: { imports: 0, observations: 0, samples: 0, activities: 0, healthEvents: 1, careItems: 0 } })),
     deleteHealthEvent: vi.fn(async () => ({ deletedCount: 1, counts: { imports: 0, observations: 0, samples: 0, activities: 0, healthEvents: 0, careItems: 0 } })),
-    listCareItems: vi.fn(async () => ({ items: [{ id: `${profileId}-care`, title: "Follow up", kind: "follow-up", priority: "normal", status: "open" }], total: 1, offset: 0, limit: 20, hasMore: false })),
-    createCareItem: vi.fn(async () => ({ careItem: { id: `${profileId}-care`, title: "Follow up", kind: "follow-up", priority: "normal", status: "open" }, counts: { imports: 0, observations: 0, samples: 0, activities: 0, healthEvents: 0, careItems: 1 } })),
+    listCareItems: vi.fn(async () => ({ items: [{ id: `${profileId}-care`, title: "Follow up", kind: "visit", priority: "normal", status: "open" }], total: 1, offset: 0, limit: 20, hasMore: false })),
+    createCareItem: vi.fn(async () => ({ careItem: { id: `${profileId}-care`, title: "Follow up", kind: "visit", priority: "normal", status: "open" }, counts: { imports: 0, observations: 0, samples: 0, activities: 0, healthEvents: 0, careItems: 1 } })),
     completeCareItem: vi.fn(async () => ({
-      careItem: { id: `${profileId}-care`, title: "Follow up", kind: "follow-up", priority: "normal", status: "completed", completedAt: "2026-01-02T00:00:00.000Z", completedHealthEventId: `${profileId}-completed-event` },
+      careItem: { id: `${profileId}-care`, title: "Follow up", kind: "visit", priority: "normal", status: "completed", completedAt: "2026-01-02T00:00:00.000Z", completedHealthEventId: `${profileId}-completed-event` },
       healthEvent: { id: `${profileId}-completed-event`, kind: "visit", status: "completed", occurredAt: "2026-01-02T00:00:00.000Z", source: "manual-entry" },
       counts: { imports: 0, observations: 0, samples: 0, activities: 0, healthEvents: 1, careItems: 1 }
     })),
@@ -236,7 +236,7 @@ describe("companion route profile isolation", () => {
     expect((await request(app).get("/api/care/health-events").set(headers)).status).toBe(200);
     expect((await request(app).get("/api/care/items").set(headers)).status).toBe(200);
     expect((await request(app).post("/api/care/health-events").set(headers).send({ kind: "other", status: "completed", occurredAt: "2026-01-01T00:00:00.000Z" })).status).toBe(201);
-    expect((await request(app).post("/api/care/items").set(headers).send({ title: "Follow up", kind: "follow-up", priority: "normal", status: "open" })).status).toBe(201);
+    expect((await request(app).post("/api/care/items").set(headers).send({ title: "Follow up", kind: "visit", priority: "normal", status: "open" })).status).toBe(201);
     expect((await request(app).post("/api/care/items/phone-care/complete").set(headers).send({ occurredAt: "2026-01-02T00:00:00.000Z", kind: "visit" })).status).toBe(200);
     const observationInput = {
       measurementCode: "weight",

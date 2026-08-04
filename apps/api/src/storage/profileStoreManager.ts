@@ -729,12 +729,20 @@ export function resolveStoreSecurityConfig(): StoreSecurityConfig {
 function getOrCreateLocalKey(): string {
   const keyPath = localKeyPath();
   mkdirSync(dirname(keyPath), { recursive: true });
-  if (existsSync(keyPath)) {
+  try {
+    return readFileSync(keyPath, "utf8").trim();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+
+  const key = randomBytes(32).toString("base64url");
+  try {
+    writeFileSync(keyPath, key, { encoding: "utf8", mode: 0o600, flag: "wx" });
+    return key;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     return readFileSync(keyPath, "utf8").trim();
   }
-  const key = randomBytes(32).toString("base64url");
-  writeFileSync(keyPath, key, { encoding: "utf8", mode: 0o600 });
-  return key;
 }
 
 export function hasDuckDbActivationManifest(): boolean {

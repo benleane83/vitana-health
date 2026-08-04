@@ -1,7 +1,9 @@
 import {
   classifyValueWithRange,
+  careItemKindCodes,
   defaultMeasurementTypes,
   getReferenceRange,
+  healthEventKindCodes,
   parsePersistedHealthStore
 } from "@vitana/shared";
 import { describe, expect, it } from "vitest";
@@ -35,9 +37,9 @@ describe("test profile fixture", () => {
     ];
     expect(Math.min(...measurementTimes)).toBeGreaterThanOrEqual(earliest);
     expect(Math.max(...measurementTimes)).toBeLessThanOrEqual(asOf);
-    expect(store.healthEvents).toHaveLength(12);
+    expect(store.healthEvents).toHaveLength(healthEventKindCodes.length);
     expect(store.healthEvents?.every((event) => new Date(event.occurredAt).getTime() >= earliest && new Date(event.occurredAt).getTime() <= asOf)).toBe(true);
-    expect(store.careItems).toHaveLength(10);
+    expect(store.careItems).toHaveLength(careItemKindCodes.length);
     expect(store.careItems?.every((item) => item.dueStart?.startsWith("2026-") && new Date(item.dueStart).getTime() > asOf)).toBe(true);
   });
 

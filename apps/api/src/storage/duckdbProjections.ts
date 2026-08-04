@@ -1180,7 +1180,7 @@ async function hydrateHealthEventRows(
     if (medication) {
       return {
         ...base,
-        kind: "medication-administration",
+        kind: "medication",
         medicationAdministration: {
           medication: String(medication.medication),
           activeIngredient: optionalString(medication.active_ingredient),
@@ -1194,8 +1194,8 @@ async function hydrateHealthEventRows(
     if (kind === "immunization") {
       return { ...base, kind: "immunization" } satisfies HealthEvent;
     }
-    if (kind === "medication-administration") {
-      return { ...base, kind: "medication-administration" } satisfies HealthEvent;
+    if (kind === "medication") {
+      return { ...base, kind: "medication" } satisfies HealthEvent;
     }
     return { ...base, kind } satisfies HealthEvent;
   });

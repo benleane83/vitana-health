@@ -56,7 +56,7 @@ describe("companion replica protocol", () => {
           entityType: "care-item",
           entityId: "care-1",
           operation: "upsert",
-          payload: { id: "care-1", title: "Follow up", kind: "follow-up", priority: "normal", status: "open" }
+          payload: { id: "care-1", title: "Follow up", kind: "visit", priority: "normal", status: "open" }
         }
       ],
       highWaterMark: { revision: 4, sequence: 10 },

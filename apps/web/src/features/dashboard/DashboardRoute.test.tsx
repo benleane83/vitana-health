@@ -9,7 +9,7 @@ function careItem(id: string, title: string, dueStart: string) {
     id,
     title,
     dueStart,
-    kind: "routine-checkup" as const,
+    kind: "visit" as const,
     priority: "normal" as const,
     status: "open" as const
   };

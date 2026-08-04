@@ -12,7 +12,7 @@ import type { HealthStoreData, InsightModel } from "./types.js";
  * layout alone. Confusing them breaks backup/restore, which reads and writes this format and has
  * no knowledge of the storage engine that produced it.
  */
-export const EXPORT_FORMAT_VERSION = 9 as const;
+export const EXPORT_FORMAT_VERSION = 11 as const;
 
 export const sourceKindSchema = z.enum([
   "health-connect", "manual-entry", "blood-test-csv", "observation-csv", "structured-upload",
@@ -164,7 +164,7 @@ export const persistedHealthEventSchema = healthEventObjectSchema.superRefine((v
   if (value.immunization && value.kind !== "immunization") {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["immunization"], message: "Immunization details require an immunization event." });
   }
-  if (value.medicationAdministration && value.kind !== "medication-administration") {
+  if (value.medicationAdministration && value.kind !== "medication") {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["medicationAdministration"], message: "Medication details require a medication event." });
   }
 });
@@ -213,15 +213,57 @@ export const healthStoreDataSchema = z.object({
   ...storeFields
 }).strict();
 
+const versionNineHealthStoreSchema = z.object({
+  schemaVersion: z.literal(9),
+  healthEvents: z.array(z.object({ id: z.string(), kind: z.string() }).passthrough()).default([]),
+  careItems: z.array(z.object({ completedHealthEventId: z.string().optional() }).passthrough()).default([])
+}).passthrough();
+
+function migrateVersionNineHealthStore(data: unknown): unknown {
+  const store = versionNineHealthStoreSchema.parse(data);
+  const removedKinds = new Set(["treatment", "dental", "test", "injury"]);
+  const removedEventIds = new Set(store.healthEvents
+    .filter((event) => removedKinds.has(event.kind))
+    .map((event) => event.id));
+  const healthEvents = store.healthEvents.flatMap((event) => {
+    if (removedKinds.has(event.kind)) return [];
+    if (event.kind === "medication-administration") return [{ ...event, kind: "medication" }];
+    if (event.kind === "allergy-reaction") return [{ ...event, kind: "allergy-intolerance" }];
+    return [event];
+  });
+  const careItems = store.careItems.map((item) => {
+    if (!item.completedHealthEventId || !removedEventIds.has(item.completedHealthEventId)) return item;
+    const migratedItem = { ...item };
+    delete migratedItem.completedHealthEventId;
+    return migratedItem;
+  });
+  return { ...store, schemaVersion: 10, healthEvents, careItems };
+}
+
+const versionTenHealthStoreSchema = z.object({
+  schemaVersion: z.literal(10),
+  careItems: z.array(z.object({ kind: z.string() }).passthrough()).default([])
+}).passthrough();
+
+function migrateVersionTenHealthStore(data: unknown): unknown {
+  const store = versionTenHealthStoreSchema.parse(data);
+  return {
+    ...store,
+    schemaVersion: EXPORT_FORMAT_VERSION,
+    careItems: store.careItems.map((item) => ({ ...item, kind: normalizedCareItemKind(item.kind) }))
+  };
+}
+
 /**
- * The only persisted shape this build can read. The app is unreleased, so nothing older than
- * `EXPORT_FORMAT_VERSION` exists outside a developer's own machine — the migration chain that
- * used to live here maintained seven historical on-disk formats that had no reader.
+ * Reads the current persisted shape plus the two preceding development formats needed by local
+ * profiles. Version 9 first migrates Health Events, then version 10 migrates Care Item kinds.
  */
 export function parsePersistedHealthStore(data: unknown): HealthStoreData {
   const version = z.object({ schemaVersion: z.number().int() }).passthrough().parse(data).schemaVersion;
-  if (version !== EXPORT_FORMAT_VERSION) {
+  const versionTenData = version === 9 ? migrateVersionNineHealthStore(data) : data;
+  const currentData = version === 9 || version === 10 ? migrateVersionTenHealthStore(versionTenData) : data;
+  if (![9, 10, EXPORT_FORMAT_VERSION].includes(version)) {
     throw new Error(`Unsupported health store schema version ${version}.`);
   }
-  return healthStoreDataSchema.parse(data) as HealthStoreData;
+  return healthStoreDataSchema.parse(currentData) as HealthStoreData;
 }
