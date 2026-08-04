@@ -31,7 +31,7 @@ export function MeasurementCombobox({
   measurementTypes: MeasurementType[];
   selectedCode: string;
   onSelect: (measurement: MeasurementType) => void;
-  onSelectCustom: () => void;
+  onSelectCustom?: () => void;
   customLabel?: string;
 }) {
   const selectedMeasurement = measurementTypes.find((type) => type.code === selectedCode);
@@ -40,7 +40,10 @@ export function MeasurementCombobox({
     () => findMeasurementMatches(measurementTypes, inputValue, selectedMeasurement?.display),
     [inputValue, measurementTypes, selectedMeasurement?.display]
   );
-  const items = useMemo<ComboboxItem[]>(() => [...measurementItems, customItem], [measurementItems]);
+  const items = useMemo<ComboboxItem[]>(
+    () => onSelectCustom ? [...measurementItems, customItem] : measurementItems,
+    [measurementItems, onSelectCustom]
+  );
   const selectedItem = useMemo<MeasurementItem | null>(() => selectedMeasurement
     ? { kind: "measurement", measurement: selectedMeasurement }
     : null, [selectedMeasurement]);
@@ -69,7 +72,7 @@ export function MeasurementCombobox({
     onSelectedItemChange: ({ selectedItem }) => {
       if (!selectedItem) return;
       if (selectedItem.kind === "custom") {
-        onSelectCustom();
+        onSelectCustom?.();
         return;
       }
       setInputValue(selectedItem.measurement.display);

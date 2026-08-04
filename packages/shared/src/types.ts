@@ -348,6 +348,37 @@ export interface MeasurementType {
   aggregation: "sum" | "average" | "min" | "max" | "latest" | "none";
 }
 
+export interface CalendarMonthQuery {
+  month: string;
+  timezone: string;
+  measurementCodes: string[];
+}
+
+export interface CalendarMeasurementPoint {
+  date: string;
+  measurementCode: string;
+  value: number;
+  unit: string;
+  count: number;
+  min: number;
+  max: number;
+  aggregation: MeasurementType["aggregation"];
+  sources: string[];
+}
+
+export interface CalendarEventSummary {
+  date: string;
+  count: number;
+  kinds: HealthEventKind[];
+}
+
+export interface CalendarMonthData {
+  month: string;
+  timezone: string;
+  measurements: CalendarMeasurementPoint[];
+  events: CalendarEventSummary[];
+}
+
 export interface ReferenceRange {
   low?: number;
   high?: number;

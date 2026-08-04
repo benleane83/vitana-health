@@ -4,6 +4,8 @@ import {
   appBootstrapResponseSchema,
   assignedProfilesResponseSchema,
   bodyCompositionDraftResponseSchema,
+  calendarMonthQuerySchema,
+  calendarMonthResponseSchema,
   bloodTestDraftResponseSchema,
   careItemMutationResponseSchema,
   careItemListQuerySchema,
@@ -45,6 +47,7 @@ import {
 export { BRAND_NAME, FORMAL_BRAND_NAME, PAIRING_APP, PUBLIC_DOMAIN } from "@vitana/shared";
 import type {
   BodyCompositionDraftCommitPayload,
+  CalendarMonthQuery,
   CareItemListQuery,
   CompleteCareItemInput,
   CreateCareItemInput,
@@ -153,6 +156,15 @@ export function createApiClient(transport: ApiTransport) {
     },
     analytics: (signal?: AbortSignal) => request(analyticsSummaryResponseSchema, "/api/analytics", { signal }),
     summary: (signal?: AbortSignal) => request(healthDataSummaryResponseSchema, "/api/summary", { signal }),
+    calendarMonth: (query: CalendarMonthQuery, signal?: AbortSignal) => {
+      const validated = calendarMonthQuerySchema.parse(query);
+      const params = [
+        `month=${encodeURIComponent(validated.month)}`,
+        `timezone=${encodeURIComponent(validated.timezone)}`,
+        `measurementCodes=${encodeURIComponent(validated.measurementCodes.join(","))}`
+      ];
+      return request(calendarMonthResponseSchema, `/api/calendar?${params.join("&")}`, { signal });
+    },
     healthDataDetail: (
       measurementCode: string,
       page?: { limit?: number; offset?: number },
@@ -249,8 +261,12 @@ export function createApiClient(transport: ApiTransport) {
           { method: "POST", body: mobileMigrationCompletionRequestSchema.parse(payload) }
         )
     },
-    listHealthEvents: (query: HealthEventListQuery = {}) =>
-      request(paginatedHealthEventsResponseSchema, `/api/care/health-events${careQuery(healthEventListQuerySchema.parse(query), query)}`),
+    listHealthEvents: (query: HealthEventListQuery = {}, signal?: AbortSignal) =>
+      request(
+        paginatedHealthEventsResponseSchema,
+        `/api/care/health-events${careQuery(healthEventListQuerySchema.parse(query), query)}`,
+        { signal }
+      ),
     createHealthEvent: (payload: CreateHealthEventInput) =>
       request(healthEventMutationResponseSchema, "/api/care/health-events", { method: "POST", body: createHealthEventInputSchema.parse(payload) }),
     updateHealthEvent: (id: string, payload: CreateHealthEventInput) =>

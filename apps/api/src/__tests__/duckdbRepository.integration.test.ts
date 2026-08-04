@@ -976,6 +976,53 @@ describe("DuckDbRepository fidelity", () => {
     }
   }, 30_000);
 
+  it.skipIf(!httpfsExtensionPath)("projects calendar data by source date, timezone, aggregation, and completed event status", async () => {
+    const databasePath = join(root, "databases", "health-store-calendar.duckdb-poc");
+    const fixture = createDuckDbHealthStoreFixture();
+    fixture.observations.push({
+      ...fixture.observations[0],
+      id: "calendar-date-weight",
+      observedAt: "2026-07-31T23:30:00.000Z",
+      observationGroupId: undefined,
+      value: 81,
+      sourceJson: { calendarDate: "2026-08-01" }
+    });
+    fixture.healthEvents = [{
+      id: "completed-event",
+      kind: "visit",
+      status: "completed",
+      occurredAt: "2026-08-01T07:30:00.000Z",
+      source: "manual-entry"
+    }, {
+      id: "error-event",
+      kind: "test",
+      status: "entered-in-error",
+      occurredAt: "2026-08-01T08:00:00.000Z",
+      source: "manual-entry"
+    }];
+    const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
+    const snapshotSpy = vi.spyOn(repository, "snapshot").mockRejectedValue(new Error("Calendar reads must not snapshot."));
+    try {
+      const calendar = await repository.calendarMonth({
+        month: "2026-08",
+        timezone: "America/Los_Angeles",
+        measurementCodes: ["weight"]
+      });
+      expect(calendar.measurements).toEqual([expect.objectContaining({
+        date: "2026-08-01",
+        measurementCode: "weight",
+        value: 81,
+        count: 1,
+        aggregation: "latest",
+        sources: ["Fixture source"]
+      })]);
+      expect(calendar.events).toEqual([{ date: "2026-08-01", count: 1, kinds: ["visit"] }]);
+      expect(snapshotSpy).not.toHaveBeenCalled();
+    } finally {
+      await repository.close();
+    }
+  }, 30_000);
+
   it.skipIf(!httpfsExtensionPath)("deletes all Step samples without deleting other measurements", async () => {
     const databasePath = join(root, "databases", "health-store-delete-steps.duckdb-poc");
     const fixture = createDuckDbHealthStoreFixture();

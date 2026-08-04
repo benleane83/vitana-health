@@ -1,4 +1,5 @@
 import type {
+  CalendarMonthQuery,
   AppBootstrap,
   CareItemListQuery,
   CareItemMutationResponse,
@@ -126,6 +127,10 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
 
   measurementChartSeries(measurementCode: string, options: HealthDataChartSeriesOptions) {
     return this.repository.measurementChartSeries(measurementCode, options);
+  }
+
+  calendarMonth(query: CalendarMonthQuery) {
+    return this.repository.calendarMonth(query);
   }
 
   upsertPersonalReferenceRange(

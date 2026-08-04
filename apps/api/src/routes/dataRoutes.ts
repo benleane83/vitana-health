@@ -5,6 +5,8 @@ import {
   appBootstrapResponseSchema,
   biologicalAgeResponseSchema,
   calculateBiologicalAge,
+  calendarMonthQuerySchema,
+  calendarMonthResponseSchema,
   careItemListQuerySchema,
   careItemMutationResponseSchema,
   completeCareItemInputSchema,
@@ -113,6 +115,15 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
   router.get("/summary", async (_request, response, next) => {
     try {
       sendJson(response, healthDataSummaryResponseSchema, await requestStore(response).summary());
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/calendar", async (request, response, next) => {
+    try {
+      const query = calendarMonthQuerySchema.parse(request.query);
+      sendJson(response, calendarMonthResponseSchema, await requestStore(response).calendarMonth(query));
     } catch (error) {
       next(error);
     }

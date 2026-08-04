@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { defaultMeasurementTypes, safetyNotice } from "@vitana/shared";
 import { App } from "../App.js";
 
@@ -92,6 +92,15 @@ beforeEach(() => {
         pagination: { limit: 100, loaded: 0, total: 1, hasMore: false }
       }));
     }
+    if (url.includes("/api/calendar")) {
+      const parsed = new URL(url, window.location.origin);
+      return Promise.resolve(mockResponse({
+        month: parsed.searchParams.get("month"),
+        timezone: parsed.searchParams.get("timezone"),
+        measurements: [],
+        events: []
+      }));
+    }
     if (url.includes("/api/care/health-events")) {
       return Promise.resolve(mockResponse({ items: [], total: 0, offset: 0, limit: 20, hasMore: false }));
     }
@@ -120,6 +129,27 @@ afterEach(() => {
 });
 
 describe("App smoke", () => {
+  it("routes Track calendar as a subview and restores it on popstate", async () => {
+    globalThis.history.replaceState({}, "", "/track/calendar");
+    render(<App />);
+
+    expect(screen.getByRole("tab", { name: /^track$/i })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: /^calendar$/i })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByRole("heading", { name: "Calendar", level: 1 })).toBeInTheDocument();
+
+    await act(async () => {
+      globalThis.history.pushState({}, "", "/track");
+      globalThis.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    await waitFor(() => expect(screen.getByRole("tab", { name: /^measurements$/i })).toHaveAttribute("aria-selected", "true"));
+
+    await act(async () => {
+      globalThis.history.pushState({}, "", "/track/calendar");
+      globalThis.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    await waitFor(() => expect(screen.getByRole("tab", { name: /^calendar$/i })).toHaveAttribute("aria-selected", "true"));
+  });
+
   it("clears notices when navigating to a different page", async () => {
     const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
     const defaultFetch = fetchMock.getMockImplementation() as ((input: string | URL | Request, init?: RequestInit) => Promise<Response>);
