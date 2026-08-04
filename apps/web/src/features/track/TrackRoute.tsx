@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { mergeHealthDataDetail } from "@vitana/shared";
 import type {
   HealthDataChartMode,
@@ -8,12 +8,15 @@ import type {
   HealthDataDetailEntry,
   HealthDataSummary,
   MeasurementType,
+  LatestMetric,
   PersonalReferenceRangeInput,
   UpdateObservationInput
 } from "@vitana/shared";
 import { api } from "../../api.js";
 import { ObservationEditDialog } from "../../components/ObservationEditDialog.js";
 import { ObservationTypeDetailPage, SummaryPage } from "../../pages/SummaryPage.js";
+import type { TrackView } from "../../types.js";
+import { CalendarRoute } from "./CalendarRoute.js";
 
 type RemoteState<T> = {
   data?: T;
@@ -30,8 +33,11 @@ type ConfirmAction = (
 
 export function TrackRoute({
   detailCode,
+  view,
   activeProfileId,
   measurementTypes,
+  latestMetrics,
+  onViewChange,
   onBack,
   onSelectDetail,
   onDataChanged,
@@ -39,8 +45,11 @@ export function TrackRoute({
   confirm
 }: {
   detailCode?: string;
+  view: TrackView;
   activeProfileId?: string;
   measurementTypes: MeasurementType[];
+  latestMetrics: LatestMetric[];
+  onViewChange: (view: TrackView) => void;
   onBack: () => void;
   onSelectDetail: (measurementCode: string) => void;
   onDataChanged: () => Promise<void>;
@@ -58,6 +67,17 @@ export function TrackRoute({
   const [loadMoreBusy, setLoadMoreBusy] = useState(false);
   const [observationBeingEdited, setObservationBeingEdited] = useState<HealthDataDetailEntry>();
   const defaultUnit = measurementTypes.find((measurement) => measurement.code === detailCode)?.canonicalUnit ?? "";
+
+  function handleTabKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, currentView: TrackView) {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const nextView: TrackView = event.key === "ArrowRight" || event.key === "End" ? "calendar" : "measurements";
+    const resolved = event.key.startsWith("Arrow") && nextView === currentView
+      ? currentView === "measurements" ? "calendar" : "measurements"
+      : nextView;
+    onViewChange(resolved);
+    document.getElementById(`track-tab-${resolved}`)?.focus();
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -278,7 +298,33 @@ export function TrackRoute({
 
   return (
     <>
-      {detailCode ? (
+      <div className="care-switch track-switch" role="tablist" aria-label="Track views">
+        {(["measurements", "calendar"] as const).map((value) => (
+          <button
+            key={value}
+            id={`track-tab-${value}`}
+            type="button"
+            role="tab"
+            aria-selected={view === value}
+            aria-controls="track-view-panel"
+            tabIndex={view === value ? 0 : -1}
+            className={view === value ? "active" : ""}
+            onClick={() => onViewChange(value)}
+            onKeyDown={(event) => handleTabKeyDown(event, value)}
+          >
+            {value === "measurements" ? "Measurements" : "Calendar"}
+          </button>
+        ))}
+      </div>
+      <div id="track-view-panel" role="tabpanel" aria-labelledby={`track-tab-${view}`}>
+      {view === "calendar" ? (
+        <CalendarRoute
+          activeProfileId={activeProfileId}
+          measurementTypes={measurementTypes}
+          latestMetrics={latestMetrics}
+          recordedCodes={summary.data?.categories.flatMap((category) => category.rows.map((row) => row.code)) ?? []}
+        />
+      ) : detailCode ? (
         <ObservationTypeDetailPage
           key={`${activeProfileId ?? ""}:${detailCode}`}
           detail={detail.data}
@@ -317,6 +363,7 @@ export function TrackRoute({
           onSelectRow={onSelectDetail}
         />
       )}
+      </div>
       {observationBeingEdited ? (
         <ObservationEditDialog
           entry={observationBeingEdited}

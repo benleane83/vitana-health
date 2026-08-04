@@ -260,6 +260,7 @@ export const api = {
     }
   },
   summary: sharedApi.summary,
+  calendarMonth: sharedApi.calendarMonth,
   healthDataDetail: sharedApi.healthDataDetail,
   healthDataChartSeries: sharedApi.healthDataChartSeries,
   setPersonalReferenceRange: sharedApi.setPersonalReferenceRange,
@@ -267,7 +268,7 @@ export const api = {
   pinMeasurement: sharedApi.pinMeasurement,
   unpinMeasurement: sharedApi.unpinMeasurement,
   care: {
-    listHealthEvents: (query?: HealthEventListQuery) => sharedApi.listHealthEvents(query),
+    listHealthEvents: (query?: HealthEventListQuery, signal?: AbortSignal) => sharedApi.listHealthEvents(query, signal),
     createHealthEvent: (payload: CreateHealthEventInput) => sharedApi.createHealthEvent(payload),
     updateHealthEvent: (id: string, payload: CreateHealthEventInput) => sharedApi.updateHealthEvent(id, payload),
     deleteHealthEvent: (id: string) => sharedApi.deleteHealthEvent(id),

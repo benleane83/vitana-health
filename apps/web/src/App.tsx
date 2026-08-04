@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { defaultMeasurementTypes, safetyNotice } from "@vitana/shared";
-import type { AppRoute, ImportMode, InsightsTab, SettingsView } from "./types.js";
+import type { AppRoute, ImportMode, InsightsTab, SettingsView, TrackView } from "./types.js";
 import { ProfileLifecycleDialogs, useProfileLifecycle } from "./features/profiles/useProfileLifecycle.js";
 import { ConfirmDialog } from "./components/ConfirmDialog.js";
 import { setOwnerTokenPrompt } from "./api.js";
@@ -31,6 +31,7 @@ export function App() {
   const [summaryDetailCode, setSummaryDetailCode] = useState<string | undefined>(
     () => summaryDetailCodeFromPathname(window.location.pathname)
   );
+  const [trackView, setTrackView] = useState<TrackView>(() => trackViewFromPathname(window.location.pathname));
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const pathnameRef = useRef(window.location.pathname);
 
@@ -71,6 +72,7 @@ export function App() {
       setImportMode(importModeFromPathname(window.location.pathname));
       setSettingsView(settingsViewFromPathname(window.location.pathname));
       setSummaryDetailCode(summaryDetailCodeFromPathname(window.location.pathname));
+      setTrackView(trackViewFromPathname(window.location.pathname));
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -114,7 +116,10 @@ export function App() {
     const nextPath = routePaths[nextRoute] ?? "/";
     pushPath(nextPath);
     if (nextRoute === "import") setImportMode(nextImportMode);
-    if (nextRoute === "track") setSummaryDetailCode(undefined);
+    if (nextRoute === "track") {
+      setSummaryDetailCode(undefined);
+      setTrackView("measurements");
+    }
     setRoute(nextRoute);
   }
 
@@ -153,6 +158,14 @@ export function App() {
     pushPath(nextPath);
     setRoute("track");
     setSummaryDetailCode(measurementCode);
+    setTrackView("measurements");
+  }
+
+  function navigateTrackView(nextView: TrackView) {
+    pushPath(nextView === "calendar" ? "/track/calendar" : "/track");
+    setSummaryDetailCode(undefined);
+    setTrackView(nextView);
+    setRoute("track");
   }
 
   function confirm(
@@ -420,8 +433,11 @@ export function App() {
           <ErrorBoundary label="Track">
             <TrackRoute
               detailCode={summaryDetailCode}
+              view={trackView}
               activeProfileId={activeProfileId}
               measurementTypes={recordedMeasurementTypes}
+              latestMetrics={analytics?.latestMetrics ?? []}
+              onViewChange={navigateTrackView}
               onBack={() => navigate("track")}
               onSelectDetail={navigateSummaryDetail}
               onDataChanged={() => profileLifecycle.refresh({ profiles: false })}
@@ -532,12 +548,17 @@ function summaryDetailCodeFromPathname(pathname: string): string | undefined {
   const prefix = pathname.startsWith("/track/") ? "/track/" : undefined;
   if (!prefix) return undefined;
   const raw = pathname.slice(prefix.length);
-  if (!raw) return undefined;
+  if (!raw || raw === "calendar") return undefined;
   try {
     return decodeURIComponent(raw);
   } catch {
     return raw;
   }
+
+}
+
+function trackViewFromPathname(pathname: string): TrackView {
+  return pathname === "/track/calendar" ? "calendar" : "measurements";
 }
 
 function importModeFromPathname(pathname: string): ImportMode {

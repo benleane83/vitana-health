@@ -6,6 +6,8 @@ import {
   appBootstrapResponseSchema,
   bloodTestDraftResponseSchema,
   bodyCompositionDraftResponseSchema,
+  calendarMonthQuerySchema,
+  calendarMonthResponseSchema,
   careItemSchema,
   healthDataSummaryResponseSchema,
   healthEventSchema
@@ -16,6 +18,50 @@ import {
  * under the hood, so an empty object satisfied every one of them and drift went unnoticed.
  */
 describe("response contracts", () => {
+  it("validates bounded calendar month requests", () => {
+    expect(calendarMonthQuerySchema.parse({
+      month: "2026-08",
+      timezone: "Australia/Sydney",
+      measurementCodes: "steps,weight"
+    }).measurementCodes).toEqual(["steps", "weight"]);
+
+    for (const input of [
+      { month: "2026-8", timezone: "UTC", measurementCodes: ["steps"] },
+      { month: "2026-13", timezone: "UTC", measurementCodes: ["steps"] },
+      { month: "2026-08", timezone: "Not/A_Zone", measurementCodes: ["steps"] },
+      { month: "2026-08", timezone: "UTC", measurementCodes: ["steps", "steps"] },
+      { month: "2026-08", timezone: "UTC", measurementCodes: ["a", "b", "c", "d"] }
+    ]) {
+      expect(calendarMonthQuerySchema.safeParse(input).success).toBe(false);
+    }
+  });
+
+  it("validates sparse calendar month responses", () => {
+    expect(calendarMonthResponseSchema.safeParse({
+      month: "2026-08",
+      timezone: "UTC",
+      measurements: [{
+        date: "2026-08-04",
+        measurementCode: "steps",
+        value: 1234,
+        unit: "count",
+        count: 2,
+        min: 500,
+        max: 734,
+        aggregation: "sum",
+        sources: ["Health Connect"]
+      }],
+      events: [{ date: "2026-08-04", count: 2, kinds: ["visit", "procedure"] }]
+    }).success).toBe(true);
+    expect(calendarMonthResponseSchema.safeParse({
+      month: "2026-08",
+      timezone: "UTC",
+      measurements: [],
+      events: [],
+      notes: "must not leak detail"
+    }).success).toBe(false);
+  });
+
   it("accepts bounded AI Query context and rejects transcript fields", () => {
     const context = {
       version: 1,

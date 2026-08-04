@@ -30,6 +30,29 @@ const measurementRow = {
 };
 
 describe("createApiClient", () => {
+  it("encodes calendar queries deterministically and forwards abort signals", async () => {
+    const transport = vi.fn(async (_request: ApiTransportRequest) => response({
+      month: "2026-08",
+      timezone: "America/New_York",
+      measurements: [],
+      events: []
+    }));
+    const client = createApiClient(transport);
+    const controller = new AbortController();
+
+    await client.calendarMonth({
+      month: "2026-08",
+      timezone: "America/New_York",
+      measurementCodes: ["steps", "resting_heart_rate"]
+    }, controller.signal);
+
+    expect(transport).toHaveBeenCalledWith(expect.objectContaining({
+      path: "/api/calendar?month=2026-08&timezone=America%2FNew_York&measurementCodes=steps%2Cresting_heart_rate",
+      method: "GET",
+      signal: controller.signal
+    }));
+  });
+
   it("uses dedicated desktop update operations", async () => {
     const seen: ApiTransportRequest[] = [];
     const client = createApiClient(async (request) => {

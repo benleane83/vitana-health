@@ -6,6 +6,7 @@ import {
   type AnalyticsSummary,
   type AppBootstrap,
   type BiologicalAgeSource,
+  type CalendarMonthQuery,
   type CareItemListQuery,
   type CareItemMutationResponse,
   type CompleteCareItemInput,
@@ -113,6 +114,7 @@ import {
 import {
   analyticsSummary as readAnalyticsSummary,
   appBootstrap as readAppBootstrap,
+  calendarMonth as readCalendarMonth,
   biologicalAgeSource as readBiologicalAgeSource,
   clinicianReportLatestMeasurements as readClinicianReportLatestMeasurements,
   clinicianReportSourceImports as readClinicianReportSourceImports,
@@ -645,6 +647,11 @@ export class DuckDbRepository implements ProfileRepository {
   async summary() {
     this.assertOpen();
     return readSummary(this.reader);
+  }
+
+  async calendarMonth(query: CalendarMonthQuery) {
+    this.assertOpen();
+    return readCalendarMonth(this.reader, query);
   }
 
   async measurementDetail(measurementCode: string, page: MeasurementDetailPage = { offset: 0, limit: 100 }) {

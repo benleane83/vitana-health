@@ -14,6 +14,7 @@ import type {
   AnalyticsSummary,
   AppBootstrap,
   BiologicalAgeReport,
+  CalendarMonthData,
   CareItem,
   CareItemMutationResponse,
   CompleteCareItemResponse,
@@ -465,6 +466,58 @@ export const healthEventListQuerySchema = z.object({
 export type HealthEventListQueryContract = z.infer<typeof healthEventListQuerySchema>;
 /** Caller-facing form: every filter is optional, and the server applies the paging defaults. */
 export type HealthEventListQuery = Partial<HealthEventListQueryContract>;
+
+const calendarMonthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Month must use YYYY-MM.");
+const calendarDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const calendarMeasurementCodeSchema = z.string().trim().min(1).max(120)
+  .regex(/^[A-Za-z0-9_-]+$/, "Measurement code contains unsupported characters.");
+
+function isIanaTimezone(value: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value }).format();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export const calendarMonthQuerySchema = z.object({
+  month: calendarMonthSchema,
+  timezone: z.string().trim().min(1).max(80).refine(isIanaTimezone, "Timezone must be a valid IANA timezone."),
+  measurementCodes: z.preprocess(
+    (value) => typeof value === "string" ? value.split(",").filter(Boolean) : value,
+    z.array(calendarMeasurementCodeSchema).min(1).max(3)
+  )
+}).strict().superRefine((value, context) => {
+  if (new Set(value.measurementCodes).size !== value.measurementCodes.length) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["measurementCodes"],
+      message: "Measurement codes must be unique."
+    });
+  }
+});
+
+export const calendarMonthResponseSchema: z.ZodType<CalendarMonthData> = z.object({
+  month: calendarMonthSchema,
+  timezone: z.string().min(1).max(80),
+  measurements: z.array(z.object({
+    date: calendarDateSchema,
+    measurementCode: calendarMeasurementCodeSchema,
+    value: z.number().finite(),
+    unit: z.string().min(1).max(40),
+    count: z.number().int().positive(),
+    min: z.number().finite(),
+    max: z.number().finite(),
+    aggregation: z.enum(["sum", "average", "min", "max", "latest", "none"]),
+    sources: z.array(z.string().min(1).max(160))
+  }).strict()),
+  events: z.array(z.object({
+    date: calendarDateSchema,
+    count: z.number().int().positive(),
+    kinds: z.array(z.enum(healthEventKindCodes))
+  }).strict())
+}).strict();
 
 export const careItemListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),

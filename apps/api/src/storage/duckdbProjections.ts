@@ -2,6 +2,9 @@ import type duckdb from "duckdb";
 import {
   type CareItem,
   type CareItemListQuery,
+  type CalendarMeasurementPoint,
+  type CalendarMonthData,
+  type CalendarMonthQuery,
   biologicalAgeMeasurementCodes,
   classifyValueWithRange,
   type ClinicianReportLatestMeasurement,
@@ -531,6 +534,110 @@ export async function measurementChartSeries(
   };
 }
 
+export async function calendarMonth(
+  connection: duckdb.Connection,
+  query: CalendarMonthQuery
+): Promise<CalendarMonthData> {
+  const placeholders = query.measurementCodes.map(() => "?").join(", ");
+  const entriesSql = chartEntriesSql(`IN (${placeholders})`);
+  const repeatedCodes = Array.from({ length: 4 }, () => query.measurementCodes).flat();
+  const [typeRows, entryRows, eventRows] = await Promise.all([
+    allWithParams(
+      connection,
+      `SELECT code, aggregation FROM measurement_types WHERE code IN (${placeholders});`,
+      ...query.measurementCodes
+    ),
+    allWithParams(connection, `
+      WITH chart_entries AS (${entriesSql}),
+      dated_entries AS (
+        SELECT *,
+          COALESCE(calendar_date, CAST(timezone(?, measured_at) AS DATE)) AS local_date
+        FROM chart_entries
+      )
+      SELECT local_date, measurement_code, measured_at, value, unit, weight, min_value, max_value, source_label
+      FROM dated_entries
+      WHERE local_date >= CAST(? || '-01' AS DATE)
+        AND local_date < CAST(CAST(? || '-01' AS DATE) + INTERVAL '1 month' AS DATE)
+      ORDER BY local_date, measurement_code, measured_at, id;
+    `, ...repeatedCodes, query.timezone, query.month, query.month),
+    allWithParams(connection, `
+      WITH dated_events AS (
+        SELECT kind, CAST(timezone(?, occurred_at) AS DATE) AS local_date
+        FROM health_events
+        WHERE status = 'completed'
+      )
+      SELECT local_date, kind
+      FROM dated_events
+      WHERE local_date >= CAST(? || '-01' AS DATE)
+        AND local_date < CAST(CAST(? || '-01' AS DATE) + INTERVAL '1 month' AS DATE)
+      ORDER BY local_date, kind;
+    `, query.timezone, query.month, query.month)
+  ]);
+
+  const aggregationByCode = new Map(typeRows.map((row) => [
+    String(row.code),
+    String(row.aggregation) as CalendarMeasurementPoint["aggregation"]
+  ]));
+  const groups = new Map<string, { rows: Record<string, unknown>[]; sources: Set<string> }>();
+  for (const row of entryRows) {
+    const date = dateOnly(row.local_date);
+    const measurementCode = String(row.measurement_code);
+    const key = `${date}\u0000${measurementCode}`;
+    const group = groups.get(key) ?? { rows: [], sources: new Set<string>() };
+    group.rows.push(row);
+    if (row.source_label) group.sources.add(String(row.source_label));
+    groups.set(key, group);
+  }
+
+  const measurements = [...groups.entries()].map(([key, group]) => {
+    const [date, measurementCode] = key.split("\u0000");
+    const aggregation = aggregationByCode.get(measurementCode) ?? "none";
+    const count = group.rows.reduce((sum, row) => sum + Number(row.weight), 0);
+    const values = group.rows.map((row) => Number(row.value));
+    const value = aggregation === "sum"
+      ? values.reduce((sum, current) => sum + current, 0)
+      : aggregation === "average"
+        ? group.rows.reduce((sum, row) => sum + Number(row.value) * Number(row.weight), 0) / count
+        : aggregation === "min"
+          ? Math.min(...values)
+          : aggregation === "max"
+            ? Math.max(...values)
+            : values[values.length - 1];
+    return {
+      date,
+      measurementCode,
+      value,
+      unit: String(group.rows[group.rows.length - 1].unit),
+      count,
+      min: Math.min(...group.rows.map((row) => Number(row.min_value))),
+      max: Math.max(...group.rows.map((row) => Number(row.max_value))),
+      aggregation,
+      sources: [...group.sources].sort()
+    } satisfies CalendarMeasurementPoint;
+  });
+
+  const eventsByDate = new Map<string, { count: number; kinds: Set<CalendarMonthData["events"][number]["kinds"][number]> }>();
+  for (const row of eventRows) {
+    const date = dateOnly(row.local_date);
+    const summary = eventsByDate.get(date) ?? { count: 0, kinds: new Set() };
+    const kind = String(row.kind);
+    summary.count += 1;
+    if (isHealthEventKind(kind)) summary.kinds.add(kind);
+    eventsByDate.set(date, summary);
+  }
+
+  return {
+    month: query.month,
+    timezone: query.timezone,
+    measurements,
+    events: [...eventsByDate.entries()].map(([date, summary]) => ({
+      date,
+      count: summary.count,
+      kinds: [...summary.kinds].sort()
+    }))
+  };
+}
+
 async function chartEntryCount(connection: duckdb.Connection, measurementCode: string, cutoff?: string) {
   const range = chartRangeSql(cutoff);
   return allWithParams(
@@ -593,36 +700,47 @@ async function aggregateChartPoints(
   );
 }
 
-function chartEntriesSql(): string {
+function chartEntriesSql(codePredicate = "= ?"): string {
   return `
-    SELECT id, observed_at AS measured_at, value, unit, 1 AS weight, value AS min_value, value AS max_value
-    FROM observations WHERE measurement_code = ?
+    SELECT o.id, o.measurement_code, o.observed_at AS measured_at, o.value, o.unit, 1 AS weight,
+      o.value AS min_value, o.value AS max_value,
+      TRY_CAST(json_extract_string(o.source_json, '$.calendarDate') AS DATE) AS calendar_date,
+      COALESCE(s.label, s.source_kind, o.source_id) AS source_label
+    FROM observations o LEFT JOIN sources s ON s.id = o.source_id
+    WHERE o.measurement_code ${codePredicate}
     UNION ALL
-    SELECT id,
-      CASE WHEN json_extract_string(source_json, '$.aggregation') = 'health-connect-daily'
-        THEN COALESCE(TRY_CAST(json_extract_string(source_json, '$.calendarDate') AS TIMESTAMP), end_at)
-        ELSE end_at
+    SELECT t.id, t.measurement_code,
+      CASE WHEN json_extract_string(t.source_json, '$.aggregation') = 'health-connect-daily'
+        THEN COALESCE(TRY_CAST(json_extract_string(t.source_json, '$.calendarDate') AS TIMESTAMP), t.end_at)
+        ELSE t.end_at
       END AS measured_at,
-      value, unit, 1 AS weight, value AS min_value, value AS max_value
-    FROM time_series_samples WHERE measurement_code = ?
+      t.value, t.unit, 1 AS weight, t.value AS min_value, t.value AS max_value,
+      TRY_CAST(json_extract_string(t.source_json, '$.calendarDate') AS DATE) AS calendar_date,
+      COALESCE(s.label, s.source_kind, t.source_id) AS source_label
+    FROM time_series_samples t LEFT JOIN sources s ON s.id = t.source_id
+    WHERE t.measurement_code ${codePredicate}
     UNION ALL
-    SELECT id, end_at AS measured_at, average AS value, unit, measurement_count AS weight,
-      minimum AS min_value, maximum AS max_value
-    FROM measurement_aggregates a WHERE measurement_code = ? AND (
-      granularity = '15m' OR (
-        granularity = 'day' AND end_at <= COALESCE((
+    SELECT a.id, a.measurement_code, a.end_at AS measured_at, a.average AS value, a.unit,
+      a.measurement_count AS weight, a.minimum AS min_value, a.maximum AS max_value,
+      a.calendar_date, COALESCE(s.label, s.source_kind, a.source_id) AS source_label
+    FROM measurement_aggregates a LEFT JOIN sources s ON s.id = a.source_id
+    WHERE a.measurement_code ${codePredicate} AND (
+      a.granularity = '15m' OR (
+        a.granularity = 'day' AND a.end_at <= COALESCE((
           SELECT MIN(recent.start_at) FROM measurement_aggregates recent
           WHERE recent.measurement_code = a.measurement_code AND recent.granularity = '15m'
         ), TIMESTAMPTZ 'infinity')
       )
     )
     UNION ALL
-    SELECT id, COALESCE(end_at, start_at) AS measured_at,
-      COALESCE(duration_minutes, DATE_DIFF('minute', start_at, COALESCE(end_at, start_at))) AS value,
+    SELECT a.id, 'activity_sessions' AS measurement_code, COALESCE(a.end_at, a.start_at) AS measured_at,
+      COALESCE(a.duration_minutes, DATE_DIFF('minute', a.start_at, COALESCE(a.end_at, a.start_at))) AS value,
       'min' AS unit, 1 AS weight,
-      COALESCE(duration_minutes, DATE_DIFF('minute', start_at, COALESCE(end_at, start_at))) AS min_value,
-      COALESCE(duration_minutes, DATE_DIFF('minute', start_at, COALESCE(end_at, start_at))) AS max_value
-    FROM activities WHERE ? = 'activity_sessions'`;
+      COALESCE(a.duration_minutes, DATE_DIFF('minute', a.start_at, COALESCE(a.end_at, a.start_at))) AS min_value,
+      COALESCE(a.duration_minutes, DATE_DIFF('minute', a.start_at, COALESCE(a.end_at, a.start_at))) AS max_value,
+      NULL::DATE AS calendar_date, COALESCE(s.label, s.source_kind, a.source_id) AS source_label
+    FROM activities a LEFT JOIN sources s ON s.id = a.source_id
+    WHERE 'activity_sessions' ${codePredicate}`;
 }
 
 function chartRangeSql(cutoff?: string): { clause: string; params: string[] } {

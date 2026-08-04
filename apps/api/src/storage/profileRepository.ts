@@ -2,6 +2,8 @@ import type {
   AppBootstrap,
   AnalyticsSummary,
   BiologicalAgeSource,
+  CalendarMonthData,
+  CalendarMonthQuery,
   ClinicianReportLatestMeasurement,
   CareItemListQuery,
   CareItemMutationResponse,
@@ -170,6 +172,7 @@ export interface ProfileRepository {
   deleteDailyAggregateStepSamples(): Promise<DeleteObservationsByTypeResponse>;
   deleteStepSamples(): Promise<DeleteObservationsByTypeResponse>;
   summary(): Promise<HealthDataSummary>;
+  calendarMonth(query: CalendarMonthQuery): Promise<CalendarMonthData>;
   measurementDetail(measurementCode: string, page: MeasurementDetailPage): Promise<HealthDataDetail>;
   measurementChartSeries(measurementCode: string, options: HealthDataChartSeriesOptions): Promise<HealthDataChartSeries>;
   upsertPersonalReferenceRange(
