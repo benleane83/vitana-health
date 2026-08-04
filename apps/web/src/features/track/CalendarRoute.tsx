@@ -37,11 +37,8 @@ export function CalendarRoute({
 
   useEffect(() => {
     if (selectedCodes.length || !recordedMeasurements.length) return;
-    const latest = [...latestMetrics]
-      .filter((metric) => recordedMeasurements.some((measurement) => measurement.code === metric.code))
-      .sort((left, right) =>
-        Number(right.isPinned) - Number(left.isPinned) || right.observedAt.localeCompare(left.observedAt))[0];
-    setSelectedCodes([latest?.code ?? recordedMeasurements[0].code]);
+    const initialCode = preferredCalendarMeasurementCode(recordedMeasurements, latestMetrics);
+    if (initialCode) setSelectedCodes([initialCode]);
   }, [latestMetrics, recordedMeasurements, selectedCodes.length]);
 
   useEffect(() => {
@@ -100,7 +97,6 @@ export function CalendarRoute({
   return (
     <CalendarPage
       month={month}
-      timezone={timezone}
       data={monthState.data}
       loading={monthState.busy}
       error={monthState.error}
@@ -129,6 +125,19 @@ export function CalendarRoute({
       onRetryEvents={() => setEventRetryToken((value) => value + 1)}
     />
   );
+}
+
+export function preferredCalendarMeasurementCode(
+  recordedMeasurements: MeasurementType[],
+  latestMetrics: Pick<LatestMetric, "code" | "isPinned" | "observedAt">[]
+): string | undefined {
+  const steps = recordedMeasurements.find((measurement) => measurement.code === "steps");
+  if (steps) return steps.code;
+  const latest = [...latestMetrics]
+    .filter((metric) => recordedMeasurements.some((measurement) => measurement.code === metric.code))
+    .sort((left, right) =>
+      Number(right.isPinned) - Number(left.isPinned) || right.observedAt.localeCompare(left.observedAt))[0];
+  return latest?.code ?? recordedMeasurements[0]?.code;
 }
 
 function initialSelectedDate(

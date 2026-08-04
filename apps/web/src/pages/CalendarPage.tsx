@@ -1,5 +1,6 @@
 import { useMemo, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { healthEventKindLabels } from "@vitana/shared";
+import { ArrowUp, X } from "lucide-react";
 import type {
   CalendarMonthData,
   CalendarMeasurementPoint,
@@ -58,7 +59,6 @@ function measurementFor(
 
 export function CalendarPage({
   month,
-  timezone,
   data,
   loading,
   error,
@@ -80,7 +80,6 @@ export function CalendarPage({
   onRetryEvents
 }: {
   month: string;
-  timezone: string;
   data?: CalendarMonthData;
   loading: boolean;
   error?: string;
@@ -169,9 +168,8 @@ export function CalendarPage({
     <section className="panel calendar-page" aria-labelledby="calendar-heading">
       <header className="calendar-header">
         <div>
-          <p className="eyebrow">Track</p>
           <h1 id="calendar-heading">Calendar</h1>
-          <p>Compare recorded measurements with completed health events.</p>
+          <p>Compare your recorded measurements and health events.</p>
         </div>
         <div className="calendar-month-controls">
           <button type="button" aria-label="Previous month" onClick={onPreviousMonth}>‹</button>
@@ -191,20 +189,39 @@ export function CalendarPage({
             onSelect={onAddMeasurement}
           />
         ) : null}
-        <div className="calendar-metric-list" aria-label="Selected measurements">
-          {selectedMeasurements.map((measurement, index) => (
-            <div className={`calendar-metric metric-${index + 1}`} key={measurement.code}>
-              <span aria-hidden="true" className="metric-key" />
-              <strong>{measurement.display}</strong>
-              {index > 0 ? (
-                <button type="button" onClick={() => onPromoteMeasurement(measurement.code)}>
-                  Use for heatmap
-                </button>
-              ) : <span>Heatmap</span>}
-              <button type="button" aria-label={`Remove ${measurement.display}`} onClick={() => onRemoveMeasurement(measurement.code)}>×</button>
+        <div className="calendar-metric-list" aria-label="Selected metrics">
+          {selectedMeasurements.length ? (
+            <div className="calendar-metric-options">
+              {selectedMeasurements.map((measurement, index) => (
+                <div className={`calendar-metric metric-${index + 1}${index === 0 ? " is-primary" : ""}`} key={measurement.code}>
+                  <span aria-hidden="true" className="metric-key" />
+                  <div className="calendar-metric-copy">
+                    <strong>{measurement.display}</strong>
+                    <span className="calendar-metric-role">{index === 0 ? "Primary" : "Compared"}</span>
+                  </div>
+                  {index > 0 ? (
+                    <button
+                      className="calendar-metric-promote"
+                      type="button"
+                      aria-label={`Make ${measurement.display} primary`}
+                      title={`Make ${measurement.display} primary`}
+                      onClick={() => onPromoteMeasurement(measurement.code)}
+                    >
+                      <ArrowUp aria-hidden="true" size={16} />
+                    </button>
+                  ) : null}
+                  <button
+                    className="calendar-metric-action calendar-metric-remove"
+                    type="button"
+                    aria-label={`Remove ${measurement.display}`}
+                    onClick={() => onRemoveMeasurement(measurement.code)}
+                  >
+                    <X aria-hidden="true" size={16} />
+                  </button>
+                </div>
+              ))}
             </div>
-          ))}
-          {!selectedMeasurements.length ? <p>No recorded measurements yet. Completed events still appear below.</p> : null}
+          ) : <p>No recorded measurements yet. Completed events still appear below.</p>}
         </div>
       </div>
 
@@ -269,32 +286,43 @@ export function CalendarPage({
 
         <aside className="calendar-inspector" aria-labelledby="inspector-heading">
           <h2 id="inspector-heading">{fullDateFormatter.format(new Date(`${selectedDate}T00:00:00Z`))}</h2>
-          <p className="calendar-timezone">Days use {timezone}.</p>
-          <h3>Measurements</h3>
-          {selectedPoints.length ? selectedPoints.map(({ measurement, point }) => (
-            <dl key={measurement.code} className="calendar-reading">
-              <div><dt>Measurement</dt><dd>{measurement.display}</dd></div>
-              <div><dt>Value</dt><dd>{formatValue(point.value)} {point.unit}</dd></div>
-              <div><dt>Aggregation</dt><dd>{point.aggregation} · {point.count} reading{point.count === 1 ? "" : "s"}</dd></div>
-              <div><dt>Range</dt><dd>{formatValue(point.min)}–{formatValue(point.max)} {point.unit}</dd></div>
-              <div><dt>Source</dt><dd>{point.sources.join(", ") || "Unknown source"}</dd></div>
-            </dl>
-          )) : <p>No readings for selected metrics.</p>}
-          <h3>Completed health events {selectedSummary ? `(${selectedSummary.count})` : ""}</h3>
-          {eventLoading ? <p role="status">Loading event details…</p> : null}
-          {eventError ? <p role="alert">{eventError} <button type="button" onClick={onRetryEvents}>Retry</button></p> : null}
-          {!eventLoading && !eventError && selectedSummary ? (
-            <ul className="calendar-events">
-              {eventDetails.map((event) => (
-                <li key={event.id}>
-                  <strong>{healthEventKindLabels[event.kind]}</strong>
-                  {event.provider ? <span>Provider: {event.provider}</span> : null}
-                  {event.notes ? <span>{event.notes}</span> : null}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          {!selectedSummary ? <p>No completed health events.</p> : null}
+          <section className="calendar-readings" aria-labelledby="calendar-readings-heading">
+            <h3 id="calendar-readings-heading">Measurements</h3>
+            {selectedPoints.length ? selectedPoints.map(({ measurement, point }) => (
+              <article key={measurement.code} className="calendar-reading">
+                <p className="calendar-reading-label">{measurement.display}</p>
+                <p className="calendar-reading-value">{formatValue(point.value)} <span>{point.unit}</span></p>
+                <p className="calendar-reading-context">{point.aggregation} · {point.count} reading{point.count === 1 ? "" : "s"}</p>
+                <details className="calendar-reading-details">
+                  <summary>Measurement details</summary>
+                  <dl>
+                    <div><dt>Range</dt><dd>{formatValue(point.min)}–{formatValue(point.max)} {point.unit}</dd></div>
+                    <div><dt>Source</dt><dd>{point.sources.join(", ") || "Unknown source"}</dd></div>
+                  </dl>
+                </details>
+              </article>
+            )) : <p>No readings for selected metrics.</p>}
+          </section>
+          <section className="calendar-event-summary" aria-labelledby="calendar-events-heading">
+            <h3 id="calendar-events-heading">Health events</h3>
+            {eventLoading ? <p role="status">Loading event details…</p> : null}
+            {eventError ? <p role="alert">{eventError} <button type="button" onClick={onRetryEvents}>Retry</button></p> : null}
+            {!eventLoading && !eventError && selectedSummary ? (
+              <details className="calendar-event-details">
+                <summary>{selectedSummary.count} completed health event{selectedSummary.count === 1 ? "" : "s"}</summary>
+                <ul className="calendar-events">
+                  {eventDetails.map((event) => (
+                    <li key={event.id}>
+                      <strong>{healthEventKindLabels[event.kind]}</strong>
+                      {event.provider ? <span>Provider: {event.provider}</span> : null}
+                      {event.notes ? <span>{event.notes}</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
+            {!selectedSummary ? <p>No completed health events.</p> : null}
+          </section>
         </aside>
       </div>
     </section>
