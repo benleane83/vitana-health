@@ -22,7 +22,7 @@ module.exports = {
   expo: {
     name: "Vitana",
     slug: "local-fitness-companion",
-    version: "0.1.1",
+    version: "0.1.2",
     orientation: "portrait",
     icon: "./assets/icon.png",
     userInterfaceStyle: "light",
@@ -34,8 +34,10 @@ module.exports = {
         "android.permission.CAMERA",
         "android.permission.health.READ_STEPS",
         "android.permission.health.READ_HEART_RATE",
+        "android.permission.health.READ_RESTING_HEART_RATE",
         "android.permission.health.READ_OXYGEN_SATURATION",
         "android.permission.health.READ_HEART_RATE_VARIABILITY",
+        "android.permission.health.READ_RESPIRATORY_RATE",
         "android.permission.health.READ_BASAL_METABOLIC_RATE",
         "android.permission.health.READ_HEIGHT",
         "android.permission.health.READ_VO2_MAX",
@@ -111,7 +113,7 @@ module.exports = {
     // Bumped by hand whenever the native layer changes, independently of the marketing `version`
     // above. An appVersion policy silently orphaned installs on every marketing bump.
     // See docs/ANDROID_RELEASE.md for the bump rule.
-    runtimeVersion: "2",
+    runtimeVersion: "3",
     updates: {
       enabled: true,
       url: "https://u.expo.dev/2cc5cf1b-57e8-4e6f-8709-662259497a57",

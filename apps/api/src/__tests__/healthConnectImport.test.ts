@@ -10,8 +10,10 @@ const baseRequest: HealthConnectImportRequest = {
   deviceLabel: "Pixel 8",
   steps: [],
   heartRate: [],
+  restingHeartRate: [],
   oxygenSaturation: [],
   hrvRmssd: [],
+  respiratoryRate: [],
   basalMetabolicRateKcalDay: [],
   heightCm: [],
   skinTemperatureC: [],
@@ -178,6 +180,63 @@ describe("parseHealthConnectImport — heart rate aggregates", () => {
 });
 
 describe("parseHealthConnectImport — additional supported categories", () => {
+  it("maps Heart Rate Variability RMSSD buckets to hrv_rmssd aggregates", () => {
+    const result = parseHealthConnectImport({
+      ...baseRequest,
+      hrvRmssd: [{
+        startTime: "2026-05-01T08:00:00.000Z",
+        endTime: "2026-05-01T08:15:00.000Z",
+        granularity: "15m",
+        average: 36.5,
+        minimum: 31,
+        maximum: 42,
+        count: 3,
+        provenance: { recordId: "hrv-record-1", dataOrigin: "com.samsung.android.app.shealth" }
+      }]
+    });
+
+    expect(result.measurementAggregates).toEqual([expect.objectContaining({
+      measurementCode: "hrv_rmssd",
+      startAt: "2026-05-01T08:00:00.000Z",
+      endAt: "2026-05-01T08:15:00.000Z",
+      average: 36.5,
+      minimum: 31,
+      maximum: 42,
+      count: 3,
+      unit: "ms",
+      sourceJson: { recordId: "hrv-record-1", dataOrigin: "com.samsung.android.app.shealth" }
+    })]);
+  });
+
+  it("maps resting heart rate and respiratory rate buckets to aggregates", () => {
+    const result = parseHealthConnectImport({
+      ...baseRequest,
+      restingHeartRate: [{
+        startTime: "2026-05-01T08:00:00.000Z",
+        endTime: "2026-05-01T08:15:00.000Z",
+        granularity: "15m",
+        average: 54,
+        minimum: 50,
+        maximum: 58,
+        count: 3
+      }],
+      respiratoryRate: [{
+        startTime: "2026-05-01T08:00:00.000Z",
+        endTime: "2026-05-01T08:15:00.000Z",
+        granularity: "15m",
+        average: 14.5,
+        minimum: 13,
+        maximum: 16,
+        count: 3
+      }]
+    });
+
+    expect(result.measurementAggregates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ measurementCode: "resting_heart_rate", average: 54, unit: "beats/min" }),
+      expect.objectContaining({ measurementCode: "respiratory_rate", average: 14.5, unit: "breaths/min" })
+    ]));
+  });
+
   it("maps body fat percentages to body_fat_pct observations", () => {
     const result = parseHealthConnectImport({
       ...baseRequest,

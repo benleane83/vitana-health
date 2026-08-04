@@ -60,8 +60,10 @@ export function parseHealthConnectImport(payload: HealthConnectImportRequest): P
   const steps = [...new Map(normalizedStepSamples.map((item) => [item.id, item])).values()];
 
   const heartRate = toMeasurementAggregates(payload.heartRate, "heart_rate", "beats/min", sourceId);
+  const restingHeartRate = toMeasurementAggregates(payload.restingHeartRate, "resting_heart_rate", "beats/min", sourceId);
   const oxygenSaturation = toObservationSamples(payload.oxygenSaturation, "oxygen_saturation", "%", sourceId);
-  const hrvRmssd = toObservationSamples(payload.hrvRmssd, "hrv_rmssd", "ms", sourceId);
+  const hrvRmssd = toMeasurementAggregates(payload.hrvRmssd, "hrv_rmssd", "ms", sourceId);
+  const respiratoryRate = toMeasurementAggregates(payload.respiratoryRate, "respiratory_rate", "breaths/min", sourceId);
   const basalMetabolicRate = toObservationSamples(payload.basalMetabolicRateKcalDay, "basal_metabolic_rate", "kcal/day", sourceId);
   const height = toObservationSamples(payload.heightCm, "height", "cm", sourceId);
   const skinTemperature = toObservationSamples(payload.skinTemperatureC, "skin_temperature", "degC", sourceId);
@@ -89,7 +91,6 @@ export function parseHealthConnectImport(payload: HealthConnectImportRequest): P
 
   const observations: Observation[] = [
     ...oxygenSaturation,
-    ...hrvRmssd,
     ...basalMetabolicRate,
     ...height,
     ...skinTemperature,
@@ -111,7 +112,7 @@ export function parseHealthConnectImport(payload: HealthConnectImportRequest): P
       rangeEnd,
       sourceId,
       observations: observations.map((item) => [item.measurementCode, item.observedAt, item.value, item.unit, item.sourceJson]),
-      measurementAggregates: heartRate.map((item) => [
+      measurementAggregates: [...heartRate, ...restingHeartRate, ...hrvRmssd, ...respiratoryRate].map((item) => [
         item.measurementCode,
         item.granularity,
         item.startAt,
@@ -137,8 +138,10 @@ export function parseHealthConnectImport(payload: HealthConnectImportRequest): P
   const rowCount =
     payload.steps.length +
     payload.heartRate.length +
+    payload.restingHeartRate.length +
     payload.oxygenSaturation.length +
     payload.hrvRmssd.length +
+    payload.respiratoryRate.length +
     payload.basalMetabolicRateKcalDay.length +
     payload.heightCm.length +
     payload.skinTemperatureC.length +
@@ -173,7 +176,7 @@ export function parseHealthConnectImport(payload: HealthConnectImportRequest): P
     observations,
     observationGroups: [],
     timeSeriesSamples,
-    measurementAggregates: heartRate,
+    measurementAggregates: [...heartRate, ...restingHeartRate, ...hrvRmssd, ...respiratoryRate],
     activitySessions
   };
 }
