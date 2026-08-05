@@ -681,6 +681,17 @@ const measurementTypeDefinitions: MeasurementType[] = [
     aggregation: "latest"
   },
   {
+    code: "bicarbonate",
+    display: "Bicarbonate",
+    description: "A blood test measuring bicarbonate, an electrolyte that helps maintain your body's acid-base balance.",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "mmol/L",
+    aliases: ["bicarbonate", "serum bicarbonate"],
+    loincCode: "1960-4",
+    aggregation: "latest"
+  },
+  {
     code: "creatinine",
     display: "Creatinine",
     description: "A blood test measuring creatinine, a waste product from muscle activity that is filtered out by the kidneys.",
@@ -1073,6 +1084,17 @@ const measurementTypeDefinitions: MeasurementType[] = [
     aggregation: "latest"
   },
   {
+    code: "total_co2",
+    display: "Total CO2",
+    description: "A blood test measuring total carbon dioxide, which mainly reflects the bicarbonate level in your blood.",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "mmol/L",
+    aliases: ["total co2", "total carbon dioxide", "serum total carbon dioxide"],
+    loincCode: "2028-9",
+    aggregation: "latest"
+  },
+  {
     code: "testosterone_total",
     display: "Total testosterone",
     description: "A blood test measuring the total amount of testosterone in your blood.",
@@ -1125,6 +1147,17 @@ const measurementTypeDefinitions: MeasurementType[] = [
     canonicalUnit: "nmol/L",
     aliases: ["cortisol"],
     loincCode: "2130-3",
+    aggregation: "latest"
+  },
+  {
+    code: "progesterone",
+    display: "Progesterone",
+    description: "A blood test measuring progesterone, a hormone involved in the menstrual cycle and pregnancy.",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "ng/mL",
+    aliases: ["progesterone", "serum progesterone"],
+    loincCode: "14890-8",
     aggregation: "latest"
   },
   {
