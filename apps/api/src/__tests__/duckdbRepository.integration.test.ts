@@ -1254,6 +1254,68 @@ describe("DuckDbRepository fidelity", () => {
     }
   }, 30_000);
 
+  it.skipIf(!httpfsExtensionPath)("returns complete local Journal days with steps, wake-up sleep, and cursor pagination", async () => {
+    const databasePath = join(root, "databases", "health-store-journal.duckdb-poc");
+    const fixture = createDuckDbHealthStoreFixture();
+    fixture.measurementTypes.push(...defaultMeasurementTypes.filter((measurement) =>
+      measurement.code === "steps" || measurement.code === "sleep_duration"
+    ));
+    fixture.timeSeriesSamples.push({
+      id: "journal-steps",
+      measurementCode: "steps",
+      startAt: "2026-07-12T18:00:00.000Z",
+      endAt: "2026-07-12T18:05:00.000Z",
+      value: 700,
+      unit: "count",
+      sourceId: "source-1"
+    }, {
+      id: "journal-sleep",
+      measurementCode: "sleep_duration",
+      startAt: "2026-07-12T22:30:00.000Z",
+      endAt: "2026-07-13T06:30:00.000Z",
+      value: 480,
+      unit: "min",
+      sourceId: "source-1",
+      sourceJson: { stages: [] }
+    });
+    fixture.healthEvents ??= [];
+    fixture.healthEvents.push({
+      id: "journal-event",
+      kind: "visit",
+      status: "completed",
+      occurredAt: "2026-07-13T09:00:00.000Z",
+      source: "manual-entry",
+      provider: "Local clinic"
+    });
+    const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
+    try {
+      const newest = await repository.journal({ timezone: "UTC", dayLimit: 1 });
+      const older = await repository.journal({ timezone: "UTC", dayLimit: 1, beforeDate: newest.nextBeforeDate });
+
+      expect(newest).toMatchObject({
+        timezone: "UTC",
+        nextBeforeDate: "2026-07-13",
+        days: [{
+          date: "2026-07-13",
+          summary: { sleepDurationMinutes: 480 },
+          items: expect.arrayContaining([
+            expect.objectContaining({ kind: "sleep", id: "journal-sleep", stageDataStatus: "unavailable" }),
+            expect.objectContaining({ kind: "health-event", id: "journal-event", eventKind: "visit" })
+          ])
+        }]
+      });
+      expect(older).toMatchObject({
+        days: [{
+          date: "2026-07-12",
+          summary: { steps: { value: 700, unit: "count", sources: ["Fixture source"] } },
+          items: [expect.objectContaining({ kind: "activity", id: "activity-1" })]
+        }]
+      });
+    } finally {
+      await repository.close();
+    }
+  }, 30_000);
+
   it.skipIf(!httpfsExtensionPath)("returns schema-compatible Body Trend date detail groups", async () => {
     const databasePath = join(root, "databases", "health-store-body-trend-detail.duckdb-poc");
     const fixture = createDuckDbHealthStoreFixture();

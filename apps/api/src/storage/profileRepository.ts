@@ -28,6 +28,8 @@ import type {
   HealthEventMutationResponse,
   HealthStoreData,
   ImportCategoryOutcome,
+  JournalPage,
+  JournalQuery,
   LinkedCareItemConflict,
   MeasurementAggregate,
   MeasurementPinState,
@@ -213,6 +215,7 @@ export interface ProfileRepository {
   bodyTrendTimeline(query: BodyTrendQuery): Promise<BodyTrendTimeline>;
   bodyTrendDateDetail(date: string, query: BodyTrendDateQuery): Promise<BodyTrendDateDetail>;
   calendarMonth(query: CalendarMonthQuery): Promise<CalendarMonthData>;
+  journal(query: JournalQuery): Promise<JournalPage>;
   sleepSessions(page: SleepSessionListQueryContract): Promise<SleepSessionPage>;
   measurementDetail(measurementCode: string, page: MeasurementDetailPage): Promise<HealthDataDetail>;
   measurementChartSeries(measurementCode: string, options: HealthDataChartSeriesOptions): Promise<HealthDataChartSeries>;

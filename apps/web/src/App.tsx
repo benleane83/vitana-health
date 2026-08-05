@@ -166,7 +166,10 @@ export function App() {
   }
 
   function navigateTrackView(nextView: TrackView) {
-    pushPath(nextView === "calendar" ? "/track/calendar" : nextView === "body-trend" ? "/track/body-trend" : "/track");
+    pushPath(
+      nextView === "calendar" ? "/track/calendar" : nextView === "body-trend" ? "/track/body-trend"
+        : nextView === "journal" ? "/track/journal" : "/track"
+    );
     setSummaryDetailCode(undefined);
     setTrackView(nextView);
     setBodyTrendDate(undefined);
@@ -563,7 +566,7 @@ function summaryDetailCodeFromPathname(pathname: string): string | undefined {
   const prefix = pathname.startsWith("/track/") ? "/track/" : undefined;
   if (!prefix) return undefined;
   const raw = pathname.slice(prefix.length);
-  if (!raw || raw === "calendar" || raw === "body-trend" || raw.startsWith("body-trend/")) return undefined;
+  if (!raw || raw === "calendar" || raw === "body-trend" || raw === "journal" || raw.startsWith("body-trend/")) return undefined;
   try {
     return decodeURIComponent(raw);
   } catch {
@@ -582,7 +585,9 @@ function trackViewFromPathname(pathname: string): TrackView {
     ? "calendar"
     : pathname === "/track/body-trend" || bodyTrendDateFromPathname(pathname)
       ? "body-trend"
-      : "measurements";
+      : pathname === "/track/journal" || pathname.startsWith("/track/journal/")
+        ? "journal"
+        : "measurements";
 }
 
 function importModeFromPathname(pathname: string): ImportMode {

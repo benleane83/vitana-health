@@ -351,6 +351,71 @@ export interface CalendarMonthData {
   events: CalendarEventSummary[];
 }
 
+export const journalItemsPerDayLimit = 100;
+
+export interface JournalQuery {
+  timezone: string;
+  dayLimit: number;
+  beforeDate?: string;
+}
+
+export interface JournalDaySummary {
+  steps?: {
+    value: number;
+    unit: string;
+    sources: string[];
+  };
+  sleepDurationMinutes?: number;
+}
+
+export interface JournalActivityItem {
+  kind: "activity";
+  id: string;
+  occurredAt: string;
+  title: string;
+  activityType: string;
+  durationMinutes?: number;
+  distanceMeters?: number;
+  energyKcal?: number;
+  sourceLabel?: string;
+}
+
+export interface JournalSleepItem {
+  kind: "sleep";
+  id: string;
+  occurredAt: string;
+  startAt: string;
+  endAt: string;
+  durationMinutes: number;
+  stageDataStatus: "available" | "partial" | "unavailable";
+  sourceLabel?: string;
+}
+
+export interface JournalHealthEventItem {
+  kind: "health-event";
+  id: string;
+  occurredAt: string;
+  eventKind: HealthEventKind;
+  title: string;
+  detail?: string;
+  sourceLabel?: string;
+}
+
+export type JournalTimelineItem = JournalActivityItem | JournalSleepItem | JournalHealthEventItem;
+
+export interface JournalDay {
+  date: string;
+  summary: JournalDaySummary;
+  items: JournalTimelineItem[];
+  omittedItemCount: number;
+}
+
+export interface JournalPage {
+  timezone: string;
+  days: JournalDay[];
+  nextBeforeDate?: string;
+}
+
 export interface BodyTrendQuery {
   range: HealthDataChartRange;
   timezone: string;

@@ -27,6 +27,8 @@ import {
   healthEventListQuerySchema,
   healthEventMutationResponseSchema,
   insightResponseSchema,
+  journalPageResponseSchema,
+  journalQuerySchema,
   linkedHealthEventConflictSchema,
   measurementPinStateResponseSchema,
   paginatedCareItemsResponseSchema,
@@ -150,6 +152,15 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
     try {
       const query = calendarMonthQuerySchema.parse(request.query);
       sendJson(response, calendarMonthResponseSchema, await requestStore(response).calendarMonth(query));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/journal", async (request, response, next) => {
+    try {
+      const query = journalQuerySchema.parse(request.query);
+      sendJson(response, journalPageResponseSchema, await requestStore(response).journal(query));
     } catch (error) {
       next(error);
     }
