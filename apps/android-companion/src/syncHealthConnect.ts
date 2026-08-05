@@ -399,14 +399,18 @@ export async function syncHealthConnect(
   options.onProgress?.({ stage: "finalizing", detail: "Finalizing sync…" });
   await options.onSessionKey?.(null);
   const advanced: HealthConnectSyncCursors = { ...cursors };
+  const advancedEmptyCategories: HealthConnectCategory[] = [];
+  const retainedEmptyCategories: HealthConnectCategory[] = [];
   for (const descriptor of grantedDescriptors) {
     if (categoriesWithRecords.has(descriptor.category)) {
       advanced[descriptor.category] = rangeEnd.toISOString();
+    } else if (parseCursor(cursors[descriptor.category])) {
+      advanced[descriptor.category] = rangeEnd.toISOString();
+      advancedEmptyCategories.push(descriptor.category);
+    } else {
+      retainedEmptyCategories.push(descriptor.category);
     }
   }
-  const emptyCategories = grantedDescriptors
-    .filter((descriptor) => !categoriesWithRecords.has(descriptor.category))
-    .map((descriptor) => descriptor.category);
 
   return {
     status: "Sync complete.",
@@ -416,7 +420,12 @@ export async function syncHealthConnect(
       builder.oldestTimestamp
         ? `Oldest record returned by Health Connect: ${localDateKey(builder.oldestTimestamp)}.`
         : "Health Connect returned no records in this window.",
-      emptyCategories.length ? `No records returned: ${emptyCategories.join(", ")}. The sync start date was kept for those categories.` : "",
+      advancedEmptyCategories.length
+        ? `No records returned: ${advancedEmptyCategories.join(", ")}. Existing sync start dates advanced after the successful read.`
+        : "",
+      retainedEmptyCategories.length
+        ? `No records returned: ${retainedEmptyCategories.join(", ")}. First-sync backfill was kept because no valid prior cursor exists.`
+        : "",
       windowDays > 30 ? "Extended Health Connect history access was requested for this sync." : "",
       omittedCategories.length ? `Not synced (permission not granted): ${omittedCategories.join(", ")}.` : ""
     ].filter(Boolean).join("\n")
@@ -444,6 +453,7 @@ export class ChunkBuilder {
   private rows = 0;
   private size = 0;
   private index = 0;
+  private readonly envelopeBytes: number;
   totalRows = 0;
   oldestTimestamp: string | undefined;
 
@@ -452,20 +462,34 @@ export class ChunkBuilder {
     private readonly batchIdPrefix: string,
     private readonly maxUploadBytes = MAX_UPLOAD_BYTES
   ) {
+    const emptyPayload = {
+      ...this.base,
+      batchId: "",
+      ...makeEmptyPayloadCollections()
+    };
+    this.envelopeBytes = utf8ByteLength(JSON.stringify(emptyPayload)) - utf8ByteLength(JSON.stringify(""));
     this.reset();
   }
 
   add<Key extends PayloadCollectionKey>(key: Key, value: HealthConnectPayloadCollections[Key][number]): HealthConnectImportPayload | undefined {
-    const valueSize = utf8ByteLength(JSON.stringify(value));
+    const serializedValue = JSON.stringify(value);
+    const valueSize = utf8ByteLength(serializedValue);
+    let addedSize = valueSize + (this.current[key].length > 0 ? 1 : 0);
     let completed: HealthConnectImportPayload | undefined;
-    if (this.rows > 0 && this.size + valueSize + (this.current[key].length > 0 ? 1 : 0) > this.maxUploadBytes) {
+    if (this.rows > 0 && this.size + addedSize > this.maxUploadBytes) {
       completed = this.current;
       this.reset();
+      addedSize = valueSize;
+    }
+    if (this.size + addedSize > this.maxUploadBytes) {
+      throw new Error(
+        `A single Health Connect ${key} record is ${this.size + addedSize} UTF-8 bytes and exceeds the ${this.maxUploadBytes}-byte upload limit.`
+      );
     }
     this.current[key].push(value as never);
     this.rows += 1;
     this.totalRows += 1;
-    this.size += valueSize + (this.current[key].length > 1 ? 1 : 0);
+    this.size += addedSize;
     this.trackOldest(value);
     return completed;
   }
@@ -483,8 +507,7 @@ export class ChunkBuilder {
       ...makeEmptyPayloadCollections()
     };
     this.rows = 0;
-    // The batch id is present from the start, so the running size is exact and needs no reserve.
-    this.size = utf8ByteLength(JSON.stringify(this.current));
+    this.size = this.envelopeBytes + utf8ByteLength(JSON.stringify(this.current.batchId));
   }
 
   private trackOldest(value: unknown): void {

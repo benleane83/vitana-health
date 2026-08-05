@@ -66,12 +66,12 @@ describe("backup rate limits", () => {
       .post("/api/backups/inspect")
       .set("authorization", ownerAuthorization);
     expect(inspect.status).toBe(400);
-    expect(inspect.body.code).toBe("PASSPHRASE_REQUIRED");
+    expect(inspect.body.code).toBe("MULTIPART_REQUIRED");
 
     const restore = await request(app)
       .post("/api/backups/restore")
       .set("authorization", ownerAuthorization);
     expect(restore.status).toBe(400);
-    expect(restore.body.code).toBe("PASSPHRASE_REQUIRED");
+    expect(restore.body.code).toBe("MULTIPART_REQUIRED");
   });
 });

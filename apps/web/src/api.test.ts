@@ -71,7 +71,7 @@ describe("API client response handling", () => {
     await expect(api.health()).rejects.toMatchObject({ name: "ZodError" });
   });
 
-  it("sends encrypted backup data as an owner-authenticated binary request", async () => {
+  it("sends backup secrets as multipart fields rather than headers", async () => {
     const backup = new File(["encrypted"], "profile.vitana-backup", { type: "application/octet-stream" });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
       formatVersion: 1,
@@ -82,13 +82,13 @@ describe("API client response handling", () => {
 
     await expect(api.backups.inspect(backup, "a secure passphrase")).resolves.toMatchObject({ scope: "all" });
 
-    expect(global.fetch).toHaveBeenCalledWith("/api/backups/inspect", expect.objectContaining({
-      method: "POST",
-      body: backup,
-      headers: expect.objectContaining({
-        "content-type": "application/octet-stream",
-        "x-backup-passphrase": "a secure passphrase"
-      })
-    }));
+    const init = vi.mocked(global.fetch).mock.calls[0]?.[1];
+    expect(init?.method).toBe("POST");
+    expect(init?.body).toBeInstanceOf(FormData);
+    expect((init?.body as FormData).get("passphrase")).toBe("a secure passphrase");
+    expect((init?.body as FormData).get("file")).toBeInstanceOf(File);
+    expect(new Headers(init?.headers).has("x-backup-passphrase")).toBe(false);
+    expect(new Headers(init?.headers).has("x-restore-decisions")).toBe(false);
+    expect(new Headers(init?.headers).has("content-type")).toBe(false);
   });
 });

@@ -84,6 +84,9 @@ export class PairingStore {
   private readonly dataPath: string;
   private readonly serverInstanceId: string;
   private usagePersistTimer: ReturnType<typeof setTimeout> | undefined;
+  private exposureRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+  private exposureListener: ((required: boolean) => void) | undefined;
+  private lastExposureState: boolean | undefined;
 
   constructor() {
     const dataDir = resolve(process.env.VITANA_DATA_DIR ?? "data");
@@ -117,11 +120,22 @@ export class PairingStore {
     return this.serverInstanceId;
   }
 
+  setLanExposureListener(listener: (required: boolean) => void): void {
+    this.exposureListener = listener;
+    this.refreshLanExposure();
+  }
+
+  requiresLanExposure(): boolean {
+    this.prune();
+    return this.computeLanExposure();
+  }
+
   createChallenge(): { code: string; expiresAt: string } {
     this.prune();
     const code = randomBytes(6).toString("base64url");
     const expiresAt = Date.now() + pairingLifetimeMs;
     this.challenges.set(hash(code), { codeHash: hash(code), expiresAt });
+    this.refreshLanExposure();
     return { code, expiresAt: new Date(expiresAt).toISOString() };
   }
 
@@ -156,6 +170,7 @@ export class PairingStore {
       pendingToken: null
     };
     this.records.set(id, record);
+    this.refreshLanExposure();
     return { record: this.publicRecord(record), pollingSecret };
   }
 
@@ -176,6 +191,7 @@ export class PairingStore {
     record.resolvedAt = new Date().toISOString();
     record.allowedProfileIds = [profileId];
     this.persist();
+    this.refreshLanExposure();
     return this.publicRecord(record);
   }
 
@@ -184,6 +200,7 @@ export class PairingStore {
     if (!record || record.status !== "pending") return null;
     record.status = "denied";
     record.resolvedAt = new Date().toISOString();
+    this.refreshLanExposure();
     return this.publicRecord(record);
   }
 
@@ -226,10 +243,15 @@ export class PairingStore {
   }
 
   flushPendingWrites(): void {
-    if (!this.usagePersistTimer) return;
-    clearTimeout(this.usagePersistTimer);
-    this.usagePersistTimer = undefined;
-    this.persist();
+    if (this.usagePersistTimer) {
+      clearTimeout(this.usagePersistTimer);
+      this.usagePersistTimer = undefined;
+      this.persist();
+    }
+    if (this.exposureRefreshTimer) {
+      clearTimeout(this.exposureRefreshTimer);
+      this.exposureRefreshTimer = undefined;
+    }
   }
 
   listDevices(): PairingRecord[] {
@@ -250,6 +272,7 @@ export class PairingStore {
     record.tokenHash = null;
     record.pendingToken = null;
     this.persist();
+    this.refreshLanExposure();
     return this.publicRecord(record);
   }
 
@@ -263,7 +286,10 @@ export class PairingStore {
         changed = true;
       }
     }
-    if (changed) this.persist();
+    if (changed) {
+      this.persist();
+      this.refreshLanExposure();
+    }
   }
 
   private prune(): void {
@@ -277,6 +303,38 @@ export class PairingStore {
         record.resolvedAt = new Date().toISOString();
       }
     }
+    this.refreshLanExposure();
+  }
+
+  private computeLanExposure(): boolean {
+    if (this.challenges.size > 0) return true;
+    return [...this.records.values()].some((record) =>
+      (record.status === "pending" && Date.parse(record.expiresAt) > Date.now()) ||
+      (record.status === "approved" && !record.revokedAt)
+    );
+  }
+
+  private refreshLanExposure(): void {
+    const required = this.computeLanExposure();
+    if (required !== this.lastExposureState) {
+      this.lastExposureState = required;
+      this.exposureListener?.(required);
+    }
+
+    if (this.exposureRefreshTimer) clearTimeout(this.exposureRefreshTimer);
+    const expirations = [
+      ...[...this.challenges.values()].map((challenge) => challenge.expiresAt),
+      ...[...this.records.values()]
+        .filter((record) => record.status === "pending")
+        .map((record) => Date.parse(record.expiresAt))
+    ].filter((expiresAt) => expiresAt > Date.now());
+    if (expirations.length === 0) {
+      this.exposureRefreshTimer = undefined;
+      return;
+    }
+    const delay = Math.max(1, Math.min(...expirations) - Date.now() + 1);
+    this.exposureRefreshTimer = setTimeout(() => this.prune(), delay);
+    this.exposureRefreshTimer.unref?.();
   }
 
   private publicRecord(record: InternalPairingRecord): PairingRecord {

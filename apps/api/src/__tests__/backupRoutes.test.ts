@@ -42,6 +42,13 @@ function createMockStoreManager(): ProfileStoreManager {
   const mockStore = {
     profileId: "test-user",
     exportData: vi.fn().mockResolvedValue(testData),
+    backupExportMetadata: vi.fn().mockResolvedValue({ schemaVersion: testData.schemaVersion, profile: testData.profile }),
+    backupExportPage: vi.fn().mockImplementation(async (collection: keyof HealthStoreData, offset: number, limit: number) => {
+      const values = testData[collection] as unknown[];
+      const items = values.slice(offset, offset + limit);
+      return { items, done: items.length < limit };
+    }),
+    recordExportAudit: vi.fn().mockResolvedValue(undefined),
     getProfile: vi.fn().mockResolvedValue(testData.profile),
     replaceProfile: vi.fn().mockResolvedValue(testData.profile),
     mergeImport: vi.fn().mockResolvedValue({ counts: {}, outcome: {} })
@@ -131,10 +138,29 @@ async function httpRequest(port: number, path: string, options: {
   });
 }
 
+function multipartBody(
+  fields: Record<string, string>,
+  file: Buffer,
+  boundary = `vitana-test-${Math.random().toString(16).slice(2)}`
+): { body: Buffer; contentType: string } {
+  const chunks: Buffer[] = [];
+  for (const [name, value] of Object.entries(fields)) {
+    chunks.push(Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`
+    ));
+  }
+  chunks.push(Buffer.from(
+    `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="backup.vitana-backup"\r\n` +
+    `Content-Type: application/octet-stream\r\n\r\n`
+  ));
+  chunks.push(file, Buffer.from(`\r\n--${boundary}--\r\n`));
+  return { body: Buffer.concat(chunks), contentType: `multipart/form-data; boundary=${boundary}` };
+}
+
 describe("backupRoutes", () => {
   describe("POST /api/backups/create", () => {
     it("creates an encrypted backup binary", async () => {
-      const { app } = createTestApp();
+      const { app, storeManager } = createTestApp();
       const { server, port } = await listen(app);
 
       try {
@@ -150,6 +176,9 @@ describe("backupRoutes", () => {
         // Verify magic bytes
         expect([...res.body.subarray(0, 4)]).toEqual([...VITANA_BACKUP_MAGIC]);
         expect(res.body[4]).toBe(1);
+        const store = storeManager.getStore("test-user");
+        expect(store.exportData).not.toHaveBeenCalled();
+        expect(store.recordExportAudit).toHaveBeenCalledOnce();
       } finally {
         server.close();
       }
@@ -195,6 +224,44 @@ describe("backupRoutes", () => {
         server.close();
       }
     });
+
+    it("does not record an export audit when the client cancels the streamed download", async () => {
+      const sm = createMockStoreManager();
+      const store = sm.getStore("test-user");
+      let releasePage!: () => void;
+      let pageStarted!: () => void;
+      const blocked = new Promise<void>((resolve) => { releasePage = resolve; });
+      const started = new Promise<void>((resolve) => { pageStarted = resolve; });
+      vi.mocked(store.backupExportPage).mockImplementationOnce(async () => {
+        pageStarted();
+        await blocked;
+        return { items: [], done: true };
+      });
+      const { app } = createTestApp(sm);
+      const { server, port } = await listen(app);
+      const http = require("node:http") as typeof import("node:http");
+      const body = JSON.stringify({ passphrase: "cancelled-passphrase", scope: "all" });
+      const request = http.request({
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/backups/create",
+        method: "POST",
+        headers: { "content-type": "application/json", "content-length": String(Buffer.byteLength(body)) }
+      });
+      request.on("error", () => undefined);
+      request.end(body);
+
+      try {
+        await started;
+        request.destroy();
+        releasePage();
+        await vi.waitFor(() => expect(store.recordExportAudit).not.toHaveBeenCalled());
+      } finally {
+        releasePage();
+        request.destroy();
+        server.close();
+      }
+    }, 30_000);
   });
 
   describe("POST /api/backups/inspect", () => {
@@ -210,15 +277,13 @@ describe("backupRoutes", () => {
         profiles: [buildBackupProfileEntry(testData)]
       };
       const encrypted = await encryptBackup(payload, "inspect-passphrase!");
+      const upload = multipartBody({ passphrase: "inspect-passphrase!" }, encrypted);
 
       try {
         const res = await httpRequest(port, "/api/backups/inspect", {
           method: "POST",
-          headers: {
-            "content-type": "application/octet-stream",
-            "x-backup-passphrase": "inspect-passphrase!"
-          },
-          body: encrypted
+          headers: { "content-type": upload.contentType },
+          body: upload.body
         });
 
         expect(res.status).toBe(200);
@@ -246,15 +311,13 @@ describe("backupRoutes", () => {
         profiles: [buildBackupProfileEntry(testData)]
       };
       const encrypted = await encryptBackup(payload, "correct-passphrase!");
+      const upload = multipartBody({ passphrase: "wrong-passphrase!!" }, encrypted);
 
       try {
         const res = await httpRequest(port, "/api/backups/inspect", {
           method: "POST",
-          headers: {
-            "content-type": "application/octet-stream",
-            "x-backup-passphrase": "wrong-passphrase!!"
-          },
-          body: encrypted
+          headers: { "content-type": upload.contentType },
+          body: upload.body
         });
 
         expect(res.status).toBe(400);
@@ -265,6 +328,24 @@ describe("backupRoutes", () => {
         server.close();
       }
     }, 30_000);
+
+    it("does not accept the legacy passphrase header", async () => {
+      const { app } = createTestApp();
+      const { server, port } = await listen(app);
+      try {
+        const res = await httpRequest(port, "/api/backups/inspect", {
+          headers: {
+            "content-type": "application/octet-stream",
+            "x-backup-passphrase": "legacy-passphrase!"
+          },
+          body: Buffer.from("not multipart")
+        });
+        expect(res.status).toBe(400);
+        expect(JSON.parse(res.body.toString()).code).toBe("MULTIPART_REQUIRED");
+      } finally {
+        server.close();
+      }
+    });
   });
 
   describe("POST /api/backups/restore", () => {
@@ -285,16 +366,13 @@ describe("backupRoutes", () => {
       const decisions = [
         { profileId: "test-user", decision: "create-copy" }
       ];
+      const upload = multipartBody({ passphrase: "restore-passphrase!", decisions: JSON.stringify(decisions) }, encrypted);
 
       try {
         const res = await httpRequest(port, "/api/backups/restore", {
           method: "POST",
-          headers: {
-            "content-type": "application/octet-stream",
-            "x-backup-passphrase": "restore-passphrase!",
-            "x-restore-decisions": JSON.stringify(decisions)
-          },
-          body: encrypted
+          headers: { "content-type": upload.contentType },
+          body: upload.body
         });
 
         expect(res.status).toBe(200);
@@ -325,16 +403,13 @@ describe("backupRoutes", () => {
       const decisions = [
         { profileId: "test-user", decision: "replace" }
       ];
+      const upload = multipartBody({ passphrase: "restore-passphrase!", decisions: JSON.stringify(decisions) }, encrypted);
 
       try {
         const res = await httpRequest(port, "/api/backups/restore", {
           method: "POST",
-          headers: {
-            "content-type": "application/octet-stream",
-            "x-backup-passphrase": "restore-passphrase!",
-            "x-restore-decisions": JSON.stringify(decisions)
-          },
-          body: encrypted
+          headers: { "content-type": upload.contentType },
+          body: upload.body
         });
 
         expect(res.status).toBe(400);
@@ -362,16 +437,13 @@ describe("backupRoutes", () => {
       const decisions = [
         { profileId: "test-user", decision: "replace", acknowledgeReplacement: "REPLACE_CONFIRMED" }
       ];
+      const upload = multipartBody({ passphrase: "restore-passphrase!", decisions: JSON.stringify(decisions) }, encrypted);
 
       try {
         const res = await httpRequest(port, "/api/backups/restore", {
           method: "POST",
-          headers: {
-            "content-type": "application/octet-stream",
-            "x-backup-passphrase": "restore-passphrase!",
-            "x-restore-decisions": JSON.stringify(decisions)
-          },
-          body: encrypted
+          headers: { "content-type": upload.contentType },
+          body: upload.body
         });
 
         expect(res.status).toBe(200);
@@ -400,16 +472,13 @@ describe("backupRoutes", () => {
       const decisions = [
         { profileId: "test-user", decision: "skip" }
       ];
+      const upload = multipartBody({ passphrase: "restore-passphrase!", decisions: JSON.stringify(decisions) }, encrypted);
 
       try {
         const res = await httpRequest(port, "/api/backups/restore", {
           method: "POST",
-          headers: {
-            "content-type": "application/octet-stream",
-            "x-backup-passphrase": "restore-passphrase!",
-            "x-restore-decisions": JSON.stringify(decisions)
-          },
-          body: encrypted
+          headers: { "content-type": upload.contentType },
+          body: upload.body
         });
 
         expect(res.status).toBe(200);
@@ -447,18 +516,16 @@ describe("backupRoutes", () => {
         profiles: [buildBackupProfileEntry(createTestStoreData())]
       };
       const encrypted = await encryptBackup(payload, "restore-passphrase!");
+      const decisions = JSON.stringify([{
+        profileId: "test-user",
+        decision: "replace",
+        acknowledgeReplacement: "REPLACE_CONFIRMED"
+      }]);
+      const upload = multipartBody({ passphrase: "restore-passphrase!", decisions }, encrypted);
       const request = () => httpRequest(port, "/api/backups/restore", {
         method: "POST",
-        headers: {
-          "content-type": "application/octet-stream",
-          "x-backup-passphrase": "restore-passphrase!",
-          "x-restore-decisions": JSON.stringify([{
-            profileId: "test-user",
-            decision: "replace",
-            acknowledgeReplacement: "REPLACE_CONFIRMED"
-          }])
-        },
-        body: encrypted
+        headers: { "content-type": upload.contentType },
+        body: upload.body
       });
 
       try {
@@ -476,6 +543,95 @@ describe("backupRoutes", () => {
         server.close();
       }
     }, 30_000);
+
+    it("holds the restore lock while the first multipart upload is still arriving", async () => {
+      const { app } = createTestApp();
+      const { server, port } = await listen(app);
+      const encrypted = await encryptBackup({
+        formatVersion: 1,
+        createdAt: "2024-06-01T00:00:00.000Z",
+        scope: "all",
+        profiles: [buildBackupProfileEntry(createTestStoreData())]
+      }, "restore-passphrase!");
+      const decisions = JSON.stringify([{ profileId: "test-user", decision: "skip" }]);
+      const upload = multipartBody({ passphrase: "restore-passphrase!", decisions }, encrypted);
+      const http = require("node:http") as typeof import("node:http");
+      const first = http.request({
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/backups/restore",
+        method: "POST",
+        headers: { "content-type": upload.contentType, "content-length": String(upload.body.length) }
+      });
+      first.on("error", () => undefined);
+
+      try {
+        first.write(upload.body.subarray(0, upload.body.length - 24));
+        await vi.waitFor(() => expect(isInMaintenanceMode()).toBe(true));
+
+        const second = await httpRequest(port, "/api/backups/restore", {
+          headers: { "content-type": upload.contentType },
+          body: upload.body
+        });
+        expect(second.status).toBe(409);
+        expect(JSON.parse(second.body.toString()).code).toBe("RESTORE_IN_PROGRESS");
+
+        first.destroy();
+        await vi.waitFor(() => expect(isInMaintenanceMode()).toBe(false));
+      } finally {
+        first.destroy();
+        server.close();
+      }
+    }, 30_000);
+
+    it("releases the lock after every upload, decrypt, digest, and store failure", async () => {
+      const sm = createMockStoreManager();
+      const { app } = createTestApp(sm);
+      const { server, port } = await listen(app);
+      const decisions = [{ profileId: "test-user", decision: "create-copy" as const }];
+      const requestRestore = async (encrypted: Buffer, passphrase: string) => {
+        const upload = multipartBody({ passphrase, decisions: JSON.stringify(decisions) }, encrypted);
+        return httpRequest(port, "/api/backups/restore", {
+          headers: { "content-type": upload.contentType },
+          body: upload.body
+        });
+      };
+
+      try {
+        const malformed = await httpRequest(port, "/api/backups/restore", {
+          headers: { "content-type": "multipart/form-data; boundary=broken" },
+          body: "--broken\r\nContent-Disposition: form-data; name=\"passphrase\"\r\n\r\nvalue"
+        });
+        expect(malformed.status).toBe(400);
+        expect(isInMaintenanceMode()).toBe(false);
+
+        const validPayload: BackupPayload = {
+          formatVersion: 1,
+          createdAt: "2024-06-01T00:00:00.000Z",
+          scope: "all",
+          profiles: [buildBackupProfileEntry(createTestStoreData())]
+        };
+        const encrypted = await encryptBackup(validPayload, "correct-passphrase!");
+        expect((await requestRestore(encrypted, "wrong-passphrase!!")).status).toBe(400);
+        expect(isInMaintenanceMode()).toBe(false);
+
+        const invalidDigest = {
+          ...validPayload,
+          profiles: [{ ...validPayload.profiles[0], digest: "0".repeat(64) }]
+        };
+        expect((await requestRestore(
+          await encryptBackup(invalidDigest, "correct-passphrase!"),
+          "correct-passphrase!"
+        )).status).toBe(400);
+        expect(isInMaintenanceMode()).toBe(false);
+
+        vi.mocked(sm.restoreProfiles).mockRejectedValueOnce(new Error("Injected store failure"));
+        expect((await requestRestore(encrypted, "correct-passphrase!")).status).toBe(500);
+        expect(isInMaintenanceMode()).toBe(false);
+      } finally {
+        server.close();
+      }
+    }, 60_000);
   });
 
   describe("maintenance mode", () => {

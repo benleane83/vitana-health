@@ -6,12 +6,25 @@ import {
   type HealthStoreData,
   type MeasurementType,
   type Observation,
+  type PersonalReferenceRange,
   type Profile,
   type TimeSeriesSample
 } from "@vitana/shared";
 import { selectColumns, tableColumns, type PersistedTable } from "./duckdbColumns.js";
 
 export type DuckDbRow = Record<string, unknown>;
+
+export function personalReferenceRangeFromRow(row: DuckDbRow): PersonalReferenceRange {
+  return compact({
+    measurementCode: String(row.measurement_code),
+    normalLow: optionalNumber(row.normal_low),
+    normalHigh: optionalNumber(row.normal_high),
+    optimalLow: optionalNumber(row.optimal_low),
+    optimalHigh: optionalNumber(row.optimal_high),
+    unit: String(row.unit),
+    updatedAt: isoTimestamp(row.updated_at)
+  }) as unknown as PersonalReferenceRange;
+}
 
 export function exec(connection: duckdb.Connection, sql: string): Promise<void> {
   return new Promise((resolvePromise, reject) => {
@@ -128,6 +141,9 @@ export interface MeasurementInsertResult<T> {
   inserted: T[];
   rejections: string[];
 }
+
+// `firstOrdinal + index` is safe only because callers reserve the range behind `enqueueMutation`.
+// Repository-direct/multi-process writes are unsupported; SQLite needs an atomic allocator.
 
 function insertedSubset<T extends { id: string }>(accepted: T[], insertedIds: string[]): T[] {
   if (insertedIds.length === accepted.length) {

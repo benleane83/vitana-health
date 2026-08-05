@@ -15,6 +15,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "interval",
     canonicalUnit: "count",
     aliases: ["step_count", "count", "steps"],
+    loincCode: "41950-7",
     openMHealthSchema: "step-count",
     aggregation: "sum"
   },
@@ -26,7 +27,6 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "beats/min",
     aliases: ["heart_rate", "heart rate", "pulse"],
-    fhirCode: "8867-4",
     loincCode: "8867-4",
     openMHealthSchema: "heart-rate",
     normalLow: 50,
@@ -41,7 +41,6 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "kg",
     aliases: ["weight", "body_weight", "body weight"],
-    fhirCode: "29463-7",
     loincCode: "29463-7",
     openMHealthSchema: "body-weight",
     aggregation: "latest"
@@ -54,6 +53,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "cm",
     aliases: ["height", "body height", "stature"],
+    loincCode: "8302-2",
     openMHealthSchema: "body-height",
     aggregation: "latest"
   },
@@ -65,6 +65,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "%",
     aliases: ["body fat", "body fat percentage", "body fat %", "fat %", "fat pct", "fat percent", "fat percentage", "pbf", "percent body fat"],
+    loincCode: "41982-0",
     openMHealthSchema: "body-fat-percentage",
     aggregation: "latest"
   },
@@ -86,6 +87,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "kg",
     aliases: ["fat mass", "body fat mass", "bfm"],
+    loincCode: "73708-0",
     aggregation: "latest"
   },
   {
@@ -95,7 +97,8 @@ const measurementTypeDefinitions: MeasurementType[] = [
     category: "body",
     kind: "point",
     canonicalUnit: "kg",
-    aliases: ["lean body mass", "lean mass", "fat free mass", "fat-free mass", "ffm"],
+    aliases: ["lean body mass", "lean mass", "fat free mass", "fat-free mass", "ffm", "lean body weight"],
+    loincCode: "91557-9",
     aggregation: "latest"
   },
   {
@@ -106,6 +109,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "kg/m2",
     aliases: ["bmi", "body mass index"],
+    loincCode: "39156-5",
     openMHealthSchema: "body-mass-index",
     normalLow: 18.5,
     normalHigh: 24.9,
@@ -129,6 +133,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "L",
     aliases: ["total body water", "body water", "tbw", "bw", "water"],
+    loincCode: "41967-1",
     aggregation: "latest"
   },
   {
@@ -139,6 +144,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "%",
     aliases: ["body water percentage", "body water %", "tbw %", "water percentage", "water %"],
+    loincCode: "8339-4",
     aggregation: "latest"
   },
   {
@@ -149,6 +155,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "kcal/day",
     aliases: ["basal metabolic rate", "bmr", "basal metabolism", "resting metabolic rate"],
+    loincCode: "83513-8",
     aggregation: "latest"
   },
   {
@@ -159,6 +166,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "kg",
     aliases: ["bone mineral content", "bone mass", "mineral", "minerals", "bone mineral"],
+    loincCode: "38269-7",
     aggregation: "latest"
   },
   {
@@ -169,6 +177,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "g/cm2",
     aliases: ["bone mineral density", "bmd"],
+    loincCode: "46383-6",
     aggregation: "latest"
   },
   {
@@ -189,6 +198,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "L",
     aliases: ["intracellular water", "icw"],
+    loincCode: "49261-4",
     aggregation: "latest"
   },
   {
@@ -199,6 +209,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "L",
     aliases: ["extracellular water", "ecw"],
+    loincCode: "49262-2",
     aggregation: "latest"
   },
   {
@@ -219,6 +230,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "cm2",
     aliases: ["visceral fat area", "vfa"],
+    loincCode: "73707-2",
     aggregation: "latest"
   },
   {
@@ -239,6 +251,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "cm",
     aliases: ["waist circumference", "waist"],
+    loincCode: "56115-9",
     aggregation: "latest"
   },
   {
@@ -249,6 +262,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "cm",
     aliases: ["hip circumference", "hips"],
+    loincCode: "8280-0",
     aggregation: "latest"
   },
   {
@@ -259,6 +273,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "dimensionless",
     aliases: ["waist hip ratio", "waist-to-hip ratio", "whr"],
+    loincCode: "97058-2",
     aggregation: "latest"
   },
   {
@@ -289,6 +304,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "interval",
     canonicalUnit: "min",
     aliases: ["sleep", "sleep_duration", "sleep duration"],
+    loincCode: "93832-4",
     openMHealthSchema: "total-sleep-time",
     normalLow: 420,
     normalHigh: 540,
@@ -302,6 +318,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "interval",
     canonicalUnit: "%",
     aliases: ["spo2", "oxygen_saturation", "oxygen saturation"],
+    loincCode: "59408-5",
     normalLow: 92,
     normalHigh: 100,
     aggregation: "average"
@@ -314,6 +331,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "breaths/min",
     aliases: ["respiratory rate", "breathing rate", "respiration rate"],
+    loincCode: "9279-1",
     openMHealthSchema: "respiratory-rate",
     normalLow: 12,
     normalHigh: 20,
@@ -327,6 +345,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "beats/min",
     aliases: ["resting heart rate", "resting pulse", "rhr"],
+    loincCode: "8350-3",
     openMHealthSchema: "heart-rate",
     normalLow: 50,
     normalHigh: 100,
@@ -340,6 +359,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "°C",
     aliases: ["body temperature", "temperature"],
+    loincCode: "8310-5",
     normalLow: 36.1,
     normalHigh: 37.2,
     aggregation: "average"
@@ -352,6 +372,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "°C",
     aliases: ["basal body temperature", "basal temperature", "bbt"],
+    loincCode: "8326-1",
     aggregation: "average"
   },
   {
@@ -362,6 +383,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "°C",
     aliases: ["skin temperature", "skin temp", "temperature skin"],
+    loincCode: "24668-5",
     aggregation: "average"
   },
   {
@@ -372,6 +394,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "mmHg",
     aliases: ["systolic blood pressure", "systolic", "sbp"],
+    loincCode: "8480-6",
     openMHealthSchema: "systolic-blood-pressure",
     normalLow: 90,
     normalHigh: 120,
@@ -385,6 +408,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "mmHg",
     aliases: ["diastolic blood pressure", "diastolic", "dbp"],
+    loincCode: "8462-4",
     openMHealthSchema: "diastolic-blood-pressure",
     normalLow: 60,
     normalHigh: 80,
@@ -398,6 +422,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "ms",
     aliases: ["sdnn", "hrv_sdnn", "heart rate variability sdnn"],
+    loincCode: "80343-6",
     aggregation: "latest"
   },
   {
@@ -408,6 +433,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "ms",
     aliases: ["rmssd", "hrv_rmssd", "heart rate variability rmssd"],
+    loincCode: "80345-1",
     aggregation: "latest"
   },
   {
@@ -439,6 +465,8 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "interval",
     canonicalUnit: "kcal",
     aliases: ["total calories", "total energy burned", "total calorie burn"],
+    loincCode: "41981-2",
+    openMHealthSchema: "calorie-burned",
     aggregation: "sum"
   },
   {
@@ -459,6 +487,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "interval",
     canonicalUnit: "m",
     aliases: ["distance", "distance travelled", "distance traveled"],
+    loincCode: "41953-1",
     aggregation: "sum"
   },
   {
@@ -469,6 +498,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "interval",
     canonicalUnit: "min",
     aliases: ["physical activity", "activity duration", "exercise duration"],
+    loincCode: "55411-3",
     openMHealthSchema: "physical-activity",
     aggregation: "sum"
   },
@@ -490,9 +520,19 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "panel-component",
     canonicalUnit: "mmol/mol",
     aliases: ["hba1c", "hemoglobin a1c", "haemoglobin a1c", "a1c"],
-    fhirCode: "59261-8",
     loincCode: "59261-8",
     normalHigh: 41,
+    aggregation: "latest"
+  },
+    {
+    code: "hba1c_pct",
+    display: "HbA1c (Haemoglobin A1c) %",
+    description: "A blood test that reflects your average blood sugar level over roughly the past two to three months, expressed as a percentage.",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "%",
+    aliases: ["hemoglobin a1c %", "haemoglobin a1c %", "hba1c %"],
+    loincCode: "4548-4",
     aggregation: "latest"
   },
   {
@@ -503,8 +543,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "panel-component",
     canonicalUnit: "mmol/L",
     aliases: ["glucose", "blood glucose", "fasting glucose"],
-    fhirCode: "2345-7",
-    loincCode: "2345-7",
+    loincCode: "14749-6",
     openMHealthSchema: "blood-glucose",
     normalLow: 3.9,
     normalHigh: 5.5,
@@ -518,8 +557,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "panel-component",
     canonicalUnit: "mmol/L",
     aliases: ["total cholesterol", "cholesterol total", "cholesterol"],
-    fhirCode: "2093-3",
-    loincCode: "2093-3",
+    loincCode: "35200-5",
     normalHigh: 5.2,
     aggregation: "latest"
   },
@@ -531,8 +569,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "panel-component",
     canonicalUnit: "mmol/L",
     aliases: ["hdl", "hdl cholesterol"],
-    fhirCode: "2085-9",
-    loincCode: "2085-9",
+    loincCode: "22748-8",
     normalLow: 1,
     aggregation: "latest"
   },
@@ -544,8 +581,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "panel-component",
     canonicalUnit: "mmol/L",
     aliases: ["ldl", "ldl cholesterol"],
-    fhirCode: "13457-7",
-    loincCode: "13457-7",
+    loincCode: "39469-2",
     normalHigh: 3,
     aggregation: "latest"
   },
@@ -557,8 +593,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "panel-component",
     canonicalUnit: "mmol/L",
     aliases: ["triglycerides", "tg"],
-    fhirCode: "2571-8",
-    loincCode: "2571-8",
+    loincCode: "14771-0",
     normalHigh: 1.7,
     aggregation: "latest"
   },
@@ -616,7 +651,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "panel-component",
     canonicalUnit: "µmol/L",
     aliases: ["total bilirubin", "bilirubin"],
-    loincCode: "1975-2",
+    loincCode: "14631-6",
     aggregation: "latest"
   },
   {
@@ -627,7 +662,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "panel-component",
     canonicalUnit: "mmol/L",
     aliases: ["calcium", "serum calcium"],
-    loincCode: "17861-6",
+    loincCode: "2000-8",
     normalLow: 2.1,
     normalHigh: 2.6,
     aggregation: "latest"
@@ -653,7 +688,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "panel-component",
     canonicalUnit: "µmol/L",
     aliases: ["creatinine", "serum creatinine"],
-    loincCode: "2160-0",
+    loincCode: "14682-9",
     aggregation: "latest"
   },
   {
@@ -664,7 +699,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "panel-component",
     canonicalUnit: "mmol/L",
     aliases: ["urea", "blood urea nitrogen", "bun"],
-    loincCode: "3094-0",
+    loincCode: "6299-2",
     aggregation: "latest"
   },
   {
@@ -697,7 +732,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "panel-component",
     canonicalUnit: "µmol/L",
     aliases: ["iron", "serum iron"],
-    loincCode: "2498-4",
+    loincCode: "14801-5",
     normalLow: 9,
     normalHigh: 31,
     aggregation: "latest"
@@ -760,7 +795,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "panel-component",
     canonicalUnit: "µmol/L",
     aliases: ["uric acid", "urate"],
-    loincCode: "3084-1",
+    loincCode: "14933-6",
     aggregation: "latest"
   },
   {
@@ -771,7 +806,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "panel-component",
     canonicalUnit: "pmol/L",
     aliases: ["vitamin b12", "b12", "cobalamin"],
-    loincCode: "2132-9",
+    loincCode: "14685-2",
     aggregation: "latest"
   },
   {
@@ -787,13 +822,24 @@ const measurementTypeDefinitions: MeasurementType[] = [
   },
   {
     code: "high_sensitivity_c_reactive_protein",
-    display: "CRP (C-reactive protein)",
+    display: "High Sensitivity CRP (C-reactive protein)",
     description: "A sensitive blood test measuring C-reactive protein, a substance that rises when there is inflammation in your body.",
     category: "lab",
     kind: "panel-component",
     canonicalUnit: "mg/L",
-    aliases: ["high sensitivity c reactive protein", "c reactive protein", "c-reactive protein", "hs crp", "hs-crp", "crp"],
+    aliases: ["high sensitivity c reactive protein", "hs crp", "hs-crp"],
     loincCode: "30522-7",
+    aggregation: "latest"
+  },
+  {
+    code: "c_reactive_protein",
+    display: "CRP (C-reactive protein)",
+    description: "A blood test measuring C-reactive protein, a substance that rises when there is inflammation in your body.",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "mg/L",
+    aliases: ["c reactive protein", "c-reactive protein", "crp"],
+    loincCode: "1988-5",
     aggregation: "latest"
   },
   {
@@ -944,7 +990,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "panel-component",
     canonicalUnit: "pmol/L",
     aliases: ["insulin", "fasting insulin"],
-    loincCode: "20448-7",
+    loincCode: "14796-7",
     aggregation: "latest"
   },
   {
@@ -966,7 +1012,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "panel-component",
     canonicalUnit: "µmol/L",
     aliases: ["total iron binding capacity", "tibc"],
-    loincCode: "2500-7",
+    loincCode: "14800-7",
     aggregation: "latest"
   },
   {
@@ -999,7 +1045,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "panel-component",
     canonicalUnit: "nmol/L",
     aliases: ["folate", "folic acid"],
-    loincCode: "2284-8",
+    loincCode: "14732-2",
     aggregation: "latest"
   },
   {
@@ -1034,7 +1080,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "panel-component",
     canonicalUnit: "nmol/L",
     aliases: ["total testosterone", "testosterone"],
-    loincCode: "2986-8",
+    loincCode: "14913-8",
     aggregation: "latest"
   },
   {
@@ -1078,7 +1124,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "panel-component",
     canonicalUnit: "nmol/L",
     aliases: ["cortisol"],
-    loincCode: "2143-6",
+    loincCode: "2130-3",
     aggregation: "latest"
   },
   {
@@ -1089,7 +1135,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "panel-component",
     canonicalUnit: "pmol/L",
     aliases: ["free thyroxine", "free t4", "ft4"],
-    loincCode: "3024-7",
+    loincCode: "3026-2",
     aggregation: "latest"
   },
   {
@@ -1100,7 +1146,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "panel-component",
     canonicalUnit: "pmol/L",
     aliases: ["free triiodothyronine", "free t3", "ft3"],
-    loincCode: "3053-6",
+    loincCode: "14928-6",
     aggregation: "latest"
   },
   {
@@ -1133,6 +1179,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "panel-component",
     canonicalUnit: "%",
     aliases: ["omega 3 index", "omega-3 index", "epa dha index"],
+    loincCode: "88998-0",
     aggregation: "latest"
   },
   {
@@ -1143,6 +1190,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "ms",
     aliases: ["rr interval", "r-r interval"],
+    loincCode: "86334-3",
     openMHealthSchema: "rr-interval",
     aggregation: "average"
   },
@@ -1153,7 +1201,8 @@ const measurementTypeDefinitions: MeasurementType[] = [
     category: "cardio",
     kind: "point",
     canonicalUnit: "sec",
-    aliases: ["expiratory time"],
+    aliases: ["expiratory time", "forced expiratory time"],
+    loincCode: "65819-5",
     openMHealthSchema: "expiratory-time",
     aggregation: "average"
   },
@@ -1165,6 +1214,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "L",
     aliases: ["forced expiratory volume 1", "fev1", "fev 1"],
+    loincCode: "20150-9",
     aggregation: "latest"
   },
   {
@@ -1175,6 +1225,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "L",
     aliases: ["forced vital capacity", "fvc"],
+    loincCode: "20157-4",
     aggregation: "latest"
   },
   {
@@ -1185,6 +1236,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "dimensionless",
     aliases: ["fev1 fvc ratio", "fev1/fvc"],
+    loincCode: "19926-5",
     aggregation: "latest"
   },
   {
@@ -1195,6 +1247,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "kg",
     aliases: ["grip strength", "hand grip strength"],
+    loincCode: "88643-4",
     aggregation: "latest"
   },
   {
@@ -1205,6 +1258,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "mL/kg/min",
     aliases: ["vo2 max", "vo2max", "vo2 peak"],
+    loincCode: "19245-1",
     aggregation: "latest"
   },
   {
@@ -1215,6 +1269,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "m/s",
     aliases: ["gait speed", "walking speed"],
+    loincCode: "89467-3",
     aggregation: "latest"
   },
   {

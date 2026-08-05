@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 
 const closeAll = vi.fn(async () => undefined);
+let exposureListener: ((required: boolean) => void) | undefined;
 
 vi.mock("../storage/profileStoreManager.js", () => ({
   hasDuckDbActivationManifest: () => true,
@@ -17,13 +18,21 @@ vi.mock("../storage/profileStoreManager.js", () => ({
 }));
 vi.mock("../createApp.js", () => ({ createApp: () => (_req: unknown, _res: unknown) => undefined }));
 vi.mock("../security.js", () => ({ configureRuntimeSecurity: async () => ({ publicKeyHash: "hash" }) }));
-vi.mock("../pairing.js", () => ({ PairingStore: class {} }));
+vi.mock("../pairing.js", () => ({ PairingStore: class {
+  requiresLanExposure() { return false; }
+  setLanExposureListener(listener: (required: boolean) => void) {
+    exposureListener = listener;
+    listener(false);
+  }
+  flushPendingWrites() {}
+} }));
 
 const originalEnv = { ...process.env };
 
 describe("startServer failure handling", () => {
   beforeEach(() => {
     closeAll.mockClear();
+    exposureListener = undefined;
     process.env.HOST = "127.0.0.1";
     process.env.VITANA_DUCKDB_HTTPFS_EXTENSION = "httpfs.duckdb_extension";
   });
@@ -45,6 +54,25 @@ describe("startServer failure handling", () => {
       expect(closeAll).toHaveBeenCalledTimes(1);
     } finally {
       await new Promise<void>((resolve) => blocker.close(() => resolve()));
+    }
+  });
+
+  it("rebinds the same port while pairing requires LAN access", async () => {
+    const reservation = createServer();
+    await new Promise<void>((resolve) => reservation.listen(0, "127.0.0.1", resolve));
+    process.env.PORT = String((reservation.address() as AddressInfo).port);
+    await new Promise<void>((resolve) => reservation.close(() => resolve()));
+
+    const { startServer } = await import("../server.js");
+    const server = await startServer({ dynamicLanExposure: true });
+    try {
+      expect(server.currentHost()).toBe("127.0.0.1");
+      exposureListener?.(true);
+      await vi.waitFor(() => expect(server.currentHost()).toBe("0.0.0.0"));
+      exposureListener?.(false);
+      await vi.waitFor(() => expect(server.currentHost()).toBe("127.0.0.1"));
+    } finally {
+      await server.shutdown();
     }
   });
 });

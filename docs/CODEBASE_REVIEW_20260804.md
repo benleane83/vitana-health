@@ -12,23 +12,59 @@ Every finding below was re-derived from current source and verified by reading t
 
 ---
 
+## Remediation status — 2026-08-05
+
+The original findings below are retained as the point-in-time diagnosis. This table is the authoritative current status after the remediation pass.
+
+| # | Status | Current implementation |
+|---|---|---|
+| 1 | **Resolved** | The API starts on `127.0.0.1` and serially rebinds the same port to `0.0.0.0` only while an active pairing challenge, pending request, or approved device requires LAN access. Rebind failure rolls back. The Windows installer is per-user and no longer installs an elevated firewall rule. |
+| 2 | **Resolved** | Restore ownership is claimed immediately after owner authorization, before multipart parsing or decryption. Concurrent restore requests reach the route and return `409 RESTORE_IN_PROGRESS`; other requests receive maintenance mode. |
+| 3 | **Resolved** | Backup creation pages each collection through `ProfileRepository`, emits canonical V1 JSON incrementally, and streams it through `createGzip()` and AES-256-GCM. Plaintext and encrypted output are bounded. |
+| 4 | **Resolved** | Categories with an existing cursor advance after a successful empty read; categories with no prior cursor retain their backfill start. Focused tests cover both cases. |
+| 5 | **Resolved** | Electron accepts the loopback certificate only when its fingerprint matches the TLS identity returned by the embedded API; mismatches fail closed. |
+| 6 | **Resolved by invariant documentation** | The single-writer `enqueueMutation` boundary and the `firstOrdinal + index` reservation dependency are documented at both sides of the abstraction. A database sequence was intentionally not introduced. |
+| 7 | **Resolved** | Query identifiers use a strict identifier grammar and runtime values are positional parameters carried by `CompiledQuery` into DuckDB execution. |
+| 8 | **Resolved** | Browser CORS and local browser authentication now use an exact configured-origin allowlist rather than accepting arbitrary localhost ports. Native clients without an `Origin` remain supported. |
+| 9 | **Resolved** | Inspect and restore accept bounded `multipart/form-data`; passphrases and restore decisions are body fields rather than request headers. |
+| 10 | **Resolved** | SQLite acquisition separates pending opens from committed leases and closes partial handles on failure. Lease counts increment only after both databases are available. |
+| 11 | **Resolved** | `ChunkBuilder` keeps exact running UTF-8 byte accounting and no longer serializes the accumulated chunk on each append/reset. |
+| 12 | **Resolved** | Import source options hide Health Connect sync when no `HealthSourceProvider` is available. |
+| 13 | **Resolved** | Transactions declare `TransactionImpact`; `countsCache` is invalidated only by mutations that can alter storage counts. |
+| 14 | **Resolved for backup/export** | Portable backup no longer calls the whole-store snapshot and uses provider-neutral paged export methods. The legacy `snapshot()` remains for explicit non-backup full-export consumers. |
+| 15 | **Resolved** | `apiErrorFromResponse` prefers structured JSON error parsing and retains a text fallback for non-JSON responses. |
+| 16 | **Open** | `completedLocalDayRange` still uses the device's current local timezone, and the invariant is not yet documented next to the implementation. |
+| 17 | **Resolved / confirmed** | Settings fetch failures render in `role="alert"` regions with retry actions; update failures also switch their live region to alert semantics. |
+| 18 | **Ongoing by design** | The large files remain. Splitting continues opportunistically when a file is changed for functional work rather than as a standalone refactor campaign. |
+
+Validation completed during remediation:
+
+- Workspace typechecks and builds passed.
+- Core suite: **112 files / 724 tests passed**.
+- Focused remediation suites: **67 API**, **32 Android companion**, and **15 API-client** tests passed.
+- Relevant backup/export integration and durability tests passed.
+- Desktop suite: **57/57 tests passed**; desktop delivery checks: **10/10 passed**.
+- The Android preview build completed successfully, closing the Kotlin pinned-HTTP compile-verification item.
+
+---
+
 ## Executive assessment
 
 The remediation work since 2026-07-29 landed and it shows. All 19 P1 findings from that review are genuinely resolved in the code, not just annotated: the schema is a single indexed, foreign-keyed, `TIMESTAMPTZ` baseline; units canonicalize at ingest; the whole-store replica snapshot is gone; reads run on a separate connection; the release workflow gates on `validate:fast`; the Android replica cache is a disposable file that rebuilds rather than migrates. Tiers 1–4 of the backlog are almost entirely struck through, and the strike-throughs check out against the source.
 
 Two structural properties are worth protecting because they are what makes the rest of this tractable: storage genuinely sits behind `ProfileRepository` with a dialect-tagged `CompiledQuery`, and there are still **zero `TODO`/`FIXME` comments** anywhere in `apps/*/src` or `packages/*/src`.
 
-So this review is short by design. The codebase does not have a broad quality problem. It has a small number of specific things that are still open, plus a handful of new issues that the last pass did not reach.
+So this review is short by design. The codebase does not have a broad quality problem. The remediation pass closed findings 1–15, confirmed finding 17 was already addressed, and leaves only the timezone invariant in finding 16 plus the intentionally ongoing file decomposition in finding 18.
 
 ### Do these first
 
-| # | Finding | Why now |
+| # | Finding | Current status |
 |---|---|---|
-| 1 | [Bind `127.0.0.1` and rebind only when paired](#f1) | Last surviving P1-class item; ships health data to the whole LAN on first launch |
-| 2 | [Set the restore lock before the first `await`](#f2) | Two concurrent restores can both pass the guard today |
-| 3 | [Make backup export streaming and non-blocking](#f3) | `gzipSync` on a whole profile stalls the server; memory is O(profile) |
-| 4 | [Advance sync cursors for empty categories](#f4) | Every later sync permanently re-reads a dead category |
-| 5 | [Pin the loopback certificate instead of blanket-trusting it](#f5) | Cheap now, and it is the pairing story's foundation |
+| 1 | [Bind `127.0.0.1` and rebind only when paired](#f1) | **Resolved** |
+| 2 | [Set the restore lock before the first `await`](#f2) | **Resolved** |
+| 3 | [Make backup export streaming and non-blocking](#f3) | **Resolved** |
+| 4 | [Advance sync cursors for empty categories](#f4) | **Resolved** |
+| 5 | [Pin the loopback certificate instead of blanket-trusting it](#f5) | **Resolved** |
 
 ---
 
@@ -144,16 +180,16 @@ The surrounding controls are good — `MAX_ROW_LIMIT = 200` is applied on every 
 
 ---
 
-# Carried forward from 2026-07-29, still open
+# Carried forward from 2026-07-29
 
-These were deferred rather than missed, and none has changed:
+These were deferred rather than missed. Their current status is:
 
-- **Tier 5 item 44** — generate the SQL allowlist from the schema, or test it against `information_schema`.
-- **Tier 5 item 48** — sweep rate-limiter buckets on a timer; document that the state is process-local.
-- **Tier 5 item 52** — converge TypeScript majors (root/api/web on 5.x, android-companion/website on 6.x).
-- **Tier 5 item 54** — add and enforce `expiresAt` on `.audit-allowlist.json` entries.
-- **Tier 5 item 58** — drop the dead purchase gating, unlink `react-native-iap`, remove `react-native-nitro-modules`, move web-only packages out of production `dependencies`.
-- **Kotlin pinned-HTTP cancellation** — implemented but still compile-unverified. It needs one real Android build. This is the only item on the list that could fail loudly in a tester's hands.
+- **Tier 5 item 44 — Open:** generate the SQL allowlist from the schema, or test it against `information_schema`.
+- **Tier 5 item 48 — Open:** sweep rate-limiter buckets on a timer; document that the state is process-local.
+- **Tier 5 item 52 — Open:** converge TypeScript majors (root/api/web on 5.x, android-companion/website on 6.x).
+- **Tier 5 item 54 — Open:** add and enforce `expiresAt` on `.audit-allowlist.json` entries.
+- **Tier 5 item 58 — Open:** drop the dead purchase gating, unlink `react-native-iap`, remove `react-native-nitro-modules`, and move web-only packages out of production `dependencies`.
+- **Kotlin pinned-HTTP cancellation — Closed:** the Android preview build completed successfully after the implementation.
 
 # Closed since the last review
 
@@ -168,10 +204,8 @@ Spot-checked and confirmed fixed, so they should not be re-litigated: the Health
 
 # Suggested sequencing
 
-**Before the first tester build:** findings 1, 2, 5, and the Kotlin build verification. Re-run `npm run audit:ci` with network access.
+**Before the next tester build:** re-run `npm run audit:ci` with network access; dependency advisories remain unverified by this review.
 
-**Before testers accumulate data:** 3, 4, 6, 10, 11.
+**Next quiet week:** document or harden the timezone invariant in finding 16, then take the carried Tier 5 items in risk/order-of-effort priority.
 
-**Next quiet week:** 7, 8, 9, 12, 13.
-
-**Opportunistically:** the P3 list, and the god-file splits as each file is opened for another reason.
+**Opportunistically:** continue the finding 18 file splits as those modules are opened for functional changes.

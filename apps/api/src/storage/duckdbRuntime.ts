@@ -36,6 +36,7 @@ export interface DuckDbOptions {
 export interface DuckDbTestHooks {
   beforeHydrationPromotion?: () => Promise<void>;
   beforeTransactionCommit?: () => Promise<void>;
+  beforeStorageCountsRead?: () => void;
 }
 
 export type DuckDbOptionsWithTestHooks = DuckDbOptions & { testHooks?: DuckDbTestHooks };

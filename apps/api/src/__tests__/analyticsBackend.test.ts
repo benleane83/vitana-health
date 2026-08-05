@@ -53,6 +53,7 @@ describe("analytics backend dispatch", () => {
     void runAnalyticsQuery(fakeStoreManager("duckdb", (query) => { received = query; }), compiled);
     expect(received?.dialect).toBe("duckdb");
     expect(received?.sql).toBe(compiled.sql);
+    expect(received?.parameters).toEqual(compiled.parameters);
   });
 
   it("normalizes DuckDB BigInt values for JSON responses", async () => {

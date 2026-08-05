@@ -1,4 +1,4 @@
-This app (working title Vitana Health) is a local-first application that stores personal health data in an encrypted database. It started as a single-user application, but has been expanded to support multiple family member profiles including pets and children.
+This app (Vitana Health) is a local-first application that stores personal health data in an encrypted database. It started as a single-user application, but has been expanded to support multiple family member profiles including pets and children.
 
 ## Application status
 
@@ -9,6 +9,10 @@ I'm only testing on Windows x64 currently, but I intend to support Linux and Mac
 ## Database design
 
 Currently uses DuckDB as a local database, although considering SQLite as an alternative if transactional performance suffers. When working on database changes, please consider this and use abstractions over DuckDB where relevant to make swapping DB providers easier later. JSON profile support was in an earlier prototype but has been retired and should not be used actively. Earlier prototypes also performed full profile reads, but this is now discouraged for performance reasons.
+
+## Schemas and Interoperability
+
+My app's data structures have been designed to be lightweight but interoperable with global health standards like FHIR, LOINC, and Health Connect / HealthKit wherever practical. It does not replicate all fields and entities from those standards, but always use common naming and codes as references if possible so that we can map data from Vitana to those platforms easily.
 
 ## Mobile app design
 

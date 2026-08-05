@@ -51,9 +51,9 @@ import {
   toEditableScanRows,
   type ScanReportEditableRow
 } from "./scanReportReview";
+import { buildImportSourceOptions, type ImportSource, type ImportSourceOption } from "./importSourceOptions";
 
 const privacyUrl = "https://vitanahealth.app/privacy";
-type ImportSource = "sync" | "scan" | "manual";
 type ScanKind = "body-composition" | "blood-test";
 
 export function ImportScreen() {
@@ -62,11 +62,15 @@ export function ImportScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<TabParamList, "Import">>();
   const [source, setSource] = useState<ImportSource>();
   const connectedOffline = !standaloneMode && connectionState !== "online";
+  const healthSourceProvider = activeHealthSourceProvider();
+  const sourceOptions = buildImportSourceOptions(healthSourceProvider, Platform.OS);
   useEffect(() => {
-    if (demoMode || connectedOffline || (standaloneMode && source !== "manual")) setSource(undefined);
-  }, [connectedOffline, demoMode, source, standaloneMode]);
+    if (demoMode || connectedOffline || (standaloneMode && source !== "manual") || (source === "sync" && !healthSourceProvider)) {
+      setSource(undefined);
+    }
+  }, [connectedOffline, demoMode, healthSourceProvider, source, standaloneMode]);
 
-  if (!source || demoMode) return <ImportSourceChooser connectedOffline={connectedOffline} demoMode={demoMode} standaloneMode={standaloneMode} unlocked={entitlement.state.status === "owned"} onSelect={setSource} onConnect={() => {
+  if (!source || demoMode || (source === "sync" && !healthSourceProvider)) return <ImportSourceChooser connectedOffline={connectedOffline} demoMode={demoMode} standaloneMode={standaloneMode} sources={sourceOptions} unlocked={entitlement.state.status === "owned"} onSelect={setSource} onConnect={() => {
     navigation.getParent<NativeStackNavigationProp<RootStackParamList>>()?.navigate("Connection");
   }} />;
 
@@ -98,6 +102,7 @@ function ImportSourceChooser({
   connectedOffline,
   demoMode,
   standaloneMode,
+  sources,
   unlocked,
   onConnect,
   onSelect
@@ -105,45 +110,16 @@ function ImportSourceChooser({
   connectedOffline: boolean;
   demoMode: boolean;
   standaloneMode: boolean;
+  sources: ImportSourceOption[];
   unlocked: boolean;
   onConnect: () => void;
   onSelect: (source: ImportSource) => void;
 }) {
-  const sources: Array<{
-    source: ImportSource;
-    title: string;
-    detail: string;
-    icon: typeof RefreshCw;
-    color: string;
-    background: string;
-  }> = [
-    {
-      source: "sync",
-      title: "Sync",
-      detail: Platform.OS === "android"
-        ? "Bring in recent health data from this Android device."
-        : "Bring in recent health data from your phone.",
-      icon: RefreshCw,
-      color: colors.info,
-      background: colors.infoMuted
-    },
-    {
-      source: "scan",
-      title: "Scan a report",
-      detail: "Photograph a lab test or body composition report for review.",
-      icon: ScanLine,
-      color: colors.blush,
-      background: colors.blushMuted
-    },
-    {
-      source: "manual",
-      title: "Enter manually",
-      detail: "Add a single reading or a reusable group of measurements.",
-      icon: PencilLine,
-      color: colors.primary,
-      background: colors.lavenderMuted
-    }
-  ];
+  const presentation: Record<ImportSource, { icon: typeof RefreshCw; color: string; background: string }> = {
+    sync: { icon: RefreshCw, color: colors.info, background: colors.infoMuted },
+    scan: { icon: ScanLine, color: colors.blush, background: colors.blushMuted },
+    manual: { icon: PencilLine, color: colors.primary, background: colors.lavenderMuted }
+  };
 
   return (
     <Screen>
@@ -167,7 +143,8 @@ function ImportSourceChooser({
           />
         ) : null}
         <View style={styles.sourceList}>
-          {sources.map(({ source, title, detail, icon: Icon, color, background }) => {
+          {sources.map(({ source, title, detail }) => {
+            const { icon: Icon, color, background } = presentation[source];
             const locked = source !== "manual" && !unlocked;
             const unavailableInStandalone = standaloneMode && source !== "manual";
             const disabled = demoMode || connectedOffline || unavailableInStandalone;

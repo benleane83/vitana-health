@@ -210,8 +210,8 @@ export function App() {
   useEffect(() => {
     setOwnerTokenPrompt(() => new Promise<string | null>((resolve) => {
       setConfirmState({
-        title: "Owner token required",
-        description: "Enter the Vitana owner token shown by the API at startup.",
+        title: "Automatic sign-in unavailable",
+        description: "Cancel and reopen Vitana Health to retry automatic sign-in. Manual token entry is available for development and recovery.",
         confirmLabel: "Continue",
         destructive: false,
         promptLabel: "Owner token",

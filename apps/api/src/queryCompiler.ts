@@ -144,9 +144,12 @@ const MAX_TIME_WINDOW_DAYS = 366;
 
 export interface CompileResult {
   sql: string;
+  parameters: readonly QueryParameter[];
   resolvedTimeRange: { start: string; end: string; label: string };
   appliedLimit: number;
 }
+
+export type QueryParameter = string | number | boolean | null;
 
 export interface CompileError {
   error: string;
@@ -176,26 +179,23 @@ function capLimit(requested: number): number {
   return Math.min(requested, MAX_ROW_LIMIT);
 }
 
-function sanitizeIdentifier(value: string): string {
-  // Strip all characters that are not alphanumeric, underscores, hyphens, or dots.
-  // Metric codes in the registry only use these characters (e.g. "heart_rate", "hrv_rmssd").
-  // Any other character would indicate an unexpected/injected value and is dropped defensively.
-  return value.replace(/[^a-zA-Z0-9_\-.]/g, "");
-}
-
-function sqlString(value: string): string {
-  return value.replace(/'/g, "''");
+function sqlIdentifier(value: string): string {
+  if (!/^[A-Za-z0-9_]+$/.test(value)) {
+    throw new Error(`Invalid SQL identifier: ${value}`);
+  }
+  return value;
 }
 
 function aggregationSql(agg: QueryDSL["aggregation"], column: string): string {
+  const identifier = sqlIdentifier(column);
   switch (agg) {
-    case "avg": return `AVG(${column})`;
-    case "max": return `MAX(${column})`;
-    case "min": return `MIN(${column})`;
-    case "sum": return `SUM(${column})`;
+    case "avg": return `AVG(${identifier})`;
+    case "max": return `MAX(${identifier})`;
+    case "min": return `MIN(${identifier})`;
+    case "sum": return `SUM(${identifier})`;
     case "count": return `COUNT(*)`;
-    case "latest": return `MAX(${column})`;
-    default: return `AVG(${column})`;
+    case "latest": return `MAX(${identifier})`;
+    default: return `AVG(${identifier})`;
   }
 }
 
@@ -226,20 +226,20 @@ export function compileQueryDSL(dsl: QueryDSL): CompileOutcome {
   const limit = capLimit(dsl.limit);
   const sortDir = dsl.sort === "asc" ? "ASC" : "DESC";
 
-  let sql: string;
+  let statement: SqlStatement;
   const source = dsl.source ?? (dsl.intent === "list_activities" ? "activities" : "metrics");
 
   if (source === "health_events") {
     const outcome = buildHealthEventsSql(dsl, resolvedTime, limit, sortDir);
-    if (typeof outcome !== "string") return { ok: false, error: outcome.error };
-    sql = outcome;
+    if ("error" in outcome) return { ok: false, error: outcome.error };
+    statement = outcome;
   } else if (source === "care_items") {
     const outcome = buildCareItemsSql(dsl, resolvedTime, limit, sortDir);
-    if (typeof outcome !== "string") return { ok: false, error: outcome.error };
-    sql = outcome;
+    if ("error" in outcome) return { ok: false, error: outcome.error };
+    statement = outcome;
   } else if (source === "activities" && dsl.intent === "list_activities") {
     if (dsl.filters) return { ok: false, error: "Activity queries do not support domain filters." };
-    sql = buildActivitiesSql(dsl, resolvedTime, limit, sortDir);
+    statement = buildActivitiesSql(dsl, resolvedTime, limit, sortDir);
   } else if (source === "activities") {
     return { ok: false, error: `Source "activities" supports only the list_activities intent.` };
   } else if (dsl.intent === "list_activities") {
@@ -249,18 +249,23 @@ export function compileQueryDSL(dsl: QueryDSL): CompileOutcome {
   } else if (dsl.metric === null) {
     return { ok: false, error: "A metric is required for metric intents." };
   } else if (dsl.intent === "timeseries") {
-    sql = buildTimeseriesSql(dsl, resolvedTime, limit, sortDir);
+    statement = buildTimeseriesSql(dsl, resolvedTime, limit, sortDir);
   } else if (dsl.intent === "aggregation") {
-    sql = buildAggregationSql(dsl, resolvedTime, limit);
+    statement = buildAggregationSql(dsl, resolvedTime, limit);
   } else if (dsl.intent === "top_n") {
-    sql = buildTopNSql(dsl, resolvedTime, limit, sortDir);
+    statement = buildTopNSql(dsl, resolvedTime, limit, sortDir);
   } else if (dsl.intent === "latest") {
-    sql = buildLatestSql(dsl, resolvedTime);
+    statement = buildLatestSql(dsl, resolvedTime);
   } else {
     return { ok: false, error: `Unsupported intent: ${String(dsl.intent)}` };
   }
 
-  return { ok: true, sql, resolvedTimeRange: resolvedTime, appliedLimit: limit };
+  return { ok: true, ...statement, resolvedTimeRange: resolvedTime, appliedLimit: limit };
+}
+
+interface SqlStatement {
+  sql: string;
+  parameters: QueryParameter[];
 }
 
 function buildTimeseriesSql(
@@ -268,65 +273,64 @@ function buildTimeseriesSql(
   time: { start: string; end: string },
   limit: number,
   sortDir: string
-): string {
-  const metric = sanitizeIdentifier(dsl.metric ?? "");
+): SqlStatement {
+  const parameters = [dsl.metric ?? "", time.start, time.end];
   const groupBy = dsl.groupBy ?? "day";
   const agg = dailyMetricAggregationSql(dsl.aggregation);
 
   if (groupBy === "week") {
-    return [
+    return { sql: [
       `SELECT DATE_TRUNC('week', day) AS week_start, ${agg} AS value, MIN(unit) AS unit`,
       `FROM v_daily_metrics`,
-      `WHERE measurement_code = '${metric}'`,
-      `  AND day >= DATE '${time.start}'`,
-      `  AND day <= DATE '${time.end}'`,
+      `WHERE measurement_code = ?`,
+      `  AND day >= CAST(? AS DATE)`,
+      `  AND day <= CAST(? AS DATE)`,
       `GROUP BY DATE_TRUNC('week', day)`,
       `ORDER BY week_start ${sortDir}`,
       `LIMIT ${limit}`
-    ].join("\n");
+    ].join("\n"), parameters };
   }
 
   if (groupBy === "month") {
-    return [
+    return { sql: [
       `SELECT DATE_TRUNC('month', day) AS month_start, ${agg} AS value, MIN(unit) AS unit`,
       `FROM v_daily_metrics`,
-      `WHERE measurement_code = '${metric}'`,
-      `  AND day >= DATE '${time.start}'`,
-      `  AND day <= DATE '${time.end}'`,
+      `WHERE measurement_code = ?`,
+      `  AND day >= CAST(? AS DATE)`,
+      `  AND day <= CAST(? AS DATE)`,
       `GROUP BY DATE_TRUNC('month', day)`,
       `ORDER BY month_start ${sortDir}`,
       `LIMIT ${limit}`
-    ].join("\n");
+    ].join("\n"), parameters };
   }
 
   // day (default)
-  return [
+  return { sql: [
     `SELECT day, ${agg} AS value, MIN(unit) AS unit`,
     `FROM v_daily_metrics`,
-    `WHERE measurement_code = '${metric}'`,
-    `  AND day >= DATE '${time.start}'`,
-    `  AND day <= DATE '${time.end}'`,
+    `WHERE measurement_code = ?`,
+    `  AND day >= CAST(? AS DATE)`,
+    `  AND day <= CAST(? AS DATE)`,
     `GROUP BY day`,
     `ORDER BY day ${sortDir}`,
     `LIMIT ${limit}`
-  ].join("\n");
+  ].join("\n"), parameters };
 }
 
 function buildAggregationSql(
   dsl: QueryDSL,
   time: { start: string; end: string },
   _limit: number
-): string {
-  const metric = sanitizeIdentifier(dsl.metric ?? "");
+): SqlStatement {
   const agg = dailyMetricAggregationSql(dsl.aggregation);
-  return [
+  return { sql: [
     `SELECT ${agg} AS value, MIN(unit) AS unit`,
     `FROM v_daily_metrics`,
-    `WHERE measurement_code = '${metric}'`,
-    `  AND day >= DATE '${time.start}'`,
-    `  AND day <= DATE '${time.end}'`,
+    `WHERE measurement_code = ?`,
+    `  AND day >= CAST(? AS DATE)`,
+    `  AND day <= CAST(? AS DATE)`,
     `LIMIT 1`
-  ].join("\n");
+  ].join("\n"), parameters: [dsl.metric ?? "", time.start, time.end] };
 }
 
 function buildTopNSql(
@@ -334,35 +338,33 @@ function buildTopNSql(
   time: { start: string; end: string },
   limit: number,
   sortDir: string
-): string {
-  const metric = sanitizeIdentifier(dsl.metric ?? "");
+): SqlStatement {
   const agg = dailyMetricAggregationSql(dsl.aggregation);
-  return [
+  return { sql: [
     `SELECT day, ${agg} AS value, MIN(unit) AS unit`,
     `FROM v_daily_metrics`,
-    `WHERE measurement_code = '${metric}'`,
-    `  AND day >= DATE '${time.start}'`,
-    `  AND day <= DATE '${time.end}'`,
+    `WHERE measurement_code = ?`,
+    `  AND day >= CAST(? AS DATE)`,
+    `  AND day <= CAST(? AS DATE)`,
     `GROUP BY day`,
     `ORDER BY value ${sortDir}`,
     `LIMIT ${limit}`
-  ].join("\n");
+  ].join("\n"), parameters: [dsl.metric ?? "", time.start, time.end] };
 }
 
 function buildLatestSql(
   dsl: QueryDSL,
   time: { start: string; end: string }
-): string {
-  const metric = sanitizeIdentifier(dsl.metric ?? "");
-  return [
+): SqlStatement {
+  return { sql: [
     `SELECT day, avg_value AS value, unit`,
     `FROM v_daily_metrics`,
-    `WHERE measurement_code = '${metric}'`,
-    `  AND day >= DATE '${time.start}'`,
-    `  AND day <= DATE '${time.end}'`,
+    `WHERE measurement_code = ?`,
+    `  AND day >= CAST(? AS DATE)`,
+    `  AND day <= CAST(? AS DATE)`,
     `ORDER BY day DESC`,
     `LIMIT 1`
-  ].join("\n");
+  ].join("\n"), parameters: [dsl.metric ?? "", time.start, time.end] };
 }
 
 function buildActivitiesSql(
@@ -370,26 +372,27 @@ function buildActivitiesSql(
   time: { start: string; end: string },
   limit: number,
   sortDir: string
-): string {
+): SqlStatement {
+  const parameters = [`${time.start} 00:00:00`, `${time.end} 23:59:59`];
   if (dsl.aggregation === "count") {
-    return [
+    return { sql: [
       `SELECT activity_type, COUNT(*) AS count`,
       `FROM activities`,
-      `WHERE start_at >= TIMESTAMP '${time.start} 00:00:00'`,
-      `  AND start_at <= TIMESTAMP '${time.end} 23:59:59'`,
+      `WHERE start_at >= CAST(? AS TIMESTAMP)`,
+      `  AND start_at <= CAST(? AS TIMESTAMP)`,
       `GROUP BY activity_type`,
       `ORDER BY count ${sortDir}`,
       `LIMIT ${limit}`
-    ].join("\n");
+    ].join("\n"), parameters };
   }
-  return [
+  return { sql: [
     `SELECT activity_type, start_at, end_at, duration_minutes, energy_kcal, distance_meters`,
     `FROM activities`,
-    `WHERE start_at >= TIMESTAMP '${time.start} 00:00:00'`,
-    `  AND start_at <= TIMESTAMP '${time.end} 23:59:59'`,
+    `WHERE start_at >= CAST(? AS TIMESTAMP)`,
+    `  AND start_at <= CAST(? AS TIMESTAMP)`,
     `ORDER BY start_at ${sortDir}`,
     `LIMIT ${limit}`
-  ].join("\n");
+  ].join("\n"), parameters };
 }
 
 function buildHealthEventsSql(
@@ -397,7 +400,7 @@ function buildHealthEventsSql(
   time: { start: string; end: string },
   limit: number,
   sortDir: string
-): string | CompileError {
+): SqlStatement | CompileError {
   const allowedIntents: Array<QueryDSL["intent"]> = ["list", "count", "latest", "timeseries"];
   if (!allowedIntents.includes(dsl.intent)) {
     return { error: `Source "health_events" supports list, count, latest, and timeseries intents.` };
@@ -416,52 +419,59 @@ function buildHealthEventsSql(
   if (dsl.intent === "list" || dsl.intent === "latest") {
     const appliedLimit = dsl.intent === "latest" ? 1 : limit;
     const appliedSort = dsl.intent === "latest" ? "DESC" : sortDir;
-    return [
+    return { sql: [
       "SELECT id, kind, status, occurred_at, source, provider, notes",
       "FROM v_ai_health_events",
-      `WHERE ${where.join("\n  AND ")}`,
+      `WHERE ${where.clauses.join("\n  AND ")}`,
       `ORDER BY occurred_at ${appliedSort}`,
       `LIMIT ${appliedLimit}`
-    ].join("\n");
+    ].join("\n"), parameters: where.parameters };
   }
 
   const groupBy = dsl.intent === "timeseries" ? (dsl.groupBy ?? "day") : dsl.groupBy;
   if (groupBy === null) {
-    return [
+    return { sql: [
       "SELECT COUNT(*) AS count",
       "FROM v_ai_health_events",
-      `WHERE ${where.join("\n  AND ")}`,
+      `WHERE ${where.clauses.join("\n  AND ")}`,
       "LIMIT 1"
-    ].join("\n");
+    ].join("\n"), parameters: where.parameters };
   }
 
   const group = healthEventGroup(groupBy);
   if (!group) {
     return { error: `Health event counts support grouping by day, week, kind, status, or source.` };
   }
-  return [
+  return { sql: [
     `SELECT ${group.expression} AS ${group.alias}, COUNT(*) AS count`,
     "FROM v_ai_health_events",
-    `WHERE ${where.join("\n  AND ")}`,
+    `WHERE ${where.clauses.join("\n  AND ")}`,
     `GROUP BY ${group.expression}`,
     `ORDER BY ${group.alias} ${sortDir}`,
     `LIMIT ${limit}`
-  ].join("\n");
+  ].join("\n"), parameters: where.parameters };
 }
 
-function healthEventWhere(dsl: QueryDSL, time: { start: string; end: string }): string[] {
+function healthEventWhere(dsl: QueryDSL, time: { start: string; end: string }): SqlWhere {
   const clauses = [
-    `occurred_at >= TIMESTAMP '${time.start} 00:00:00'`,
-    `occurred_at <= TIMESTAMP '${time.end} 23:59:59'`
+    `occurred_at >= CAST(? AS TIMESTAMP)`,
+    `occurred_at <= CAST(? AS TIMESTAMP)`
   ];
+  const parameters: QueryParameter[] = [`${time.start} 00:00:00`, `${time.end} 23:59:59`];
   const filters = dsl.filters;
-  if (filters?.kind) clauses.push(`kind = '${sqlString(filters.kind)}'`);
-  if (filters?.status) clauses.push(`status = '${filters.status}'`);
-  if (filters?.source) clauses.push(`source = '${filters.source}'`);
+  if (filters?.kind) { clauses.push("kind = ?"); parameters.push(filters.kind); }
+  if (filters?.status) { clauses.push("status = ?"); parameters.push(filters.status); }
+  if (filters?.source) { clauses.push("source = ?"); parameters.push(filters.source); }
   if (filters?.provider) {
-    clauses.push(`LOWER(COALESCE(provider, '')) LIKE LOWER('%${sqlString(filters.provider)}%')`);
+    clauses.push("LOWER(COALESCE(provider, '')) LIKE LOWER(?)");
+    parameters.push(`%${filters.provider}%`);
   }
-  return clauses;
+  return { clauses, parameters };
+}
+
+interface SqlWhere {
+  clauses: string[];
+  parameters: QueryParameter[];
 }
 
 function healthEventGroup(groupBy: QueryDSL["groupBy"]): { expression: string; alias: string } | null {
@@ -471,7 +481,7 @@ function healthEventGroup(groupBy: QueryDSL["groupBy"]): { expression: string; a
     case "kind":
     case "status":
     case "source":
-      return { expression: groupBy, alias: groupBy };
+      return { expression: sqlIdentifier(groupBy), alias: sqlIdentifier(groupBy) };
     default:
       return null;
   }
@@ -482,7 +492,7 @@ function buildCareItemsSql(
   time: { start: string; end: string },
   limit: number,
   sortDir: string
-): string | CompileError {
+): SqlStatement | CompileError {
   const allowedIntents: Array<QueryDSL["intent"]> = ["list", "count", "overdue"];
   if (!allowedIntents.includes(dsl.intent)) {
     return { error: `Source "care_items" supports list, count, and overdue intents.` };
@@ -499,61 +509,64 @@ function buildCareItemsSql(
 
   const where = careItemWhere(dsl, time, dsl.intent !== "overdue" && dsl.filters?.dueWithinRange === true);
   if (dsl.intent === "overdue") {
-    where.push("status = 'open'", "due_start < CURRENT_DATE");
+    where.clauses.push("status = 'open'", "due_start < CURRENT_DATE");
   }
   if (dsl.intent === "list") {
-    return [
+    return { sql: [
       "SELECT id, kind, code, title, due_start, priority, status, completed_at, notes",
       "FROM v_ai_care_items",
-      careItemWhereSql(where),
+      careItemWhereSql(where.clauses),
       `ORDER BY due_start ${sortDir}`,
       `LIMIT ${limit}`
-    ].join("\n");
+    ].join("\n"), parameters: where.parameters };
   }
 
   if (dsl.intent === "overdue" || dsl.groupBy === null) {
-    return [
+    return { sql: [
       "SELECT COUNT(*) AS count",
       "FROM v_ai_care_items",
-      careItemWhereSql(where),
+      careItemWhereSql(where.clauses),
       "LIMIT 1"
-    ].join("\n");
+    ].join("\n"), parameters: where.parameters };
   }
 
   const group = careItemGroup(dsl.groupBy);
   if (!group) {
     return { error: "Care item counts support grouping by status, priority, kind, or due_bucket." };
   }
-  return [
+  return { sql: [
     `SELECT ${group.expression} AS ${group.alias}, COUNT(*) AS count`,
     "FROM v_ai_care_items",
-    careItemWhereSql(where),
+    careItemWhereSql(where.clauses),
     `GROUP BY ${group.expression}`,
     `ORDER BY ${group.alias} ${sortDir}`,
     `LIMIT ${limit}`
-  ].join("\n");
+  ].join("\n"), parameters: where.parameters };
 }
 
 function careItemWhere(
   dsl: QueryDSL,
   time: { start: string; end: string },
   includeDueRange: boolean
-): string[] {
+): SqlWhere {
   const due = "due_start";
   const clauses = includeDueRange
     ? [
-        `${due} >= TIMESTAMP '${time.start} 00:00:00'`,
-        `${due} <= TIMESTAMP '${time.end} 23:59:59'`
+        `${due} >= CAST(? AS TIMESTAMP)`,
+        `${due} <= CAST(? AS TIMESTAMP)`
       ]
     : [];
+  const parameters: QueryParameter[] = includeDueRange
+    ? [`${time.start} 00:00:00`, `${time.end} 23:59:59`]
+    : [];
   const filters = dsl.filters;
-  if (filters?.kind) clauses.push(`kind = '${sqlString(filters.kind)}'`);
-  if (filters?.code) clauses.push(`code = '${sqlString(filters.code)}'`);
-  if (filters?.status) clauses.push(`status = '${filters.status}'`);
-  if (filters?.priority) clauses.push(`priority = '${filters.priority}'`);
+  if (filters?.kind) { clauses.push("kind = ?"); parameters.push(filters.kind); }
+  if (filters?.code) { clauses.push("code = ?"); parameters.push(filters.code); }
+  if (filters?.status) { clauses.push("status = ?"); parameters.push(filters.status); }
+  if (filters?.priority) { clauses.push("priority = ?"); parameters.push(filters.priority); }
   if (filters?.completion === "completed") clauses.push("completed_at IS NOT NULL");
   if (filters?.completion === "incomplete") clauses.push("completed_at IS NULL");
-  return clauses;
+  return { clauses, parameters };
 }
 
 function careItemWhereSql(clauses: string[]): string {
@@ -562,7 +575,7 @@ function careItemWhereSql(clauses: string[]): string {
 
 function careItemGroup(groupBy: QueryDSL["groupBy"]): { expression: string; alias: string } | null {
   if (groupBy === "status" || groupBy === "priority" || groupBy === "kind") {
-    return { expression: groupBy, alias: groupBy };
+    return { expression: sqlIdentifier(groupBy), alias: sqlIdentifier(groupBy) };
   }
   if (groupBy === "due_bucket") {
     return {

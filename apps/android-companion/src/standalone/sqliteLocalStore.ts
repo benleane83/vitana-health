@@ -60,9 +60,14 @@ const DATABASE_NAME = "standalone-health.db";
 // change a user-data migration.
 const REPLICA_DATABASE_NAME = "replica.db";
 const DATABASE_KEY_NAME = "vitana.standaloneDatabaseKey.v1";
-let sharedDatabase: Promise<SQLiteDatabase> | undefined;
-let sharedReplicaDatabase: Promise<SQLiteDatabase> | undefined;
+interface SharedDatabasePair {
+  database: SQLiteDatabase;
+  replicaDatabase: SQLiteDatabase;
+}
+
+let sharedDatabasePair: Promise<SharedDatabasePair> | undefined;
 let databaseLeases = 0;
+let pendingDatabaseAcquires = 0;
 let databaseMode: LocalDatabaseMode = "read-write";
 
 /** Whether the open database accepts writes, or is pinned read-only by a newer build's schema. */
@@ -83,22 +88,29 @@ export async function openSqliteLocalStore(): Promise<SqliteLocalStore> {
   return new SqliteLocalStore(database, releaseSharedDatabase, replicaDatabase);
 }
 
-async function acquireSharedDatabase(): Promise<{ database: SQLiteDatabase; replicaDatabase: SQLiteDatabase }> {
-  databaseLeases += 1;
+async function acquireSharedDatabase(): Promise<SharedDatabasePair> {
+  pendingDatabaseAcquires += 1;
   try {
-    sharedDatabase ??= openSqliteDatabase().catch((error) => {
-      sharedDatabase = undefined;
+    sharedDatabasePair ??= openSharedDatabasePair().catch((error) => {
+      sharedDatabasePair = undefined;
       throw error;
     });
-    const database = await sharedDatabase;
-    sharedReplicaDatabase ??= openReplicaDatabase().catch((error) => {
-      sharedReplicaDatabase = undefined;
-      throw error;
-    });
-    const replicaDatabase = await sharedReplicaDatabase;
+    const pair = await sharedDatabasePair;
+    databaseLeases += 1;
+    return pair;
+  } finally {
+    pendingDatabaseAcquires -= 1;
+  }
+}
+
+async function openSharedDatabasePair(): Promise<SharedDatabasePair> {
+  let database: SQLiteDatabase | undefined;
+  try {
+    database = await openSqliteDatabase();
+    const replicaDatabase = await openReplicaDatabase();
     return { database, replicaDatabase };
   } catch (error) {
-    databaseLeases = Math.max(0, databaseLeases - 1);
+    await database?.closeAsync().catch(() => undefined);
     throw error;
   }
 }
@@ -112,21 +124,26 @@ async function openReplicaDatabase(): Promise<SQLiteDatabase> {
   return openWithDatabaseKey(secureKeyStore, Crypto.getRandomBytesAsync, async (hexKey) => {
     let database = await openDatabaseAsync(REPLICA_DATABASE_NAME);
     try {
-      await database.execAsync(`PRAGMA key = "x'${hexKey}'";`);
-      await database.getFirstAsync("PRAGMA user_version");
-    } catch {
+      try {
+        await database.execAsync(`PRAGMA key = "x'${hexKey}'";`);
+        await database.getFirstAsync("PRAGMA user_version");
+      } catch {
+        await database.closeAsync().catch(() => undefined);
+        await deleteDatabaseAsync(REPLICA_DATABASE_NAME).catch(() => undefined);
+        database = await openDatabaseAsync(REPLICA_DATABASE_NAME);
+        await database.execAsync(`PRAGMA key = "x'${hexKey}'";`);
+      }
+      await database.execAsync(`
+        PRAGMA foreign_keys = ON;
+        PRAGMA journal_mode = WAL;
+        PRAGMA secure_delete = ON;
+      `);
+      await prepareReplicaCache(database);
+      return database;
+    } catch (error) {
       await database.closeAsync().catch(() => undefined);
-      await deleteDatabaseAsync(REPLICA_DATABASE_NAME).catch(() => undefined);
-      database = await openDatabaseAsync(REPLICA_DATABASE_NAME);
-      await database.execAsync(`PRAGMA key = "x'${hexKey}'";`);
+      throw error;
     }
-    await database.execAsync(`
-      PRAGMA foreign_keys = ON;
-      PRAGMA journal_mode = WAL;
-      PRAGMA secure_delete = ON;
-    `);
-    await prepareReplicaCache(database);
-    return database;
   }, () => false);
 }
 
@@ -247,7 +264,7 @@ async function migrateWithBackup(database: SQLiteDatabase): Promise<LocalDatabas
 export async function rekeySqliteLocalStorage(
   newKeyHex?: string
 ): Promise<void> {
-  if (databaseLeases > 0) {
+  if (databaseLeases > 0 || pendingDatabaseAcquires > 0) {
     throw new Error("Close active local data operations before rotating the encryption key.");
   }
 
@@ -270,20 +287,15 @@ export async function rekeySqliteLocalStorage(
 
 async function releaseSharedDatabase(): Promise<void> {
   databaseLeases = Math.max(0, databaseLeases - 1);
-  if (databaseLeases !== 0) return;
-  if (sharedReplicaDatabase) {
-    const replica = await sharedReplicaDatabase;
-    sharedReplicaDatabase = undefined;
-    await replica.closeAsync().catch(() => undefined);
-  }
-  if (!sharedDatabase) return;
-  const database = await sharedDatabase;
-  sharedDatabase = undefined;
-  await database.closeAsync();
+  if (databaseLeases !== 0 || pendingDatabaseAcquires !== 0 || !sharedDatabasePair) return;
+  const pair = await sharedDatabasePair;
+  sharedDatabasePair = undefined;
+  await pair.replicaDatabase.closeAsync().catch(() => undefined);
+  await pair.database.closeAsync();
 }
 
 export async function resetSqliteLocalStorage(): Promise<void> {
-  if (databaseLeases > 0) {
+  if (databaseLeases > 0 || pendingDatabaseAcquires > 0) {
     throw new Error("Close active local data operations before resetting encrypted storage.");
   }
   await deleteDatabaseAsync(DATABASE_NAME);

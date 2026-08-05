@@ -22,7 +22,8 @@ describe("compileQueryDSL — timeseries", () => {
     if (!result.ok) return;
     expect(result.sql).toMatch(/SELECT day/i);
     expect(result.sql).toMatch(/FROM v_daily_metrics/i);
-    expect(result.sql).toMatch(/measurement_code = 'heart_rate'/);
+    expect(result.sql).toMatch(/measurement_code = \?/);
+    expect(result.parameters).toEqual(["heart_rate", "2026-01-01", "2026-01-31"]);
     expect(result.sql).toMatch(/LIMIT 30/);
   });
 
@@ -115,8 +116,15 @@ describe("compileQueryDSL — health_events", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.sql).toMatch(/FROM v_ai_health_events/i);
-    expect(result.sql).toContain("kind = 'immunization'");
-    expect(result.sql).toMatch(/provider.*LIKE.*Local Clinic/i);
+    expect(result.sql).toContain("kind = ?");
+    expect(result.sql).toMatch(/provider.*LIKE.*\?/i);
+    expect(result.parameters).toEqual([
+      "2026-01-01 00:00:00",
+      "2026-01-31 23:59:59",
+      "immunization",
+      "completed",
+      "%Local Clinic%"
+    ]);
     expect(validateCompiledSql(result.sql).valid).toBe(true);
   });
 
@@ -164,7 +172,8 @@ describe("compileQueryDSL — care_items", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.sql).toMatch(/FROM v_ai_care_items/i);
-    expect(result.sql).toContain("priority = 'high'");
+    expect(result.sql).toContain("priority = ?");
+    expect(result.parameters).toEqual(["high"]);
     expect(result.sql).toMatch(/completed_at IS NULL/i);
     expect(result.sql).not.toMatch(/due_start.*>=/i);
     expect(validateCompiledSql(result.sql).valid).toBe(true);
@@ -182,7 +191,7 @@ describe("compileQueryDSL — care_items", () => {
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.sql).toMatch(/due_start >= TIMESTAMP/i);
+    expect(result.sql).toMatch(/due_start >= CAST\(\? AS TIMESTAMP\)/i);
   });
 
   it("compiles chartable due-bucket counts", () => {
@@ -293,7 +302,7 @@ describe("validateCompiledSql — injection payloads", () => {
     expect(result.violations.some((v) => v.includes("SELECT"))).toBe(true);
   });
 
-  it("keeps escaped filter values inside SQL string literals", () => {
+  it("keeps hostile filter values out of SQL and only in parameters", () => {
     const compiled = compileQueryDSL({
       ...baseDsl,
       source: "health_events",
@@ -305,7 +314,9 @@ describe("validateCompiledSql — injection payloads", () => {
     });
     expect(compiled.ok).toBe(true);
     if (!compiled.ok) return;
-    expect(compiled.sql).toContain("Clinic''; DROP TABLE health_events; --");
+    expect(compiled.sql).not.toContain("Clinic");
+    expect(compiled.sql).not.toContain("DROP TABLE");
+    expect(compiled.parameters).toContain("%Clinic'; DROP TABLE health_events; --%");
     expect(validateCompiledSql(compiled.sql)).toEqual({ valid: true, violations: [] });
   });
 });

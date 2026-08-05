@@ -11,6 +11,7 @@ const { migrateUserDataDirectory } = require("./user-data-migration.cjs");
 const { createPreUpdateBackup } = require("./pre-update-backup.cjs");
 const { createDesktopLifecycle } = require("./desktop-lifecycle.cjs");
 const { createDesktopPlatformCapabilities } = require("./desktop-platform.cjs");
+const { certificateMatchesPin } = require("./certificate-pin.cjs");
 
 let mainWindow;
 let launchPromise;
@@ -163,9 +164,6 @@ if (!hasSingleInstanceLock) {
 
 async function launch() {
   if (startupPathError) throw startupPathError;
-  session.defaultSession.setCertificateVerifyProc((request, callback) => {
-    callback(request.hostname === "127.0.0.1" || request.hostname === "localhost" ? 0 : -3);
-  });
   const persisted = backgroundService.getSettings();
   if (backgroundLaunch && !persisted.backgroundServiceEnabled) {
     diagnostics.info("Ignoring stale disabled background launch");
@@ -178,7 +176,7 @@ async function launch() {
   diagnostics.info("Electron ready; starting embedded API");
   const packaged = app.isPackaged;
   process.env.NODE_ENV = "production";
-  process.env.HOST = "0.0.0.0";
+  process.env.HOST = "127.0.0.1";
   process.env.PORT = process.env.PORT || "4317";
   process.env.VITANA_DATA_DIR = app.getPath("userData");
   process.env.VITANA_APP_VERSION = app.getVersion();
@@ -218,11 +216,15 @@ async function launch() {
     secureKeyInitialization?.finalize();
   }
   const apiServer = await startServer({
+    dynamicLanExposure: true,
     storeSecurity: configuredSecret
       ? { passphrase: configuredSecret, securityMode: "env-secret" }
       : { passphrase: secureKey.passphrase, securityMode: "os-secure-storage" },
     desktopRuntimeController: backgroundService,
     desktopUpdaterController: desktopUpdater
+  });
+  session.defaultSession.setCertificateVerifyProc((request, callback) => {
+    callback(certificateMatchesPin(request, apiServer.certificateFingerprint) ? 0 : -3);
   });
   lifecycle.setServer(apiServer);
   secureKey?.finalize();

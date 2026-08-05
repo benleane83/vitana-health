@@ -58,13 +58,15 @@ import {
   type EncryptedDuckDbDatabase
 } from "./duckdbRuntime.js";
 import { pruneRetention } from "./duckdbRetention.js";
-import type { ImportMutationResult, MeasurementRegistryResetResult, ProfileImport, ProfileRepository } from "./profileRepository.js";
+import type { BackupExportCollection, ImportMutationResult, MeasurementRegistryResetResult, ProfileImport, ProfileRepository } from "./profileRepository.js";
 import {
   reconcileDefaultMeasurementTypes,
   resetMeasurementTypeMetadataFromRegistry,
   schemaVersions as readSchemaVersions
 } from "./duckdbSchema.js";
 import {
+  backupExportMetadata as readBackupExportMetadata,
+  backupExportPage as readBackupExportPage,
   digestHealthStoreData,
   recordExportAudit,
   firstDifferencePath,
@@ -279,6 +281,16 @@ export class DuckDbRepository implements ProfileRepository {
     return snapshotDuckDb(this.reader, options);
   }
 
+  async backupExportMetadata() {
+    this.assertOpen();
+    return readBackupExportMetadata(this.reader);
+  }
+
+  async backupExportPage(collection: BackupExportCollection, offset: number, limit: number) {
+    this.assertOpen();
+    return readBackupExportPage(this.reader, collection, offset, limit);
+  }
+
   async appBootstrap(): Promise<AppBootstrap> {
     this.assertOpen();
     return readAppBootstrap(this.reader, await this.storageCounts());
@@ -308,10 +320,13 @@ export class DuckDbRepository implements ProfileRepository {
     this.assertOpen();
     // Six `COUNT(*)` scans that can only change inside a transaction. Bootstrap, every import and
     // every storage panel were re-running them to be told what the last call already knew.
-    this.countsCache ??= readStorageCounts(this.reader).catch((error: unknown) => {
-      this.countsCache = undefined;
-      throw error;
-    });
+    this.countsCache ??= (() => {
+      this.testHooks.beforeStorageCountsRead?.();
+      return readStorageCounts(this.reader).catch((error: unknown) => {
+        this.countsCache = undefined;
+        throw error;
+      });
+    })();
     return { ...await this.countsCache };
   }
 
@@ -355,7 +370,8 @@ export class DuckDbRepository implements ProfileRepository {
     this.assertOpen();
     const { replicaChanges: _replicaChanges, ...result } = await this.transaction(
       () => mergeDuckDbImport(this.connection, parsed),
-      (merged) => merged.replicaChanges
+      (merged) => merged.replicaChanges,
+      { affectsStorageCounts: true }
     );
     return result;
   }
@@ -396,7 +412,8 @@ export class DuckDbRepository implements ProfileRepository {
         await recordHealthConnectSyncAcknowledgement(this.connection, acknowledgement);
         return merged;
       },
-      (merged) => merged.replicaChanges
+      (merged) => merged.replicaChanges,
+      { affectsStorageCounts: true }
     );
     return acknowledgement;
   }
@@ -418,7 +435,8 @@ export class DuckDbRepository implements ProfileRepository {
         pairingId,
         destinationProfileId: profile.id
       }, batch),
-      (applied) => applied.replicaChanges
+      (applied) => applied.replicaChanges,
+      { affectsStorageCounts: true }
     );
     return acknowledgement;
   }
@@ -477,7 +495,8 @@ export class DuckDbRepository implements ProfileRepository {
     this.assertOpen();
     return this.transaction(
       () => createDuckDbHealthEvent(this.connection, input),
-      (result) => [replicaUpsert("health-event", result.healthEvent.id, result.healthEvent)]
+      (result) => [replicaUpsert("health-event", result.healthEvent.id, result.healthEvent)],
+      { affectsStorageCounts: true }
     );
   }
 
@@ -497,7 +516,8 @@ export class DuckDbRepository implements ProfileRepository {
       () => deleteDuckDbHealthEvent(this.connection, id),
       (result) => result?.deletedHealthEvent
         ? [replicaTombstone("health-event", result.deletedHealthEvent.id)]
-        : []
+        : [],
+      { affectsStorageCounts: true }
     );
   }
 
@@ -510,7 +530,8 @@ export class DuckDbRepository implements ProfileRepository {
     this.assertOpen();
     return this.transaction(
       () => createDuckDbCareItem(this.connection, input),
-      (result) => [replicaUpsert("care-item", result.careItem.id, result.careItem)]
+      (result) => [replicaUpsert("care-item", result.careItem.id, result.careItem)],
+      { affectsStorageCounts: true }
     );
   }
 
@@ -533,7 +554,8 @@ export class DuckDbRepository implements ProfileRepository {
         ...(result.healthEvent
           ? [replicaUpsert("health-event", result.healthEvent.id, result.healthEvent)]
           : [])
-      ] : []
+      ] : [],
+      { affectsStorageCounts: true }
     );
   }
 
@@ -543,7 +565,8 @@ export class DuckDbRepository implements ProfileRepository {
       () => deleteDuckDbCareItem(this.connection, id),
       (result) => result?.deletedCareItem
         ? [replicaTombstone("care-item", result.deletedCareItem.id)]
-        : []
+        : [],
+      { affectsStorageCounts: true }
     );
   }
 
@@ -551,7 +574,8 @@ export class DuckDbRepository implements ProfileRepository {
     this.assertOpen();
     return this.transaction(
       () => insertDuckDbObservationRecord(this.connection, observation),
-      (inserted) => inserted ? replicaObservationUpsert(observation) : []
+      (inserted) => inserted ? replicaObservationUpsert(observation) : [],
+      { affectsStorageCounts: true }
     );
   }
 
@@ -567,7 +591,8 @@ export class DuckDbRepository implements ProfileRepository {
           ? [replicaUpsert("data-source", imported.dataSource.id, imported.dataSource)]
           : []),
         ...imported.observations.flatMap(replicaObservationUpsert)
-      ]
+      ],
+      { affectsStorageCounts: true }
     );
     return result.count;
   }
@@ -583,14 +608,17 @@ export class DuckDbRepository implements ProfileRepository {
       );
       replicated = rows[0]?.measurement_code !== "heart_rate";
       return deleteDuckDbObservationRecord(this.connection, id);
-    }, (deleted) => deleted && replicated ? [replicaTombstone("observation", id)] : []);
+    }, (deleted) => deleted && replicated ? [replicaTombstone("observation", id)] : [], {
+      affectsStorageCounts: true
+    });
   }
 
   async deleteObservationRecordsByMeasurementCode(measurementCode: string): Promise<number> {
     this.assertOpen();
     const result = await this.transaction(
       () => deleteDuckDbObservationRecordsByMeasurementCode(this.connection, measurementCode),
-      (deleted) => replicaObservationTombstones(measurementCode, deleted.deletedIds)
+      (deleted) => replicaObservationTombstones(measurementCode, deleted.deletedIds),
+      { affectsStorageCounts: true }
     );
     return result.deletedCount;
   }
@@ -601,7 +629,8 @@ export class DuckDbRepository implements ProfileRepository {
       () => deleteDuckDbObservation(this.connection, id),
       (result) => result?.deletedObservation?.measurementCode !== "heart_rate" && result?.deletedObservation
         ? [replicaTombstone("observation", result.deletedObservation.id)]
-        : []
+        : [],
+      { affectsStorageCounts: true }
     );
   }
 
@@ -630,7 +659,8 @@ export class DuckDbRepository implements ProfileRepository {
     this.assertOpen();
     const { deletedIds: _deletedIds, ...response } = await this.transaction(
       () => deleteDuckDbObservationsByMeasurementCode(this.connection, measurementCode),
-      (deleted) => replicaObservationTombstones(measurementCode, deleted.deletedIds)
+      (deleted) => replicaObservationTombstones(measurementCode, deleted.deletedIds),
+      { affectsStorageCounts: true }
     );
     return response;
   }
@@ -639,7 +669,8 @@ export class DuckDbRepository implements ProfileRepository {
     this.assertOpen();
     const { deletedIds: _deletedIds, ...response } = await this.transaction(
       () => deleteDuckDbDailyAggregateStepSamples(this.connection),
-      (deleted) => deleted.deletedIds.map((id) => replicaTombstone("time-series-sample", id))
+      (deleted) => deleted.deletedIds.map((id) => replicaTombstone("time-series-sample", id)),
+      { affectsStorageCounts: true }
     );
     return response;
   }
@@ -648,7 +679,8 @@ export class DuckDbRepository implements ProfileRepository {
     this.assertOpen();
     const { deletedIds: _deletedIds, ...response } = await this.transaction(
       () => deleteDuckDbStepSamples(this.connection),
-      (deleted) => deleted.deletedIds.map((id) => replicaTombstone("time-series-sample", id))
+      (deleted) => deleted.deletedIds.map((id) => replicaTombstone("time-series-sample", id)),
+      { affectsStorageCounts: true }
     );
     return response;
   }
@@ -769,7 +801,7 @@ export class DuckDbRepository implements ProfileRepository {
     if (query.dialect !== "duckdb") {
       throw new Error(`This profile runs on DuckDB and cannot execute a ${query.dialect} query plan.`);
     }
-    return all(this.reader, query.sql);
+    return allWithParams(this.reader, query.sql, ...query.parameters);
   }
 
   async checkpoint(): Promise<void> {
@@ -811,11 +843,9 @@ export class DuckDbRepository implements ProfileRepository {
    */
   private async transaction<T>(
     operation: () => Promise<T>,
-    replicaChanges?: (result: T) => ReplicaChangeInput[]
+    replicaChanges?: (result: T) => ReplicaChangeInput[],
+    impact: TransactionImpact = {}
   ): Promise<T> {
-    // Every write in this repository passes through here, which makes it the one place that can
-    // guarantee the cached row counts never outlive the rows they counted.
-    this.countsCache = undefined;
     await exec(this.connection, "BEGIN TRANSACTION;");
     try {
       const result = await operation();
@@ -824,15 +854,20 @@ export class DuckDbRepository implements ProfileRepository {
       }
       await this.testHooks.beforeTransactionCommit?.();
       await exec(this.connection, "COMMIT;");
+      if (impact.affectsStorageCounts) {
+        this.countsCache = undefined;
+      }
       return result;
     } catch (error) {
       await exec(this.connection, "ROLLBACK;").catch(() => undefined);
       throw error;
-    } finally {
-      this.countsCache = undefined;
     }
   }
 
+}
+
+interface TransactionImpact {
+  affectsStorageCounts?: boolean;
 }
 
 function replicaCareItem(careItem: CompleteCareItemResponse["careItem"]): Record<string, unknown> {

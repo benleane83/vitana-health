@@ -44,7 +44,7 @@ and review release assets before sharing a build.
    The workflow creates or updates the matching non-draft GitHub Release with the
    installer, `latest.yml`, block map, and `SHA256SUMS.txt`.
 6. Install on a test PC, then verify the version, encrypted profiles, background mode,
-   login startup, companion connection, and firewall rule.
+   login startup, companion connection, and Windows private-network consent when pairing.
 
 The tag must exactly equal `v` plus the desktop package version. Reusing a version is
 not supported because updaters only offer a strictly newer version.
@@ -98,32 +98,22 @@ singleton process, while tray **Quit** performs a graceful shutdown.
 Manually verify this after sign-in or reboot, including the one-time notification and
 a paired Android sync. Disabling the setting must restore foreground-only behavior.
 
-## Install scope and the firewall rule
+## Install scope and private-network access
 
-The NSIS installer is `perMachine: true`, so installs into `Program Files` and every
-`electron-updater` install step prompts for UAC. `build/installer.nsh` uses that elevation
-to add a private-network firewall rule for the app.
+The NSIS installer is `perMachine: false`, installs into `%LOCALAPPDATA%`, and does not
+run `netsh` or require UAC for install and update. The embedded API listens on loopback
+until a pairing challenge is created, a request is pending, or an approved companion
+exists. It returns to loopback after the temporary challenge expires or the last device
+is revoked.
 
-The firewall step is deliberately non-fatal. It runs through `nsExec::Exec` and inspects
-the exit code rather than aborting, so a rule that already exists from a previous install
-— the normal case on upgrade — leaves a `DetailPrint` warning instead of failing the
-install. Uninstall deletes the rule with the same tolerance.
+Windows may show its private-network consent prompt the first time pairing opens LAN
+access. Allow private networks only; public-network access is neither requested nor
+required. Managed devices can suppress that prompt, in which case an administrator must
+allow Vitana Health on private networks before a phone can pair.
 
-`perMachine: false` would install to `%LOCALAPPDATA%` and remove UAC from both install
-and auto-update, which is what a beta channel wants. It is **not** enabled yet, because:
-
-- `netsh advfirewall firewall add rule` requires elevation. Without it the rule is never
-  created and the installer only warns.
-- The embedded API still binds `0.0.0.0`, so companion pairing depends on inbound access.
-  Without the installer-created rule that falls back to Windows' own first-bind consent
-  dialog, which is suppressed under some group policies — a tester could hit a pairing
-  failure with no visible cause.
-- Switching scope changes the install location, so an existing per-machine install must be
-  uninstalled first rather than upgraded in place.
-
-The cleaner sequence is to bind loopback by default and widen only on pairing, at which
-point the installer no longer needs a firewall rule and the scope can flip with no
-trade-off. Revisit this once that change lands.
+Switching from an older per-machine preview changes the install location. Uninstall the
+old preview before installing this build; profile data remains in the branded user-data
+directory because uninstall does not delete app data.
 
 ## Troubleshooting
 

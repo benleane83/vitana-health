@@ -361,9 +361,9 @@ without photo metadata.
 POST /api/backups/inspect
 ```
 
-Send the encrypted backup as an `application/octet-stream` request body, up to
-100 MB, and send the passphrase in `x-backup-passphrase` (minimum 12
-characters). **Success `200`:**
+Send `multipart/form-data` with exactly one `file` part (up to 100 MB) and a
+`passphrase` text field (12–256 characters). The API does not accept passphrases
+in request headers. **Success `200`:**
 
 ```json
 {
@@ -386,8 +386,8 @@ characters). **Success `200`:**
 POST /api/backups/restore
 ```
 
-Send the same binary body and `x-backup-passphrase` header as inspection, plus
-an `x-restore-decisions` header containing a JSON array of profile decisions:
+Send `multipart/form-data` with `file` and `passphrase` as above, plus a
+`decisions` text field containing a JSON array of profile decisions:
 
 ```json
 [

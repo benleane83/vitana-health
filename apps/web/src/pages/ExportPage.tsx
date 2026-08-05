@@ -175,7 +175,7 @@ export function ExportPage({
 
             <section className="panel export-tool-panel">
               <h2>Restore profiles</h2>
-              <p>Inspect a backup before restoring it. Create a copy or override an existing profile.</p>
+              <p>Inspect a backup before loading new profiles or restoring profiles that already exist.</p>
               <label>
                 Backup file
                 <input type="file" accept=".vitana-backup,application/octet-stream" onChange={(event) => onRestoreFileChange(event.target.files?.[0])} />
@@ -201,8 +201,8 @@ export function ExportPage({
                         <label>
                           Restore action
                           <select value={selection?.decision ?? "skip"} onChange={(event) => onRestoreSelectionChange(profile.profileId, event.target.value as RestoreDecision)}>
-                            <option value="create-copy">Create a copy</option>
-                            <option value="replace">Replace existing profile</option>
+                            <option value="create-copy">{profile.existsLocally ? "Create a copy" : "Load"}</option>
+                            {profile.existsLocally ? <option value="replace">Replace existing profile</option> : null}
                             <option value="skip">Skip</option>
                           </select>
                         </label>

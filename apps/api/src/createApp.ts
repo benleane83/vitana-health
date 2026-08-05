@@ -1,7 +1,7 @@
 /**
  * Application factory. Mounts middleware, auth, and feature routes.
  *
- * Central policy enforced here (not in individual route files):
+ * Shared application policy enforced here:
  * - CORS restricted to local origins
  * - Body limits per route
  * - Rate limiting per route group
@@ -11,8 +11,8 @@
  *
  * Route domains are split into dedicated modules under ./routes/.
  */
-import cors from "cors";
 import express from "express";
+import { rateLimit } from "express-rate-limit";
 import { timingSafeEqual } from "node:crypto";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -29,15 +29,22 @@ import { makeQueryRoutes, makeLlmRoutes } from "./routes/queryRoutes.js";
 import { makeDataRoutes } from "./routes/dataRoutes.js";
 import { makeSettingsRoutes } from "./routes/settingsRoutes.js";
 import { makeBackupRoutes, isInMaintenanceMode } from "./routes/backupRoutes.js";
+import { apiRateLimitOptions } from "./rateLimit.js";
 import { makeCompanionMigrationRoutes } from "./routes/companionMigrationRoutes.js";
 import { makeCompanionSyncRoutes } from "./routes/companionSyncRoutes.js";
 import { z } from "zod";
 import type { AuthorizationPrincipal, OwnerPrincipal } from "./requestPrincipal.js";
 import type { DesktopRuntimeSettingsResponse, DesktopRuntimeSettingsUpdate, DesktopUpdateState } from "@vitana/shared";
+import {
+  browserCors,
+  browserOriginAllowlist,
+  browserOriginIsAllowed,
+  type BrowserOriginOptions
+} from "./browserOriginPolicy.js";
 
 export type { AuthorizationPrincipal, OwnerPrincipal } from "./requestPrincipal.js";
 
-export interface AppOptions {
+export interface AppOptions extends BrowserOriginOptions {
   publicKeyHash?: string | null;
   webRoot?: string;
   /**
@@ -95,6 +102,7 @@ export function createApp(
   options: AppOptions = {}
 ): express.Application {
   const app = express();
+  const allowedBrowserOrigins = browserOriginAllowlist(options);
 
   app.disable("x-powered-by");
 
@@ -105,19 +113,8 @@ export function createApp(
   app.use("/api/import/upload/preview", express.json({ limit: "4mb" }));
   app.use(express.json({ limit: "1mb" }));
 
-  // CORS — local browser origins only
-  app.use(
-    cors({
-      credentials: true,
-      origin(origin, callback) {
-        if (!origin || /^https?:\/\/(127\.0\.0\.1|localhost):\d+$/.test(origin)) {
-          callback(null, true);
-          return;
-        }
-        callback(new Error("Only local browser origins are allowed."));
-      }
-    })
-  );
+  // CORS — exact configured browser origins only; native clients send no Origin.
+  app.use(browserCors(allowedBrowserOrigins));
 
   // Correlation IDs and request timing
   app.use((_request, response, next) => {
@@ -145,45 +142,15 @@ export function createApp(
   });
 
   // Rate limiting
-  const rateBuckets = new Map<string, { count: number; resetAt: number }>();
-  function rateLimit(policy: string, max: number, windowMs: number) {
-    return (request: express.Request, response: express.Response, next: express.NextFunction): void => {
-      const now = Date.now();
-      if (rateBuckets.size > 5_000) {
-        for (const [k, v] of rateBuckets) {
-          if (v.resetAt <= now) rateBuckets.delete(k);
-        }
-      }
-      const routeGroup = request.baseUrl || request.path.split("/").slice(0, 3).join("/");
-      const key = `${policy}:${request.ip}:${routeGroup}`;
-      const current = rateBuckets.get(key);
-      const bucket =
-        !current || current.resetAt <= now ? { count: 0, resetAt: now + windowMs } : current;
-      bucket.count++;
-      rateBuckets.set(key, bucket);
-      response.setHeader("rate-limit-limit", String(max));
-      response.setHeader("rate-limit-remaining", String(Math.max(0, max - bucket.count)));
-      if (bucket.count > max) {
-        response.setHeader("retry-after", String(Math.ceil((bucket.resetAt - now) / 1000)));
-        response.status(429).json({ error: "Too many requests. Try again later.", code: "RATE_LIMITED" });
-        return;
-      }
-      next();
-    };
-  }
-
-  app.use(rateLimit("api", 300, 60_000));
-  app.use("/api/pairing", rateLimit("pairing", 30, 60_000));
-  app.use("/api/llm", rateLimit("llm", 10, 60_000));
-  app.use("/api/settings", rateLimit("settings", 30, 60_000));
-  app.use("/api/query", rateLimit("query", 30, 60_000));
-  app.use("/api/backups/create", rateLimit("backups-create", 5, 60_000));
-  app.use("/api/backups/inspect", rateLimit("backups-inspect", 10, 60_000));
-  app.use("/api/backups/restore", rateLimit("backups-restore", 5, 60_000));
+  app.use("/api/pairing", rateLimit(apiRateLimitOptions(30, 60_000)));
+  app.use("/api/llm", rateLimit(apiRateLimitOptions(10, 60_000)));
+  app.use("/api/settings", rateLimit(apiRateLimitOptions(30, 60_000)));
+  app.use("/api/query", rateLimit(apiRateLimitOptions(30, 60_000)));
 
   // Maintenance mode middleware — returns 503 during restore except /api/health
   app.use((request, response, next) => {
-    if (isInMaintenanceMode() && request.originalUrl !== "/api/health") {
+    const concurrentRestore = request.method === "POST" && request.originalUrl === "/api/backups/restore";
+    if (isInMaintenanceMode() && request.originalUrl !== "/api/health" && !concurrentRestore) {
       response.status(503).json({
         error: "Service temporarily unavailable during restore operation.",
         code: "MAINTENANCE_MODE"
@@ -225,8 +192,7 @@ export function createApp(
     const address = request.socket.remoteAddress ?? "";
     const loopback = isLoopbackAddress(address);
     const origin = request.headers.origin;
-    const localOrigin = !origin || /^https?:\/\/(127\.0\.0\.1|localhost):\d+$/.test(origin);
-    if (!loopback || !localOrigin) {
+    if (!loopback || !browserOriginIsAllowed(origin, allowedBrowserOrigins)) {
       response
         .status(403)
         .json({ error: "Local desktop authentication is only available on this computer.", code: "AUTH_LOOPBACK_ONLY" });
@@ -353,8 +319,8 @@ export function createApp(
 
   // Static web serving
   if (options.webRoot && existsSync(options.webRoot)) {
-    app.use(rateLimit("static", 120, 60_000), express.static(options.webRoot));
-    app.get("*", rateLimit("static", 120, 60_000), (_request, response) =>
+    app.use(rateLimit(apiRateLimitOptions(120, 60_000)), express.static(options.webRoot));
+    app.get("*", rateLimit(apiRateLimitOptions(120, 60_000)), (_request, response) =>
       response.sendFile(path.join(options.webRoot!, "index.html"))
     );
   }
