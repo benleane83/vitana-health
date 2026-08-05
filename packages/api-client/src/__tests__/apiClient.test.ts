@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { ApiError, createApiClient, paginationQuery, type ApiTransportRequest } from "../index.js";
+import {
+  ApiError,
+  apiErrorFromResponse,
+  createApiClient,
+  paginationQuery,
+  type ApiTransportRequest,
+  type ApiTransportResponse
+} from "../index.js";
 
 function response(body: unknown, status = 200) {
   return {
@@ -28,6 +35,56 @@ const measurementRow = {
   category: "cardio" as const,
   counts: { ...sourceCounts, total: 0 }
 };
+
+describe("apiErrorFromResponse", () => {
+  it("prefers the structured JSON envelope and body correlation ID", async () => {
+    const json = vi.fn().mockResolvedValue({
+      error: "Not allowed",
+      code: "CAPABILITY_REQUIRED",
+      correlationId: "body-correlation"
+    });
+
+    await expect(apiErrorFromResponse({
+      ok: false,
+      status: 403,
+      statusText: "Forbidden",
+      headers: { get: () => "header-correlation" },
+      json
+    })).resolves.toMatchObject({
+      message: "Not allowed",
+      code: "CAPABILITY_REQUIRED",
+      correlationId: "body-correlation"
+    });
+    expect(json).toHaveBeenCalledOnce();
+  });
+
+  it("reads non-JSON text only from an untouched clone", async () => {
+    const clone = vi.fn(() => ({ text: async () => "Service unavailable" }) as ApiTransportResponse);
+
+    await expect(apiErrorFromResponse({
+      ok: false,
+      status: 503,
+      statusText: "Unavailable",
+      headers: { get: (name) => name === "x-correlation-id" ? "request-456" : null },
+      json: async () => { throw new SyntaxError("Unexpected token"); },
+      clone
+    })).resolves.toMatchObject({
+      message: "Service unavailable",
+      code: "HTTP_ERROR",
+      correlationId: "request-456"
+    });
+    expect(clone).toHaveBeenCalledOnce();
+  });
+
+  it("uses the status message when JSON parsing fails without clone support", async () => {
+    await expect(apiErrorFromResponse({
+      ok: false,
+      status: 502,
+      statusText: "Bad Gateway",
+      json: async () => { throw new Error("native parser failed"); }
+    })).resolves.toMatchObject({ message: "Bad Gateway", code: "HTTP_ERROR" });
+  });
+});
 
 describe("createApiClient", () => {
   it("encodes calendar queries deterministically and forwards abort signals", async () => {

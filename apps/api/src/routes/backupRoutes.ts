@@ -8,10 +8,9 @@
  */
 import express from "express";
 import { randomUUID } from "node:crypto";
-import { z } from "zod";
+import { pipeline } from "node:stream/promises";
 import {
   BACKUP_DECRYPTION_ERROR,
-  BACKUP_MAX_SIZE_BYTES,
   VITANA_BACKUP_FILE_EXTENSION,
   backupCreateRequestSchema,
   backupInspectResponseSchema,
@@ -26,13 +25,14 @@ import type { ProfileStoreManager } from "../storage/profileStoreManager.js";
 import type { PairingStore } from "../pairing.js";
 import type { AuthorizationPrincipal } from "../createApp.js";
 import {
-  buildBackupProfileEntry,
+  BackupTooLargeError,
+  createBackupV1Stream,
   decryptBackup,
-  encryptBackup,
   UnsupportedBackupFormatError,
   verifyProfileDigest
 } from "../backupCrypto.js";
 import { RestoreJournal } from "../storage/restoreJournal.js";
+import { BackupMultipartError, parseBackupMultipart } from "../backupMultipart.js";
 
 /**
  * A format failure is only reachable once the passphrase has already authenticated the file, so
@@ -94,24 +94,22 @@ export function makeBackupRoutes(
     }
 
     try {
-      const profiles = await Promise.all(
-        targetIds.map(async (id) => {
-          const store = storeManager.getStore(id);
-          const data = await store.exportData();
-          return buildBackupProfileEntry(data);
-        })
-      );
-
-      const payload: BackupPayload = {
-        formatVersion: 1,
-        createdAt: new Date().toISOString(),
+      const createdAt = new Date().toISOString();
+      const stores = targetIds.map((id) => storeManager.getStore(id));
+      const abortController = new AbortController();
+      const onAborted = () => abortController.abort();
+      req.once("aborted", onAborted);
+      res.once("close", () => {
+        if (!res.writableFinished) abortController.abort();
+      });
+      const encrypted = await createBackupV1Stream(stores, {
+        passphrase,
         scope,
-        profiles
-      };
+        createdAt,
+        signal: abortController.signal
+      });
 
-      const encrypted = await encryptBackup(payload, passphrase);
-
-      const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      const timestamp = createdAt.replace(/[:.]/g, "-").slice(0, 19);
       const activeProfile = allProfiles.find((profile) => profile.id === targetIds[0]);
       const profileName = scope === "active" && activeProfile
         ? `-${sanitizeFilenameSegment(activeProfile.displayName)}`
@@ -120,37 +118,45 @@ export function makeBackupRoutes(
 
       res.setHeader("content-type", "application/octet-stream");
       res.setHeader("content-disposition", `attachment; filename="${filename}"`);
-      res.setHeader("content-length", String(encrypted.length));
-      res.status(200).end(encrypted);
+      res.status(200);
+      await pipeline(encrypted, res);
+      req.off("aborted", onAborted);
+      for (const store of stores) await store.recordExportAudit();
     } catch (err) {
-      res.status(500).json({ error: "Failed to create backup.", code: "BACKUP_CREATE_FAILED" });
+      if (res.headersSent) {
+        res.destroy();
+        return;
+      }
+      res.status(err instanceof BackupTooLargeError ? 413 : 500).json({
+        error: err instanceof BackupTooLargeError ? err.message : "Failed to create backup.",
+        code: err instanceof BackupTooLargeError ? "BACKUP_TOO_LARGE" : "BACKUP_CREATE_FAILED"
+      });
     }
   });
 
   // --- POST /inspect — Decrypt and inspect backup without restoring ---
-  router.post("/inspect", collectBinaryBody(BACKUP_MAX_SIZE_BYTES), async (req, res) => {
+  router.post("/inspect", async (req, res) => {
     const principal = res.locals.principal as AuthorizationPrincipal | undefined;
     if (!principal || principal.kind !== "owner") {
       res.status(403).json({ error: "Owner access required.", code: "OWNER_REQUIRED" });
       return;
     }
 
-    const passphrase = req.headers["x-backup-passphrase"];
-    if (typeof passphrase !== "string" || passphrase.length < 12) {
-      res.status(400).json({ error: "x-backup-passphrase header required (min 12 chars).", code: "PASSPHRASE_REQUIRED" });
-      return;
-    }
-
-    const body = (req as express.Request & { rawBody?: Buffer }).rawBody;
-    if (!body || body.length === 0) {
-      res.status(400).json({ error: "Backup file body required.", code: "BODY_REQUIRED" });
-      return;
-    }
-
+    let upload;
     let payload: BackupPayload;
     try {
-      payload = await decryptBackup(body, passphrase);
+      upload = await parseBackupMultipart(req, { requireDecisions: false });
+      const parsedPassphrase = backupCreateRequestSchema.shape.passphrase.safeParse(upload.passphrase);
+      if (!parsedPassphrase.success) {
+        res.status(400).json({ error: "Passphrase must be 12 to 256 characters.", code: "PASSPHRASE_REQUIRED" });
+        return;
+      }
+      payload = await decryptBackup(upload.file, parsedPassphrase.data);
     } catch (error) {
+      if (error instanceof BackupMultipartError) {
+        res.status(error.status).json({ error: error.message, code: error.code });
+        return;
+      }
       respondToDecryptFailure(res, error);
       return;
     }
@@ -173,85 +179,54 @@ export function makeBackupRoutes(
   });
 
   // --- POST /restore — Restore profiles from backup ---
-  router.post("/restore", collectBinaryBody(BACKUP_MAX_SIZE_BYTES), async (req, res) => {
+  router.post("/restore", async (req, res) => {
     const principal = res.locals.principal as AuthorizationPrincipal | undefined;
     if (!principal || principal.kind !== "owner") {
       res.status(403).json({ error: "Owner access required.", code: "OWNER_REQUIRED" });
       return;
     }
 
-    const passphrase = req.headers["x-backup-passphrase"];
-    if (typeof passphrase !== "string" || passphrase.length < 12) {
-      res.status(400).json({ error: "x-backup-passphrase header required (min 12 chars).", code: "PASSPHRASE_REQUIRED" });
-      return;
-    }
-
-    const decisionsHeader = req.headers["x-restore-decisions"];
-    if (typeof decisionsHeader !== "string") {
-      res.status(400).json({ error: "x-restore-decisions header required (JSON).", code: "DECISIONS_REQUIRED" });
-      return;
-    }
-
-    let decisionsBody: unknown;
-    try {
-      decisionsBody = JSON.parse(decisionsHeader);
-    } catch {
-      res.status(400).json({ error: "x-restore-decisions must be valid JSON.", code: "DECISIONS_INVALID" });
-      return;
-    }
-
-    const parsedDecisions = backupRestoreRequestSchema.safeParse({
-      passphrase,
-      decisions: decisionsBody
-    });
-    if (!parsedDecisions.success) {
-      const issues = parsedDecisions.error.issues.slice(0, 3).map(i => `${i.path.join(".")}: ${i.message}`).join("; ");
-      res.status(400).json({ error: `Invalid restore request: ${issues}`, code: "VALIDATION_ERROR" });
-      return;
-    }
-
-    const body = (req as express.Request & { rawBody?: Buffer }).rawBody;
-    if (!body || body.length === 0) {
-      res.status(400).json({ error: "Backup file body required.", code: "BODY_REQUIRED" });
-      return;
-    }
-
-    // Decrypt
-    let payload: BackupPayload;
-    try {
-      payload = await decryptBackup(body, passphrase);
-    } catch (error) {
-      respondToDecryptFailure(res, error);
-      return;
-    }
-
-    // Validate all profile digests
-    for (const entry of payload.profiles) {
-      if (!verifyProfileDigest(entry)) {
-        res.status(400).json({
-          error: `Profile "${entry.profileId}" has invalid digest — backup may be corrupted.`,
-          code: "DIGEST_INVALID"
-        });
-        return;
-      }
-    }
-
-    const { decisions } = parsedDecisions.data;
-    const dataDir = process.env.VITANA_DATA_DIR ?? "data";
     const restoreId = randomUUID();
-
     if (activeRestoreId) {
       res.status(409).json({ error: "Another restore is already in progress.", code: "RESTORE_IN_PROGRESS" });
       return;
     }
     activeRestoreId = restoreId;
 
-    const journal = new RestoreJournal(dataDir, restoreId);
-    const results: BackupRestoreResponse["restored"] = [];
-
     try {
+      const upload = await parseBackupMultipart(req, { requireDecisions: true });
+      const parsedDecisions = backupRestoreRequestSchema.safeParse({
+        passphrase: upload.passphrase,
+        decisions: upload.decisions
+      });
+      if (!parsedDecisions.success) {
+        const issues = parsedDecisions.error.issues.slice(0, 3).map(i => `${i.path.join(".")}: ${i.message}`).join("; ");
+        res.status(400).json({ error: `Invalid restore request: ${issues}`, code: "VALIDATION_ERROR" });
+        return;
+      }
+
+      let payload: BackupPayload;
+      try {
+        payload = await decryptBackup(upload.file, parsedDecisions.data.passphrase);
+      } catch (error) {
+        respondToDecryptFailure(res, error);
+        return;
+      }
+
+      for (const entry of payload.profiles) {
+        if (!verifyProfileDigest(entry)) {
+          res.status(400).json({
+            error: `Profile "${entry.profileId}" has invalid digest — backup may be corrupted.`,
+            code: "DIGEST_INVALID"
+          });
+          return;
+        }
+      }
+
+      const journal = new RestoreJournal(process.env.VITANA_DATA_DIR ?? "data", restoreId);
+      const results: BackupRestoreResponse["restored"] = [];
       const restoreRequests: import("../storage/profileStoreManager.js").RestoreProfileRequest[] = [];
-      for (const decision of decisions) {
+      for (const decision of parsedDecisions.data.decisions) {
         const backupEntry = payload.profiles.find(p => p.profileId === decision.profileId);
         if (!backupEntry) {
           results.push({ profileId: decision.profileId, decision: decision.decision, success: false });
@@ -278,6 +253,10 @@ export function makeBackupRoutes(
 
       sendJson(res, backupRestoreResponseSchema, response);
     } catch (err) {
+      if (err instanceof BackupMultipartError) {
+        res.status(err.status).json({ error: err.message, code: err.code });
+        return;
+      }
       const compensationFailed = err instanceof Error && err.message.includes("compensation could not be verified");
       res.status(500).json({
         error: compensationFailed
@@ -291,50 +270,4 @@ export function makeBackupRoutes(
   });
 
   return router;
-}
-
-/**
- * Middleware to collect raw binary body with size limit.
- * Used for multipart-like binary upload of .vitana-backup files.
- */
-function collectBinaryBody(maxSize: number) {
-  return (req: express.Request, res: express.Response, next: express.NextFunction): void => {
-    const contentLength = parseInt(req.headers["content-length"] ?? "0", 10);
-    if (contentLength > maxSize) {
-      res.status(413).json({ error: "Backup file exceeds maximum size.", code: "PAYLOAD_TOO_LARGE" });
-      return;
-    }
-
-    const chunks: Buffer[] = [];
-    let totalSize = 0;
-    let aborted = false;
-
-    req.on("data", (chunk: Buffer) => {
-      if (aborted) return;
-      totalSize += chunk.length;
-      if (totalSize > maxSize) {
-        aborted = true;
-        req.destroy();
-        if (!res.headersSent) {
-          res.status(413).json({ error: "Backup file exceeds maximum size.", code: "PAYLOAD_TOO_LARGE" });
-        }
-        return;
-      }
-      chunks.push(chunk);
-    });
-
-    req.on("end", () => {
-      if (aborted) return;
-      (req as express.Request & { rawBody?: Buffer }).rawBody = Buffer.concat(chunks);
-      next();
-    });
-
-    req.on("error", () => {
-      if (aborted) return;
-      aborted = true;
-      if (!res.headersSent) {
-        res.status(400).json({ error: "Error reading request body.", code: "READ_ERROR" });
-      }
-    });
-  };
 }

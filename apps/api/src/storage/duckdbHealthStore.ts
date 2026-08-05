@@ -266,6 +266,14 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
     return this.enqueueMutation(() => this.repository.recordExportAudit());
   }
 
+  backupExportMetadata() {
+    return this.repository.backupExportMetadata();
+  }
+
+  backupExportPage(collection: Parameters<ProfileRepository["backupExportPage"]>[0], offset: number, limit: number) {
+    return this.repository.backupExportPage(collection, offset, limit);
+  }
+
   async exportData(): Promise<HealthStoreData> {
     // Only the audit row is a mutation. Reading a full store can take seconds, and enqueueing that
     // read behind the same lock meant taking a backup blocked every write until it finished.
@@ -319,6 +327,8 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
   }
 
   private enqueueMutation<T>(mutation: () => Promise<T>): Promise<T> {
+    // This queue is the single-writer boundary that makes in-memory ordinal range reservation safe.
+    // Repository-direct/multi-process writes are unsupported; SQLite needs an atomic allocator.
     const result = this.mutationTail.then(mutation);
     this.mutationTail = result.then(() => undefined, () => undefined);
     return result;

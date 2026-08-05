@@ -27,7 +27,7 @@ vi.mock("./migrations", () => ({
 }));
 
 import { LocalProfileRepository } from "./localRepository";
-import { openSqliteLocalStore, SqliteLocalStore } from "./sqliteLocalStore";
+import { openSqliteLocalStore, resetSqliteLocalStorage, SqliteLocalStore } from "./sqliteLocalStore";
 
 function profile(id: string, updatedAt: string): Profile {
   return {
@@ -159,6 +159,81 @@ describe("SQLite local store connection ownership", () => {
     expect(closeAsync).not.toHaveBeenCalled();
     await (await acquiringStore).close();
     expect(closeAsync).toHaveBeenCalledTimes(2);
+  });
+
+  it("coalesces concurrent acquires and commits their leases only after both databases open", async () => {
+    let resolveReplica!: (database: unknown) => void;
+    const replicaOpen = new Promise((resolve) => { resolveReplica = resolve; });
+    const durableClose = vi.fn(async () => undefined);
+    const replicaClose = vi.fn(async () => undefined);
+    const durable = {
+      closeAsync: durableClose,
+      execAsync: vi.fn(),
+      getFirstAsync: vi.fn(async (sql: string) =>
+        sql === "PRAGMA cipher_version" ? { cipher_version: "4.6.1" } : null)
+    };
+    const replica = {
+      closeAsync: replicaClose,
+      execAsync: vi.fn(),
+      getFirstAsync: vi.fn(async () => ({ user_version: 1 }))
+    };
+    vi.mocked(SecureStore.getItemAsync).mockResolvedValue("a".repeat(64));
+    vi.mocked(openDatabaseAsync).mockImplementation(async (name) =>
+      name === "replica.db" ? replicaOpen as never : durable as never);
+
+    const firstAcquire = openSqliteLocalStore();
+    const secondAcquire = openSqliteLocalStore();
+    await vi.waitFor(() => expect(openDatabaseAsync).toHaveBeenCalledTimes(2));
+    await expect(resetSqliteLocalStorage()).rejects.toThrow("Close active local data operations");
+    expect(durableClose).not.toHaveBeenCalled();
+
+    resolveReplica(replica);
+    const [first, second] = await Promise.all([firstAcquire, secondAcquire]);
+    expect(vi.mocked(openDatabaseAsync).mock.calls.map(([name]) => name))
+      .toEqual(["standalone-health.db", "replica.db"]);
+    await first.close();
+    expect(durableClose).not.toHaveBeenCalled();
+    await second.close();
+    expect(durableClose).toHaveBeenCalledTimes(1);
+    expect(replicaClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes partial state after replica open failure and retries with fresh handles", async () => {
+    const firstDurableClose = vi.fn(async () => undefined);
+    const failedReplicaClose = vi.fn(async () => undefined);
+    const secondDurableClose = vi.fn(async () => undefined);
+    const successfulReplicaClose = vi.fn(async () => undefined);
+    const durable = (closeAsync: () => Promise<void>) => ({
+      closeAsync,
+      execAsync: vi.fn(),
+      getFirstAsync: vi.fn(async (sql: string) =>
+        sql === "PRAGMA cipher_version" ? { cipher_version: "4.6.1" } : null)
+    });
+    const replica = (closeAsync: () => Promise<void>, fail: boolean) => ({
+      closeAsync,
+      execAsync: vi.fn(async (sql: string) => {
+        if (fail && sql.includes("CREATE TABLE")) throw new Error("replica schema failed");
+      }),
+      getFirstAsync: vi.fn(async () => ({ user_version: 1 }))
+    });
+    const handles = [
+      durable(firstDurableClose),
+      replica(failedReplicaClose, true),
+      durable(secondDurableClose),
+      replica(successfulReplicaClose, false)
+    ];
+    vi.mocked(SecureStore.getItemAsync).mockResolvedValue("a".repeat(64));
+    vi.mocked(openDatabaseAsync).mockImplementation(async () => handles.shift() as never);
+
+    await expect(openSqliteLocalStore()).rejects.toThrow("replica schema failed");
+    expect(firstDurableClose).toHaveBeenCalledTimes(1);
+    expect(failedReplicaClose).toHaveBeenCalledTimes(1);
+
+    const retried = await openSqliteLocalStore();
+    expect(openDatabaseAsync).toHaveBeenCalledTimes(4);
+    await retried.close();
+    expect(secondDurableClose).toHaveBeenCalledTimes(1);
+    expect(successfulReplicaClose).toHaveBeenCalledTimes(1);
   });
 
   it("releases its lease when reset so the shared connection is actually torn down", async () => {

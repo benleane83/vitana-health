@@ -18,6 +18,7 @@ test("electron-builder excludes DuckDB development files but keeps runtime files
   assert.ok(files.includes("desktop-updater.cjs"));
   assert.ok(files.includes("background-service.cjs"));
   assert.ok(files.includes("background-service-settings.cjs"));
+  assert.ok(files.includes("certificate-pin.cjs"));
   assert.ok(files.includes("desktop-platform.cjs"));
   assert.ok(files.includes("xdg-autostart.cjs"));
   assert.ok(files.includes("user-data-migration.cjs"));
@@ -55,18 +56,12 @@ test("Windows preview packages use checksummed GitHub updates without Authentico
   assert.equal(packageJson.dependencies["electron-updater"], "6.8.9");
 });
 
-test("the installer tolerates a firewall rule it cannot add or remove", () => {
-  const installer = readFileSync(path.join(__dirname, "build", "installer.nsh"), "utf8");
-  const directives = installer.replace(/^\s*;.*$/gm, "");
+test("the preview installer is per-user and performs no elevated firewall setup", () => {
+  const packageJson = JSON.parse(readFileSync(path.join(__dirname, "package.json"), "utf8"));
 
-  // `netsh` reliably fails on upgrade (the rule already exists) and under managed firewall policy.
-  // The rule only gates LAN companion pairing, so aborting the install over it would trade a
-  // cosmetic problem for a half-upgraded app.
-  assert.doesNotMatch(directives, /nsExec::ExecToStack|ExecWait|Abort|SetErrorLevel/);
-  assert.equal(directives.match(/nsExec::Exec /g)?.length, 4);
-  assert.equal(directives.match(/^\s*Pop \$0$/gm)?.length, 4);
-  assert.match(directives, /customInstall[\s\S]*\$\{If\} \$0 != 0\s+DetailPrint "Warning: could not configure private-network access/);
-  assert.match(directives, /customUnInstall[\s\S]*\$\{If\} \$0 != 0\s+DetailPrint "Warning: could not remove the private-network firewall rule/);
+  assert.equal(packageJson.build.nsis.perMachine, false);
+  assert.equal(Object.hasOwn(packageJson.build.nsis, "include"), false);
+  assert.equal(existsSync(path.join(__dirname, "build", "installer.nsh")), false);
 });
 
 test("every packaging path runs the Electron ABI gate before electron-builder", () => {

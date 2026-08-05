@@ -27,6 +27,47 @@ function approvedPairing(store: PairingStore, deviceId = "device-1", profileId =
 }
 
 describe("PairingStore authorization grants", () => {
+  it("requests LAN exposure only while pairing or an approved device needs it", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-08-05T10:00:00.000Z"));
+      const store = new PairingStore();
+      stores.push(store);
+      const states: boolean[] = [];
+      store.setLanExposureListener((required) => states.push(required));
+
+      const challenge = store.createChallenge();
+      const request = store.request("phone-a", "Phone", challenge.code)!;
+      store.deny(request.record.id);
+
+      expect(states).toEqual([false, true, false]);
+
+      const approved = approvedPairing(store, "phone-b");
+      store.revoke(approved.request.record.id);
+      expect(states.slice(-2)).toEqual([true, false]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("drops temporary LAN exposure when an unused challenge expires", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-08-05T10:00:00.000Z"));
+      const store = new PairingStore();
+      stores.push(store);
+      const states: boolean[] = [];
+      store.setLanExposureListener((required) => states.push(required));
+
+      store.createChallenge();
+      vi.advanceTimersByTime(5 * 60 * 1000 + 1);
+
+      expect(states).toEqual([false, true, false]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("resolves a token to its persisted device and profile grant", () => {
     const store = new PairingStore();
     stores.push(store);

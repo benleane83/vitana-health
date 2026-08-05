@@ -98,11 +98,14 @@ const launchNonce = captureLaunchNonce();
 
 function ownerHeaders(options?: RequestInit): HeadersInit {
   const token = window.sessionStorage.getItem(ownerTokenKey);
-  return {
-    "content-type": "application/json",
-    ...(token ? { authorization: "Bearer " + token } : {}),
-    ...options?.headers
-  };
+  const headers = new Headers(options?.headers);
+  if (!(options?.body instanceof FormData) && !headers.has("content-type")) {
+    headers.set("content-type", "application/json");
+  }
+  if (token && !headers.has("authorization")) {
+    headers.set("authorization", "Bearer " + token);
+  }
+  return headers;
 }
 
 async function fetchAsOwner(path: string, options?: RequestInit, retry = true): Promise<Response> {
@@ -228,15 +231,12 @@ export const api = {
       };
     },
     inspect: async (file: Blob, passphrase: string): Promise<BackupInspectResponse> => {
-      // Binary upload with out-of-band headers, so it stays on the raw transport rather than the
-      // JSON request pipeline.
+      const body = new FormData();
+      body.append("file", file, "backup.vitana-backup");
+      body.append("passphrase", passphrase);
       const response = await fetchAsOwner("/api/backups/inspect", {
         method: "POST",
-        headers: {
-          "content-type": "application/octet-stream",
-          "x-backup-passphrase": passphrase
-        },
-        body: file
+        body
       });
       await assertResponseOk(response);
       return backupInspectResponseSchema.parse(await response.json());
@@ -246,14 +246,13 @@ export const api = {
       decision: RestoreDecision;
       acknowledgeReplacement?: string;
     }>): Promise<BackupRestoreResponse> => {
+      const body = new FormData();
+      body.append("file", file, "backup.vitana-backup");
+      body.append("passphrase", passphrase);
+      body.append("decisions", JSON.stringify(decisions));
       const response = await fetchAsOwner("/api/backups/restore", {
         method: "POST",
-        headers: {
-          "content-type": "application/octet-stream",
-          "x-backup-passphrase": passphrase,
-          "x-restore-decisions": JSON.stringify(decisions)
-        },
-        body: file
+        body
       });
       await assertResponseOk(response);
       return backupRestoreResponseSchema.parse(await response.json());

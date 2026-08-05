@@ -9,6 +9,7 @@ export interface RuntimeSecurity {
   tlsCertPath: string | null;
   tlsKeyPath: string | null;
   publicKeyHash: string | null;
+  certificateFingerprint: string | null;
 }
 
 interface StoredSecurity {
@@ -25,7 +26,10 @@ export function getLanAddresses(): string[] {
   return [...addresses];
 }
 
-export async function configureRuntimeSecurity(host: string): Promise<RuntimeSecurity> {
+export async function configureRuntimeSecurity(
+  host: string,
+  options: { requireTls?: boolean } = {}
+): Promise<RuntimeSecurity> {
   const dataDir = path.resolve(process.env.VITANA_DATA_DIR ?? "data");
   mkdirSync(dataDir, { recursive: true });
 
@@ -42,7 +46,7 @@ export async function configureRuntimeSecurity(host: string): Promise<RuntimeSec
   const isLoopback = host === "127.0.0.1" || host === "::1" || host === "localhost";
   let tlsCertPath = configuredCert ? path.resolve(configuredCert) : null;
   let tlsKeyPath = configuredKey ? path.resolve(configuredKey) : null;
-  if (!isLoopback && !tlsCertPath && !tlsKeyPath) {
+  if ((!isLoopback || options.requireTls) && !tlsCertPath && !tlsKeyPath) {
     const generated = await loadOrCreateCertificate(dataDir);
     tlsCertPath = generated.certPath;
     tlsKeyPath = generated.keyPath;
@@ -50,8 +54,12 @@ export async function configureRuntimeSecurity(host: string): Promise<RuntimeSec
     process.env.VITANA_TLS_KEY = tlsKeyPath;
   }
 
-  const publicKeyHash = tlsCertPath ? certificatePublicKeyHash(readFileSync(tlsCertPath, "utf8")) : null;
-  return { ownerToken, tlsCertPath, tlsKeyPath, publicKeyHash };
+  const certificatePem = tlsCertPath ? readFileSync(tlsCertPath, "utf8") : null;
+  const publicKeyHash = certificatePem ? certificatePublicKeyHash(certificatePem) : null;
+  const certificateFingerprint = certificatePem
+    ? new X509Certificate(certificatePem).fingerprint256
+    : null;
+  return { ownerToken, tlsCertPath, tlsKeyPath, publicKeyHash, certificateFingerprint };
 }
 
 export function certificatePublicKeyHash(certificatePem: string): string {

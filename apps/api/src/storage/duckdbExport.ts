@@ -9,6 +9,7 @@ import {
 } from "@vitana/shared";
 import {
   all,
+  allWithParams,
   compact,
   isoTimestamp,
   insertActivityRows,
@@ -29,6 +30,11 @@ import {
 } from "./duckdbRows.js";
 import { selectColumns, tableColumns } from "./duckdbColumns.js";
 import { insertAudit } from "./duckdbCommands.js";
+import type {
+  BackupExportCollection,
+  BackupExportMetadata,
+  BackupExportPage
+} from "./profileRepository.js";
 
 /**
  * Recording the export is the only write an export performs. It is kept separate from the snapshot
@@ -341,4 +347,134 @@ function canonicalJson(value: unknown): string {
       .join(",")}}`;
   }
   return JSON.stringify(value);
+}
+
+export async function backupExportMetadata(connection: duckdb.Connection): Promise<BackupExportMetadata> {
+  const rows = await all(connection, `SELECT ${selectColumns("profile")} FROM profile;`);
+  if (rows.length !== 1) {
+    throw new Error(`DuckDB expected exactly one profile row, found ${rows.length}.`);
+  }
+  return { schemaVersion: EXPORT_FORMAT_VERSION, profile: profileFromRow(rows[0]) };
+}
+
+export async function backupExportPage(
+  connection: duckdb.Connection,
+  collection: BackupExportCollection,
+  offset: number,
+  limit: number
+): Promise<BackupExportPage> {
+  if (!Number.isInteger(offset) || offset < 0 || !Number.isInteger(limit) || limit < 1 || limit > 1_000) {
+    throw new Error("Backup export page bounds are invalid.");
+  }
+  const { sql, map } = exportCollectionQuery(collection);
+  const rows = await allWithParams(connection, `${sql} LIMIT ? OFFSET ?;`, limit, offset);
+  return { items: rows.map(map), done: rows.length < limit };
+}
+
+function exportCollectionQuery(collection: BackupExportCollection): {
+  sql: string;
+  map: (row: Record<string, unknown>) => unknown;
+} {
+  switch (collection) {
+    case "sourceImports": {
+      const columns = tableColumns.imports.filter((column) => column !== "ordinal").join(", ");
+      return { sql: `SELECT ${columns} FROM imports ORDER BY ordinal`, map: (row) => compact({
+        id: row.id, sourceKind: row.source_kind, fileName: row.file_name,
+        importedAt: isoTimestamp(row.imported_at), parserVersion: row.parser_version,
+        checksum: row.checksum, rowCount: Number(row.row_count), status: row.status,
+        diagnostics: requiredJson(row.diagnostics), rawContent: row.raw_content
+      }) };
+    }
+    case "dataSources":
+      return orderedExportQuery("sources", (row) => compact({ id: row.id, sourceKind: row.source_kind,
+        label: row.label, importId: row.import_id, createdAt: isoTimestamp(row.created_at) }));
+    case "devices":
+      return orderedExportQuery("devices", (row) => compact({ id: row.id, label: row.label,
+        manufacturer: row.manufacturer, model: row.model, sourceId: row.source_id }));
+    case "measurementTypes":
+      return orderedExportQuery("measurement_types", (row) => compact({ code: row.code, display: row.display,
+        category: row.category, kind: row.kind, canonicalUnit: row.canonical_unit,
+        aliases: requiredJson(row.aliases), ...(optionalJson<Record<string, unknown>>(row.custom_properties) ?? {}),
+        aggregation: row.aggregation }));
+    case "personalReferenceRanges":
+      return { sql: "SELECT measurement_code, normal_low, normal_high, optimal_low, optimal_high, unit, updated_at FROM personal_reference_ranges ORDER BY measurement_code", map: (row) => compact({
+        measurementCode: row.measurement_code, normalLow: optionalNumber(row.normal_low), normalHigh: optionalNumber(row.normal_high),
+        optimalLow: optionalNumber(row.optimal_low), optimalHigh: optionalNumber(row.optimal_high), unit: row.unit,
+        updatedAt: isoTimestamp(row.updated_at)
+      }) };
+    case "pinnedMeasurements":
+      return { sql: "SELECT measurement_code, pinned_at FROM pinned_measurements ORDER BY pinned_at, measurement_code", map: (row) => ({
+        measurementCode: String(row.measurement_code), pinnedAt: isoTimestamp(row.pinned_at)
+      }) };
+    case "observationGroups":
+      return orderedExportQuery("observation_groups", (row) => compact({ id: row.id, kind: row.kind, label: row.label,
+        sourceId: row.source_id, importId: row.import_id, startAt: optionalTimestamp(row.start_at),
+        endAt: optionalTimestamp(row.end_at), collectedAt: optionalTimestamp(row.collected_at), metadata: optionalJson(row.metadata) }));
+    case "observations":
+      return orderedExportQuery("observations", (row) => withStoredJson(compact({ id: row.id, measurementCode: row.measurement_code,
+        observedAt: isoTimestamp(row.observed_at), effectiveStart: optionalTimestamp(row.effective_start),
+        effectiveEnd: optionalTimestamp(row.effective_end), value: Number(row.value), unit: row.unit,
+        sourceId: row.source_id, observationGroupId: row.observation_group_id, deviceId: row.device_id, note: row.note
+      }), row.source_json_present, row.source_json));
+    case "timeSeriesSamples":
+      return orderedExportQuery("time_series_samples", (row) => withStoredJson(compact({ id: row.id,
+        measurementCode: row.measurement_code, startAt: isoTimestamp(row.start_at), endAt: isoTimestamp(row.end_at),
+        value: Number(row.value), unit: row.unit, sourceId: row.source_id, deviceId: row.device_id
+      }), row.source_json_present, row.source_json));
+    case "measurementAggregates":
+      return orderedExportQuery("measurement_aggregates", (row) => withStoredJson(compact({ id: row.id,
+        measurementCode: row.measurement_code, granularity: row.granularity, startAt: isoTimestamp(row.start_at),
+        endAt: isoTimestamp(row.end_at), average: Number(row.average), minimum: Number(row.minimum),
+        maximum: Number(row.maximum), count: Number(row.measurement_count), unit: row.unit, sourceId: row.source_id,
+        calendarDate: row.calendar_date ? String(row.calendar_date).slice(0, 10) : undefined
+      }), row.source_json_present, row.source_json));
+    case "activitySessions":
+      return orderedExportQuery("activities", (row) => withStoredJson(compact({ id: row.id, activityType: row.activity_type,
+        startAt: isoTimestamp(row.start_at), endAt: optionalTimestamp(row.end_at), durationMinutes: optionalNumber(row.duration_minutes),
+        energyKcal: optionalNumber(row.energy_kcal), distanceMeters: optionalNumber(row.distance_meters), sourceId: row.source_id
+      }), row.source_json_present, row.source_json));
+    case "healthEvents":
+      return { sql: `SELECT h.${selectColumns("health_events", { excludeOrdinal: true }).split(", ").join(", h.")},
+          i.vaccine, i.target_disease, i.dose_number, i.series, i.manufacturer AS immunization_manufacturer,
+          i.lot_number, i.expires_at, i.route AS immunization_route, i.site, i.reaction,
+          m.medication, m.active_ingredient, m.dose, m.unit AS medication_unit, m.route AS medication_route
+        FROM health_events h
+        LEFT JOIN immunizations i ON i.health_event_id = h.id
+        LEFT JOIN medication_administrations m ON m.health_event_id = h.id
+        ORDER BY h.ordinal`, map: mapHealthEventExportRow };
+    case "careItems":
+      return orderedExportQuery("care_items", (row) => compact({ id: row.id, kind: row.kind, code: row.code, title: row.title,
+        dueStart: optionalTimestamp(row.due_start), reminderAt: optionalTimestamp(row.reminder_at), priority: row.priority,
+        status: row.status, scheduleProvenance: row.schedule_provenance, scheduleVersion: row.schedule_version,
+        notes: row.notes, completedHealthEventId: row.completed_health_event_id, completedAt: optionalTimestamp(row.completed_at) }));
+    case "insights":
+      return orderedExportQuery("insights", (row) => compact({ id: row.id, createdAt: isoTimestamp(row.created_at),
+        title: row.title, body: row.body, evidence: requiredJson(row.evidence), confidence: row.confidence,
+        model: row.model, safetyNotice: row.safety_notice }));
+    case "auditEvents":
+      return orderedExportQuery("audit_events", (row) => compact({ id: row.id, createdAt: isoTimestamp(row.created_at),
+        eventType: row.event_type, detail: row.detail }));
+  }
+}
+
+function orderedExportQuery(
+  table: Parameters<typeof selectColumns>[0],
+  map: (row: Record<string, unknown>) => unknown
+) {
+  return { sql: `SELECT ${selectColumns(table, { excludeOrdinal: true })} FROM ${table} ORDER BY ordinal`, map };
+}
+
+function mapHealthEventExportRow(row: Record<string, unknown>): unknown {
+  const base = compact({ id: row.id, kind: row.kind, status: row.status, occurredAt: isoTimestamp(row.occurred_at),
+    source: row.source, provider: row.provider, notes: row.notes, metadata: optionalJson(row.metadata) });
+  if (row.vaccine) return { ...base, kind: "immunization", immunization: compact({ vaccine: row.vaccine,
+    targetDisease: row.target_disease, doseNumber: optionalNumber(row.dose_number), series: row.series,
+    manufacturer: row.immunization_manufacturer, lotNumber: row.lot_number,
+    expiresAt: row.expires_at ? String(row.expires_at).slice(0, 10) : undefined,
+    route: row.immunization_route, site: row.site, reaction: row.reaction }) };
+  if (row.medication) return { ...base, kind: "medication", medicationAdministration: compact({ medication: row.medication,
+    activeIngredient: row.active_ingredient, dose: Number(row.dose), unit: row.medication_unit, route: row.medication_route }) };
+  const kind = String(row.kind);
+  if (!isHealthEventKind(kind)) throw new Error(`Unsupported health event kind "${kind}".`);
+  return { ...base, kind };
 }

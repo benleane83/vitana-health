@@ -89,6 +89,7 @@ export interface ApiTransportResponse {
   statusText?: string;
   headers?: { get(name: string): string | null };
   json(): Promise<unknown>;
+  clone?(): ApiTransportResponse;
   text?(): Promise<string>;
 }
 
@@ -340,23 +341,26 @@ function chartQuery(options?: { range?: "all" | "1y" | "3m" | "1m"; mode?: "auto
 /** Exported so callers doing raw (non-JSON) fetches can still surface consistent `ApiError`s. */
 export async function apiErrorFromResponse(response: ApiTransportResponse): Promise<ApiError> {
   let payload: unknown;
-  let text = "";
+  const fallbackResponse = response.clone?.();
   try {
-    if (response.text) {
-      text = await response.text();
-      payload = JSON.parse(text);
-    } else {
-      payload = await response.json();
-    }
+    payload = await response.json();
   } catch {
     payload = undefined;
+  }
+  let fallbackMessage = response.statusText || "API request failed.";
+  if (payload === undefined && fallbackResponse?.text) {
+    try {
+      fallbackMessage = (await fallbackResponse.text()) || fallbackMessage;
+    } catch {
+      // The status message remains safe when neither parser can read the body.
+    }
   }
   const parsed = apiErrorResponseSchema.safeParse(payload);
   const correlationId = parsed.success
     ? parsed.data.correlationId ?? response.headers?.get("x-correlation-id") ?? undefined
     : response.headers?.get("x-correlation-id") ?? undefined;
   return new ApiError(
-    parsed.success ? parsed.data.error : text || response.statusText || "API request failed.",
+    parsed.success ? parsed.data.error : fallbackMessage,
     response.status,
     parsed.success ? parsed.data.code : "HTTP_ERROR",
     correlationId,

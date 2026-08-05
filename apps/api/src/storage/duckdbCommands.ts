@@ -810,7 +810,10 @@ async function ordinalBounds(connection: duckdb.Connection, table: OrderedTable)
   return bounds;
 }
 
-/** Reserves `count` consecutive ordinals and returns the first of them. */
+/**
+ * Reserves consecutive ordinals for writes serialized by `enqueueMutation`. Repository-direct or
+ * multi-process writers are unsupported; a future SQLite provider needs an atomic allocator.
+ */
 export async function nextOrdinal(
   connection: duckdb.Connection,
   table: OrderedTable,

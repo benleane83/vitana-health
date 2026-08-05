@@ -11,7 +11,6 @@
  *
  * Route domains are split into dedicated modules under ./routes/.
  */
-import cors from "cors";
 import express from "express";
 import { timingSafeEqual } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -34,10 +33,16 @@ import { makeCompanionSyncRoutes } from "./routes/companionSyncRoutes.js";
 import { z } from "zod";
 import type { AuthorizationPrincipal, OwnerPrincipal } from "./requestPrincipal.js";
 import type { DesktopRuntimeSettingsResponse, DesktopRuntimeSettingsUpdate, DesktopUpdateState } from "@vitana/shared";
+import {
+  browserCors,
+  browserOriginAllowlist,
+  browserOriginIsAllowed,
+  type BrowserOriginOptions
+} from "./browserOriginPolicy.js";
 
 export type { AuthorizationPrincipal, OwnerPrincipal } from "./requestPrincipal.js";
 
-export interface AppOptions {
+export interface AppOptions extends BrowserOriginOptions {
   publicKeyHash?: string | null;
   webRoot?: string;
   /**
@@ -95,6 +100,7 @@ export function createApp(
   options: AppOptions = {}
 ): express.Application {
   const app = express();
+  const allowedBrowserOrigins = browserOriginAllowlist(options);
 
   app.disable("x-powered-by");
 
@@ -105,19 +111,8 @@ export function createApp(
   app.use("/api/import/upload/preview", express.json({ limit: "4mb" }));
   app.use(express.json({ limit: "1mb" }));
 
-  // CORS — local browser origins only
-  app.use(
-    cors({
-      credentials: true,
-      origin(origin, callback) {
-        if (!origin || /^https?:\/\/(127\.0\.0\.1|localhost):\d+$/.test(origin)) {
-          callback(null, true);
-          return;
-        }
-        callback(new Error("Only local browser origins are allowed."));
-      }
-    })
-  );
+  // CORS — exact configured browser origins only; native clients send no Origin.
+  app.use(browserCors(allowedBrowserOrigins));
 
   // Correlation IDs and request timing
   app.use((_request, response, next) => {
@@ -172,7 +167,6 @@ export function createApp(
     };
   }
 
-  app.use(rateLimit("api", 300, 60_000));
   app.use("/api/pairing", rateLimit("pairing", 30, 60_000));
   app.use("/api/llm", rateLimit("llm", 10, 60_000));
   app.use("/api/settings", rateLimit("settings", 30, 60_000));
@@ -183,7 +177,8 @@ export function createApp(
 
   // Maintenance mode middleware — returns 503 during restore except /api/health
   app.use((request, response, next) => {
-    if (isInMaintenanceMode() && request.originalUrl !== "/api/health") {
+    const concurrentRestore = request.method === "POST" && request.originalUrl === "/api/backups/restore";
+    if (isInMaintenanceMode() && request.originalUrl !== "/api/health" && !concurrentRestore) {
       response.status(503).json({
         error: "Service temporarily unavailable during restore operation.",
         code: "MAINTENANCE_MODE"
@@ -225,8 +220,7 @@ export function createApp(
     const address = request.socket.remoteAddress ?? "";
     const loopback = isLoopbackAddress(address);
     const origin = request.headers.origin;
-    const localOrigin = !origin || /^https?:\/\/(127\.0\.0\.1|localhost):\d+$/.test(origin);
-    if (!loopback || !localOrigin) {
+    if (!loopback || !browserOriginIsAllowed(origin, allowedBrowserOrigins)) {
       response
         .status(403)
         .json({ error: "Local desktop authentication is only available on this computer.", code: "AUTH_LOOPBACK_ONLY" });

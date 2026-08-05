@@ -41,6 +41,7 @@
       "main.cjs",
       "background-service.cjs",
       "background-service-settings.cjs",
+      "certificate-pin.cjs",
       "secure-store-key.cjs",
       "startup-diagnostics.cjs",
       "desktop-updater.cjs",
@@ -115,10 +116,9 @@
     "nsis": {
       "artifactName": "Vitana-Health-Setup-${version}.${ext}",
       "oneClick": false,
-      "perMachine": true,
+      "perMachine": false,
       "allowToChangeInstallationDirectory": false,
-      "deleteAppDataOnUninstall": false,
-      "include": "build/installer.nsh"
+      "deleteAppDataOnUninstall": false
     }
   }
 }

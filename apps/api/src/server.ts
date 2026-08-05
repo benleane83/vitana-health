@@ -21,6 +21,7 @@ loadEnvironmentFiles();
 
 export interface StartServerOptions {
   storeSecurity?: StoreSecurityConfig;
+  dynamicLanExposure?: boolean;
   desktopRuntimeController?: {
     getSettings: () => Promise<DesktopRuntimeSettingsResponse> | DesktopRuntimeSettingsResponse;
     updateSettings: (settings: DesktopRuntimeSettingsUpdate) => Promise<DesktopRuntimeSettingsResponse> | DesktopRuntimeSettingsResponse;
@@ -33,7 +34,11 @@ export interface StartServerOptions {
   };
 }
 
-export type RunningServer = Server & { shutdown: () => Promise<void> };
+export type RunningServer = Server & {
+  shutdown: () => Promise<void>;
+  currentHost: () => string;
+  certificateFingerprint: string | null;
+};
 
 export async function startServer(options: StartServerOptions = {}): Promise<RunningServer> {
   // Fail fast on misconfigured environment before touching any port or file
@@ -41,7 +46,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
 
   const port = env.PORT;
   const host = env.HOST;
-  const security = await configureRuntimeSecurity(host);
+  const dynamicLanExposure = options.dynamicLanExposure === true;
+  const security = await configureRuntimeSecurity(host, { requireTls: dynamicLanExposure });
   const tlsEnabled = Boolean(security.tlsCertPath && security.tlsKeyPath);
   const isLoopback = host === "127.0.0.1" || host === "::1" || host === "localhost";
   const insecureLanDevelopment =
@@ -86,11 +92,13 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
       activationState
     });
     const pairingStore = new PairingStore();
+    const browserOrigin = `${tlsEnabled ? "https" : "http"}://127.0.0.1:${port}`;
     const app = createApp(storeManager, pairingStore, {
       publicKeyHash: security.publicKeyHash,
       webRoot: env.VITANA_WEB_ROOT,
       localAuthNonce: env.VITANA_LOCAL_AUTH_NONCE,
-      openRouterCallbackOrigin: `${tlsEnabled ? "https" : "http"}://127.0.0.1:${port}`,
+      openRouterCallbackOrigin: browserOrigin,
+      allowedBrowserOrigins: [browserOrigin],
       desktopRuntimeController: options.desktopRuntimeController,
       desktopUpdaterController: options.desktopUpdaterController
     });
@@ -106,33 +114,63 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
         )
       : createHttpServer(app);
 
-    server.once("close", () => void closeStorage().catch(() => undefined));
+    let listeningHost = dynamicLanExposure && pairingStore.requiresLanExposure()
+      ? "0.0.0.0"
+      : host;
 
-    await new Promise<void>((resolve, reject) => {
+    const listen = (targetHost: string): Promise<void> => new Promise<void>((resolve, reject) => {
       server.once("error", reject);
-      server.listen(port, host, () => {
+      server.listen(port, targetHost, () => {
         server.off("error", reject);
-        log.info(`Vitana API listening at ${scheme}://${host}:${port}`);
+        listeningHost = targetHost;
+        log.info(`Vitana API listening at ${scheme}://${targetHost}:${port}`);
         const lanIp = getLanIp();
-        if (lanIp) {
+        if (targetHost === "0.0.0.0" && lanIp) {
           log.info(`LAN address for companion pairing: ${scheme}://${lanIp}:${port}`);
         }
         resolve();
       });
     });
 
-    const runningServer = server as RunningServer;
-    runningServer.shutdown = async (): Promise<void> => {
-      if (server.listening) {
-        // `server.close()` only stops accepting new sockets; a companion device holding a
-        // keep-alive connection would otherwise keep the callback pending until its idle timeout
-        // expires, which is longer than the desktop shell is willing to wait before quitting.
-        await new Promise<void>((resolve, reject) => {
-          server.close((error) => error ? reject(error) : resolve());
-          server.closeIdleConnections?.();
-          server.closeAllConnections?.();
-        });
+    const closeListener = (): Promise<void> => new Promise<void>((resolve, reject) => {
+      if (!server.listening) {
+        resolve();
+        return;
       }
+      server.close((error) => error ? reject(error) : resolve());
+      server.closeIdleConnections?.();
+      server.closeAllConnections?.();
+    });
+
+    await listen(listeningHost);
+
+    let rebindQueue = Promise.resolve();
+    if (dynamicLanExposure) {
+      pairingStore.setLanExposureListener((required) => {
+        const targetHost = required ? "0.0.0.0" : host;
+        rebindQueue = rebindQueue.then(async () => {
+          if (targetHost === listeningHost) return;
+          const previousHost = listeningHost;
+          await closeListener();
+          try {
+            await listen(targetHost);
+          } catch (error) {
+            log.error(`Could not rebind Vitana API to ${targetHost}: ${error instanceof Error ? error.message : String(error)}`);
+            await listen(previousHost);
+          }
+        }).catch((error) => {
+          log.error(`Vitana API listener transition failed: ${error instanceof Error ? error.message : String(error)}`);
+        });
+      });
+    }
+
+    const runningServer = server as RunningServer;
+    runningServer.currentHost = () => listeningHost;
+    runningServer.certificateFingerprint = security.certificateFingerprint;
+    runningServer.shutdown = async (): Promise<void> => {
+      pairingStore.flushPendingWrites();
+      await rebindQueue;
+      await closeListener();
       await closeStorage();
     };
 

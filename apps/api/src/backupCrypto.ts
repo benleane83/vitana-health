@@ -6,7 +6,8 @@
  * Key derivation: scrypt(passphrase, salt, N=2^17, r=8, p=1, keyLen=32)
  */
 import { createHash, randomBytes, scrypt, createCipheriv, createDecipheriv } from "node:crypto";
-import { gzipSync, gunzipSync } from "node:zlib";
+import { Readable } from "node:stream";
+import { gzipSync, gunzipSync, createGzip } from "node:zlib";
 import {
   VITANA_BACKUP_MAGIC,
   VITANA_BACKUP_VERSION,
@@ -26,6 +27,20 @@ import {
   type BackupProfileEntry,
   type HealthStoreData
 } from "@vitana/shared";
+import {
+  backupExportCollections,
+  type BackupExportCollection,
+  type ProfileRepository
+} from "./storage/profileRepository.js";
+
+const BACKUP_EXPORT_PAGE_SIZE = 250;
+
+export class BackupTooLargeError extends Error {
+  constructor() {
+    super("Encrypted backup exceeds the maximum restorable size.");
+    this.name = "BackupTooLargeError";
+  }
+}
 
 /**
  * Raised only after the passphrase has already authenticated the file, so it is safe to tell the
@@ -64,6 +79,117 @@ function canonicalStringify(value: unknown): string {
     }
     return val;
   });
+}
+
+export async function createBackupV1Stream(
+  stores: readonly ProfileRepository[],
+  options: { passphrase: string; scope: BackupPayload["scope"]; createdAt: string; signal?: AbortSignal }
+): Promise<Readable> {
+  const salt = randomBytes(VITANA_BACKUP_SALT_LENGTH);
+  const iv = randomBytes(VITANA_BACKUP_IV_LENGTH);
+  const key = await deriveKey(options.passphrase, salt);
+  const header = Buffer.alloc(VITANA_BACKUP_HEADER_LENGTH);
+  header.set(VITANA_BACKUP_MAGIC, 0);
+  header[4] = VITANA_BACKUP_VERSION;
+  header.set(salt, 5);
+  header.set(iv, 5 + VITANA_BACKUP_SALT_LENGTH);
+
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  cipher.setAAD(header.subarray(0, 5));
+  const gzip = createGzip({ level: 6 });
+  const plaintext = Readable.from(limitPlaintextSize(serializeBackupPayload(stores, options)), { objectMode: false });
+  const encrypted = plaintext.pipe(gzip).pipe(cipher);
+
+  return Readable.from((async function* () {
+    let emitted = 0;
+    const emit = (chunk: Buffer): Buffer => {
+      emitted += chunk.length;
+      if (emitted > BACKUP_MAX_SIZE_BYTES) throw new BackupTooLargeError();
+      return chunk;
+    };
+    try {
+      yield emit(header);
+      for await (const chunk of encrypted) {
+        if (options.signal?.aborted) throw abortError();
+        yield emit(Buffer.from(chunk as Buffer));
+      }
+      yield emit(cipher.getAuthTag());
+    } finally {
+      plaintext.destroy();
+      gzip.destroy();
+      cipher.destroy();
+    }
+  })(), { objectMode: false });
+}
+
+async function* limitPlaintextSize(source: AsyncIterable<Buffer>): AsyncGenerator<Buffer> {
+  let total = 0;
+  for await (const chunk of source) {
+    total += chunk.length;
+    if (total > BACKUP_MAX_SIZE_BYTES) throw new BackupTooLargeError();
+    yield chunk;
+  }
+}
+
+async function* serializeBackupPayload(
+  stores: readonly ProfileRepository[],
+  options: { scope: BackupPayload["scope"]; createdAt: string; signal?: AbortSignal }
+): AsyncGenerator<Buffer> {
+  yield Buffer.from(`{"formatVersion":1,"createdAt":${JSON.stringify(options.createdAt)},"scope":${JSON.stringify(options.scope)},"profiles":[`);
+  for (let profileIndex = 0; profileIndex < stores.length; profileIndex += 1) {
+    if (options.signal?.aborted) return;
+    const store = stores[profileIndex];
+    const metadata = await store.backupExportMetadata();
+    if (profileIndex > 0) yield Buffer.from(",");
+    yield Buffer.from(`{"profileId":${JSON.stringify(metadata.profile.id)},"displayName":${JSON.stringify(metadata.profile.displayName)},"data":`);
+
+    const digest = createHash("sha256");
+    const dataChunk = (value: string): Buffer => {
+      const chunk = Buffer.from(value, "utf8");
+      digest.update(chunk);
+      return chunk;
+    };
+    yield dataChunk("{");
+    let propertyIndex = 0;
+    const property = (name: string, valuePrefix = ""): Buffer => {
+      const separator = propertyIndex++ === 0 ? "" : ",";
+      return dataChunk(`${separator}${JSON.stringify(name)}:${valuePrefix}`);
+    };
+
+    const dataKeys = [...backupExportCollections, "profile", "schemaVersion"].sort();
+    for (const key of dataKeys) {
+      if (key === "profile") {
+        yield property(key, canonicalStringify(metadata.profile));
+      } else if (key === "schemaVersion") {
+        yield property(key, JSON.stringify(metadata.schemaVersion));
+      } else {
+        const collection = key as BackupExportCollection;
+        yield property(key, "[");
+        let offset = 0;
+        let itemIndex = 0;
+        while (true) {
+          if (options.signal?.aborted) return;
+          const page = await store.backupExportPage(collection, offset, BACKUP_EXPORT_PAGE_SIZE);
+          for (const item of page.items) {
+            yield dataChunk(`${itemIndex++ === 0 ? "" : ","}${canonicalStringify(item)}`);
+          }
+          offset += page.items.length;
+          if (page.done) break;
+          if (page.items.length === 0) throw new Error(`Backup export page for ${collection} made no progress.`);
+        }
+        yield dataChunk("]");
+      }
+    }
+    yield dataChunk("}");
+    yield Buffer.from(`,"digest":${JSON.stringify(digest.digest("hex"))}}`);
+  }
+  yield Buffer.from("]}");
+}
+
+function abortError(): Error {
+  const error = new Error("Backup creation was cancelled.");
+  error.name = "AbortError";
+  return error;
 }
 
 /**

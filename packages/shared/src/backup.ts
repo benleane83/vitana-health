@@ -25,6 +25,8 @@ export const SCRYPT_P = 1;
 export const SCRYPT_KEY_LENGTH = 32; // AES-256
 
 export const BACKUP_MAX_SIZE_BYTES = 100 * 1024 * 1024; // 100 MB hard limit
+export const BACKUP_PASSPHRASE_MAX_BYTES = 1_024;
+export const BACKUP_DECISIONS_MAX_BYTES = 64 * 1_024;
 
 // --- Payload types ---
 

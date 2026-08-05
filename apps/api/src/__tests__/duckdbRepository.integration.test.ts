@@ -32,6 +32,7 @@ import { all } from "../storage/duckdbRows.js";
 import { buildClinicianReport } from "../clinicianReport.js";
 import { healthConnectImportRequestSchema, parseHealthConnectImport } from "../healthConnectImport.js";
 import { findPreparedExtension } from "./support/duckdbExtension.js";
+import { backupExportCollections } from "../storage/profileRepository.js";
 
 const httpfsExtensionPath = findPreparedExtension();
 const key = Buffer.alloc(32, 7).toString("base64");
@@ -46,6 +47,71 @@ afterEach(() => {
 });
 
 describe("DuckDbRepository fidelity", () => {
+  it.skipIf(!httpfsExtensionPath)("exports every backup collection through bounded stable pages", async () => {
+    const databasePath = join(root, "databases", "health-store-paged-export.duckdb-poc");
+    const fixture = createDuckDbHealthStoreFixture();
+    const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
+    try {
+      const metadata = await repository.backupExportMetadata();
+      expect(metadata).toEqual({ schemaVersion: fixture.schemaVersion, profile: fixture.profile });
+
+      for (const collection of backupExportCollections) {
+        const exported: unknown[] = [];
+        let offset = 0;
+        while (true) {
+          const page = await repository.backupExportPage(collection, offset, 2);
+          expect(page.items.length).toBeLessThanOrEqual(2);
+          exported.push(...page.items);
+          offset += page.items.length;
+          if (page.done) break;
+        }
+        expect(exported, collection).toEqual(fixture[collection]);
+      }
+    } finally {
+      await repository.close();
+    }
+  }, 30_000);
+
+  it.skipIf(!httpfsExtensionPath)("invalidates cached storage counts only after successful count-changing commits", async () => {
+    const databasePath = join(root, "databases", "health-store-count-cache.duckdb-poc");
+    const fixture = createDuckDbHealthStoreFixture();
+    let countReads = 0;
+    let failCommit = false;
+    const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, {
+      httpfsExtensionPath,
+      testHooks: {
+        beforeStorageCountsRead: () => { countReads += 1; },
+        beforeTransactionCommit: async () => {
+          if (failCommit) throw new Error("Injected commit failure");
+        }
+      }
+    });
+    try {
+      const initial = await repository.storageCounts();
+      expect(countReads).toBe(1);
+
+      await repository.replaceProfile({ ...fixture.profile, displayName: "Metadata-only update" });
+      expect(await repository.storageCounts()).toEqual(initial);
+      expect(countReads).toBe(1);
+
+      const created = await repository.createHealthEvent({
+        kind: "immunization",
+        status: "completed",
+        occurredAt: "2026-08-05T09:00:00.000Z",
+        provider: "Local Clinic"
+      });
+      expect((await repository.storageCounts()).healthEvents).toBe(initial.healthEvents + 1);
+      expect(countReads).toBe(2);
+
+      failCommit = true;
+      await expect(repository.deleteHealthEvent(created.healthEvent.id)).rejects.toThrow("Injected commit failure");
+      expect((await repository.storageCounts()).healthEvents).toBe(initial.healthEvents + 1);
+      expect(countReads).toBe(2);
+    } finally {
+      await repository.close();
+    }
+  }, 30_000);
+
   it.skipIf(!httpfsExtensionPath)("serves reads from a connection that never sees uncommitted writes", async () => {
     const databasePath = join(root, "databases", "health-store-read-isolation.duckdb-poc");
     const fixture = createDuckDbHealthStoreFixture();

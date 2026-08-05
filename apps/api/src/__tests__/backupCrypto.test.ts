@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   computeCanonicalDigest,
+  createBackupV1Stream,
   encryptBackup,
   decryptBackup,
   buildBackupProfileEntry,
@@ -17,6 +18,7 @@ import {
   EXPORT_FORMAT_VERSION,
   defaultMeasurementTypes
 } from "@vitana/shared";
+import { backupExportCollections, type ProfileRepository } from "../storage/profileRepository.js";
 
 function createTestStoreData(profileId = "test-user", displayName = "Test User"): HealthStoreData {
   return {
@@ -73,6 +75,46 @@ describe("backupCrypto", () => {
   });
 
   describe("encrypt / decrypt round-trip", () => {
+    it("streams a V1 backup readable by the buffered decryptor in bounded pages", async () => {
+      const data = createTestStoreData();
+      data.observations = Array.from({ length: 251 }, (_, index) => ({
+        id: `obs-${index}`,
+        measurementCode: "body-weight",
+        observedAt: `2024-01-15T10:${String(index % 60).padStart(2, "0")}:00.000Z`,
+        value: 70 + index,
+        unit: "kg",
+        sourceId: "src-1"
+      }));
+      const pageCalls: Array<{ collection: string; offset: number; limit: number }> = [];
+      const store = {
+        backupExportMetadata: async () => ({ schemaVersion: data.schemaVersion, profile: data.profile }),
+        backupExportPage: async (collection: typeof backupExportCollections[number], offset: number, limit: number) => {
+          pageCalls.push({ collection, offset, limit });
+          const values = data[collection] as unknown[];
+          const items = values.slice(offset, offset + limit);
+          return { items, done: items.length < limit };
+        }
+      } as ProfileRepository;
+
+      const stream = await createBackupV1Stream([store], {
+        passphrase: "streamed-backup-passphrase",
+        scope: "active",
+        createdAt: "2026-08-05T10:00:00.000Z"
+      });
+      const chunks: Buffer[] = [];
+      for await (const chunk of stream) chunks.push(Buffer.from(chunk as Buffer));
+      const encrypted = Buffer.concat(chunks);
+      const decrypted = await decryptBackup(encrypted, "streamed-backup-passphrase");
+
+      expect(decrypted.profiles[0].data).toEqual(data);
+      expect(verifyProfileDigest(decrypted.profiles[0])).toBe(true);
+      expect(pageCalls.filter((call) => call.collection === "observations")).toEqual([
+        { collection: "observations", offset: 0, limit: 250 },
+        { collection: "observations", offset: 250, limit: 250 }
+      ]);
+      expect(pageCalls.every((call) => call.limit === 250)).toBe(true);
+    }, 30_000);
+
     it("encrypts and decrypts a backup payload", async () => {
       const data = createTestStoreData();
       const payload: BackupPayload = {

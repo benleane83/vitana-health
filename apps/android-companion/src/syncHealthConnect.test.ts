@@ -334,7 +334,28 @@ describe("Health Connect sync", () => {
     expect(result.syncCursors).toEqual({});
     expect(result.details).toContain("Extended Health Connect history access was requested");
     expect(result.details).toContain("Health Connect returned no records in this window");
-    expect(result.details).toContain("No records returned: Steps. The sync start date was kept for those categories.");
+    expect(result.details).toContain("No records returned: Steps. First-sync backfill was kept because no valid prior cursor exists.");
+  });
+
+  it("advances successful empty reads only for categories with valid existing cursors", async () => {
+    mocks.requestPermission.mockResolvedValue([
+      { accessType: "read", recordType: "Steps" },
+      { accessType: "read", recordType: "Weight" }
+    ]);
+
+    const result = await syncHealthConnect("https://desktop.test", "companion-token", null, "pin", {
+      deviceId: "device-1",
+      syncCursors: { Steps: "2026-01-10T12:00:00.000Z", Weight: "not-a-date" },
+      syncWindowDays: 30,
+      categories: ["Steps", "Weight"]
+    });
+
+    expect(result.syncCursors).toEqual({
+      Steps: "2026-01-11T12:00:00.000Z",
+      Weight: "not-a-date"
+    });
+    expect(result.details).toContain("No records returned: Steps. Existing sync start dates advanced after the successful read.");
+    expect(result.details).toContain("No records returned: Weight. First-sync backfill was kept because no valid prior cursor exists.");
   });
 
   it("uploads Health Connect-resolved daily step totals instead of overlapping raw records", async () => {
@@ -508,7 +529,7 @@ describe("payload chunking", () => {
       { startTime: "2026-01-10T12:00:00.000Z", endTime: "2026-01-10T13:00:00.000Z", activityType: "run", title: "b".repeat(500) }
     ];
 
-    const chunks = chunkPayload(payload, 900);
+    const chunks = chunkPayload(payload, 1_300);
 
     expect(chunks).toHaveLength(2);
     expect(chunks.map((chunk) => chunk.batchId)).toEqual([
@@ -532,6 +553,41 @@ describe("payload chunking", () => {
 
     expect(chunks.flatMap((chunk) => chunk.exerciseSessions)).toHaveLength(5_000);
     expect(chunks.every((chunk) => new TextEncoder().encode(JSON.stringify(chunk)).length <= maxUploadBytes)).toBe(true);
+  });
+
+  it("accounts exactly for escaped Unicode records at the upload boundary", () => {
+    const payload = emptyPayload();
+    const record = {
+      startTime: "2026-01-10T10:00:00.000Z",
+      endTime: "2026-01-10T11:00:00.000Z",
+      activityType: "run",
+      title: "Café 🏃 \"晨\""
+    };
+    payload.exerciseSessions = [record];
+    const exactBytes = new TextEncoder().encode(JSON.stringify({
+      ...emptyPayload(),
+      batchId: "2026-01-11T12:00:00.000Z:1",
+      exerciseSessions: [record]
+    })).length;
+
+    expect(chunkPayload(payload, exactBytes)).toHaveLength(1);
+    expect(() => chunkPayload(payload, exactBytes - 1)).toThrow(
+      `A single Health Connect exerciseSessions record is ${exactBytes} UTF-8 bytes and exceeds the ${exactBytes - 1}-byte upload limit.`
+    );
+  });
+
+  it("rejects one oversized record locally instead of emitting an oversized chunk", () => {
+    const payload = emptyPayload();
+    payload.exerciseSessions = [{
+      startTime: "2026-01-10T10:00:00.000Z",
+      endTime: "2026-01-10T11:00:00.000Z",
+      activityType: "run",
+      title: "large".repeat(200)
+    }];
+
+    expect(() => chunkPayload(payload, 600)).toThrow(
+      /single Health Connect exerciseSessions record.*exceeds the 600-byte upload limit/
+    );
   });
 });
 

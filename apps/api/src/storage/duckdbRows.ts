@@ -129,6 +129,9 @@ export interface MeasurementInsertResult<T> {
   rejections: string[];
 }
 
+// `firstOrdinal + index` is safe only because callers reserve the range behind `enqueueMutation`.
+// Repository-direct/multi-process writes are unsupported; SQLite needs an atomic allocator.
+
 function insertedSubset<T extends { id: string }>(accepted: T[], insertedIds: string[]): T[] {
   if (insertedIds.length === accepted.length) {
     return accepted;
