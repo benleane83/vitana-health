@@ -33,6 +33,8 @@ import {
   type PersonalReferenceRangeInput,
   type Profile,
   type ReplicaEntityType,
+  type SleepSessionListQueryContract,
+  type SleepSessionPage,
   type UpdateCareItemInput,
   type UpdateHealthEventInput,
   type UpdateObservationInput,
@@ -132,6 +134,7 @@ import {
   measurementChartSeries as readMeasurementChartSeries,
   measurementDetails as readMeasurementDetails,
   referenceRangeState as readReferenceRangeState,
+  sleepSessions as readSleepSessions,
   storageCounts as readStorageCounts,
   summary as readSummary,
   weeklyMetrics as readWeeklyMetrics,
@@ -668,6 +671,11 @@ export class DuckDbRepository implements ProfileRepository {
   async calendarMonth(query: CalendarMonthQuery) {
     this.assertOpen();
     return readCalendarMonth(this.reader, query);
+  }
+
+  async sleepSessions(page: SleepSessionListQueryContract): Promise<SleepSessionPage> {
+    this.assertOpen();
+    return readSleepSessions(this.reader, page);
   }
 
   async measurementDetail(measurementCode: string, page: MeasurementDetailPage = { offset: 0, limit: 100 }) {

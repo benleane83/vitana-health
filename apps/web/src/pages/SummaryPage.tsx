@@ -14,9 +14,11 @@ import type {
   HealthDataDetailEntry,
   HealthDataSummary,
   MeasurementType,
-  PersonalReferenceRangeInput
+  PersonalReferenceRangeInput,
+  SleepSessionPage
 } from "@vitana/shared";
 import { DetailTrendChart } from "../components/Charts.js";
+import { HypnogramPanel } from "../components/HypnogramPanel.js";
 import { Pin } from "lucide-react";
 import { formatTimestamp, formatShortTimestamp, formatDetailValue } from "../utils.js";
 import type { SummarySort } from "../types.js";
@@ -289,6 +291,9 @@ export function ObservationTypeDetailPage({
   chartMode,
   chartBusy,
   chartError,
+  sleepSessions,
+  sleepSessionsBusy,
+  sleepSessionsError,
   loading,
   error,
   actionBusy,
@@ -313,6 +318,9 @@ export function ObservationTypeDetailPage({
   chartMode: HealthDataChartMode;
   chartBusy: boolean;
   chartError?: string;
+  sleepSessions?: SleepSessionPage;
+  sleepSessionsBusy: boolean;
+  sleepSessionsError?: string;
   loading: boolean;
   error?: string;
   actionBusy: boolean;
@@ -344,6 +352,7 @@ export function ObservationTypeDetailPage({
   const [rangeHigh, setRangeHigh] = useState("");
   const [rangeUnit, setRangeUnit] = useState("");
   const [rangeError, setRangeError] = useState<string>();
+  const [selectedSleepSessionId, setSelectedSleepSessionId] = useState<string>();
   const deleteAllCount = detail?.deletion.observationEntries ?? 0;
   const primaryTile = detail ? primaryCountTile(detail.counts) : { label: "Entries", value: 0 };
   const latestEntry = detail?.entries.reduce<HealthDataDetailEntry | undefined>((latest, entry) =>
@@ -357,6 +366,9 @@ export function ObservationTypeDetailPage({
     detail?.referenceRange.effective?.unit,
     latestEntry?.unit
   ].filter((unit): unit is string => Boolean(unit)))];
+  const activeSleepSessionId = sleepSessions?.sessions.some((session) => session.id === selectedSleepSessionId)
+    ? selectedSleepSessionId
+    : sleepSessions?.sessions[0]?.id;
 
   useEffect(() => {
     setManualObservedAt((current) => {
@@ -444,6 +456,14 @@ export function ObservationTypeDetailPage({
     });
     setManualValue("");
     setManualNote("");
+  }
+
+  function selectSleepSession(sessionId: string) {
+    setSelectedSleepSessionId(sessionId);
+    document.getElementById("hypnogram-panel")?.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      block: "start"
+    });
   }
 
   return (
@@ -595,6 +615,15 @@ export function ObservationTypeDetailPage({
                 </div>
               ) : null}
 
+              {detail.measurement.code === "sleep_duration" ? (
+                <HypnogramPanel
+                  page={sleepSessions}
+                  busy={sleepSessionsBusy}
+                  error={sleepSessionsError}
+                  selectedSessionId={activeSleepSessionId}
+                />
+              ) : null}
+
               <div className="summary-detail-table">
                 <div className="summary-detail-section-heading">
                   <div>
@@ -626,8 +655,25 @@ export function ObservationTypeDetailPage({
                       </tr>
                     </thead>
                     <tbody>
-                      {detail.entries.map((entry) => (
-                        <tr key={`${entry.kind}-${entry.id}`}>
+                      {detail.entries.map((entry) => {
+                        const selectableSleepSession = detail.measurement.code === "sleep_duration"
+                          && entry.kind === "sample"
+                          && sleepSessions?.sessions.some((session) => session.id === entry.id);
+                        const selectedSleepSession = selectableSleepSession && entry.id === activeSleepSessionId;
+                        return (
+                        <tr
+                          key={`${entry.kind}-${entry.id}`}
+                          className={selectedSleepSession ? "is-selected-sleep-session" : undefined}
+                          tabIndex={selectableSleepSession ? 0 : undefined}
+                          aria-label={selectableSleepSession ? `Show sleep stages for ${formatEntryTimestamp(entry)}` : undefined}
+                          onClick={selectableSleepSession ? () => selectSleepSession(entry.id) : undefined}
+                          onKeyDown={selectableSleepSession ? (event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              selectSleepSession(entry.id);
+                            }
+                          } : undefined}
+                        >
                           <td data-label="Timestamp">{formatEntryTimestamp(entry)}</td>
                           {showKind ? <td data-label="Kind">{detailKindLabel(entry.kind)}</td> : null}
                           <td data-label="Value" className="summary-entry-value">
@@ -669,7 +715,8 @@ export function ObservationTypeDetailPage({
                             )}
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

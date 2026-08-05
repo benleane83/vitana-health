@@ -196,6 +196,7 @@ export type DeleteHealthEventMutationResponse = DeleteHealthEventResponse;
 export const api = {
   health: sharedApi.health,
   bootstrap: sharedApi.bootstrap,
+  sleepSessions: sharedApi.sleepSessions,
   profilePhoto: {
     get: () => request(profilePhotoResponseSchema, "/api/profile/photo"),
     replace: (payload: { contentType: "image/jpeg"; contentBase64: string }) =>
