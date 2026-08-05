@@ -31,6 +31,7 @@ export const companionRouteCapabilities: readonly CompanionRouteCapability[] = [
   { method: "GET", path: "/body-trend", capability: "assigned-profile:read", router: "makeDataRoutes" },
   { method: "GET", path: /^\/body-trend\/[^/]+$/, capability: "assigned-profile:read", router: "makeDataRoutes" },
   { method: "GET", path: "/calendar", capability: "assigned-profile:read", router: "makeDataRoutes" },
+  { method: "GET", path: "/sleep-sessions", capability: "assigned-profile:read", router: "makeDataRoutes" },
   { method: "GET", path: /^\/summary\/[^/]+$/, capability: "assigned-profile:read", router: "makeDataRoutes" },
   { method: "PATCH", path: /^\/observations\/[^/]+$/, capability: "observations:write", router: "makeDataRoutes" },
   { method: "DELETE", path: /^\/observations\/[^/]+$/, capability: "observations:write", router: "makeDataRoutes" },
