@@ -19,6 +19,7 @@ import { ObservationTypeDetailPage, SummaryPage } from "../../pages/SummaryPage.
 import type { TrackView } from "../../types.js";
 import { BodyTrendRoute } from "./BodyTrendRoute.js";
 import { CalendarRoute } from "./CalendarRoute.js";
+import { JournalRoute } from "./JournalRoute.js";
 
 type RemoteState<T> = {
   data?: T;
@@ -78,7 +79,7 @@ export function TrackRoute({
   function handleTabKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, currentView: TrackView) {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
-    const views: TrackView[] = ["measurements", "body-trend", "calendar"];
+    const views: TrackView[] = ["measurements", "journal", "calendar", "body-trend"];
     const currentIndex = views.indexOf(currentView);
     const resolved = event.key === "Home" ? views[0]! : event.key === "End" ? views.at(-1)! : views[
       (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + views.length) % views.length
@@ -325,7 +326,7 @@ export function TrackRoute({
   return (
     <>
       <div className="care-switch track-switch" role="tablist" aria-label="Track views">
-        {(["measurements", "body-trend", "calendar"] as const).map((value) => (
+        {(["measurements", "journal", "calendar", "body-trend"] as const).map((value) => (
           <button
             key={value}
             id={`track-tab-${value}`}
@@ -338,7 +339,7 @@ export function TrackRoute({
             onClick={() => onViewChange(value)}
             onKeyDown={(event) => handleTabKeyDown(event, value)}
           >
-            {value === "measurements" ? "Measurements" : value === "body-trend" ? "Body Trend" : "Calendar"}
+            {value === "measurements" ? "Measurements" : value === "body-trend" ? "Body Trend" : value === "calendar" ? "Calendar" : "Journal"}
           </button>
         ))}
       </div>
@@ -357,6 +358,8 @@ export function TrackRoute({
           latestMetrics={latestMetrics}
           recordedCodes={summary.data?.categories.flatMap((category) => category.rows.map((row) => row.code)) ?? []}
         />
+      ) : view === "journal" ? (
+        <JournalRoute activeProfileId={activeProfileId} />
       ) : detailCode ? (
         <ObservationTypeDetailPage
           key={`${activeProfileId ?? ""}:${detailCode}`}

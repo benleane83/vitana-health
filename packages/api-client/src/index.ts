@@ -28,6 +28,8 @@ import {
   healthEventMutationResponseSchema,
   healthResponseSchema,
   importMutationResponseSchema,
+  journalPageResponseSchema,
+  journalQuerySchema,
   linkedHealthEventConflictSchema,
   mobileMigrationBatchAcknowledgementSchema,
   mobileMigrationBatchSchema,
@@ -62,6 +64,7 @@ import type {
   CreateHealthEventInput,
   HealthEventListQuery,
   HealthConnectImportPayload,
+  JournalQueryInput,
   ManualObservationPayload,
   PersonalReferenceRangeInput,
   SleepSessionListQuery,
@@ -187,6 +190,15 @@ export function createApiClient(transport: ApiTransport) {
         `measurementCodes=${encodeURIComponent(validated.measurementCodes.join(","))}`
       ];
       return request(calendarMonthResponseSchema, `/api/calendar?${params.join("&")}`, { signal });
+    },
+    journal: (query: JournalQueryInput, signal?: AbortSignal) => {
+      const validated = journalQuerySchema.parse(query);
+      const params = new URLSearchParams({
+        timezone: validated.timezone,
+        dayLimit: String(validated.dayLimit)
+      });
+      if (validated.beforeDate) params.set("beforeDate", validated.beforeDate);
+      return request(journalPageResponseSchema, `/api/journal?${params.toString()}`, { signal });
     },
     sleepSessions: (page?: SleepSessionListQuery, signal?: AbortSignal) => {
       const validated = sleepSessionListQuerySchema.parse(page ?? {});

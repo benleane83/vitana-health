@@ -32,6 +32,7 @@ import type {
   HealthEventMutationResponse,
   HealthEventReference,
   Insight,
+  JournalPage,
   MeasurementPinState,
   Profile,
   ProfilePhotoResponse,
@@ -458,6 +459,69 @@ export const careItemListQuerySchema = z.object({
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["dueTo"], message: "Due end must be on or after due start." });
   }
 });
+
+const journalDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+export const journalQuerySchema = z.object({
+  timezone: z.string().trim().min(1).max(80).refine(isIanaTimezone, "Timezone must be a valid IANA timezone."),
+  dayLimit: z.coerce.number().int().min(1).max(31).default(14),
+  beforeDate: journalDateSchema.optional()
+}).strict();
+export type JournalQueryContract = z.infer<typeof journalQuerySchema>;
+/** Caller-facing form: paging defaults are applied by the server. */
+export type JournalQueryInput = Partial<JournalQueryContract> & Pick<JournalQueryContract, "timezone">;
+
+const journalSourceLabelSchema = z.string().min(1).max(160).optional();
+const journalTimelineItemSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("activity"),
+    id: z.string().min(1).max(160),
+    occurredAt: isoTimestampSchema,
+    title: z.string().min(1).max(160),
+    activityType: z.string().min(1).max(160),
+    durationMinutes: z.number().finite().nonnegative().optional(),
+    distanceMeters: z.number().finite().nonnegative().optional(),
+    energyKcal: z.number().finite().nonnegative().optional(),
+    sourceLabel: journalSourceLabelSchema
+  }).strict(),
+  z.object({
+    kind: z.literal("sleep"),
+    id: z.string().min(1).max(160),
+    occurredAt: isoTimestampSchema,
+    startAt: isoTimestampSchema,
+    endAt: isoTimestampSchema,
+    durationMinutes: z.number().finite().positive(),
+    stageDataStatus: z.enum(["available", "partial", "unavailable"]),
+    sourceLabel: journalSourceLabelSchema
+  }).strict(),
+  z.object({
+    kind: z.literal("health-event"),
+    id: z.string().min(1).max(160),
+    occurredAt: isoTimestampSchema,
+    eventKind: z.enum(healthEventKindCodes),
+    title: z.string().min(1).max(160),
+    detail: z.string().min(1).max(4000).optional(),
+    sourceLabel: journalSourceLabelSchema
+  }).strict()
+]);
+
+export const journalPageResponseSchema: z.ZodType<JournalPage> = z.object({
+  timezone: z.string().min(1).max(80),
+  days: z.array(z.object({
+    date: journalDateSchema,
+    summary: z.object({
+      steps: z.object({
+        value: z.number().finite(),
+        unit: z.string().min(1).max(40),
+        sources: z.array(z.string().min(1).max(160))
+      }).strict().optional(),
+      sleepDurationMinutes: z.number().finite().positive().optional()
+    }).strict(),
+    items: z.array(journalTimelineItemSchema),
+    omittedItemCount: z.number().int().nonnegative()
+  }).strict()),
+  nextBeforeDate: journalDateSchema.optional()
+}).strict();
 export type CareItemListQueryContract = z.infer<typeof careItemListQuerySchema>;
 /** Caller-facing form: every filter is optional, and the server applies the paging defaults. */
 export type CareItemListQuery = Partial<CareItemListQueryContract>;

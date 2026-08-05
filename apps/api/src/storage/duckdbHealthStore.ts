@@ -16,6 +16,7 @@ import type {
   HealthDataChartSeriesOptions,
   HealthEventListQuery,
   HealthStoreData,
+  JournalQuery,
   MobileMigrationBatch,
   MobileMigrationManifest,
   PersonalReferenceRangeInput,
@@ -142,6 +143,10 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
 
   calendarMonth(query: CalendarMonthQuery) {
     return this.repository.calendarMonth(query);
+  }
+
+  journal(query: JournalQuery) {
+    return this.repository.journal(query);
   }
 
   sleepSessions(page: SleepSessionListQueryContract) {

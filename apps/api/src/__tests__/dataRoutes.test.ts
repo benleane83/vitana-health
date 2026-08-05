@@ -5,6 +5,28 @@ import { makeDataRoutes } from "../routes/dataRoutes.js";
 import type { ProfileStoreManager } from "../storage/profileStoreManager.js";
 
 describe("calendar data route", () => {
+  it("validates a bounded Journal query and scopes it to the companion profile", async () => {
+    const journal = vi.fn(async () => ({ timezone: "UTC", days: [], nextBeforeDate: "2026-07-31" }));
+    const assigned = { journal };
+    const storeManager = {
+      getActiveStore: vi.fn(),
+      getStore: vi.fn(() => assigned)
+    } as unknown as ProfileStoreManager;
+    const app = express();
+    app.use((request, response, next) => {
+      response.locals.principal = { kind: "companion", allowedProfileIds: ["assigned-profile"] };
+      next();
+    });
+    app.use("/api", makeDataRoutes(storeManager));
+
+    const response = await request(app).get("/api/journal?timezone=UTC&dayLimit=2&beforeDate=2026-08-01");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ timezone: "UTC", days: [], nextBeforeDate: "2026-07-31" });
+    expect(storeManager.getStore).toHaveBeenCalledWith("assigned-profile");
+    expect(journal).toHaveBeenCalledWith({ timezone: "UTC", dayLimit: 2, beforeDate: "2026-08-01" });
+  });
+
   it("returns the requested page of sleep sessions", async () => {
     const sleepSessions = vi.fn(async () => ({
       generatedAt: "2026-08-03T06:05:00.000Z",

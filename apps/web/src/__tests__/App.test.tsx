@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { defaultMeasurementTypes, safetyNotice } from "@vitana/shared";
 import { App } from "../App.js";
 
@@ -101,6 +101,13 @@ beforeEach(() => {
         events: []
       }));
     }
+    if (url.includes("/api/journal")) {
+      const parsed = new URL(url, window.location.origin);
+      return Promise.resolve(mockResponse({
+        timezone: parsed.searchParams.get("timezone"),
+        days: []
+      }));
+    }
     if (url.includes("/api/body-trend/2026-08-01")) {
       return Promise.resolve(mockResponse({
         date: "2026-08-01",
@@ -166,6 +173,23 @@ afterEach(() => {
 });
 
 describe("App smoke", () => {
+  it("orders Track tabs with Journal after Measurements and follows that order by keyboard", async () => {
+    globalThis.history.replaceState({}, "", "/track");
+    render(<App />);
+
+    const trackTabs = within(screen.getByRole("tablist", { name: "Track views" }));
+    expect(trackTabs.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "Measurements",
+      "Journal",
+      "Calendar",
+      "Body Trend"
+    ]);
+
+    fireEvent.keyDown(trackTabs.getByRole("tab", { name: "Measurements" }), { key: "ArrowRight" });
+
+    expect(trackTabs.getByRole("tab", { name: "Journal" })).toHaveAttribute("aria-selected", "true");
+  });
+
   it("routes a Body Trend date deep link without requesting a matching summary detail", async () => {
     globalThis.history.replaceState({}, "", "/track/body-trend/2026-08-01");
     render(<App />);
@@ -197,6 +221,26 @@ describe("App smoke", () => {
       globalThis.dispatchEvent(new PopStateEvent("popstate"));
     });
     await waitFor(() => expect(screen.getByRole("tab", { name: /^calendar$/i })).toHaveAttribute("aria-selected", "true"));
+  });
+
+  it("routes Track Journal as a subview and restores it on popstate", async () => {
+    globalThis.history.replaceState({}, "", "/track/journal");
+    render(<App />);
+
+    expect(screen.getByRole("tab", { name: /^journal$/i })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByRole("heading", { name: "Journal", level: 1 })).toBeInTheDocument();
+
+    await act(async () => {
+      globalThis.history.pushState({}, "", "/track");
+      globalThis.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    await waitFor(() => expect(screen.getByRole("tab", { name: /^measurements$/i })).toHaveAttribute("aria-selected", "true"));
+
+    await act(async () => {
+      globalThis.history.pushState({}, "", "/track/journal");
+      globalThis.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    await waitFor(() => expect(screen.getByRole("tab", { name: /^journal$/i })).toHaveAttribute("aria-selected", "true"));
   });
 
   it("clears notices when navigating to a different page", async () => {

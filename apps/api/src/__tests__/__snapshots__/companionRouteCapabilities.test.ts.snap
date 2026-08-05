@@ -27,6 +27,7 @@ exports[`companion route capabilities > records a deliberate decision for every 
   "GET /export": null,
   "GET /export/pdf": null,
   "GET /health": null,
+  "GET /journal": "assigned-profile:read",
   "GET /llm/config": null,
   "GET /pair/devices": null,
   "GET /pair/pending": null,

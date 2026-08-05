@@ -14,6 +14,7 @@ import {
   type HealthEvent,
   type HealthEventReference,
   type HealthEventListQuery,
+  healthEventKindLabels,
   type AnalyticsSummary,
   type AppBootstrap,
   type BiologicalAgeSource,
@@ -24,6 +25,11 @@ import {
   type BodyTrendQuery,
   type HealthDataDetailEntry,
   type HealthDataSummaryTypeRow,
+  journalItemsPerDayLimit,
+  type JournalDay,
+  type JournalPage,
+  type JournalQuery,
+  type JournalTimelineItem,
   type MeasurementType,
   type ObservationGroup,
   type PaginatedResult,
@@ -715,6 +721,208 @@ export async function calendarMonth(
       count: summary.count,
       kinds: [...summary.kinds].sort()
     }))
+  };
+}
+
+/** Returns complete local calendar days, with a fixed timeline ceiling per day. */
+export async function journal(connection: duckdb.Connection, query: JournalQuery): Promise<JournalPage> {
+  const dateRows = await allWithParams(connection, `
+    WITH chart_entries AS (${chartEntriesSql("= ?")}),
+    dated_steps AS (
+      SELECT COALESCE(calendar_date, CAST(timezone(?, measured_at) AS DATE)) AS local_date
+      FROM chart_entries
+      WHERE measurement_code = 'steps'
+    ),
+    journal_dates AS (
+      SELECT local_date FROM dated_steps
+      UNION
+      SELECT CAST(timezone(?, COALESCE(end_at, start_at)) AS DATE) FROM activities
+      UNION
+      SELECT CAST(timezone(?, end_at) AS DATE) FROM time_series_samples WHERE measurement_code = 'sleep_duration'
+      UNION
+      SELECT CAST(timezone(?, occurred_at) AS DATE) FROM health_events WHERE status = 'completed'
+    )
+    SELECT local_date
+    FROM journal_dates
+    WHERE local_date < CAST(? AS DATE)
+    GROUP BY local_date
+    ORDER BY local_date DESC
+    LIMIT ?;
+  `, "steps", "steps", "steps", "steps", query.timezone, query.timezone, query.timezone, query.timezone,
+  query.beforeDate ?? "9999-12-31", query.dayLimit + 1);
+
+  const candidateDates = dateRows.map((row) => dateOnly(row.local_date));
+  const dates = candidateDates.slice(0, query.dayLimit);
+  if (dates.length === 0) return { timezone: query.timezone, days: [] };
+
+  const datePlaceholders = dates.map(() => "?").join(", ");
+  const [stepRows, sleepSummaryRows, itemRows, typeRows] = await Promise.all([
+    allWithParams(connection, `
+      WITH chart_entries AS (${chartEntriesSql("= ?")}),
+      dated_steps AS (
+        SELECT COALESCE(calendar_date, CAST(timezone(?, measured_at) AS DATE)) AS local_date,
+          measured_at, id, value, unit, weight, source_label
+        FROM chart_entries
+        WHERE measurement_code = 'steps'
+      )
+      SELECT * FROM dated_steps WHERE local_date IN (${datePlaceholders})
+      ORDER BY local_date, measured_at, id;
+    `, "steps", "steps", "steps", "steps", query.timezone, ...dates),
+    allWithParams(connection, `
+      SELECT CAST(timezone(?, end_at) AS DATE) AS local_date, SUM(value) AS duration_minutes
+      FROM time_series_samples
+      WHERE measurement_code = 'sleep_duration'
+        AND CAST(timezone(?, end_at) AS DATE) IN (${datePlaceholders})
+      GROUP BY local_date;
+    `, query.timezone, query.timezone, ...dates),
+    allWithParams(connection, `
+      WITH journal_items AS (
+        SELECT CAST(timezone(?, COALESCE(a.end_at, a.start_at)) AS DATE) AS local_date,
+          'activity' AS item_kind, a.id, COALESCE(a.end_at, a.start_at) AS occurred_at,
+          a.activity_type, a.start_at, a.end_at, a.duration_minutes, a.energy_kcal, a.distance_meters,
+          NULL::DOUBLE AS value, a.source_json,
+          COALESCE(s.label, s.source_kind, a.source_id) AS source_label,
+          NULL::VARCHAR AS event_kind, NULL::VARCHAR AS detail
+        FROM activities a
+        LEFT JOIN sources s ON s.id = a.source_id
+        UNION ALL
+        SELECT CAST(timezone(?, t.end_at) AS DATE) AS local_date,
+          'sleep' AS item_kind, t.id, t.end_at AS occurred_at,
+          NULL::VARCHAR AS activity_type, t.start_at, t.end_at, NULL::DOUBLE AS duration_minutes,
+          NULL::DOUBLE AS energy_kcal, NULL::DOUBLE AS distance_meters, t.value, t.source_json,
+          COALESCE(s.label, s.source_kind, t.source_id) AS source_label,
+          NULL::VARCHAR AS event_kind, NULL::VARCHAR AS detail
+        FROM time_series_samples t
+        LEFT JOIN sources s ON s.id = t.source_id
+        WHERE t.measurement_code = 'sleep_duration'
+        UNION ALL
+        SELECT CAST(timezone(?, h.occurred_at) AS DATE) AS local_date,
+          'health-event' AS item_kind, h.id, h.occurred_at AS occurred_at,
+          NULL::VARCHAR AS activity_type, NULL::TIMESTAMPTZ AS start_at, NULL::TIMESTAMPTZ AS end_at,
+          NULL::DOUBLE AS duration_minutes, NULL::DOUBLE AS energy_kcal, NULL::DOUBLE AS distance_meters,
+          NULL::DOUBLE AS value, NULL::JSON AS source_json, h.source AS source_label,
+          h.kind AS event_kind, COALESCE(NULLIF(h.provider, ''), NULLIF(h.notes, '')) AS detail
+        FROM health_events h
+        WHERE h.status = 'completed'
+      ),
+      ranked_items AS (
+        SELECT *, COUNT(*) OVER (PARTITION BY local_date) AS total_items,
+          ROW_NUMBER() OVER (PARTITION BY local_date ORDER BY occurred_at DESC, item_kind, id DESC) AS item_rank
+        FROM journal_items
+        WHERE local_date IN (${datePlaceholders})
+      )
+      SELECT * FROM ranked_items WHERE item_rank <= ?
+      ORDER BY local_date DESC, occurred_at DESC, item_kind, id DESC;
+    `, query.timezone, query.timezone, query.timezone, ...dates, journalItemsPerDayLimit),
+    allWithParams(connection, "SELECT aggregation FROM measurement_types WHERE code = 'steps';")
+  ]);
+
+  const summaries = new Map<string, JournalDay["summary"]>(dates.map((date) => [date, {}]));
+  const stepsAggregation = String(typeRows[0]?.aggregation ?? "sum") as CalendarMeasurementPoint["aggregation"];
+  for (const [date, steps] of journalStepsByDate(stepRows, stepsAggregation)) {
+    summaries.get(date)!.steps = steps;
+  }
+  for (const row of sleepSummaryRows) {
+    summaries.get(dateOnly(row.local_date))!.sleepDurationMinutes = Number(row.duration_minutes);
+  }
+
+  const days = new Map<string, JournalDay>(dates.map((date) => [date, {
+    date,
+    summary: summaries.get(date)!,
+    items: [],
+    omittedItemCount: 0
+  }]));
+  for (const row of itemRows) {
+    const day = days.get(dateOnly(row.local_date));
+    if (!day) continue;
+    day.items.push(journalTimelineItemFromRow(row));
+    day.omittedItemCount = Math.max(day.omittedItemCount, Number(row.total_items) - journalItemsPerDayLimit);
+  }
+
+  return {
+    timezone: query.timezone,
+    days: dates.map((date) => days.get(date)!),
+    ...(candidateDates.length > query.dayLimit ? { nextBeforeDate: dates.at(-1)! } : {})
+  };
+}
+
+function journalStepsByDate(
+  rows: Record<string, unknown>[],
+  aggregation: CalendarMeasurementPoint["aggregation"]
+): Map<string, NonNullable<JournalDay["summary"]["steps"]>> {
+  const groups = new Map<string, { rows: Record<string, unknown>[]; sources: Set<string> }>();
+  for (const row of rows) {
+    const date = dateOnly(row.local_date);
+    const group = groups.get(date) ?? { rows: [], sources: new Set<string>() };
+    group.rows.push(row);
+    if (row.source_label) group.sources.add(String(row.source_label));
+    groups.set(date, group);
+  }
+  return new Map([...groups.entries()].map(([date, group]) => {
+    const values = group.rows.map((row) => Number(row.value));
+    const count = group.rows.reduce((sum, row) => sum + Number(row.weight), 0);
+    const value = aggregation === "average"
+      ? group.rows.reduce((sum, row) => sum + Number(row.value) * Number(row.weight), 0) / count
+      : aggregation === "min"
+        ? Math.min(...values)
+        : aggregation === "max"
+          ? Math.max(...values)
+          : aggregation === "latest" || aggregation === "none"
+            ? values.at(-1)!
+            : values.reduce((sum, current) => sum + current, 0);
+    return [date, {
+      value,
+      unit: String(group.rows.at(-1)!.unit),
+      sources: [...group.sources].sort()
+    }];
+  }));
+}
+
+function journalTimelineItemFromRow(row: Record<string, unknown>): JournalTimelineItem {
+  const kind = String(row.item_kind);
+  const sourceLabel = optionalString(row.source_label);
+  if (kind === "activity") {
+    const sourceJson = optionalJson<Record<string, unknown>>(row.source_json);
+    const activityType = String(row.activity_type);
+    const durationMinutes = optionalNumber(row.duration_minutes);
+    const distanceMeters = optionalNumber(row.distance_meters);
+    const energyKcal = optionalNumber(row.energy_kcal);
+    return {
+      kind: "activity" as const,
+      id: String(row.id),
+      occurredAt: isoTimestamp(row.occurred_at),
+      title: optionalString(sourceJson?.title) ?? humanizeCode(activityType),
+      activityType,
+      ...(durationMinutes === undefined ? {} : { durationMinutes }),
+      ...(distanceMeters === undefined ? {} : { distanceMeters }),
+      ...(energyKcal === undefined ? {} : { energyKcal }),
+      ...(sourceLabel === undefined ? {} : { sourceLabel })
+    };
+  }
+  if (kind === "sleep") {
+    const session = sleepSessionFromRow(row);
+    return {
+      kind: "sleep" as const,
+      id: session.id,
+      occurredAt: session.endAt,
+      startAt: session.startAt,
+      endAt: session.endAt,
+      durationMinutes: session.durationMinutes,
+      stageDataStatus: session.stageDataStatus,
+      ...(session.sourceLabel === undefined ? {} : { sourceLabel: session.sourceLabel })
+    };
+  }
+  const eventKind = String(row.event_kind);
+  if (!isHealthEventKind(eventKind)) throw new Error(`Journal encountered unsupported health event kind ${eventKind}.`);
+  const detail = optionalString(row.detail);
+  return {
+    kind: "health-event" as const,
+    id: String(row.id),
+    occurredAt: isoTimestamp(row.occurred_at),
+    eventKind,
+    title: healthEventKindLabels[eventKind],
+    ...(detail === undefined ? {} : { detail }),
+    ...(sourceLabel === undefined ? {} : { sourceLabel })
   };
 }
 

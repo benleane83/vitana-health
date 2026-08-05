@@ -25,6 +25,7 @@ import {
   type HealthEventListQuery,
   type HealthEventMutationResponse,
   type HealthStoreData,
+  type JournalQuery,
   type MobileMigrationBatch,
   type MobileMigrationManifest,
   type MeasurementPinState,
@@ -132,6 +133,7 @@ import {
   listCareItems as readCareItems,
   listActivities as readActivities,
   listHealthEvents as readHealthEvents,
+  journal as readJournal,
   measurementDetail as readMeasurementDetail,
   measurementChartSeries as readMeasurementChartSeries,
   measurementDetails as readMeasurementDetails,
@@ -703,6 +705,11 @@ export class DuckDbRepository implements ProfileRepository {
   async calendarMonth(query: CalendarMonthQuery) {
     this.assertOpen();
     return readCalendarMonth(this.reader, query);
+  }
+
+  async journal(query: JournalQuery) {
+    this.assertOpen();
+    return readJournal(this.reader, query);
   }
 
   async sleepSessions(page: SleepSessionListQueryContract): Promise<SleepSessionPage> {
