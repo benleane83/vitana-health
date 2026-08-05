@@ -46,6 +46,7 @@ exports[`companion route capabilities > records a deliberate decision for every 
   "GET /settings/ai/openrouter/connect": null,
   "GET /settings/desktop": null,
   "GET /settings/updates": null,
+  "GET /sleep-sessions": "assigned-profile:read",
   "GET /summary": "assigned-profile:read",
   "GET /summary/sample": "assigned-profile:read",
   "GET /summary/sample/chart": null,

@@ -7,6 +7,7 @@
  * - POST /api/backups/restore       — Restore profiles from backup (multipart upload)
  */
 import express from "express";
+import { rateLimit } from "express-rate-limit";
 import { randomUUID } from "node:crypto";
 import { pipeline } from "node:stream/promises";
 import {
@@ -33,7 +34,7 @@ import {
 } from "../backupCrypto.js";
 import { RestoreJournal } from "../storage/restoreJournal.js";
 import { BackupMultipartError, parseBackupMultipart } from "../backupMultipart.js";
-import { createRateLimiter } from "../rateLimit.js";
+import { apiRateLimitOptions } from "../rateLimit.js";
 
 /**
  * A format failure is only reachable once the passphrase has already authenticated the file, so
@@ -68,12 +69,11 @@ export function makeBackupRoutes(
   pairingStore: PairingStore
 ): express.Router {
   const router = express.Router();
-  const rateLimit = createRateLimiter();
 
   // --- POST /create — Generate encrypted backup ---
   router.post(
     "/create",
-    rateLimit("backups-create", 5, 60_000),
+    rateLimit(apiRateLimitOptions(5, 60_000)),
     express.json({ limit: "1mb" }),
     async (req, res) => {
     const principal = res.locals.principal as AuthorizationPrincipal | undefined;
@@ -142,7 +142,7 @@ export function makeBackupRoutes(
   );
 
   // --- POST /inspect — Decrypt and inspect backup without restoring ---
-  router.post("/inspect", rateLimit("backups-inspect", 10, 60_000), async (req, res) => {
+  router.post("/inspect", rateLimit(apiRateLimitOptions(10, 60_000)), async (req, res) => {
     const principal = res.locals.principal as AuthorizationPrincipal | undefined;
     if (!principal || principal.kind !== "owner") {
       res.status(403).json({ error: "Owner access required.", code: "OWNER_REQUIRED" });
@@ -186,7 +186,7 @@ export function makeBackupRoutes(
   });
 
   // --- POST /restore — Restore profiles from backup ---
-  router.post("/restore", rateLimit("backups-restore", 5, 60_000), async (req, res) => {
+  router.post("/restore", rateLimit(apiRateLimitOptions(5, 60_000)), async (req, res) => {
     const principal = res.locals.principal as AuthorizationPrincipal | undefined;
     if (!principal || principal.kind !== "owner") {
       res.status(403).json({ error: "Owner access required.", code: "OWNER_REQUIRED" });

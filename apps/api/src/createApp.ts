@@ -12,6 +12,7 @@
  * Route domains are split into dedicated modules under ./routes/.
  */
 import express from "express";
+import { rateLimit } from "express-rate-limit";
 import { timingSafeEqual } from "node:crypto";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -28,7 +29,7 @@ import { makeQueryRoutes, makeLlmRoutes } from "./routes/queryRoutes.js";
 import { makeDataRoutes } from "./routes/dataRoutes.js";
 import { makeSettingsRoutes } from "./routes/settingsRoutes.js";
 import { makeBackupRoutes, isInMaintenanceMode } from "./routes/backupRoutes.js";
-import { createRateLimiter } from "./rateLimit.js";
+import { apiRateLimitOptions } from "./rateLimit.js";
 import { makeCompanionMigrationRoutes } from "./routes/companionMigrationRoutes.js";
 import { makeCompanionSyncRoutes } from "./routes/companionSyncRoutes.js";
 import { z } from "zod";
@@ -141,12 +142,10 @@ export function createApp(
   });
 
   // Rate limiting
-  const rateLimit = createRateLimiter();
-
-  app.use("/api/pairing", rateLimit("pairing", 30, 60_000));
-  app.use("/api/llm", rateLimit("llm", 10, 60_000));
-  app.use("/api/settings", rateLimit("settings", 30, 60_000));
-  app.use("/api/query", rateLimit("query", 30, 60_000));
+  app.use("/api/pairing", rateLimit(apiRateLimitOptions(30, 60_000)));
+  app.use("/api/llm", rateLimit(apiRateLimitOptions(10, 60_000)));
+  app.use("/api/settings", rateLimit(apiRateLimitOptions(30, 60_000)));
+  app.use("/api/query", rateLimit(apiRateLimitOptions(30, 60_000)));
 
   // Maintenance mode middleware — returns 503 during restore except /api/health
   app.use((request, response, next) => {
@@ -320,8 +319,8 @@ export function createApp(
 
   // Static web serving
   if (options.webRoot && existsSync(options.webRoot)) {
-    app.use(rateLimit("static", 120, 60_000), express.static(options.webRoot));
-    app.get("*", rateLimit("static", 120, 60_000), (_request, response) =>
+    app.use(rateLimit(apiRateLimitOptions(120, 60_000)), express.static(options.webRoot));
+    app.get("*", rateLimit(apiRateLimitOptions(120, 60_000)), (_request, response) =>
       response.sendFile(path.join(options.webRoot!, "index.html"))
     );
   }
