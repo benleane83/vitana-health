@@ -37,6 +37,7 @@ import type {
   ProfilePhotoResponse,
   ProfileListEntry,
   ReferenceRangeState,
+  SleepSessionPage,
   UpdateObservationResponse
 } from "./types.js";
 import type { BloodTestDraft, BodyCompositionDraft, UploadImportDraft } from "./parsers.js";
@@ -461,6 +462,14 @@ export type CareItemListQueryContract = z.infer<typeof careItemListQuerySchema>;
 /** Caller-facing form: every filter is optional, and the server applies the paging defaults. */
 export type CareItemListQuery = Partial<CareItemListQueryContract>;
 
+export const sleepSessionListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(60).default(30),
+  offset: z.coerce.number().int().min(0).default(0)
+}).strict();
+export type SleepSessionListQueryContract = z.infer<typeof sleepSessionListQuerySchema>;
+/** Caller-facing form: every filter is optional, and the server applies the paging defaults. */
+export type SleepSessionListQuery = Partial<SleepSessionListQueryContract>;
+
 export const createHealthEventInputSchema = z.object({
   kind: z.enum(healthEventKindCodes),
   status: z.enum(["completed", "entered-in-error"]),
@@ -647,6 +656,27 @@ export const healthDataSummaryResponseSchema: z.ZodType<HealthDataSummary> = z.o
     counts: sourceCountsSchema.extend({ total: nonNegativeInt, types: nonNegativeInt }),
     rows: z.array(healthDataSummaryTypeRowSchema)
   }).strict())
+}).strict();
+
+export const sleepSessionPageResponseSchema: z.ZodType<SleepSessionPage> = z.object({
+  generatedAt: isoTimestampSchema,
+  sessions: z.array(z.object({
+    id: z.string().min(1).max(160),
+    startAt: isoTimestampSchema,
+    endAt: isoTimestampSchema,
+    durationMinutes: z.number().finite().nonnegative(),
+    stageDataStatus: z.enum(["available", "partial", "unavailable"]),
+    stages: z.array(z.object({
+      startAt: isoTimestampSchema,
+      endAt: isoTimestampSchema,
+      stage: z.enum(["awake", "rem", "light", "deep", "gap"])
+    }).strict()),
+    sourceLabel: z.string().min(1).max(160).optional(),
+    importedAt: isoTimestampSchema.optional(),
+    title: z.string().max(500).optional(),
+    notes: z.string().max(4000).optional()
+  }).strict()),
+  ...carePaginationSchema.shape
 }).strict();
 
 export const referenceRangeStateResponseSchema: z.ZodType<ReferenceRangeState> = z.object({

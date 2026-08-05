@@ -10,6 +10,7 @@ import type {
   MeasurementType,
   LatestMetric,
   PersonalReferenceRangeInput,
+  SleepSessionPage,
   UpdateObservationInput
 } from "@vitana/shared";
 import { api } from "../../api.js";
@@ -64,6 +65,7 @@ export function TrackRoute({
   const [summary, setSummary] = useState<RemoteState<HealthDataSummary>>({ busy: true });
   const [detail, setDetail] = useState<RemoteState<HealthDataDetail>>({ busy: false });
   const [chartSeries, setChartSeries] = useState<RemoteState<HealthDataChartSeries>>({ busy: false });
+  const [sleepSessions, setSleepSessions] = useState<RemoteState<SleepSessionPage>>({ busy: false });
   const [chartRange, setChartRange] = useState<HealthDataChartRange>("all");
   const [chartMode, setChartMode] = useState<HealthDataChartMode>("auto");
   const [sort, setSort] = useState<"name" | "count" | "recency">("recency");
@@ -136,6 +138,24 @@ export function TrackRoute({
     });
     return () => { controller.abort(); };
   }, [detailCode, activeProfileId, chartRange, chartMode]);
+
+  useEffect(() => {
+    if (detailCode !== "sleep_duration") {
+      setSleepSessions({ busy: false });
+      return;
+    }
+    const controller = new AbortController();
+    setSleepSessions({ busy: true });
+    void api.sleepSessions({ limit: 60 }, controller.signal).then((data) => {
+      if (!controller.signal.aborted) setSleepSessions({ data, busy: false });
+    }).catch((error: unknown) => {
+      if (!controller.signal.aborted) setSleepSessions({
+        busy: false,
+        error: error instanceof Error ? error.message : "Unable to load sleep stages."
+      });
+    });
+    return () => { controller.abort(); };
+  }, [detailCode, activeProfileId]);
 
   async function refreshAfterMutation(nextDetailCode: string) {
     const [nextSummary, nextDetail, nextChartSeries] = await Promise.all([
@@ -346,6 +366,9 @@ export function TrackRoute({
           chartMode={chartMode}
           chartBusy={chartSeries.busy}
           chartError={chartSeries.error}
+          sleepSessions={sleepSessions.data}
+          sleepSessionsBusy={sleepSessions.busy}
+          sleepSessionsError={sleepSessions.error}
           loading={detail.busy}
           error={detail.error}
           actionBusy={actionBusy}

@@ -44,6 +44,8 @@ import {
   profilePhotoResponseSchema,
   profilePhotoUploadSchema,
   referenceRangeStateResponseSchema,
+  sleepSessionListQuerySchema,
+  sleepSessionPageResponseSchema,
   updateObservationResponseSchema,
   uploadImportDraftResponseSchema
 } from "@vitana/shared";
@@ -62,6 +64,7 @@ import type {
   HealthConnectImportPayload,
   ManualObservationPayload,
   PersonalReferenceRangeInput,
+  SleepSessionListQuery,
   UpdateObservationInput,
   MobileMigrationBatch,
   MobileMigrationCompletionRequest,
@@ -184,6 +187,14 @@ export function createApiClient(transport: ApiTransport) {
         `measurementCodes=${encodeURIComponent(validated.measurementCodes.join(","))}`
       ];
       return request(calendarMonthResponseSchema, `/api/calendar?${params.join("&")}`, { signal });
+    },
+    sleepSessions: (page?: SleepSessionListQuery, signal?: AbortSignal) => {
+      const validated = sleepSessionListQuerySchema.parse(page ?? {});
+      return request(
+        sleepSessionPageResponseSchema,
+        `/api/sleep-sessions${paginationQuery(validated)}`,
+        { signal }
+      );
     },
     healthDataDetail: (
       measurementCode: string,

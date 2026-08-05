@@ -23,11 +23,19 @@ const intervalSampleSchema = z.object({
   provenance
 });
 
+export const healthConnectSleepStageSchema = z.object({
+  startTime: isoDateString,
+  endTime: isoDateString,
+  stage: z.number().int().nonnegative()
+}).passthrough();
+
+export type HealthConnectSleepStage = z.infer<typeof healthConnectSleepStageSchema>;
+
 const sleepSessionSchema = z.object({
   startTime: isoDateString,
   endTime: isoDateString,
   durationMinutes: z.number().finite().nonnegative(),
-  stages: z.array(z.unknown()).optional(),
+  stages: z.array(healthConnectSleepStageSchema).optional(),
   title: z.string().max(500).optional(),
   notes: z.string().max(4000).optional(),
   provenance

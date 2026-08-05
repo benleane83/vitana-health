@@ -123,6 +123,28 @@ describe("Health Connect sync", () => {
     expect(() => healthConnectImportRequestSchema.parse({ ...emptyPayload(), ...converted })).not.toThrow();
   });
 
+  it("retains typed sleep stages returned by Health Connect", () => {
+    const descriptor = HEALTH_CONNECT_DESCRIPTORS.find((entry) => entry.category === "SleepSession")!;
+    const converted = descriptor.toPayload([{
+      startTime: "2026-01-10T22:00:00.000Z",
+      endTime: "2026-01-11T06:00:00.000Z",
+      stages: [{
+        startTime: "2026-01-10T22:15:00.000Z",
+        endTime: "2026-01-10T23:00:00.000Z",
+        stage: 4,
+        vendorStageMetadata: "preserve-me"
+      }]
+    } as never]);
+
+    expect(converted.sleepSessions[0]?.stages).toEqual([{
+      startTime: "2026-01-10T22:15:00.000Z",
+      endTime: "2026-01-10T23:00:00.000Z",
+      stage: 4,
+      vendorStageMetadata: "preserve-me"
+    }]);
+    expect(() => healthConnectImportRequestSchema.parse({ ...emptyPayload(), ...converted })).not.toThrow();
+  });
+
   it("reads completed native Heart Rate aggregates instead of raw samples", async () => {
     mocks.aggregateGroupByDuration.mockImplementation(async (request) => request.timeRangeSlicer.duration === "DAYS"
       ? [{

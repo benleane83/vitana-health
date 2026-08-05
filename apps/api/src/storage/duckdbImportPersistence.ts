@@ -1,5 +1,5 @@
 import type duckdb from "duckdb";
-import type { DataSource, Observation, SourceImport } from "@vitana/shared";
+import type { DataSource, Observation, SourceImport, TimeSeriesSample } from "@vitana/shared";
 import { insertAudit, nextOrdinal, normalizeHealthConnectStepSamples } from "./duckdbCommands.js";
 import { storageCounts } from "./duckdbProjections.js";
 import {
@@ -103,7 +103,12 @@ export async function mergeImport(
   }
 
   const stepSamples = parsed.timeSeriesSamples.filter((entry) => entry.measurementCode === "steps");
-  const otherSamples = parsed.timeSeriesSamples.filter((entry) => entry.measurementCode !== "steps");
+  const sleepSamples = parsed.timeSeriesSamples.filter((entry) => entry.measurementCode === "sleep_duration");
+  const otherSamples = parsed.timeSeriesSamples.filter(
+    (entry) => entry.measurementCode !== "steps" && entry.measurementCode !== "sleep_duration"
+  );
+  const stagedSleepSamples = sleepSamples.filter(hasSleepStages);
+  const stageLessSleepSamples = sleepSamples.filter((entry) => !hasSleepStages(entry));
   const sampleFirstOrdinal = await nextOrdinal(connection, "time_series_samples", parsed.timeSeriesSamples.length);
   const steps = await insertTimeSeriesSampleRows(
     connection,
@@ -117,8 +122,20 @@ export async function mergeImport(
     sampleFirstOrdinal + stepSamples.length,
     { ignoreDuplicates: true, returningIds: true }
   );
-  rejections.push(...steps.rejections, ...samples.rejections);
-  for (const entry of [...steps.inserted, ...samples.inserted]) {
+  const stageLessSleep = await insertTimeSeriesSampleRows(
+    connection,
+    stageLessSleepSamples,
+    sampleFirstOrdinal + stepSamples.length + otherSamples.length,
+    { ignoreDuplicates: true, returningIds: true }
+  );
+  const stagedSleep = await insertTimeSeriesSampleRows(
+    connection,
+    stagedSleepSamples,
+    sampleFirstOrdinal + stepSamples.length + otherSamples.length + stageLessSleepSamples.length,
+    { updateDuplicatesById: true, returningIds: true }
+  );
+  rejections.push(...steps.rejections, ...samples.rejections, ...stageLessSleep.rejections, ...stagedSleep.rejections);
+  for (const entry of [...steps.inserted, ...samples.inserted, ...stageLessSleep.inserted, ...stagedSleep.inserted]) {
     if (isReplicatedMeasurementCode(entry.measurementCode)) {
       replicaChanges.push(replicaUpsert("time-series-sample", entry.id, entry));
     }
@@ -175,8 +192,8 @@ export async function mergeImport(
     observationGroups: categoryOutcome(parsed.observationGroups.length, insertedGroupIds.size, 0),
     timeSeriesSamples: categoryOutcome(
       parsed.timeSeriesSamples.length,
-      steps.inserted.length + samples.inserted.length,
-      steps.rejections.length + samples.rejections.length),
+      steps.inserted.length + samples.inserted.length + stageLessSleep.inserted.length + stagedSleep.inserted.length,
+      steps.rejections.length + samples.rejections.length + stageLessSleep.rejections.length + stagedSleep.rejections.length),
     measurementAggregates: categoryOutcome(parsed.measurementAggregates.length, aggregateIds.length, 0),
     activitySessions: categoryOutcome(parsed.activitySessions.length, activities.length, 0)
   };
@@ -189,6 +206,16 @@ export async function mergeImport(
     importAuditDetail(sourceImport.sourceKind, outcome)
   );
   return { counts: await storageCounts(connection), outcome, auditEvent, replicaChanges };
+}
+
+function hasSleepStages(sample: TimeSeriesSample): boolean {
+  const sourceJson = sample.sourceJson;
+  return sample.measurementCode === "sleep_duration"
+    && typeof sourceJson === "object"
+    && sourceJson !== null
+    && !Array.isArray(sourceJson)
+    && Array.isArray((sourceJson as Record<string, unknown>).stages)
+    && (sourceJson as { stages: unknown[] }).stages.length > 0;
 }
 
 function categoryOutcome(attempted: number, accepted: number, rejected: number): ImportCategoryOutcome {

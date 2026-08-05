@@ -129,6 +129,45 @@ describe("parseHealthConnectImport — steps → timeSeriesSamples", () => {
   });
 });
 
+describe("parseHealthConnectImport — sleep sessions", () => {
+  it("retains Health Connect stage intervals in the sleep session sample", () => {
+    const result = parseHealthConnectImport({
+      ...baseRequest,
+      sleepSessions: [{
+        startTime: "2026-05-01T22:00:00.000Z",
+        endTime: "2026-05-02T06:00:00.000Z",
+        durationMinutes: 480,
+        stages: [{
+          startTime: "2026-05-01T22:30:00.000Z",
+          endTime: "2026-05-02T00:00:00.000Z",
+          stage: 4,
+          vendorStageMetadata: "preserve-me"
+        }],
+        title: "Night sleep",
+        notes: "Imported from Health Connect"
+      }]
+    });
+
+    expect(result.timeSeriesSamples).toEqual([expect.objectContaining({
+      measurementCode: "sleep_duration",
+      startAt: "2026-05-01T22:00:00.000Z",
+      endAt: "2026-05-02T06:00:00.000Z",
+      value: 480,
+      unit: "min",
+      sourceJson: {
+        title: "Night sleep",
+        notes: "Imported from Health Connect",
+        stages: [{
+          startTime: "2026-05-01T22:30:00.000Z",
+          endTime: "2026-05-02T00:00:00.000Z",
+          stage: 4,
+          vendorStageMetadata: "preserve-me"
+        }]
+      }
+    })]);
+  });
+});
+
 describe("parseHealthConnectImport — heart rate aggregates", () => {
   it("maps heart rate buckets without reducing them to observations", () => {
     const result = parseHealthConnectImport({

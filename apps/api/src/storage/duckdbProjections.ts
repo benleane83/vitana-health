@@ -30,9 +30,14 @@ import {
   type PersonalReferenceRange,
   type Profile,
   type ReferenceRangeState,
+  healthConnectSleepStageSchema,
+  type SleepSession,
+  type SleepSessionListQueryContract,
+  type SleepSessionPage,
+  type SleepSessionStage,
   getPreferredUnit,
-  resolveReferenceRange
-  ,toPreferredMeasurementValue
+  resolveReferenceRange,
+  toPreferredMeasurementValue
 } from "@vitana/shared";
 import type { ClinicianReportSourceImport } from "../clinicianReport.js";
 import {
@@ -477,6 +482,138 @@ export async function measurementDetail(
   });
 }
 
+export async function sleepSessions(
+  connection: duckdb.Connection,
+  page: SleepSessionListQueryContract
+): Promise<SleepSessionPage> {
+  const [rows, countRows] = await Promise.all([
+    allWithParams(connection, `
+      SELECT
+        t.id, t.start_at, t.end_at, t.value, t.source_json,
+        s.label AS source_label, i.imported_at
+      FROM time_series_samples t
+      LEFT JOIN sources s ON s.id = t.source_id
+      LEFT JOIN imports i ON i.id = s.import_id
+      WHERE t.measurement_code = 'sleep_duration'
+      ORDER BY t.end_at DESC, t.id DESC
+      LIMIT ? OFFSET ?;
+    `, page.limit, page.offset),
+    all(connection, "SELECT COUNT(*) AS total FROM time_series_samples WHERE measurement_code = 'sleep_duration';")
+  ]);
+  const total = Number(countRows[0]?.total ?? 0);
+  return {
+    generatedAt: new Date().toISOString(),
+    sessions: rows.map(sleepSessionFromRow),
+    total,
+    offset: page.offset,
+    limit: page.limit,
+    hasMore: page.offset + rows.length < total
+  };
+}
+
+function sleepSessionFromRow(row: Record<string, unknown>): SleepSession {
+  const startAt = isoTimestamp(row.start_at);
+  const endAt = isoTimestamp(row.end_at);
+  const sourceJson = optionalJson<Record<string, unknown>>(row.source_json);
+  const sourceStages = Array.isArray(sourceJson?.stages) ? sourceJson.stages : undefined;
+  const stageData = sourceStages === undefined
+    ? { stageDataStatus: "unavailable" as const, stages: [] }
+    : normalizeSleepStages(sourceStages, startAt, endAt);
+  return {
+    id: String(row.id),
+    startAt,
+    endAt,
+    durationMinutes: Number(row.value),
+    ...stageData,
+    ...(optionalString(row.source_label) ? { sourceLabel: optionalString(row.source_label) } : {}),
+    ...(optionalTimestamp(row.imported_at) ? { importedAt: optionalTimestamp(row.imported_at) } : {}),
+    ...(optionalString(sourceJson?.title) ? { title: optionalString(sourceJson?.title) } : {}),
+    ...(optionalString(sourceJson?.notes) ? { notes: optionalString(sourceJson?.notes) } : {})
+  };
+}
+
+function normalizeSleepStages(sourceStages: unknown[], sessionStartAt: string, sessionEndAt: string): {
+  stageDataStatus: SleepSession["stageDataStatus"];
+  stages: SleepSessionStage[];
+} {
+  const sessionStart = Date.parse(sessionStartAt);
+  const sessionEnd = Date.parse(sessionEndAt);
+  let partial = false;
+  const candidates: Array<{ start: number; end: number; stage: SleepSessionStage["stage"] }> = [];
+
+  for (const value of sourceStages) {
+    const parsed = healthConnectSleepStageSchema.safeParse(value);
+    if (!parsed.success) {
+      partial = true;
+      continue;
+    }
+    const rawStart = Date.parse(parsed.data.startTime);
+    const rawEnd = Date.parse(parsed.data.endTime);
+    if (!Number.isFinite(rawStart) || !Number.isFinite(rawEnd)) {
+      partial = true;
+      continue;
+    }
+    const start = Math.max(sessionStart, rawStart);
+    const end = Math.min(sessionEnd, rawEnd);
+    if (start !== rawStart || end !== rawEnd || end <= start) {
+      partial = true;
+    }
+    if (end <= start) continue;
+    const stage = canonicalSleepStage(parsed.data.stage);
+    if (stage === "gap") partial = true;
+    candidates.push({ start, end, stage });
+  }
+
+  if (candidates.length === 0) {
+    return sourceStages.length === 0
+      ? { stageDataStatus: "unavailable", stages: [] }
+      : { stageDataStatus: "partial", stages: [sleepStage("gap", sessionStart, sessionEnd)] };
+  }
+
+  candidates.sort((left, right) => left.start - right.start || left.end - right.end);
+  const stages: SleepSessionStage[] = [];
+  let cursor = sessionStart;
+  for (const candidate of candidates) {
+    if (candidate.start > cursor) {
+      stages.push(sleepStage("gap", cursor, candidate.start));
+      partial = true;
+    }
+    const start = Math.max(candidate.start, cursor);
+    if (start !== candidate.start) partial = true;
+    if (candidate.end <= start) {
+      partial = true;
+      continue;
+    }
+    stages.push(sleepStage(candidate.stage, start, candidate.end));
+    cursor = candidate.end;
+  }
+  if (cursor < sessionEnd) {
+    stages.push(sleepStage("gap", cursor, sessionEnd));
+    partial = true;
+  }
+  return { stageDataStatus: partial ? "partial" : "available", stages };
+}
+
+function canonicalSleepStage(stage: number): SleepSessionStage["stage"] {
+  switch (stage) {
+    case 1:
+    case 3:
+      return "awake";
+    case 2:
+    case 4:
+      return "light";
+    case 5:
+      return "deep";
+    case 6:
+      return "rem";
+    default:
+      return "gap";
+  }
+}
+
+function sleepStage(stage: SleepSessionStage["stage"], start: number, end: number): SleepSessionStage {
+  return { startAt: new Date(start).toISOString(), endAt: new Date(end).toISOString(), stage };
+}
 export async function calendarMonth(
   connection: duckdb.Connection,
   query: CalendarMonthQuery

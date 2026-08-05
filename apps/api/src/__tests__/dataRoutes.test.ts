@@ -5,6 +5,33 @@ import { makeDataRoutes } from "../routes/dataRoutes.js";
 import type { ProfileStoreManager } from "../storage/profileStoreManager.js";
 
 describe("calendar data route", () => {
+  it("returns the requested page of sleep sessions", async () => {
+    const sleepSessions = vi.fn(async () => ({
+      generatedAt: "2026-08-03T06:05:00.000Z",
+      sessions: [],
+      total: 0,
+      limit: 2,
+      offset: 4,
+      hasMore: false
+    }));
+    const storeManager = {
+      getActiveStore: vi.fn(() => ({ sleepSessions })),
+      getStore: vi.fn()
+    } as unknown as ProfileStoreManager;
+    const app = express();
+    app.use((_request, response, next) => {
+      response.locals.principal = { kind: "owner" };
+      next();
+    });
+    app.use("/api", makeDataRoutes(storeManager));
+
+    const response = await request(app).get("/api/sleep-sessions?limit=2&offset=4");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ total: 0, limit: 2, offset: 4, hasMore: false });
+    expect(sleepSessions).toHaveBeenCalledWith({ limit: 2, offset: 4 });
+  });
+
   it("uses the principal-scoped store and returns the strict calendar response", async () => {
     const calendarMonth = vi.fn(async () => ({
       month: "2026-08",

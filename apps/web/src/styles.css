@@ -1663,6 +1663,152 @@ h3 {
   margin-top: var(--space-10);
 }
 
+.hypnogram-panel {
+  margin-top: var(--space-10);
+  padding-top: var(--space-8);
+  border-top: 1px solid var(--line);
+}
+
+.hypnogram-heading {
+  margin-bottom: var(--space-3);
+}
+
+.hypnogram-subtitle,
+.hypnogram-status,
+.hypnogram-legend {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.hypnogram-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.hypnogram-status-badge {
+  flex: 0 0 auto;
+  border-radius: var(--radius-pill);
+  padding: 0.18rem 0.5rem;
+  background: var(--success-soft);
+  color: var(--success-strong);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.hypnogram-status-badge.is-partial {
+  background: var(--warning-soft);
+  color: var(--warning-strong);
+}
+
+.hypnogram-chart {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: auto;
+}
+
+.hypnogram-gridline,
+.hypnogram-axis {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.hypnogram-row-label,
+.hypnogram-time-label {
+  fill: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.hypnogram-stage {
+  rx: 3px;
+}
+
+.hypnogram-stage.is-awake,
+.hypnogram-legend-swatch.is-awake {
+  fill: var(--warning);
+  background: var(--warning);
+}
+
+.hypnogram-stage.is-rem,
+.hypnogram-legend-swatch.is-rem {
+  fill: var(--blush-strong);
+  background: var(--blush-strong);
+}
+
+.hypnogram-stage.is-light,
+.hypnogram-legend-swatch.is-light {
+  fill: var(--info);
+  background: var(--info);
+}
+
+.hypnogram-stage.is-deep,
+.hypnogram-legend-swatch.is-deep {
+  fill: var(--primary);
+  background: var(--primary);
+}
+
+.hypnogram-gap {
+  fill: var(--surface-3);
+  stroke: var(--line-strong);
+  stroke-dasharray: 3 3;
+}
+
+.hypnogram-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  padding: 0;
+  list-style: none;
+}
+
+.hypnogram-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.hypnogram-legend-swatch {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 2px;
+}
+
+.hypnogram-legend-swatch.is-gap {
+  border: 1px dashed var(--line-strong);
+  background: var(--surface-3);
+}
+
+.hypnogram-empty {
+  margin: 0;
+  padding: var(--space-6) 0;
+  color: var(--muted);
+}
+
+.hypnogram-skeleton {
+  display: grid;
+  gap: var(--space-3);
+  min-height: 195px;
+  padding: var(--space-3) 0;
+}
+
+.hypnogram-skeleton span {
+  display: block;
+  border-radius: var(--radius-xs);
+  background: var(--surface-3);
+  animation: detail-skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hypnogram-skeleton span {
+    animation: none;
+  }
+}
+
 .summary-detail-section-heading {
   display: flex;
   align-items: center;
@@ -1922,6 +2068,20 @@ h3 {
 .summary-detail-table tbody tr {
   content-visibility: auto;
   contain-intrinsic-size: auto 3rem;
+}
+
+.summary-detail-table tbody tr.is-selected-sleep-session,
+.summary-detail-table tbody tr.is-selected-sleep-session:hover {
+  background: var(--primary-soft);
+}
+
+.summary-detail-table tbody tr[tabindex="0"] {
+  cursor: pointer;
+}
+
+.summary-detail-table tbody tr[tabindex="0"]:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: -3px;
 }
 
 .summary-detail-table th.summary-value-column,

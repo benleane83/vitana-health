@@ -44,6 +44,8 @@ import type {
   ProfilePhotoMetadata,
   ReferenceRangeState,
   ReplicaHighWaterMark,
+  SleepSessionListQueryContract,
+  SleepSessionPage,
   SourceImport,
   UpdateCareItemInput,
   UpdateHealthEventInput,
@@ -211,6 +213,7 @@ export interface ProfileRepository {
   bodyTrendTimeline(query: BodyTrendQuery): Promise<BodyTrendTimeline>;
   bodyTrendDateDetail(date: string, query: BodyTrendDateQuery): Promise<BodyTrendDateDetail>;
   calendarMonth(query: CalendarMonthQuery): Promise<CalendarMonthData>;
+  sleepSessions(page: SleepSessionListQueryContract): Promise<SleepSessionPage>;
   measurementDetail(measurementCode: string, page: MeasurementDetailPage): Promise<HealthDataDetail>;
   measurementChartSeries(measurementCode: string, options: HealthDataChartSeriesOptions): Promise<HealthDataChartSeries>;
   upsertPersonalReferenceRange(

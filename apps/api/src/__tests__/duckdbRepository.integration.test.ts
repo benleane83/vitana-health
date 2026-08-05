@@ -112,6 +112,134 @@ describe("DuckDbRepository fidelity", () => {
     }
   }, 30_000);
 
+  it.skipIf(!httpfsExtensionPath)("projects paged sleep sessions with repaired stage gaps", async () => {
+    const databasePath = join(root, "databases", "health-store-sleep-sessions.duckdb-poc");
+    const fixture = createDuckDbHealthStoreFixture();
+    fixture.timeSeriesSamples.push({
+      id: "sleep-partial",
+      measurementCode: "sleep_duration",
+      startAt: "2026-08-01T22:00:00.000Z",
+      endAt: "2026-08-02T06:00:00.000Z",
+      value: 480,
+      unit: "min",
+      sourceId: "source-1",
+      sourceJson: {
+        stages: [
+          { startTime: "2026-08-01T22:15:00.000Z", endTime: "2026-08-02T03:00:00.000Z", stage: 4 },
+          { startTime: "2026-08-02T02:30:00.000Z", endTime: "2026-08-02T04:00:00.000Z", stage: 5 },
+          { startTime: "2026-08-02T04:00:00.000Z", endTime: "2026-08-02T04:30:00.000Z", stage: 0 },
+          { startTime: "2026-08-02T04:30:00.000Z", endTime: "2026-08-02T06:00:00.000Z", stage: 6 }
+        ]
+      }
+    }, {
+      id: "sleep-available",
+      measurementCode: "sleep_duration",
+      startAt: "2026-08-02T22:00:00.000Z",
+      endAt: "2026-08-03T06:00:00.000Z",
+      value: 480,
+      unit: "min",
+      sourceId: "source-1",
+      sourceJson: {
+        title: "A complete night",
+        stages: [
+          { startTime: "2026-08-02T22:00:00.000Z", endTime: "2026-08-03T02:00:00.000Z", stage: 4 },
+          { startTime: "2026-08-03T02:00:00.000Z", endTime: "2026-08-03T04:00:00.000Z", stage: 5 },
+          { startTime: "2026-08-03T04:00:00.000Z", endTime: "2026-08-03T06:00:00.000Z", stage: 6 }
+        ]
+      }
+    });
+    const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
+
+    try {
+      const newest = await repository.sleepSessions({ limit: 1, offset: 0 });
+      expect(newest).toMatchObject({ total: 2, limit: 1, offset: 0, hasMore: true });
+      expect(newest.sessions).toEqual([expect.objectContaining({
+        id: "sleep-available",
+        title: "A complete night",
+        stageDataStatus: "available",
+        stages: [
+          { startAt: "2026-08-02T22:00:00.000Z", endAt: "2026-08-03T02:00:00.000Z", stage: "light" },
+          { startAt: "2026-08-03T02:00:00.000Z", endAt: "2026-08-03T04:00:00.000Z", stage: "deep" },
+          { startAt: "2026-08-03T04:00:00.000Z", endAt: "2026-08-03T06:00:00.000Z", stage: "rem" }
+        ]
+      })]);
+
+      const older = await repository.sleepSessions({ limit: 1, offset: 1 });
+      expect(older.sessions[0]).toMatchObject({
+        id: "sleep-partial",
+        stageDataStatus: "partial",
+        stages: [
+          { startAt: "2026-08-01T22:00:00.000Z", endAt: "2026-08-01T22:15:00.000Z", stage: "gap" },
+          { startAt: "2026-08-01T22:15:00.000Z", endAt: "2026-08-02T03:00:00.000Z", stage: "light" },
+          { startAt: "2026-08-02T03:00:00.000Z", endAt: "2026-08-02T04:00:00.000Z", stage: "deep" },
+          { startAt: "2026-08-02T04:00:00.000Z", endAt: "2026-08-02T04:30:00.000Z", stage: "gap" },
+          { startAt: "2026-08-02T04:30:00.000Z", endAt: "2026-08-02T06:00:00.000Z", stage: "rem" }
+        ]
+      });
+    } finally {
+      await repository.close();
+    }
+  }, 30_000);
+
+  it.skipIf(!httpfsExtensionPath)("enriches existing sleep sessions without overwriting stages on retries", async () => {
+    const databasePath = join(root, "databases", "health-store-sleep-enrichment.duckdb-poc");
+    const repository = await DuckDbRepository.hydrate(
+      root,
+      databasePath,
+      key,
+      createDuckDbHealthStoreFixture(),
+      { httpfsExtensionPath }
+    );
+    const request = {
+      syncedAt: "2026-08-03T06:05:00.000Z",
+      rangeStart: "2026-08-02T00:00:00.000Z",
+      rangeEnd: "2026-08-03T12:00:00.000Z",
+      deviceLabel: "Pixel 8",
+      steps: [], heartRate: [], restingHeartRate: [], oxygenSaturation: [], hrvRmssd: [], respiratoryRate: [],
+      basalMetabolicRateKcalDay: [], heightCm: [], skinTemperatureC: [], vo2MaxMlKgMin: [], weightKg: [],
+      exerciseSessions: [], distanceMeters: [], activeCaloriesKcal: [], totalCaloriesKcal: [], bodyFatPct: [],
+      sleepSessions: [{
+        startTime: "2026-08-02T22:00:00.000Z",
+        endTime: "2026-08-03T06:00:00.000Z",
+        durationMinutes: 480
+      }]
+    };
+
+    try {
+      const initial = await repository.mergeImport(parseHealthConnectImport(healthConnectImportRequestSchema.parse(request)));
+      const enriched = await repository.mergeImport(parseHealthConnectImport(healthConnectImportRequestSchema.parse({
+        ...request,
+        batchId: "staged",
+        syncedAt: "2026-08-03T06:10:00.000Z",
+        sleepSessions: [{
+          ...request.sleepSessions[0],
+          stages: [
+            { startTime: "2026-08-02T22:00:00.000Z", endTime: "2026-08-03T02:00:00.000Z", stage: 4 },
+            { startTime: "2026-08-03T02:00:00.000Z", endTime: "2026-08-03T06:00:00.000Z", stage: 5 }
+          ]
+        }]
+      })));
+      const retry = await repository.mergeImport(parseHealthConnectImport(healthConnectImportRequestSchema.parse({
+        ...request,
+        batchId: "stage-less-retry",
+        syncedAt: "2026-08-03T06:15:00.000Z"
+      })));
+
+      expect(initial.outcome.timeSeriesSamples).toMatchObject({ attempted: 1, accepted: 1, duplicates: 0 });
+      expect(enriched.outcome.timeSeriesSamples).toMatchObject({ attempted: 1, accepted: 1, duplicates: 0 });
+      expect(retry.outcome.timeSeriesSamples).toMatchObject({ attempted: 1, accepted: 0, duplicates: 1 });
+      expect((await repository.sleepSessions({ limit: 1, offset: 0 })).sessions).toEqual([expect.objectContaining({
+        stageDataStatus: "available",
+        stages: [
+          { startAt: "2026-08-02T22:00:00.000Z", endAt: "2026-08-03T02:00:00.000Z", stage: "light" },
+          { startAt: "2026-08-03T02:00:00.000Z", endAt: "2026-08-03T06:00:00.000Z", stage: "deep" }
+        ]
+      })]);
+    } finally {
+      await repository.close();
+    }
+  }, 30_000);
+
   it.skipIf(!httpfsExtensionPath)("serves reads from a connection that never sees uncommitted writes", async () => {
     const databasePath = join(root, "databases", "health-store-read-isolation.duckdb-poc");
     const fixture = createDuckDbHealthStoreFixture();

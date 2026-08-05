@@ -822,6 +822,37 @@ export interface HealthDataDetail {
   };
 }
 
+export type SleepStageKind = "awake" | "rem" | "light" | "deep" | "gap";
+export type SleepStageDataStatus = "available" | "partial" | "unavailable";
+
+export interface SleepSessionStage {
+  startAt: string;
+  endAt: string;
+  stage: SleepStageKind;
+}
+
+export interface SleepSession {
+  id: string;
+  startAt: string;
+  endAt: string;
+  durationMinutes: number;
+  stageDataStatus: SleepStageDataStatus;
+  stages: SleepSessionStage[];
+  sourceLabel?: string;
+  importedAt?: string;
+  title?: string;
+  notes?: string;
+}
+
+export interface SleepSessionPage {
+  generatedAt: string;
+  sessions: SleepSession[];
+  total: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+}
+
 export interface ClinicianReport {
   generatedAt: string;
   disclaimer: string;

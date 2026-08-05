@@ -20,6 +20,7 @@ import type {
   MobileMigrationManifest,
   PersonalReferenceRangeInput,
   HealthEventMutationResponse,
+  SleepSessionListQueryContract,
   UpdateCareItemInput,
   UpdateHealthEventInput,
   UpdateObservationInput,
@@ -141,6 +142,10 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
 
   calendarMonth(query: CalendarMonthQuery) {
     return this.repository.calendarMonth(query);
+  }
+
+  sleepSessions(page: SleepSessionListQueryContract) {
+    return this.repository.sleepSessions(page);
   }
 
   upsertPersonalReferenceRange(
