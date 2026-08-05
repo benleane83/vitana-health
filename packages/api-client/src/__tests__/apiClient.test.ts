@@ -96,6 +96,25 @@ describe("createApiClient", () => {
     expect(paginationQuery()).toBe("");
   });
 
+  it("requests validated sleep-session pages", async () => {
+    const transport = vi.fn(async (_request: ApiTransportRequest) => response({
+      generatedAt: "2026-08-03T06:05:00.000Z",
+      sessions: [],
+      total: 0,
+      limit: 2,
+      offset: 4,
+      hasMore: false
+    }));
+    const client = createApiClient(transport);
+
+    await client.sleepSessions({ limit: 2, offset: 4 });
+
+    expect(transport).toHaveBeenCalledWith(expect.objectContaining({
+      path: "/api/sleep-sessions?limit=2&offset=4",
+      method: "GET"
+    }));
+  });
+
   it("sets and removes encoded personal reference ranges", async () => {
     const seen: ApiTransportRequest[] = [];
     const transport = async (request: ApiTransportRequest) => {

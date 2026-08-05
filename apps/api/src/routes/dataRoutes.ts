@@ -33,6 +33,8 @@ import {
   paginatedHealthEventsResponseSchema,
   personalReferenceRangeInputSchema,
   referenceRangeStateResponseSchema,
+  sleepSessionListQuerySchema,
+  sleepSessionPageResponseSchema,
   updateObservationInputSchema,
   updateObservationResponseSchema
 } from "@vitana/shared";
@@ -148,6 +150,15 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
     try {
       const query = calendarMonthQuerySchema.parse(request.query);
       sendJson(response, calendarMonthResponseSchema, await requestStore(response).calendarMonth(query));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/sleep-sessions", async (request, response, next) => {
+    try {
+      const page = sleepSessionListQuerySchema.parse(request.query);
+      sendJson(response, sleepSessionPageResponseSchema, await requestStore(response).sleepSessions(page));
     } catch (error) {
       next(error);
     }
