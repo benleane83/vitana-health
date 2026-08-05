@@ -33,6 +33,7 @@ import {
 } from "../backupCrypto.js";
 import { RestoreJournal } from "../storage/restoreJournal.js";
 import { BackupMultipartError, parseBackupMultipart } from "../backupMultipart.js";
+import { createRateLimiter } from "../rateLimit.js";
 
 /**
  * A format failure is only reachable once the passphrase has already authenticated the file, so
@@ -67,9 +68,14 @@ export function makeBackupRoutes(
   pairingStore: PairingStore
 ): express.Router {
   const router = express.Router();
+  const rateLimit = createRateLimiter();
 
   // --- POST /create — Generate encrypted backup ---
-  router.post("/create", express.json({ limit: "1mb" }), async (req, res) => {
+  router.post(
+    "/create",
+    rateLimit("backups-create", 5, 60_000),
+    express.json({ limit: "1mb" }),
+    async (req, res) => {
     const principal = res.locals.principal as AuthorizationPrincipal | undefined;
     if (!principal || principal.kind !== "owner") {
       res.status(403).json({ error: "Owner access required.", code: "OWNER_REQUIRED" });
@@ -132,10 +138,11 @@ export function makeBackupRoutes(
         code: err instanceof BackupTooLargeError ? "BACKUP_TOO_LARGE" : "BACKUP_CREATE_FAILED"
       });
     }
-  });
+    }
+  );
 
   // --- POST /inspect — Decrypt and inspect backup without restoring ---
-  router.post("/inspect", async (req, res) => {
+  router.post("/inspect", rateLimit("backups-inspect", 10, 60_000), async (req, res) => {
     const principal = res.locals.principal as AuthorizationPrincipal | undefined;
     if (!principal || principal.kind !== "owner") {
       res.status(403).json({ error: "Owner access required.", code: "OWNER_REQUIRED" });
@@ -179,7 +186,7 @@ export function makeBackupRoutes(
   });
 
   // --- POST /restore — Restore profiles from backup ---
-  router.post("/restore", async (req, res) => {
+  router.post("/restore", rateLimit("backups-restore", 5, 60_000), async (req, res) => {
     const principal = res.locals.principal as AuthorizationPrincipal | undefined;
     if (!principal || principal.kind !== "owner") {
       res.status(403).json({ error: "Owner access required.", code: "OWNER_REQUIRED" });

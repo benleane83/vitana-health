@@ -531,7 +531,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     category: "lab",
     kind: "panel-component",
     canonicalUnit: "%",
-    aliases: ["hba1c", "hemoglobin a1c", "haemoglobin a1c", "a1c", "hba1c %"],
+    aliases: ["hemoglobin a1c %", "haemoglobin a1c %", "hba1c %"],
     loincCode: "4548-4",
     aggregation: "latest"
   },

@@ -1,7 +1,7 @@
 /**
  * Application factory. Mounts middleware, auth, and feature routes.
  *
- * Central policy enforced here (not in individual route files):
+ * Shared application policy enforced here:
  * - CORS restricted to local origins
  * - Body limits per route
  * - Rate limiting per route group
@@ -28,6 +28,7 @@ import { makeQueryRoutes, makeLlmRoutes } from "./routes/queryRoutes.js";
 import { makeDataRoutes } from "./routes/dataRoutes.js";
 import { makeSettingsRoutes } from "./routes/settingsRoutes.js";
 import { makeBackupRoutes, isInMaintenanceMode } from "./routes/backupRoutes.js";
+import { createRateLimiter } from "./rateLimit.js";
 import { makeCompanionMigrationRoutes } from "./routes/companionMigrationRoutes.js";
 import { makeCompanionSyncRoutes } from "./routes/companionSyncRoutes.js";
 import { z } from "zod";
@@ -140,40 +141,12 @@ export function createApp(
   });
 
   // Rate limiting
-  const rateBuckets = new Map<string, { count: number; resetAt: number }>();
-  function rateLimit(policy: string, max: number, windowMs: number) {
-    return (request: express.Request, response: express.Response, next: express.NextFunction): void => {
-      const now = Date.now();
-      if (rateBuckets.size > 5_000) {
-        for (const [k, v] of rateBuckets) {
-          if (v.resetAt <= now) rateBuckets.delete(k);
-        }
-      }
-      const routeGroup = request.baseUrl || request.path.split("/").slice(0, 3).join("/");
-      const key = `${policy}:${request.ip}:${routeGroup}`;
-      const current = rateBuckets.get(key);
-      const bucket =
-        !current || current.resetAt <= now ? { count: 0, resetAt: now + windowMs } : current;
-      bucket.count++;
-      rateBuckets.set(key, bucket);
-      response.setHeader("rate-limit-limit", String(max));
-      response.setHeader("rate-limit-remaining", String(Math.max(0, max - bucket.count)));
-      if (bucket.count > max) {
-        response.setHeader("retry-after", String(Math.ceil((bucket.resetAt - now) / 1000)));
-        response.status(429).json({ error: "Too many requests. Try again later.", code: "RATE_LIMITED" });
-        return;
-      }
-      next();
-    };
-  }
+  const rateLimit = createRateLimiter();
 
   app.use("/api/pairing", rateLimit("pairing", 30, 60_000));
   app.use("/api/llm", rateLimit("llm", 10, 60_000));
   app.use("/api/settings", rateLimit("settings", 30, 60_000));
   app.use("/api/query", rateLimit("query", 30, 60_000));
-  app.use("/api/backups/create", rateLimit("backups-create", 5, 60_000));
-  app.use("/api/backups/inspect", rateLimit("backups-inspect", 10, 60_000));
-  app.use("/api/backups/restore", rateLimit("backups-restore", 5, 60_000));
 
   // Maintenance mode middleware — returns 503 during restore except /api/health
   app.use((request, response, next) => {
