@@ -52,7 +52,7 @@ export function TrackScreen() {
           {trackDestinations.map((destination, index) => {
             const Icon = destination.icon;
             const proFeature = "proFeature" in destination ? destination.proFeature : undefined;
-            const disabled = proFeature ? !hasFeature(entitlement.tier, proFeature, true) : false;
+            const disabled = proFeature ? !hasFeature(entitlement.tier, proFeature) : false;
             return (
               <Pressable
                 accessibilityLabel={destination.label}

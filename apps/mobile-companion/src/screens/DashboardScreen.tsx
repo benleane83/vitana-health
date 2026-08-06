@@ -202,7 +202,7 @@ export function DashboardScreen() {
               <Pressable
                 accessibilityLabel="View all upcoming care"
                 accessibilityRole="button"
-                onPress={() => navigation.navigate("Care")}
+                onPress={() => navigation.navigate("Care", { view: "items" })}
                 style={styles.viewAll}
               >
                 <Text style={styles.viewAllText}>View all</Text>
@@ -237,10 +237,11 @@ export function DashboardScreen() {
                 const overdue = isOverdue(item);
                 return (
                   <Pressable
-                    accessibilityLabel={`${item.title}, ${careItemKindLabels[item.kind]}, ${dueText}. Open Care.`}
+                    accessibilityHint="Opens this care item for editing"
+                    accessibilityLabel={`${item.title}, ${careItemKindLabels[item.kind]}, ${dueText}`}
                     accessibilityRole="button"
                     key={item.id}
-                    onPress={() => navigation.navigate("Care")}
+                    onPress={() => navigation.navigate("Care", { view: "items", editCareItemId: item.id })}
                     style={({ pressed }) => [
                       styles.careRow,
                       index > 0 && styles.careDivider,

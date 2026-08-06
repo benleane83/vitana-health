@@ -128,7 +128,6 @@ function JournalItem({ item, timezone }: { item: JournalTimelineItem; timezone: 
       <View style={styles.itemText}>
         <Text style={styles.itemTitle}>{title}</Text>
         <Text style={styles.itemDetail}>{detail || fallback}</Text>
-        {item.sourceLabel ? <Text style={styles.source}>{item.sourceLabel}</Text> : null}
       </View>
     </View>
   );
@@ -173,7 +172,6 @@ const styles = StyleSheet.create({
   itemText: { flex: 1, gap: 2, minWidth: 0 },
   itemTitle: { color: colors.textStrong, fontSize: type.body, fontWeight: "800" },
   itemDetail: { color: colors.muted, fontSize: type.label, lineHeight: 19 },
-  source: { color: colors.muted, fontSize: 12 },
   omitted: { borderTopColor: colors.border, borderTopWidth: 1, color: colors.muted, fontSize: type.label, lineHeight: 19, padding: spacing.md },
   loadMore: { gap: spacing.sm }
 });

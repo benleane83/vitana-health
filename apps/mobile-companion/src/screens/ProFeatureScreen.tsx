@@ -9,7 +9,7 @@ export function ProFeatureScreen({ children, feature, label }: {
   label: string;
 }) {
   const { state } = useEntitlement();
-  if (hasFeature(state.tier, feature, true)) return children;
+  if (hasFeature(state.tier, feature)) return children;
 
   return (
     <Screen>

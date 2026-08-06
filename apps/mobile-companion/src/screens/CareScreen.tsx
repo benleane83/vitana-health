@@ -3,6 +3,7 @@ import { FlatList, Platform, Pressable, RefreshControl, StyleSheet, Text, TextIn
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Picker } from "@react-native-picker/picker";
 import { useIsFocused } from "@react-navigation/native";
+import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import {
   careItemKindCodes,
   careItemKindLabels,
@@ -23,6 +24,7 @@ import {
 import { CalendarDays } from "lucide-react-native";
 import { useMobileApi } from "../MobileApiProvider";
 import { connectionStateLabel } from "../connectionState";
+import type { TabParamList } from "../navigationTypes";
 import { Button, Card, Message, Screen } from "../ui/components";
 import { colors, radii, spacing, type } from "../ui/theme";
 import { userFacingError } from "../userFacingError";
@@ -49,7 +51,7 @@ const defaultCareItem: CreateCareItemInput = {
   notes: ""
 };
 
-export function CareScreen() {
+export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamList, "Care">) {
   const isFocused = useIsFocused();
   const {
     connectionState,
@@ -90,7 +92,11 @@ export function CareScreen() {
     try {
       if (synchronize && !standaloneMode && !demoMode) await synchronizeConnectedData(true);
       const [nextItems, nextEvents] = await Promise.all([
-        listCareItems({ limit: CARE_PAGE_SIZE, kind: careItemKindFilter || undefined }),
+        listCareItems({
+          limit: CARE_PAGE_SIZE,
+          kind: careItemKindFilter || undefined,
+          includeId: route.params?.editCareItemId
+        }),
         listHealthEvents({ limit: CARE_PAGE_SIZE, kind: healthEventKindFilter || undefined })
       ]);
       setItems(nextItems.items);
@@ -102,7 +108,7 @@ export function CareScreen() {
     } finally {
       setLoading(false);
     }
-  }, [careItemKindFilter, demoMode, healthEventKindFilter, listCareItems, listHealthEvents, standaloneMode, synchronizeConnectedData]);
+  }, [careItemKindFilter, demoMode, healthEventKindFilter, listCareItems, listHealthEvents, route.params?.editCareItemId, standaloneMode, synchronizeConnectedData]);
 
   // Without this the list silently stopped at the first page, which reads to a user as data loss.
   async function loadMore() {
@@ -126,6 +132,25 @@ export function CareScreen() {
   }
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (!isFocused || !route.params?.view) return;
+    setView("items");
+    setEditorMode("closed");
+    setEditingId(undefined);
+    setFeedback(undefined);
+    navigation.setParams({ view: undefined });
+  }, [isFocused, navigation, route.params?.view]);
+  useEffect(() => {
+    const editCareItemId = route.params?.editCareItemId;
+    if (!isFocused || loading || !editCareItemId) return;
+    const item = items.find((entry) => entry.id === editCareItemId);
+    navigation.setParams({ editCareItemId: undefined });
+    if (!item) {
+      setFeedback({ detail: "This care item is no longer available.", tone: "danger" });
+      return;
+    }
+    startEditCareItem(item);
+  }, [isFocused, items, loading, navigation, route.params?.editCareItemId]);
   useEffect(() => {
     if (!isFocused) setFeedback(undefined);
   }, [isFocused]);

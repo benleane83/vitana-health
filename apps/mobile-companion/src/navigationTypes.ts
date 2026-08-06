@@ -14,5 +14,8 @@ export type TabParamList = {
   Dashboard: undefined;
   Import: undefined;
   Track: undefined;
-  Care: undefined;
+  Care: {
+    view?: "items";
+    editCareItemId?: string;
+  } | undefined;
 };
