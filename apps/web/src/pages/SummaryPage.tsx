@@ -319,7 +319,7 @@ export function ObservationTypeDetailPage({
           <button type="button" className="summary-back-link" onClick={onBack}>
             ← Back to summary
           </button>
-          <h1>{detail?.measurement.displayName ?? "Measurement detail"}</h1>
+          <h2>{detail?.measurement.displayName ?? "Measurement detail"}</h2>
           {detail?.measurement.description ? (
             <p className="summary-detail-description">{detail.measurement.description}</p>
           ) : null}

@@ -68,10 +68,10 @@ export function JournalRoute({ activeProfileId }: { activeProfileId?: string }) 
 
   const days = state.data?.days ?? [];
   return (
-    <section className="journal-page" aria-busy={state.busy}>
+    <section className="journal-page" aria-busy={state.busy} aria-labelledby="journal-title">
       <header className="journal-header">
         <div>
-          <h1>Journal</h1>
+          <h2 id="journal-title">Journal</h2>
           <p>Your activity, sleep, and health events, day by day.</p>
         </div>
       </header>

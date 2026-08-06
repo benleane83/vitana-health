@@ -324,27 +324,33 @@ export function CareRoute({
   const showEmptyState = listEmpty && !editorActive;
 
   return (
-    <section className="panel care-panel">
-      <div className="care-header">
-        <div className="care-empty-copy">
-          <h1>Care</h1>
-          <p className="care-subtitle">Track care items and health events for the active profile.</p>
+    <section className="care-page" aria-labelledby="care-title" aria-describedby="care-description">
+      <header className="route-page-header">
+        <div>
+          <h1 id="care-title">Care</h1>
+          <p id="care-description" className="route-page-description">Plan future care and keep a history of important health events.</p>
         </div>
-        {!showEmptyState ? <button type="button" onClick={beginCreate}>{view === "health-events" ? "Add health event" : "Add care item"}</button> : null}
-      </div>
-      <div className="care-switch" role="tablist" aria-label="Care views">
+      </header>
+      <div className="care-switch route-local-nav" role="tablist" aria-label="Care views" aria-orientation="horizontal">
         {(["items", "health-events"] as const).map((value) => (
           <button key={value} id={`care-tab-${value}`} role="tab" aria-selected={view === value} aria-controls="care-view-panel" tabIndex={view === value ? 0 : -1} className={view === value ? "active" : ""} onClick={() => onViewChange(value)} onKeyDown={(event) => handleTabKeyDown(event, value)}>
             {value === "items" ? "Care items" : "Health events"}
           </button>
         ))}
       </div>
-      <p className="care-view-description">
-        {view === "items"
-          ? "Plan and track appointments, follow-ups, and other care that still needs attention."
-          : "Record care, symptoms, tests, treatments, and other health moments that have already happened."}
-      </p>
-      <div id="care-view-panel" className={`care-layout${editorActive ? " has-editor" : ""}${showEmptyState ? " is-empty" : ""}`} role="tabpanel" aria-labelledby={`care-tab-${view}`}>
+      <section className="panel care-panel" aria-labelledby="care-view-title">
+        <div className="care-view-header">
+          <div>
+            <h2 id="care-view-title">{view === "items" ? "Care items" : "Health events"}</h2>
+            <p className="care-view-description">
+              {view === "items"
+                ? "Plan and track appointments, follow-ups, and other care that still needs attention."
+                : "Record care, symptoms, tests, treatments, and other health moments that have already happened."}
+            </p>
+          </div>
+          {!showEmptyState ? <button type="button" onClick={beginCreate}>{view === "health-events" ? "Add health event" : "Add care item"}</button> : null}
+        </div>
+        <div id="care-view-panel" className={`care-layout${editorActive ? " has-editor" : ""}${showEmptyState ? " is-empty" : ""}`} role="tabpanel" aria-labelledby={`care-tab-${view}`}>
         <div className="care-list-panel" ref={listPanelRef}>
           {!showEmptyState || hasActiveFilters ? (
             view === "health-events" ? (
@@ -442,7 +448,8 @@ export function CareRoute({
           ) : null}
           {!editorActive && !listEmpty ? <p className="empty">Select a record to edit it, or add a new one.</p> : null}
         </div>
-      </div>
+        </div>
+      </section>
     </section>
   );
 }

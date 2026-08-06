@@ -198,9 +198,8 @@ describe("App smoke", () => {
     render(<App />);
 
     expect(screen.getByRole("tab", { name: /^body trend$/i })).toHaveAttribute("aria-selected", "true");
-  const detailHeading = await screen.findByRole("heading", { level: 2 });
-  expect(detailHeading).toHaveTextContent("2026");
-  expect(detailHeading).toHaveTextContent(/\d{1,2}:\d{2}/);
+    const detailHeading = await screen.findByRole("heading", { level: 2, name: /2026/ });
+    expect(detailHeading).toHaveTextContent(/\d{1,2}:\d{2}/);
     expect(screen.queryByText("Body composition scale")).not.toBeInTheDocument();
     expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls.map(([url]) => String(url))).not.toContain("/api/summary/body-trend/2026-08-01");
   });
@@ -211,7 +210,8 @@ describe("App smoke", () => {
 
     expect(screen.getByRole("tab", { name: /^track$/i })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tab", { name: /^calendar$/i })).toHaveAttribute("aria-selected", "true");
-    expect(await screen.findByRole("heading", { name: "Calendar", level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Track", level: 1 })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Calendar", level: 2 })).toBeInTheDocument();
 
     await act(async () => {
       globalThis.history.pushState({}, "", "/track");
@@ -231,7 +231,8 @@ describe("App smoke", () => {
     render(<App />);
 
     expect(screen.getByRole("tab", { name: /^journal$/i })).toHaveAttribute("aria-selected", "true");
-    expect(await screen.findByRole("heading", { name: "Journal", level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Track", level: 1 })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Journal", level: 2 })).toBeInTheDocument();
 
     await act(async () => {
       globalThis.history.pushState({}, "", "/track");

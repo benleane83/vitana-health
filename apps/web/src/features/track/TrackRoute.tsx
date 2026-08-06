@@ -329,8 +329,14 @@ export function TrackRoute({
   }
 
   return (
-    <>
-      <div className="care-switch track-switch" role="tablist" aria-label="Track views">
+    <section className="track-page" aria-labelledby="track-title" aria-describedby="track-description">
+      <header className="route-page-header">
+        <div>
+          <h1 id="track-title">Track</h1>
+          <p id="track-description" className="route-page-description">Review measurements, daily activity, health events, and body composition over time.</p>
+        </div>
+      </header>
+      <div className="care-switch track-switch route-local-nav" role="tablist" aria-label="Track views" aria-orientation="horizontal">
         {(["measurements", "journal", "calendar", "body-trend"] as const).map((value) => (
           <button
             key={value}
@@ -421,6 +427,6 @@ export function TrackRoute({
           onSave={updateObservation}
         />
       ) : null}
-    </>
+    </section>
   );
 }

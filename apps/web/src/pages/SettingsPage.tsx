@@ -2,6 +2,7 @@ import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent } from "r
 import { api } from "../api.js";
 import type { AiSettings, DesktopRuntimeSettings, DesktopUpdateState } from "../api.js";
 import type { SettingsView } from "../types.js";
+import { useResponsiveTabOrientation } from "../hooks/useResponsiveTabOrientation.js";
 
 type ConfirmAction = (
   title: string,
@@ -15,6 +16,7 @@ export function SettingsPage({ view, onViewChange, confirm }: {
   onViewChange: (view: SettingsView) => void;
   confirm: ConfirmAction;
 }) {
+  const tabOrientation = useResponsiveTabOrientation();
   const tabs: Array<{ view: SettingsView; id: string; panelId: string; label: string }> = [
     { view: "app", id: "settings-tab-app", panelId: "settings-panel-app", label: "App" },
     { view: "ai", id: "settings-tab-ai", panelId: "settings-panel-ai", label: "AI" }
@@ -34,13 +36,15 @@ export function SettingsPage({ view, onViewChange, confirm }: {
   }
 
   return (
-    <section className="settings-page">
-      <div className="settings-header">
-        <h1>Settings</h1>
-        <p>Manage application preferences and AI connections.</p>
-      </div>
+    <section className="settings-page" aria-labelledby="settings-title" aria-describedby="settings-description">
+      <header className="route-page-header">
+        <div>
+          <h1 id="settings-title">Settings</h1>
+          <p id="settings-description" className="route-page-description">Manage application preferences and AI connections.</p>
+        </div>
+      </header>
       <div className="settings-workspace">
-        <div className="settings-tabs" role="tablist" aria-label="Settings sections" aria-orientation="vertical">
+        <div className="settings-tabs" role="tablist" aria-label="Settings sections" aria-orientation={tabOrientation}>
           {tabs.map((tab) => (
             <button
               key={tab.view}

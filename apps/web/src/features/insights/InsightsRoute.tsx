@@ -13,6 +13,7 @@ import { BiologicalAgePage } from "../../pages/BiologicalAgePage.js";
 import { QueryPage, type QueryFailure, type QueryTurn } from "../../pages/QueryPage.js";
 import type { InsightsTab } from "../../types.js";
 import { ProLockedView } from "../../components/ProLockedView.js";
+import { useResponsiveTabOrientation } from "../../hooks/useResponsiveTabOrientation.js";
 
 type RemoteState<T, TError = string> = {
   data?: T;
@@ -38,6 +39,7 @@ export function InsightsRoute({
   onNotice: (message: string) => void;
   aiQueryAllowed?: boolean;
 }) {
+  const tabOrientation = useResponsiveTabOrientation();
   function handleTabKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, currentTab: InsightsTab) {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
@@ -219,14 +221,15 @@ export function InsightsRoute({
   }
 
   return (
-    <section className="insights-shell">
-      <div className="insights-header">
+    <section className="insights-shell" aria-labelledby="insights-title" aria-describedby="insights-description">
+      <header className="route-page-header">
         <div>
-          <h1>Insights</h1>
+          <h1 id="insights-title">Insights</h1>
+          <p id="insights-description" className="route-page-description">Explore biological age, AI-assisted reviews, and questions about your health data.</p>
         </div>
-      </div>
+      </header>
       <div className="insights-workspace">
-        <div className="insights-tabs" role="tablist" aria-label="Insight tools">
+        <div className="insights-tabs" role="tablist" aria-label="Insight tools" aria-orientation={tabOrientation}>
           <button
             id="insight-tab-biological-age"
             type="button"

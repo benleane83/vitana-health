@@ -6,6 +6,7 @@ import { MeasurementCombobox } from "../components/MeasurementCombobox.js";
 import type { ImportMode, ManualMarkerRow } from "../types.js";
 import { ManualImportFeature } from "../features/import/ManualImportFeature.js";
 import { UploadImportFeature } from "../features/import/UploadImportFeature.js";
+import { useResponsiveTabOrientation } from "../hooks/useResponsiveTabOrientation.js";
 
 // ─── Tab IDs for tablist/tabpanel ARIA wiring ─────────────────────────────────
 
@@ -28,6 +29,7 @@ export function ImportPage({
   activeProfileId?: string;
   units: UnitSystem;
 }) {
+  const tabOrientation = useResponsiveTabOrientation();
   const manualTabId = "import-tab-manual";
   const uploadTabId = "import-tab-upload";
   const syncTabId = "import-tab-sync";
@@ -55,19 +57,19 @@ export function ImportPage({
   }
 
   return (
-    <section className="import-page">
-      <div className="import-header">
+    <section className="import-page" aria-labelledby="import-title" aria-describedby="import-description">
+      <header className="route-page-header">
         <div>
-          <h1>Import</h1>
+          <h1 id="import-title">Import</h1>
+          <p id="import-description" className="route-page-description">
+            Add observations manually, from an existing report, or sync your fitness tracker.
+          </p>
         </div>
-        <p className="import-copy">
-          Add observations manually, from an existing report, or sync your fitness tracker.
-        </p>
-      </div>
+      </header>
 
       <div className="import-workspace">
         {/* Tab list — proper ARIA tab semantics */}
-        <div className="import-tabs" role="tablist" aria-label="Import mode" aria-orientation="vertical">
+        <div className="import-tabs" role="tablist" aria-label="Import mode" aria-orientation={tabOrientation}>
           <button
             id={manualTabId}
             role="tab"

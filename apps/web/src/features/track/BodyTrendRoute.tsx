@@ -61,7 +61,7 @@ export function BodyTrendRoute({ activeProfileId, selectedDateFromPath, onSelect
   return <section className="body-trend-page" aria-labelledby="body-trend-title">
     <header className="body-trend-header">
       <div>
-        <h1 id="body-trend-title">Body Trend</h1>
+        <h2 id="body-trend-title">Body Trend</h2>
         <p>See how your body composition changes over time.</p>
       </div>
       <div className="summary-detail-chart-toolbar" role="group" aria-label="Body Trend range">

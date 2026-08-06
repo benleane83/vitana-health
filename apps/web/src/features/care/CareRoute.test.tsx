@@ -36,6 +36,15 @@ afterEach(() => {
 });
 
 describe("CareRoute", () => {
+  it("keeps route identity outside the bounded task panel", async () => {
+    const { container } = render(<CareRoute view="items" activeProfileId="self" onViewChange={vi.fn()} onDataChanged={vi.fn().mockResolvedValue(undefined)} onNotice={vi.fn()} confirm={vi.fn()} />);
+
+    await screen.findByText("Annual check-up");
+    expect(screen.getByRole("heading", { level: 1, name: "Care" }).closest(".panel")).toBeNull();
+    expect(screen.getByRole("heading", { level: 2, name: "Care items" })).toBeInTheDocument();
+    expect(container.querySelector(".care-panel")).toContainElement(screen.getByRole("tabpanel", { name: "Care items" }));
+  });
+
   it("loads and opens a care item selected from the Dashboard", async () => {
     render(
       <CareRoute
