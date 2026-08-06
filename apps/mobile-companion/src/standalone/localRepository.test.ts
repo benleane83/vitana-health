@@ -39,6 +39,11 @@ describe("local profile repository", () => {
       value: 72.5,
       sourceKind: "manual-entry"
     });
+    expect(await first.calendarMonth({ month: "2026-07", timezone: "UTC", measurementCodes: ["weight"] }))
+      .toMatchObject({
+        month: "2026-07",
+        measurements: [{ date: "2026-07-18", measurementCode: "weight", value: 72.5, count: 1 }]
+      });
 
     const duplicate = await first.importManualObservations(reading);
     expect(duplicate.outcome.observations).toEqual({ attempted: 1, accepted: 0, duplicates: 1, rejected: 0 });
@@ -49,6 +54,28 @@ describe("local profile repository", () => {
     await reopened.reset();
     const afterReset = new LocalProfileRepository(new MemoryLocalStore(state), profile("profile-a"));
     expect((await afterReset.bootstrap()).counts.observations).toBe(0);
+  });
+
+  it("projects a grouped standalone body-composition import into Body Trend", async () => {
+    const repository = new LocalProfileRepository(new MemoryLocalStore(), profile("profile-a"));
+    await repository.importManualObservations({
+      observedAt: "2026-07-18T06:00:00.000Z",
+      label: "Smart scale",
+      observations: [
+        { measurementCode: "skeletal_muscle_mass", measurementName: "Skeletal muscle mass", value: 31, unit: "kg" },
+        { measurementCode: "fat_mass", measurementName: "Fat mass", value: 20, unit: "kg" },
+        { measurementCode: "bone_mineral_content", measurementName: "Bone mineral content", value: 3.2, unit: "kg" },
+        { measurementCode: "weight", measurementName: "Weight", value: 74.2, unit: "kg" }
+      ]
+    });
+
+    const result = await repository.bodyTrendTimeline({ range: "all", timezone: "UTC" });
+    expect(result.points).toEqual([
+      expect.objectContaining({
+        date: "2026-07-18",
+        components: { skeletalMuscleMass: 31, fatMass: 20, boneMineralContent: 3.2, weight: 74.2 }
+      })
+    ]);
   });
 
   it.each([

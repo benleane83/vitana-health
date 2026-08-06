@@ -1,5 +1,6 @@
 import type {
   DataSource,
+  CalendarMonthQuery,
   HealthDataChartSeries,
   HealthDataChartSeriesOptions,
   MobileImportResult,
@@ -21,6 +22,7 @@ import {
   emptyCounts,
   entityOutcome,
   type LocalObservationAggregate,
+  type LocalCalendarObservation,
   type LocalObservationPage,
   type LocalStore,
   type LocalStoreCounts,
@@ -252,6 +254,41 @@ export class MemoryLocalStore implements LocalStore {
     return [...rows.values()];
   }
 
+  async observationsForCalendar(query: CalendarMonthQuery): Promise<LocalCalendarObservation[]> {
+    const profileId = this.requireProfileId();
+    const codes = new Set(query.measurementCodes);
+    const { start, end } = calendarUtcEnvelope(query.month);
+    return this.profileValues(this.state.observations)
+      .filter((observation) => codes.has(observation.measurementCode) && observation.observedAt >= start && observation.observedAt < end)
+      .map((observation) => ({
+        id: observation.id,
+        measurementCode: observation.measurementCode,
+        observedAt: observation.observedAt,
+        value: observation.value,
+        unit: observation.unit,
+        sourceLabel: this.state.dataSources.get(key(profileId, observation.sourceId))?.label
+      }));
+  }
+
+  async observationsForBodyTrend(query: import("@vitana/shared").BodyTrendQuery) {
+    const profileId = this.requireProfileId();
+    const codes = new Set(["skeletal_muscle_mass", "fat_mass", "bone_mineral_content", "weight"]);
+    const cutoff = bodyTrendCutoff(query.range);
+    return this.profileValues(this.state.observations)
+      .filter((observation) => codes.has(observation.measurementCode) && (!cutoff || observation.observedAt >= cutoff))
+      .sort((left, right) => right.observedAt.localeCompare(left.observedAt) || right.id.localeCompare(left.id))
+      .slice(0, 8_000)
+      .map((observation) => ({
+        id: observation.id,
+        measurementCode: observation.measurementCode,
+        observedAt: observation.observedAt,
+        value: observation.value,
+        unit: observation.unit,
+        observationGroupId: observation.observationGroupId,
+        sourceLabel: this.state.dataSources.get(key(profileId, observation.sourceId))?.label
+      }));
+  }
+
   async observationsByCode(measurementCode: string, limit: number, offset: number): Promise<LocalObservationPage> {
     const profileId = this.requireProfileId();
     const matching = this.profileValues(this.state.observations)
@@ -463,4 +500,21 @@ function replicaId(identity: ReplicaIdentity): string {
 
 function compareObservationsNewestFirst(left: Observation, right: Observation): number {
   return right.observedAt.localeCompare(left.observedAt) || right.id.localeCompare(left.id);
+}
+
+function calendarUtcEnvelope(month: string): { start: string; end: string } {
+  const [year, monthNumber] = month.split("-").map(Number);
+  return {
+    start: new Date(Date.UTC(year, monthNumber - 1, 0)).toISOString(),
+    end: new Date(Date.UTC(year, monthNumber, 2)).toISOString()
+  };
+}
+
+function bodyTrendCutoff(range: import("@vitana/shared").BodyTrendQuery["range"]) {
+  if (range === "all") return undefined;
+  const cutoff = new Date();
+  if (range === "1m") cutoff.setUTCMonth(cutoff.getUTCMonth() - 1);
+  if (range === "3m") cutoff.setUTCMonth(cutoff.getUTCMonth() - 3);
+  if (range === "1y") cutoff.setUTCFullYear(cutoff.getUTCFullYear() - 1);
+  return cutoff.toISOString();
 }

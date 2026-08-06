@@ -1,6 +1,8 @@
 import type {
   MobileImportEntityOutcome,
   MobileImportResult,
+  BodyTrendQuery,
+  CalendarMonthQuery,
   MobileMigrationBatch,
   MobileMigrationManifest,
   MobileMigrationReceipt,
@@ -100,6 +102,14 @@ export interface LocalObservationPage {
   total: number;
 }
 
+export type LocalCalendarObservation = Pick<Observation, "id" | "measurementCode" | "observedAt" | "value" | "unit"> & {
+  sourceLabel?: string;
+};
+
+export type LocalBodyTrendObservation = LocalCalendarObservation & {
+  observationGroupId?: string;
+};
+
 export interface LocalStore {
   initialize(defaultProfile: Profile): Promise<void>;
   createDataset(profile: Profile): Promise<void>;
@@ -115,6 +125,8 @@ export interface LocalStore {
   archiveAfterMigration(receipt: MobileMigrationReceipt, serverUrl: string): Promise<void>;
   latestObservationsByCode(): Promise<Observation[]>;
   observationAggregates(): Promise<LocalObservationAggregate[]>;
+  observationsForBodyTrend(query: BodyTrendQuery): Promise<LocalBodyTrendObservation[]>;
+  observationsForCalendar(query: CalendarMonthQuery): Promise<LocalCalendarObservation[]>;
   observationsByCode(measurementCode: string, limit: number, offset: number): Promise<LocalObservationPage>;
   observationChartSeries(
     measurementCode: string,

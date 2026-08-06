@@ -35,6 +35,36 @@ describe("demo data source", () => {
     await expect(source.healthDataDetail("unknown")).rejects.toThrow("not available in demo mode");
   });
 
+  it("returns valid Journal days and pages older dates with the server cursor contract", async () => {
+    const source = createDemoDataSource(new Date("2026-07-17T12:00:00.000Z"));
+    const first = await source.journal({ timezone: "UTC", dayLimit: 2 });
+
+    expect(first.days.map((day) => day.date)).toEqual(["2026-07-17", "2026-07-16"]);
+    expect(first.nextBeforeDate).toBe("2026-07-16");
+    expect(first.days[0]?.items.map((item) => item.kind)).toEqual(["activity", "sleep"]);
+    expect(new Date(first.days[0]!.items[0]!.occurredAt).toISOString()).toBe(first.days[0]!.items[0]!.occurredAt);
+
+    const older = await source.journal({ timezone: "UTC", dayLimit: 2, beforeDate: first.nextBeforeDate });
+    expect(older.days.map((day) => day.date)).toEqual(["2026-07-14"]);
+    expect(older.nextBeforeDate).toBeUndefined();
+  });
+
+  it("returns complete grouped Body Trend readings", async () => {
+    const source = createDemoDataSource(new Date("2026-07-17T12:00:00.000Z"));
+    const result = await source.bodyTrendTimeline({ range: "3m", timezone: "UTC" });
+
+    expect(result.points).toHaveLength(4);
+    expect(result.points.at(-1)).toMatchObject({
+      sourceLabel: "Demo smart scale",
+      components: {
+        skeletalMuscleMass: 31.3,
+        fatMass: 19.6,
+        boneMineralContent: 3.2,
+        weight: 73.8
+      }
+    });
+  });
+
   it("classifies ranged samples without inventing a status for range-less metrics", async () => {
     const source = createDemoDataSource(new Date("2026-07-17T12:00:00.000Z"));
     const oxygen = await source.healthDataDetail("oxygen_saturation");

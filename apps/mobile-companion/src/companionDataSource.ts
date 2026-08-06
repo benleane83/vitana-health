@@ -1,9 +1,13 @@
 import type {
   AnalyticsSummary,
   AppBootstrap,
+  BodyTrendQuery,
+  BodyTrendTimeline,
   CareItem,
   CareItemMutationResponse,
   CareItemListQuery,
+  CalendarMonthData,
+  CalendarMonthQuery,
   CompleteCareItemInput,
   CompleteCareItemResponse,
   CreateCareItemInput,
@@ -15,6 +19,8 @@ import type {
   HealthDataChartSeriesOptions,
   HealthDataDetail,
   HealthDataSummary,
+  JournalPage,
+  JournalQueryInput,
   ManualObservationPayload,
   MobileImportResult,
   HealthEvent,
@@ -34,6 +40,9 @@ export interface CompanionDataSource {
   bootstrap(): Promise<AppBootstrap>;
   analytics(): Promise<AnalyticsSummary>;
   summary(): Promise<HealthDataSummary>;
+  bodyTrendTimeline(query: BodyTrendQuery, signal?: AbortSignal): Promise<BodyTrendTimeline>;
+  calendarMonth(query: CalendarMonthQuery, signal?: AbortSignal): Promise<CalendarMonthData>;
+  journal(query: JournalQueryInput, signal?: AbortSignal): Promise<JournalPage>;
   healthDataDetail(measurementCode: string, page?: DetailPage): Promise<HealthDataDetail>;
   healthDataChartSeries(measurementCode: string, options: HealthDataChartSeriesOptions): Promise<HealthDataChartSeries>;
 }

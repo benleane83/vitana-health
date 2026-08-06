@@ -139,6 +139,7 @@ export function createConnectedDataSource(
     bootstrap: () => cachedRead((current) => current.bootstrap()),
     analytics: () => cachedRead((current) => current.analytics()),
     summary: () => cachedRead((current) => current.summary()),
+    bodyTrendTimeline: (query, signal) => live.bodyTrendTimeline(query, signal),
     healthDataDetail: (measurementCode: string, page?: DetailPage) =>
       cachedRead((current) => current.healthDataDetail(measurementCode, page)),
     healthDataChartSeries: (measurementCode, options) =>

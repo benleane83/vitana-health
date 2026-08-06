@@ -3,6 +3,10 @@ import { AppState } from "react-native";
 import type {
   AnalyticsSummary,
   AppBootstrap,
+  BodyTrendQuery,
+  BodyTrendTimeline,
+  CalendarMonthData,
+  CalendarMonthQuery,
   CareItemListQuery,
   CompleteCareItemInput,
   CreateCareItemInput,
@@ -12,6 +16,8 @@ import type {
   HealthDataDetail,
   HealthDataSummary,
   HealthEventListQuery,
+  JournalPage,
+  JournalQueryInput,
   ManualObservationPayload,
   MobileMigrationManifest,
   MobileMigrationReceipt,
@@ -81,6 +87,9 @@ interface MobileApiContextValue {
   refreshDashboard(options?: { synchronize?: boolean }): Promise<void>;
   refreshTrack(options?: { synchronize?: boolean }): Promise<void>;
   synchronizeConnectedData(force?: boolean): Promise<boolean>;
+  bodyTrendTimeline(query: BodyTrendQuery, signal?: AbortSignal): Promise<BodyTrendTimeline>;
+  calendarMonth(query: CalendarMonthQuery, signal?: AbortSignal): Promise<CalendarMonthData>;
+  journal(query: JournalQueryInput, signal?: AbortSignal): Promise<JournalPage>;
   healthDataDetail(measurementCode: string, page?: DetailPage): Promise<HealthDataDetail>;
   healthDataChartSeries(measurementCode: string, options: HealthDataChartSeriesOptions): Promise<HealthDataChartSeries>;
   importManualObservations(payload: ManualObservationPayload): Promise<unknown>;
@@ -400,6 +409,27 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     return detail;
   }, [source, updateConnectionState]);
 
+  const journal = useCallback(async (query: JournalQueryInput, signal?: AbortSignal) => {
+    if (!source) throw new Error("Journal is unavailable while the companion is disconnected.");
+    const page = await source.journal(query, signal);
+    updateConnectionState(source, page);
+    return page;
+  }, [source, updateConnectionState]);
+
+  const calendarMonth = useCallback(async (query: CalendarMonthQuery, signal?: AbortSignal) => {
+    if (!source) throw new Error("Calendar is unavailable while the companion is disconnected.");
+    const result = await source.calendarMonth(query, signal);
+    updateConnectionState(source, result);
+    return result;
+  }, [source, updateConnectionState]);
+
+  const bodyTrendTimeline = useCallback(async (query: BodyTrendQuery, signal?: AbortSignal) => {
+    if (!source) throw new Error("Body Trend is unavailable while the companion is disconnected.");
+    const result = await source.bodyTrendTimeline(query, signal);
+    updateConnectionState(source, result);
+    return result;
+  }, [source, updateConnectionState]);
+
   const runMutation = useCallback(async <T,>(operation: () => Promise<T>): Promise<T> => {
     try {
       return await operation();
@@ -615,6 +645,9 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     refreshDashboard,
     refreshTrack,
     synchronizeConnectedData,
+    bodyTrendTimeline,
+    calendarMonth,
+    journal,
     healthDataDetail,
     healthDataChartSeries,
     importManualObservations,
@@ -634,8 +667,8 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     clearTransientData,
     disconnect
   }), [
-    analytics, bootstrap, cancelPendingConnection, clearTransientData, completeCareItem, connection, connectionState, createCareItem, createHealthEvent,
-    dashboardLoading, deleteCareItem, deleteHealthEvent, deleteObservation, demoMode, discardStandaloneDataAndConnect, disconnect, error, healthDataChartSeries, healthDataDetail,
+    analytics, bodyTrendTimeline, bootstrap, calendarMonth, cancelPendingConnection, clearTransientData, completeCareItem, connection, connectionState, createCareItem, createHealthEvent,
+    dashboardLoading, deleteCareItem, deleteHealthEvent, deleteObservation, demoMode, discardStandaloneDataAndConnect, disconnect, error, healthDataChartSeries, healthDataDetail, journal,
     importManualObservations, listCareItems, listHealthEvents, operatingMode, refreshAfterImport, refreshDashboard,
     profilePhoto, refreshTrack, reloadConnection, resetStandaloneData, setDemoMode, setOperatingMode, summary, syncing, synchronizeConnectedData, trackLoading,
     migrateStandaloneData, migrationProgress, standaloneMigrationManifest, transientRevision, updateCareItem, updateHealthEvent, updateObservation

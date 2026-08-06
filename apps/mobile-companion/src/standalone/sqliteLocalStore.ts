@@ -3,6 +3,7 @@ import * as SecureStore from "expo-secure-store";
 import { deleteDatabaseAsync, openDatabaseAsync, type SQLiteDatabase } from "expo-sqlite";
 import type {
   MobileImportResult,
+  CalendarMonthQuery,
   MobileMigrationBatch,
   MobileMigrationManifest,
   MobileMigrationReceipt,
@@ -41,6 +42,7 @@ import {
   emptyCounts,
   entityOutcome,
   type LocalObservationAggregate,
+  type LocalCalendarObservation,
   type LocalObservationPage,
   type LocalDatasetSummary,
   type LocalDatasetMetadata,
@@ -722,6 +724,40 @@ export class SqliteLocalStore implements LocalStore {
     `, this.requireProfileId());
   }
 
+  async observationsForCalendar(query: CalendarMonthQuery): Promise<LocalCalendarObservation[]> {
+    const placeholders = query.measurementCodes.map(() => "?").join(", ");
+    const [year, monthNumber] = query.month.split("-").map(Number);
+    const start = new Date(Date.UTC(year, monthNumber - 1, 0)).toISOString();
+    const end = new Date(Date.UTC(year, monthNumber, 2)).toISOString();
+    return this.database.getAllAsync<LocalCalendarObservation>(`
+      SELECT o.id, o.measurement_code AS measurementCode, o.observed_at AS observedAt,
+        o.value, o.unit, ds.label AS sourceLabel
+      FROM observations o
+      LEFT JOIN data_sources ds ON ds.profile_id = o.profile_id AND ds.id = o.source_id
+      WHERE o.profile_id = ?
+        AND o.measurement_code IN (${placeholders})
+        AND o.observed_at >= ? AND o.observed_at < ?
+      ORDER BY o.observed_at, o.id
+    `, this.requireProfileId(), ...query.measurementCodes, start, end);
+  }
+
+  async observationsForBodyTrend(query: import("@vitana/shared").BodyTrendQuery) {
+    const cutoff = bodyTrendCutoff(query.range);
+    const rangeSql = cutoff ? " AND o.observed_at >= ?" : "";
+    const parameters = cutoff ? [this.requireProfileId(), cutoff] : [this.requireProfileId()];
+    return this.database.getAllAsync<import("./localStore").LocalBodyTrendObservation>(`
+      SELECT o.id, o.measurement_code AS measurementCode, o.observed_at AS observedAt,
+        o.value, o.unit, o.observation_group_id AS observationGroupId, ds.label AS sourceLabel
+      FROM observations o
+      LEFT JOIN data_sources ds ON ds.profile_id = o.profile_id AND ds.id = o.source_id
+      WHERE o.profile_id = ?
+        AND o.measurement_code IN ('skeletal_muscle_mass', 'fat_mass', 'bone_mineral_content', 'weight')
+        ${rangeSql}
+      ORDER BY o.observed_at DESC, o.id DESC
+      LIMIT 8000
+    `, ...parameters);
+  }
+
   async observationsByCode(measurementCode: string, limit: number, offset: number): Promise<LocalObservationPage> {
     const totalRow = await this.database.getFirstAsync<{ total: number }>(
       "SELECT COUNT(*) AS total FROM observations WHERE profile_id = ? AND measurement_code = ?",
@@ -1176,6 +1212,15 @@ function replicaIdentity(page: ReplicaPage): ReplicaIdentity {
 
 function replicaId(identity: ReplicaIdentity): string {
   return `${identity.serverInstanceId}:${identity.profileId}:${identity.pairingId}`;
+}
+
+function bodyTrendCutoff(range: import("@vitana/shared").BodyTrendQuery["range"]) {
+  if (range === "all") return undefined;
+  const cutoff = new Date();
+  if (range === "1m") cutoff.setUTCMonth(cutoff.getUTCMonth() - 1);
+  if (range === "3m") cutoff.setUTCMonth(cutoff.getUTCMonth() - 3);
+  if (range === "1y") cutoff.setUTCFullYear(cutoff.getUTCFullYear() - 1);
+  return cutoff.toISOString();
 }
 
 /**

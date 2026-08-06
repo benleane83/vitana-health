@@ -11,12 +11,16 @@ import {
   resolveReferenceRange,
   type AnalyticsSummary,
   type AppBootstrap,
+  type BodyTrendQuery,
+  type CalendarMonthQuery,
   type HealthEvent,
   type HealthEventListQuery,
   type HealthDataDetail,
   type HealthDataDetailEntry,
   type HealthDataSummary,
   type HealthDataSummaryTypeRow,
+  type JournalPage,
+  type JournalQueryInput,
   type ManualObservationPayload,
   type MobileImportResult
 } from "@vitana/shared";
@@ -28,6 +32,8 @@ import type {
   DetailPage
 } from "./companionDataSource";
 import { chartSeriesFromDetail } from "./chartSeries";
+import { calendarMonthFromEntries } from "./calendarProjection";
+import { bodyTrendFromObservations } from "./bodyTrendProjection";
 
 interface DemoMetric {
   code: string;
@@ -48,6 +54,28 @@ const metrics: DemoMetric[] = [
   { code: "glucose", values: [5.1, 5.0, 5.4, 5.2, 5.1, 4.9, 5.0], unit: "mmol/L", kind: "observation", sourceLabel: "Demo laboratory report" }
 ];
 
+function makeBodyTrendObservations(now: Date) {
+  const values = [
+    [30.4, 20.8, 3.1, 74.8],
+    [30.7, 20.4, 3.1, 74.5],
+    [31.0, 20.0, 3.2, 74.1],
+    [31.3, 19.6, 3.2, 73.8]
+  ];
+  return values.flatMap((components, sessionIndex) => {
+    const observedAt = new Date(now.getTime() - (values.length - 1 - sessionIndex) * 14 * 86_400_000).toISOString();
+    const sessionId = `demo-body-${sessionIndex + 1}`;
+    return ["skeletal_muscle_mass", "fat_mass", "bone_mineral_content", "weight"].map((measurementCode, metricIndex) => ({
+      id: `${sessionId}-${measurementCode}`,
+      measurementCode,
+      observationGroupId: sessionId,
+      observedAt,
+      value: components[metricIndex]!,
+      unit: "kg",
+      sourceLabel: "Demo smart scale"
+    }));
+  });
+}
+
 export function createDemoDataSource(
   now = new Date()
 ): CompanionDataSource & CompanionCareService & CompanionMutationService & CompanionObservationMutationService {
@@ -62,6 +90,24 @@ export function createDemoDataSource(
     async bootstrap() { return makeBootstrap(details, now); },
     async analytics() { return makeAnalytics(details, now); },
     async summary() { return makeSummary([...details.values()].map((detail) => detail.measurement), now); },
+    async bodyTrendTimeline(query: BodyTrendQuery) {
+      return bodyTrendFromObservations(query, makeBodyTrendObservations(now), "metric", now);
+    },
+    async calendarMonth(query: CalendarMonthQuery) {
+      return calendarMonthFromEntries(
+        query,
+        [...details.values()].flatMap((detail) => detail.entries.map((entry) => ({
+          id: entry.id,
+          measurementCode: entry.measurementCode,
+          observedAt: entry.timestamp,
+          value: entry.value,
+          unit: entry.unit,
+          sourceLabel: entry.sourceLabel
+        }))),
+        healthEvents
+      );
+    },
+    async journal(query) { return makeJournal(query, now); },
     async healthDataDetail(measurementCode, page) {
       const detail = details.get(measurementCode);
       if (!detail) throw new Error("This metric is not available in demo mode.");
@@ -585,5 +631,55 @@ function demoImportResult(observationCount: number, importSequence: number): Mob
       timeSeriesSamples: empty,
       activitySessions: empty
     }
+  };
+}
+
+function makeJournal(query: JournalQueryInput, now: Date): JournalPage {
+  const timezone = query.timezone;
+  const dayLimit = query.dayLimit ?? 14;
+  const days = [0, 1, 3].map((daysAgo, index) => {
+    const date = new Date(now);
+    date.setUTCDate(date.getUTCDate() - daysAgo);
+    const day = date.toISOString().slice(0, 10);
+    const at = (hour: number, minute = 0) => `${day}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00.000Z`;
+    return {
+      date: day,
+      summary: {
+        steps: { value: [8240, 6915, 10482][index] ?? 0, unit: "count", sources: ["Demo fitness tracker"] },
+        sleepDurationMinutes: [438, 407, 462][index]
+      },
+      items: [
+        {
+          kind: "activity" as const,
+          id: `demo-activity-${index}`,
+          occurredAt: at(17, 30),
+          title: index === 1 ? "Evening walk" : "Outdoor walk",
+          activityType: "Walking",
+          durationMinutes: [42, 28, 51][index],
+          distanceMeters: [3800, 2400, 4700][index],
+          energyKcal: [238, 166, 291][index],
+          sourceLabel: "Demo fitness tracker"
+        },
+        {
+          kind: "sleep" as const,
+          id: `demo-sleep-${index}`,
+          occurredAt: at(6, 45),
+          startAt: new Date(new Date(`${day}T06:45:00.000Z`).getTime() - ([438, 407, 462][index] ?? 0) * 60_000).toISOString(),
+          endAt: at(6, 45),
+          durationMinutes: [438, 407, 462][index] ?? 0,
+          stageDataStatus: "available" as const,
+          sourceLabel: "Demo fitness tracker"
+        }
+      ],
+      omittedItemCount: 0
+    };
+  });
+  const beforeDate = query.beforeDate;
+  const candidates = days.filter((day) => !beforeDate || day.date < beforeDate);
+  const visible = candidates.slice(0, dayLimit);
+  return {
+    timezone,
+    days: visible,
+    ...(candidates.length > dayLimit ? { nextBeforeDate: visible.at(-1)!.date } : {})
   };
 }

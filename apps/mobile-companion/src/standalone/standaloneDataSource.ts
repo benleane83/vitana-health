@@ -28,11 +28,14 @@ export interface StandaloneMigrationSource {
 
 export function createStandaloneDataSource(): CompanionDataSource & CompanionMutationService & CompanionObservationMutationService & CompanionMaintenanceService & CompanionLifecycleService & StandaloneMigrationSource {
   let repository = createStandaloneRepository();
-  const getRepository = (): Promise<MobileProfileRepository & Pick<LocalProfileRepository, "healthDataChartSeries">> => repository;
+  const getRepository = (): Promise<MobileProfileRepository & Pick<LocalProfileRepository, "bodyTrendTimeline" | "calendarMonth" | "healthDataChartSeries">> => repository;
   return {
     bootstrap: async () => (await getRepository()).bootstrap(),
     analytics: async () => (await getRepository()).analytics(),
     summary: async () => (await getRepository()).summary(),
+    bodyTrendTimeline: async (query) => (await getRepository()).bodyTrendTimeline(query),
+    calendarMonth: async (query) => (await getRepository()).calendarMonth(query),
+    journal: async (query) => ({ timezone: query.timezone, days: [] }),
     healthDataDetail: async (measurementCode: string, page?: MobileDetailPage) =>
       (await getRepository()).healthDataDetail(measurementCode, page),
     healthDataChartSeries: async (measurementCode, options) =>

@@ -6,6 +6,9 @@ import {
   getReferenceRange,
   resolveReferenceRange,
   type AppBootstrap,
+  type BodyTrendQuery,
+  type CalendarMonthData,
+  type CalendarMonthQuery,
   type HealthDataDetail,
   type HealthDataChartSeriesOptions,
   type HealthDataSummary,
@@ -19,6 +22,8 @@ import {
   type UpdateObservationInput
 } from "@vitana/shared";
 import type { LocalStore } from "./localStore";
+import { calendarMonthFromEntries } from "../calendarProjection";
+import { bodyTrendFromObservations } from "../bodyTrendProjection";
 
 const DEFAULT_DETAIL_LIMIT = 50;
 const MAX_DETAIL_LIMIT = 100;
@@ -124,6 +129,20 @@ export class LocalProfileRepository implements MobileProfileRepository {
       totals: { observations: total, samples: 0, activities: 0, total, types: aggregates.length },
       categories
     };
+  }
+
+  async calendarMonth(query: CalendarMonthQuery): Promise<CalendarMonthData> {
+    await this.ensureInitialized();
+    return calendarMonthFromEntries(query, await this.store.observationsForCalendar(query));
+  }
+
+  async bodyTrendTimeline(query: BodyTrendQuery) {
+    await this.ensureInitialized();
+    const [profile, observations] = await Promise.all([
+      this.store.getProfile(),
+      this.store.observationsForBodyTrend(query)
+    ]);
+    return bodyTrendFromObservations(query, observations, profile.units);
   }
 
   async healthDataDetail(measurementCode: string, page: MobileDetailPage = {}): Promise<HealthDataDetail> {
