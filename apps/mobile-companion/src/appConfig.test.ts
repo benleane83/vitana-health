@@ -6,9 +6,22 @@ const configPath = require.resolve("../app.config.js");
 
 function loadConfig(env: Record<string, string | undefined>): {
   expo: {
+    slug: string;
     android: { usesCleartextTraffic: boolean };
-    ios: { infoPlist: { NSAppTransportSecurity: { NSAllowsArbitraryLoads: boolean } } };
-    extra: { allowCleartext: boolean };
+    ios: {
+      bundleIdentifier: string;
+      entitlements?: Record<string, unknown>;
+      infoPlist: {
+        NSAppTransportSecurity: { NSAllowsArbitraryLoads: boolean };
+        NSLocalNetworkUsageDescription: string;
+        NSCameraUsageDescription: string;
+        NSPhotoLibraryUsageDescription: string;
+      };
+    };
+    plugins: (string | [string, Record<string, unknown>])[];
+    runtimeVersion: unknown;
+    updates: { url: string };
+    extra: { allowCleartext: boolean; eas: { projectId: string } };
   };
 } {
   const previous = { ...process.env };
@@ -41,6 +54,8 @@ describe("cleartext build policy", () => {
       .toThrow(/only permitted on the "development" profile/);
     expect(() => loadConfig({ VITANA_ALLOW_CLEARTEXT: "1", EAS_BUILD_PROFILE: "production" }))
       .toThrow(/only permitted on the "development" profile/);
+    expect(() => loadConfig({ VITANA_ALLOW_CLEARTEXT: "1", EAS_BUILD_PROFILE: "ios-device-farm" }))
+      .toThrow(/only permitted on the "development" profile/);
   });
 
   it("builds distributable profiles with cleartext off", () => {
@@ -59,5 +74,43 @@ describe("cleartext build policy", () => {
     const distributable = loadConfig({ VITANA_ALLOW_CLEARTEXT: "0", EAS_BUILD_PROFILE: "production" });
     expect(distributable.expo.ios.infoPlist.NSAppTransportSecurity.NSAllowsArbitraryLoads).toBe(false);
     expect(distributable.expo.android.usesCleartextTraffic).toBe(false);
+  });
+});
+
+describe("iOS release configuration", () => {
+  const config = loadConfig({
+    VITANA_ALLOW_CLEARTEXT: "0",
+    EAS_BUILD_PROFILE: "production",
+    EAS_BUILD_PLATFORM: "ios"
+  });
+
+  it("keeps the existing EAS project identity and explicit runtime", () => {
+    expect(config.expo.slug).toBe("local-fitness-companion");
+    expect(config.expo.extra.eas.projectId).toBe("2cc5cf1b-57e8-4e6f-8709-662259497a57");
+    expect(config.expo.updates.url).toBe("https://u.expo.dev/2cc5cf1b-57e8-4e6f-8709-662259497a57");
+    expect(config.expo.ios.bundleIdentifier).toBe("app.vitanahealth");
+    expect(config.expo.runtimeVersion).toBe("4");
+  });
+
+  it("declares local-network, camera, and photo-library purposes", () => {
+    expect(config.expo.ios.infoPlist.NSLocalNetworkUsageDescription).toMatch(/local network/i);
+    expect(config.expo.ios.infoPlist.NSCameraUsageDescription).toMatch(/camera/i);
+    expect(config.expo.ios.infoPlist.NSPhotoLibraryUsageDescription).toMatch(/health report/i);
+  });
+
+  it("does not generate HealthKit or billing capabilities", () => {
+    const pluginNames = config.expo.plugins.map((plugin) => Array.isArray(plugin) ? plugin[0] : plugin);
+    expect(pluginNames).not.toContain("react-native-iap");
+    expect(config.expo.ios.entitlements?.["com.apple.developer.healthkit"]).toBeUndefined();
+  });
+
+  it("retains the IAP config plugin for the future Android billing implementation", () => {
+    const androidConfig = loadConfig({
+      VITANA_ALLOW_CLEARTEXT: "0",
+      EAS_BUILD_PROFILE: "production",
+      EAS_BUILD_PLATFORM: "android"
+    });
+    const pluginNames = androidConfig.expo.plugins.map((plugin) => Array.isArray(plugin) ? plugin[0] : plugin);
+    expect(pluginNames).toContain("react-native-iap");
   });
 });

@@ -28,7 +28,7 @@ slug: ndroid-companion-src-screens-trackdetailscreen-tsx
 
 **LLM assessment:** This does not look AI-generated. The surface is specific to personal health review: source, time, units, range origin, and data state are all retained. The risk is density and equal visual weight, not generic visual styling.
 
-**Deterministic scan:** The scoped CLI scan returned zero findings for `apps/android-companion/src/screens/TrackDetailScreen.tsx`. Browser overlay injection succeeded. It displayed one runtime `layout property animation: transition: padding` finding, but no matching transition exists in the target source; treat it as a shared/framework false positive for this scope.
+**Deterministic scan:** The scoped CLI scan returned zero findings for `apps/mobile-companion/src/screens/TrackDetailScreen.tsx`. Browser overlay injection succeeded. It displayed one runtime `layout property animation: transition: padding` finding, but no matching transition exists in the target source; treat it as a shared/framework false positive for this scope.
 
 ## Overall Impression
 

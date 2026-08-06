@@ -42,7 +42,7 @@ jobs:
         run: npm run build
 
       - name: Typecheck Android companion
-        run: npm run typecheck -w apps/android-companion
+        run: npm run typecheck -w apps/mobile-companion
 
   # ─── Tests ──────────────────────────────────────────────────────────────────
   test:

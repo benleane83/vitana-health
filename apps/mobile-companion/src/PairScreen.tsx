@@ -1,6 +1,7 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Linking, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import { companionDeviceName } from "./deviceName";
 import { getDeviceId, saveConnection } from "./endpointStore";
 import { parsePairingPayload } from "./pairingPayload";
 import { pinnedFetch } from "./pinnedFetch";
@@ -92,7 +93,7 @@ export function PairScreen({
       const response = await pinnedFetch(`${detectedUrl}/api/pairing/request`, publicKeyHash, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ deviceId, deviceName: "Android Companion", pairingCode })
+        body: JSON.stringify({ deviceId, deviceName: companionDeviceName(Platform.OS), pairingCode })
       });
       const body = await response.json().catch(() => ({})) as Record<string, unknown>;
       if (!response.ok) {

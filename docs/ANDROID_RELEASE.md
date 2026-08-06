@@ -13,14 +13,14 @@ The release owner is responsible for executing this runbook and recording the re
 
 ## Versioning
 
-The release owner owns the user-visible application version in `apps/android-companion/app.config.js`.
+The release owner owns the user-visible application version in `apps/mobile-companion/app.config.js`.
 
 - Increment `expo.version` for every Play Store release. Use semantic versioning: patch for compatible fixes, minor for user-visible compatible features, and major for incompatible changes.
-- EAS owns the Android `versionCode` because `cli.appVersionSource` is `remote` in `apps/android-companion/eas.json`.
+- EAS owns the Android `versionCode` because `cli.appVersionSource` is `remote` in `apps/mobile-companion/eas.json`.
 - The production and preview profiles both have `autoIncrement: true`; every build receives a new, monotonically increasing Android version code. Do not set or reuse an Android version code locally. Preview needs this as much as production: two testers on the same `expo.version` are otherwise indistinguishable in a bug report. The app shows the version code next to the marketing version, for example `Version 1.2.0 (57)`.
 - The `development` profile deliberately does not auto-increment, because a development client is rebuilt constantly and its version code carries no reporting value.
 - Record the `expo.version`, EAS Android version code, EAS build URL, commit SHA, and Play release name in the release notes.
-- `runtimeVersion` is an explicit string (currently `"1"`) that is **decoupled from `expo.version`**. It describes the native layer an OTA update can safely land on, not the marketing version.
+- `runtimeVersion` is an explicit string that is **decoupled from `expo.version`**. It describes the native layer an OTA update can safely land on, not the marketing version.
 
 ### The `runtimeVersion` bump rule
 
@@ -69,7 +69,7 @@ npm run typecheck
 npm run build
 npm test
 npm run audit:prod:android
-npm run build:android:production -w apps/android-companion
+npm run build:android:production -w apps/mobile-companion
 ```
 
 The production EAS profile intentionally omits `android.buildType: "apk"`; EAS produces an Android App Bundle (AAB) for Play submission. Download the signed AAB only from the recorded EAS build.
@@ -94,7 +94,7 @@ Local-only use is separate from Demo mode. It stores the user's local profile an
 
 ### Every release
 
-- [ ] `apps/android-companion/app.config.js` has the intended new `expo.version` and the commit is merged/tagged.
+- [ ] `apps/mobile-companion/app.config.js` has the intended new `expo.version` and the commit is merged/tagged.
 - [ ] `expo.runtimeVersion` has been reviewed against the bump rule under "Versioning" — bumped if the native layer changed, left alone if the change is JavaScript-only — and the decision is recorded in the release notes.
 - [ ] `PURCHASE_GATING_ENABLED` matches the intended release state, and that state is recorded in the release notes.
 - [ ] EAS project access and Play Console production-track access are limited to authorized release owners.

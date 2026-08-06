@@ -1,5 +1,6 @@
 const allowCleartext = process.env.VITANA_ALLOW_CLEARTEXT === "1";
 const buildProfile = process.env.EAS_BUILD_PROFILE || null;
+const isIosBuild = process.env.EAS_BUILD_PLATFORM === "ios";
 
 // Cleartext HTTP is a development affordance: it lets the companion talk to an unencrypted local
 // API while the pairing certificate work is bypassed. Three independent switches have to agree for
@@ -61,9 +62,8 @@ module.exports = {
     web: {
       favicon: "./assets/favicon.png"
     },
-    // iOS is not shipped yet. This block exists so `expo run:ios` and `eas build -p ios` fail on
-    // real, nameable problems (a missing native module, an unsigned capability) instead of on a
-    // missing bundle identifier, which tells us nothing about how far the port actually is.
+    // The first iOS MVP intentionally excludes HealthKit and paid StoreKit gating. Keep its native
+    // surface reproducible through this shared Expo config while Android retains Health Connect.
     ios: {
       bundleIdentifier: "app.vitanahealth",
       supportsTablet: true,
@@ -87,7 +87,7 @@ module.exports = {
     },
     plugins: [
       ["./plugins/withDevNetworkSecurity", { allowCleartext }],
-      "react-native-iap",
+      ...(!isIosBuild ? ["react-native-iap"] : []),
       "expo-health-connect",
       // Android backup stays off (see android.allowBackup above): the encrypted database and the
       // SecureStore key must never leave the device together, so the plugin is not allowed to add
@@ -112,8 +112,8 @@ module.exports = {
     ],
     // Bumped by hand whenever the native layer changes, independently of the marketing `version`
     // above. An appVersion policy silently orphaned installs on every marketing bump.
-    // See docs/ANDROID_RELEASE.md for the bump rule.
-    runtimeVersion: "3",
+    // See the platform release runbooks for the bump rule.
+    runtimeVersion: "4",
     updates: {
       enabled: true,
       url: "https://u.expo.dev/2cc5cf1b-57e8-4e6f-8709-662259497a57",

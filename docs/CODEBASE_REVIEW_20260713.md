@@ -36,7 +36,7 @@ Fresh-install validation exposed a release-blocking baseline issue:
 
 - `npm ci --ignore-scripts` completed with extensive extraction warnings, but the resulting workspace omitted normal root dependencies.
 - `npm run typecheck` and `npm run build` failed in `packages/shared` because `zod` and `@noble/hashes` could not be resolved.
-- `npm run typecheck -w apps/android-companion` and `npm test` also failed before a usable install was established.
+- `npm run typecheck -w apps/mobile-companion` and `npm test` also failed before a usable install was established.
 - The root package declares itself as a file dependency (`package.json:37-39`), and the lockfile's `packages/shared` entry omits the dependencies present in its package manifest (`package-lock.json:15256-15262`; `packages/shared/package.json:23-25`).
 - The standalone desktop key tests passed: 4/4.
 - `npm run audit:ci` passed only because five high-severity packages are temporarily allowlisted (`.audit-allowlist.json:2-9`). The install reported 11 moderate and 5 high vulnerabilities.
@@ -89,15 +89,15 @@ Combined with the companion authorization defect, a paired-token holder can chan
 
 #### [IN PROGRESS] P0 — Play privacy and Health Connect disclosure work is incomplete
 
-The release checklist still depends on a public privacy-policy URL, Data Safety declaration, Health Connect declaration, and physical-device evidence (`docs/ANDROID_RELEASE.md:56-68`). The app has no privacy-policy link or purpose-specific explanation before permission requests (`apps/android-companion/App.tsx:220-237`).
+The release checklist still depends on a public privacy-policy URL, Data Safety declaration, Health Connect declaration, and physical-device evidence (`docs/ANDROID_RELEASE.md:56-68`). The app has no privacy-policy link or purpose-specific explanation before permission requests (`apps/mobile-companion/App.tsx:220-237`).
 
-The default is also maximum collection: all supported categories and a 365-day initial window (`apps/android-companion/src/endpointStore.ts:9-37,141-150`). This is not a least-privilege default and includes particularly sensitive categories such as glucose, blood pressure, sleep, temperature, body composition, and exercise.
+The default is also maximum collection: all supported categories and a 365-day initial window (`apps/mobile-companion/src/endpointStore.ts:9-37,141-150`). This is not a least-privilege default and includes particularly sensitive categories such as glucose, blood pressure, sleep, temperature, body composition, and exercise.
 
 **Required:** Publish and link a stable policy covering every category, purpose, LAN transfer, retention/eviction, deletion, cloud-model exception, security controls, and support contact. Default to no categories or a justified minimal set, show rationale before the system prompt, and make repository documentation and Play declarations derive from the same inventory.
 
 #### [ IN PROGRESS] P1 — Android profile discovery bypasses the authenticated pinned client
 
-Sync and pairing use the native pinned client, but profile refresh uses ordinary unauthenticated `fetch` (`apps/android-companion/App.tsx:107-130`). The API currently returns data only because companion authorization is overbroad; once authorization is corrected, this flow will stop working.
+Sync and pairing use the native pinned client, but profile refresh uses ordinary unauthenticated `fetch` (`apps/mobile-companion/App.tsx:107-130`). The API currently returns data only because companion authorization is overbroad; once authorization is corrected, this flow will stop working.
 
 **Status (partially addressed 2026-07-13):** Profile refresh now uses `pinnedFetch` with the paired companion token. Bounded timeout behavior and an intentionally minimal companion-safe profile response remain open.
 
@@ -204,7 +204,7 @@ Every successful companion-token validation updates `lastUsedAt` and rewrites `p
 
 #### P1 — Public documentation materially understates Android collection
 
-The README says the companion uses manual endpoint input and syncs six categories over 30 days (`README.md:114-125`). The app now uses QR pairing and defaults to roughly two dozen categories over 365 days (`apps/android-companion/src/endpointStore.ts:9-37`; `apps/android-companion/src/PairScreen.tsx:37-105`).
+The README says the companion uses manual endpoint input and syncs six categories over 30 days (`README.md:114-125`). The app now uses QR pairing and defaults to roughly two dozen categories over 365 days (`apps/mobile-companion/src/endpointStore.ts:9-37`; `apps/mobile-companion/src/PairScreen.tsx:37-105`).
 
 The README's privacy claim that companion tokens are import-scoped is also false, and `SECURITY.md` describes the retired JSON backup model as current.
 
@@ -239,7 +239,7 @@ The web client discards HTTP status and correlation IDs and throws raw response 
 - Desktop DuckDB keys are wrapped with Electron `safeStorage`; insecure Linux storage is rejected.
 - Cloud-query routes have explicit consent UI and bounded prompt-row sanitization.
 - Normal web startup uses a bounded bootstrap projection, and import/delete API responses no longer serialize complete health stores.
-- Android sync now supports selected categories, partial grants, a cursor with overlap, paginated reads, provenance, bounded chunks, retries, and pinning (`apps/android-companion/src/syncHealthConnect.ts:19-75,187-222,370-385,417-513,563-570`).
+- Android sync now supports selected categories, partial grants, a cursor with overlap, paginated reads, provenance, bounded chunks, retries, and pinning (`apps/mobile-companion/src/syncHealthConnect.ts:19-75,187-222,370-385,417-513,563-570`).
 - The Android production/preview/development profiles and release checklist are substantially clearer.
 - API modularization, environment validation, structured logging, graceful shutdown, stable public error codes, and web semantics remain good foundations.
 

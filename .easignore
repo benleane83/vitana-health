@@ -3,9 +3,9 @@ dist/
 .expo/
 .expo-web-preview/
 web-build/
-apps/android-companion/android/.gradle/
-apps/android-companion/android/build/
-apps/android-companion/android/app/build/
+apps/mobile-companion/android/.gradle/
+apps/mobile-companion/android/build/
+apps/mobile-companion/android/app/build/
 apps/desktop/build/duckdb-extensions/
 apps/desktop/dist-poc/
 apps/desktop/dist-store*/
@@ -19,5 +19,5 @@ data/
 .playwright-mcp/
 
 # Keep the local Expo native module in remote EAS uploads.
-!apps/android-companion/modules/
-!apps/android-companion/modules/**
+!apps/mobile-companion/modules/
+!apps/mobile-companion/modules/**

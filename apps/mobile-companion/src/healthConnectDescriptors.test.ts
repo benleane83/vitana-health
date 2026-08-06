@@ -15,8 +15,8 @@ vi.mock("./pinnedFetch", () => ({ pinnedFetch: vi.fn() }));
 
 import { HEALTH_SOURCE_CATEGORIES } from "@vitana/shared";
 import { HEALTH_CONNECT_CATEGORIES } from "./endpointStore";
-import { HEALTH_CONNECT_DESCRIPTORS } from "./syncHealthConnect";
-import { healthConnectProvider } from "./healthSourceProvider";
+import { HEALTH_CONNECT_DESCRIPTORS } from "./syncHealthConnect.android";
+import { healthConnectProvider } from "./healthSourceProvider.android";
 
 describe("Health Connect collection descriptors", () => {
   it("defines descriptors only for selectable categories and offers each category once", () => {

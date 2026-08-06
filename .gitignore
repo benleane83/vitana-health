@@ -14,4 +14,4 @@ apps/desktop/build/duckdb-extensions/
 apps/desktop/dist-poc/
 apps/desktop/dist-store*/
 desktop-store-evidence/
-apps/android-companion/modules/*/android/.gradle/
+apps/mobile-companion/modules/*/android/.gradle/

@@ -17,7 +17,7 @@ The main maintainability problem is **concentrated and transitional complexity**
 - `packages/shared/src/registry.ts` — 1,236 lines, mostly declarative data
 - `packages/shared/src/parsers.ts` — 1,026 lines
 - `apps/web/src/pages/ImportPage.tsx` — 969 lines
-- `apps/android-companion/src/syncHealthConnect.ts` — 730 lines
+- `apps/mobile-companion/src/syncHealthConnect.ts` — 730 lines
 
 The first three files alone contain 4,319 lines and coordinate most application behavior. This is where feature growth is most likely to create regressions.
 
@@ -48,7 +48,7 @@ These failures describe the review environment, not confirmed repository defects
 - DuckDB writes are transactional, the encrypted extension is pinned and verified, and profile activation includes parity checks (`apps/api/src/store.ts:480-570`).
 - Normal web startup uses the bounded `/api/bootstrap` projection rather than loading the complete store (`apps/api/src/routes/dataRoutes.ts:90-96`, `apps/web/src/App.tsx:277-289`).
 - The AI query path uses a validated DSL, compiler-generated SQL, identifier restrictions, and bounded prompt evidence (`apps/api/src/routes/queryRoutes.ts:112-229`).
-- Android defaults to no selected Health Connect categories and a 30-day window, and sync includes pinning, cursors, pagination, chunking, retries, and provenance (`apps/android-companion/src/endpointStore.ts:9-38`, `apps/android-companion/src/syncHealthConnect.ts`).
+- Android defaults to no selected Health Connect categories and a 30-day window, and sync includes pinning, cursors, pagination, chunking, retries, and provenance (`apps/mobile-companion/src/endpointStore.ts:9-38`, `apps/mobile-companion/src/syncHealthConnect.ts`).
 - Runtime schemas, request validation, tests around storage/security, and accessible web semantics are all substantially stronger than a typical prototype at this stage.
 
 ## Priority findings
@@ -171,7 +171,7 @@ Do not share route handlers or persistence models with clients. The reusable uni
 
 ### [DONE] P1 — Make Health Connect collection metadata single-source
 
-`syncHealthConnect.ts` repeats the same collection inventory in the payload interface, permission map, record reader, payload construction, chunk flattening, empty-chunk skeleton, and row counting (`apps/android-companion/src/syncHealthConnect.ts:69-160,390-447,523-553,680-705`). Adding one category therefore requires coordinated edits in many places.
+`syncHealthConnect.ts` repeats the same collection inventory in the payload interface, permission map, record reader, payload construction, chunk flattening, empty-chunk skeleton, and row counting (`apps/mobile-companion/src/syncHealthConnect.ts:69-160,390-447,523-553,680-705`). Adding one category therefore requires coordinated edits in many places.
 
 Preserve the explicit wire shape; replacing it with `Record<string, unknown[]>` would weaken type safety and make the API contract less legible. Instead introduce one typed descriptor table that maps:
 

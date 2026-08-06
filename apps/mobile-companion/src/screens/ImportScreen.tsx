@@ -18,6 +18,7 @@ import {
   getPreferredUnit,
   manualGroupDefaults,
   normalizeGroupLabel,
+  type HealthSourceSyncProgress,
   type BloodTestDraft,
   type BodyCompositionDraft,
   type ManualObservationPayload
@@ -629,7 +630,7 @@ function HealthConnectImport() {
   const [syncProgress, setSyncProgress] = useState("");
   const [updating, setUpdating] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const syncStage = useRef<import("../syncHealthConnect").HealthConnectSyncProgress["stage"] | undefined>(undefined);
+  const syncStage = useRef<HealthSourceSyncProgress["stage"] | undefined>(undefined);
   // Rendered from the provider rather than a constant, so a device with no health source shows an
   // empty picker instead of offering categories nothing can read.
   const providerCategories = activeHealthSourceProvider()?.categories ?? [];
