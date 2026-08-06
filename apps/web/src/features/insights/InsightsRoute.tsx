@@ -12,6 +12,7 @@ import { AiReviewPage } from "../../pages/AiReviewPage.js";
 import { BiologicalAgePage } from "../../pages/BiologicalAgePage.js";
 import { QueryPage, type QueryFailure, type QueryTurn } from "../../pages/QueryPage.js";
 import type { InsightsTab } from "../../types.js";
+import { ProLockedView } from "../../components/ProLockedView.js";
 
 type RemoteState<T, TError = string> = {
   data?: T;
@@ -19,7 +20,7 @@ type RemoteState<T, TError = string> = {
   error?: TError;
 };
 
-const insightTabs: InsightsTab[] = ["biological-age", "ai-query", "ai-review"];
+const insightTabs: InsightsTab[] = ["biological-age", "ai-review", "ai-query"];
 const maxConversationTurns = 25;
 
 export function InsightsRoute({
@@ -27,13 +28,15 @@ export function InsightsRoute({
   bootstrap,
   onTabChange,
   onDataChanged,
-  onNotice
+  onNotice,
+  aiQueryAllowed = true
 }: {
   tab: InsightsTab;
   bootstrap?: AppBootstrap;
   onTabChange: (tab: InsightsTab) => void;
   onDataChanged: () => Promise<void>;
   onNotice: (message: string) => void;
+  aiQueryAllowed?: boolean;
 }) {
   function handleTabKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, currentTab: InsightsTab) {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
@@ -61,8 +64,9 @@ export function InsightsRoute({
   const queryBusy = queryTurns.some((turn) => turn.status === "pending");
 
   useEffect(() => {
+    if (tab === "ai-query" && !aiQueryAllowed) return;
     void api.llm.config().then(setLlmConfig).catch(() => setLlmConfig(undefined));
-  }, []);
+  }, [aiQueryAllowed, tab]);
 
   useEffect(() => {
     queryGenerationRef.current += 1;
@@ -237,19 +241,6 @@ export function InsightsRoute({
             Biological Age
           </button>
           <button
-            id="insight-tab-ai-query"
-            type="button"
-            role="tab"
-            aria-controls="insight-panel-ai-query"
-            aria-selected={tab === "ai-query"}
-            className={tab === "ai-query" ? "active" : ""}
-            tabIndex={tab === "ai-query" ? 0 : -1}
-            onKeyDown={(event) => handleTabKeyDown(event, "ai-query")}
-            onClick={() => onTabChange("ai-query")}
-          >
-            AI Query
-          </button>
-          <button
             id="insight-tab-ai-review"
             type="button"
             role="tab"
@@ -262,10 +253,27 @@ export function InsightsRoute({
           >
             AI Review
           </button>
+          <button
+            id="insight-tab-ai-query"
+            type="button"
+            role="tab"
+            aria-controls="insight-panel-ai-query"
+            aria-selected={tab === "ai-query"}
+            className={tab === "ai-query" ? "active" : ""}
+            tabIndex={tab === "ai-query" ? 0 : -1}
+            onKeyDown={(event) => handleTabKeyDown(event, "ai-query")}
+            onClick={() => onTabChange("ai-query")}
+          >
+            AI Query
+          </button>
         </div>
         {tab === "biological-age" ? (
           <div id="insight-panel-biological-age" role="tabpanel" aria-labelledby="insight-tab-biological-age">
             <BiologicalAgePage report={biologicalAge.data} loading={biologicalAge.busy} error={biologicalAge.error} />
+          </div>
+        ) : tab === "ai-query" && !aiQueryAllowed ? (
+          <div id="insight-panel-ai-query" role="tabpanel" aria-labelledby="insight-tab-ai-query">
+            <ProLockedView feature="AI Query" />
           </div>
         ) : tab === "ai-query" ? (
           <div id="insight-panel-ai-query" role="tabpanel" aria-labelledby="insight-tab-ai-query">

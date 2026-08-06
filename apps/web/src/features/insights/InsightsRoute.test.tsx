@@ -47,6 +47,23 @@ beforeEach(() => {
 });
 
 describe("InsightsRoute AI review", () => {
+  it("keeps AI Query navigation available while replacing its content with a Pro message", () => {
+    render(
+      <InsightsRoute
+        tab="ai-query"
+        bootstrap={{ profile } as AppBootstrap}
+        onTabChange={vi.fn()}
+        onDataChanged={vi.fn().mockResolvedValue(undefined)}
+        onNotice={vi.fn()}
+        aiQueryAllowed={false}
+      />
+    );
+
+    expect(screen.getByRole("tab", { name: "AI Query" })).toBeEnabled();
+    expect(screen.getByRole("heading", { name: "Available in Vitana Pro" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Ask about your health data")).not.toBeInTheDocument();
+  });
+
   it("asks for cloud consent and generates after consent is accepted", async () => {
     vi.mocked(api.llm.config).mockResolvedValue({
       provider: "openai",

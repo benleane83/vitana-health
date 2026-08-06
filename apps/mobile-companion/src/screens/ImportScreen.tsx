@@ -5,7 +5,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
 import { File } from "expo-file-system";
 import { useKeepAwake } from "expo-keep-awake";
-import { ArrowLeft, CalendarDays, ChevronDown, ChevronRight, ChevronUp, LockKeyhole, PencilLine, RefreshCw, ScanLine } from "lucide-react-native";
+import { ArrowLeft, CalendarDays, ChevronDown, ChevronRight, ChevronUp, PencilLine, RefreshCw, ScanLine } from "lucide-react-native";
 import { useNavigation } from "@react-navigation/native";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -16,6 +16,8 @@ import {
   filterManualGroupTemplates,
   findKnownMeasurement,
   getPreferredUnit,
+  hasFeature,
+  healthConnectSyncWindowForTier,
   manualGroupDefaults,
   normalizeGroupLabel,
   type HealthSourceSyncProgress,
@@ -59,7 +61,6 @@ type ScanKind = "body-composition" | "blood-test";
 
 export function ImportScreen() {
   const { connectionState, demoMode, standaloneMode } = useMobileApi();
-  const entitlement = useEntitlement();
   const navigation = useNavigation<BottomTabNavigationProp<TabParamList, "Import">>();
   const [source, setSource] = useState<ImportSource>();
   const connectedOffline = !standaloneMode && connectionState !== "online";
@@ -71,12 +72,11 @@ export function ImportScreen() {
     }
   }, [connectedOffline, demoMode, healthSourceProvider, source, standaloneMode]);
 
-  if (!source || demoMode || (source === "sync" && !healthSourceProvider)) return <ImportSourceChooser connectedOffline={connectedOffline} demoMode={demoMode} standaloneMode={standaloneMode} sources={sourceOptions} unlocked={entitlement.state.status === "owned"} onSelect={setSource} onConnect={() => {
+  if (!source || demoMode || (source === "sync" && !healthSourceProvider)) return <ImportSourceChooser connectedOffline={connectedOffline} demoMode={demoMode} standaloneMode={standaloneMode} sources={sourceOptions} onSelect={setSource} onConnect={() => {
     navigation.getParent<NativeStackNavigationProp<RootStackParamList>>()?.navigate("Connection");
   }} />;
 
   const sourceTitle = source === "sync" ? "Sync" : source === "scan" ? "Scan a report" : "Enter manually";
-  const locked = source !== "manual" && entitlement.state.status !== "owned";
   return (
     <Screen>
       <View style={styles.flowHeader}>
@@ -88,13 +88,7 @@ export function ImportScreen() {
           <Text style={styles.flowSubtitle}>Import to the active profile</Text>
         </View>
       </View>
-      {locked
-        ? <LockedImport
-            state={entitlement.state}
-            onPurchase={() => { void entitlement.purchase(); }}
-            onRestore={() => { void entitlement.restore(); }}
-          />
-        : source === "scan" ? <ScanImport /> : source === "manual" ? <ManualImport /> : <HealthConnectImport />}
+      {source === "scan" ? <ScanImport /> : source === "manual" ? <ManualImport /> : <HealthConnectImport />}
     </Screen>
   );
 }
@@ -104,7 +98,6 @@ function ImportSourceChooser({
   demoMode,
   standaloneMode,
   sources,
-  unlocked,
   onConnect,
   onSelect
 }: {
@@ -112,7 +105,6 @@ function ImportSourceChooser({
   demoMode: boolean;
   standaloneMode: boolean;
   sources: ImportSourceOption[];
-  unlocked: boolean;
   onConnect: () => void;
   onSelect: (source: ImportSource) => void;
 }) {
@@ -146,13 +138,12 @@ function ImportSourceChooser({
         <View style={styles.sourceList}>
           {sources.map(({ source, title, detail }) => {
             const { icon: Icon, color, background } = presentation[source];
-            const locked = source !== "manual" && !unlocked;
             const unavailableInStandalone = standaloneMode && source !== "manual";
             const disabled = demoMode || connectedOffline || unavailableInStandalone;
             const unavailableReason = demoMode ? "in Demo mode" : connectedOffline ? "while offline" : "until this phone is paired";
             return (
               <Pressable
-                accessibilityHint={disabled ? `Unavailable ${unavailableReason}` : locked ? "Opens purchase options" : `Opens the ${title} flow`}
+                accessibilityHint={disabled ? `Unavailable ${unavailableReason}` : `Opens the ${title} flow`}
                 accessibilityRole="button"
                 accessibilityState={{ disabled }}
                 disabled={disabled}
@@ -167,7 +158,6 @@ function ImportSourceChooser({
                   <View style={styles.sourceNameRow}>
                     <Text style={styles.sourceName}>{title}</Text>
                     {source === "sync" && !standaloneMode ? <Text style={styles.recommended}>Recommended</Text> : null}
-                    {locked ? <View style={styles.lockedBadge}><LockKeyhole color={colors.muted} size={13} /><Text style={styles.lockedText}>Locked</Text></View> : null}
                   </View>
                   <Text style={styles.sourceDetail}>{detail}</Text>
                   {disabled ? <Text style={styles.demoUnavailable}>Unavailable {unavailableReason}</Text> : null}
@@ -185,42 +175,6 @@ function ImportSourceChooser({
         </Text>
       </ScrollView>
     </Screen>
-  );
-}
-
-function LockedImport({
-  state,
-  onPurchase,
-  onRestore
-}: {
-  state: ReturnType<typeof useEntitlement>["state"];
-  onPurchase: () => void;
-  onRestore: () => void;
-}) {
-  const busy = state.status === "checking" || state.status === "purchasing";
-  const tone = state.status === "error" ? "danger" : state.status === "pending" ? "warning" : "info";
-  const title = state.status === "pending"
-    ? "Purchase pending"
-    : state.status === "purchasing" ? "Opening the store…" : "Unlock Scan and Sync";
-
-  return (
-    <ScrollView contentContainerStyle={styles.content}>
-      <Card>
-        <LockKeyhole color={colors.primary} size={28} />
-        <Message
-          title={title}
-          detail={state.message ?? "Make a one-time purchase to use report scanning and device sync on this phone."}
-          tone={tone}
-        />
-        <Button disabled={busy || state.status === "pending"} onPress={onPurchase}>
-          {state.status === "purchasing" ? "Opening…" : "Purchase unlock"}
-        </Button>
-        <Button disabled={busy} secondary onPress={onRestore}>
-          {state.status === "checking" ? "Checking…" : "Restore purchase"}
-        </Button>
-      </Card>
-      <Text style={styles.localNote}>Manual entry remains available without a purchase.</Text>
-    </ScrollView>
   );
 }
 
@@ -624,6 +578,8 @@ function ScanImport() {
 
 function HealthConnectImport() {
   const { bootstrap, connection, refreshAfterImport, reloadConnection } = useMobileApi();
+  const entitlement = useEntitlement();
+  const extendedHistoryAllowed = hasFeature(entitlement.state.tier, "extended-health-connect-history");
   const [status, setStatus] = useState("");
   const [statusTone, setStatusTone] = useState<"success" | "danger">("success");
   const [syncing, setSyncing] = useState(false);
@@ -705,7 +661,7 @@ function HealthConnectImport() {
           deviceId: currentConnection.deviceId,
           syncCursors: currentConnection.healthSourceCursors,
           sessionKey: currentConnection.healthSourceSessionKey,
-          syncWindowDays: currentConnection.healthConnectSyncWindowDays,
+          syncWindowDays: healthConnectSyncWindowForTier(entitlement.state.tier, currentConnection.healthConnectSyncWindowDays),
           categories: currentConnection.healthSourceCategories,
           onProgress: ({ detail, stage }) => {
             syncStage.current = stage;
@@ -762,7 +718,16 @@ function HealthConnectImport() {
         </View>
         <Text style={styles.heading}>Initial sync window</Text>
         <View style={styles.chips}>
-          {HEALTH_CONNECT_SYNC_WINDOW_OPTIONS.map((days) => <Chip disabled={updating || syncing} key={days} label={`${days} days`} selected={currentConnection.healthConnectSyncWindowDays === days} onPress={() => { void update({ healthConnectSyncWindowDays: days }); }} />)}
+          {HEALTH_CONNECT_SYNC_WINDOW_OPTIONS.map((days) => {
+            const locked = days > 30 && !extendedHistoryAllowed;
+            return <Chip disabled={updating || syncing} key={days} label={`${days} days${locked ? " · Pro" : ""}`} selected={currentConnection.healthConnectSyncWindowDays === days && !locked} onPress={() => {
+              if (locked) {
+                Alert.alert("Available in Vitana Pro", "The free tier can sync up to 30 days of Health Connect history.");
+                return;
+              }
+              void update({ healthConnectSyncWindowDays: days });
+            }} />;
+          })}
         </View>
       </Card>
       {!currentConnection.healthConnectDisclosureAcknowledged ? (
@@ -879,8 +844,6 @@ const styles = StyleSheet.create({
   sourceName: { color: colors.textStrong, fontSize: type.title, fontWeight: "800" },
   sourceDetail: { color: colors.muted, fontSize: type.body, lineHeight: 20 },
   recommended: { backgroundColor: colors.infoMuted, borderRadius: radii.pill, color: colors.info, fontSize: type.label, fontWeight: "800", overflow: "hidden", paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
-  lockedBadge: { alignItems: "center", backgroundColor: colors.surfaceMuted, borderRadius: radii.pill, flexDirection: "row", gap: 4, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
-  lockedText: { color: colors.muted, fontSize: type.label, fontWeight: "800" },
   demoUnavailable: { color: colors.info, fontSize: type.label, fontWeight: "700" },
   localNote: { color: colors.muted, fontSize: type.label, lineHeight: 18, paddingHorizontal: spacing.sm, textAlign: "center" },
   flowHeader: { alignItems: "center", flexDirection: "row", gap: spacing.sm, marginBottom: spacing.md },

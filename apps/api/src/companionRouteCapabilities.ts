@@ -71,6 +71,10 @@ export const companionRouteCapabilities: readonly CompanionRouteCapability[] = [
   { method: "POST", path: "/import/health-connect/sessions", capability: "health-connect:import", router: "makeImportRoutes" },
   { method: "POST", path: /^\/import\/health-connect\/sessions\/[^/]+\/chunks$/, capability: "health-connect:import", router: "makeImportRoutes" },
 
+  // makeEntitlementRoutes — routes/entitlementRoutes.ts
+  { method: "GET", path: "/entitlement", capability: "entitlement:read", router: "makeEntitlementRoutes" },
+  { method: "POST", path: "/entitlement/claim", capability: "entitlement:write", router: "makeEntitlementRoutes" },
+
   // makePairingRoutes — routes/pairingRoutes.ts, mounted at both /api/pair and /api/pairing
   { method: "POST", path: "/pairing/revoke-self", capability: "pairing:self-revoke", router: "makePairingRoutes" },
   { method: "POST", path: "/pair/revoke-self", capability: "pairing:self-revoke", router: "makePairingRoutes" }

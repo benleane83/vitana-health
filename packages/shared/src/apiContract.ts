@@ -42,8 +42,26 @@ import type {
   UpdateObservationResponse
 } from "./types.js";
 import type { BloodTestDraft, BodyCompositionDraft, UploadImportDraft } from "./parsers.js";
+import { VITANA_PRO_PRODUCT_ID } from "./entitlement.js";
 export * from "./aiApiContract.js";
 import { apiErrorResponseSchema } from "./aiApiContract.js";
+
+export const entitlementResponseSchema = z.object({
+  tier: z.enum(["free", "pro"]),
+  source: z.enum(["google-play", "app-store", "license-key", "revenuecat"]).nullable(),
+  overridden: z.boolean()
+}).strict();
+export type EntitlementResponse = z.infer<typeof entitlementResponseSchema>;
+
+export const googlePlayEntitlementClaimSchema = z.object({
+  source: z.literal("google-play"),
+  productId: z.literal(VITANA_PRO_PRODUCT_ID),
+  purchaseToken: z.string().min(1).max(4096),
+  orderId: z.string().min(1).max(512).optional(),
+  signedPayload: z.string().min(1).max(64_000),
+  signature: z.string().min(1).max(16_000)
+}).strict();
+export type GooglePlayEntitlementClaim = z.infer<typeof googlePlayEntitlementClaimSchema>;
 
 export const desktopRuntimeSettingsResponseSchema = z.object({
   supported: z.boolean(),

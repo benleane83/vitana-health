@@ -20,6 +20,7 @@ import type { TrackView } from "../../types.js";
 import { BodyTrendRoute } from "./BodyTrendRoute.js";
 import { CalendarRoute } from "./CalendarRoute.js";
 import { JournalRoute } from "./JournalRoute.js";
+import { ProLockedView } from "../../components/ProLockedView.js";
 
 type RemoteState<T> = {
   data?: T;
@@ -47,7 +48,9 @@ export function TrackRoute({
   onSelectDetail,
   onDataChanged,
   onNotice,
-  confirm
+  confirm,
+  calendarAllowed,
+  bodyTrendAllowed
 }: {
   detailCode?: string;
   view: TrackView;
@@ -62,6 +65,8 @@ export function TrackRoute({
   onDataChanged: () => Promise<void>;
   onNotice: (message: string) => void;
   confirm: ConfirmAction;
+  calendarAllowed: boolean;
+  bodyTrendAllowed: boolean;
 }) {
   const [summary, setSummary] = useState<RemoteState<HealthDataSummary>>({ busy: true });
   const [detail, setDetail] = useState<RemoteState<HealthDataDetail>>({ busy: false });
@@ -344,7 +349,11 @@ export function TrackRoute({
         ))}
       </div>
       <div id="track-view-panel" role="tabpanel" aria-labelledby={`track-tab-${view}`}>
-      {view === "body-trend" ? (
+      {view === "body-trend" && !bodyTrendAllowed ? (
+        <ProLockedView feature="Body Trend" />
+      ) : view === "calendar" && !calendarAllowed ? (
+        <ProLockedView feature="Calendar" />
+      ) : view === "body-trend" ? (
         <BodyTrendRoute
           activeProfileId={activeProfileId}
           selectedDateFromPath={bodyTrendDate}

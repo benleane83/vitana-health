@@ -26,6 +26,7 @@ import {
   healthDataSummaryResponseSchema,
   healthEventListQuerySchema,
   healthEventMutationResponseSchema,
+  hasFeature,
   insightResponseSchema,
   journalPageResponseSchema,
   journalQuerySchema,
@@ -34,6 +35,7 @@ import {
   paginatedCareItemsResponseSchema,
   paginatedHealthEventsResponseSchema,
   personalReferenceRangeInputSchema,
+  PRO_FEATURE_GATING_ENABLED,
   referenceRangeStateResponseSchema,
   sleepSessionListQuerySchema,
   sleepSessionPageResponseSchema,
@@ -49,6 +51,7 @@ import { createClinicianReportPdf } from "../pdfReport.js";
 import type { AuthorizationPrincipal } from "../requestPrincipal.js";
 import { resolvePrincipalStore } from "../requestPrincipal.js";
 import { CareItemCompletionConflictError, HealthEventDeleteConflictError, RepositoryValidationError } from "../storage/profileRepository.js";
+import type { EntitlementReader } from "../entitlementStore.js";
 
 const measurementCodeParamSchema = z
   .string()
@@ -86,7 +89,11 @@ function reportFilename(displayName: string): string {
   return `${safeStem || "health"}-health-report.pdf`;
 }
 
-export function makeDataRoutes(storeManager: ProfileStoreManager): express.Router {
+export function makeDataRoutes(
+  storeManager: ProfileStoreManager,
+  entitlementStore?: EntitlementReader,
+  gatingEnabled = PRO_FEATURE_GATING_ENABLED
+): express.Router {
   const router = express.Router();
 
   function activeStore() {
@@ -95,6 +102,12 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   function requestStore(response: express.Response) {
     return resolvePrincipalStore(storeManager, response.locals.principal as AuthorizationPrincipal);
+  }
+
+  function requireProFeature(response: express.Response, feature: "track-calendar" | "track-body-trend"): boolean {
+    if (hasFeature(entitlementStore?.get().tier ?? "free", feature, gatingEnabled)) return true;
+    response.status(403).json({ error: "This view requires Vitana Pro.", code: "PRO_REQUIRED" });
+    return false;
   }
 
   router.get("/bootstrap", async (_request, response, next) => {
@@ -131,6 +144,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.get("/body-trend", async (request, response, next) => {
     try {
+      if (!requireProFeature(response, "track-body-trend")) return;
       const query = bodyTrendQuerySchema.parse(request.query);
       sendJson(response, bodyTrendTimelineResponseSchema, await requestStore(response).bodyTrendTimeline(query));
     } catch (error) {
@@ -140,6 +154,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.get("/body-trend/:date", async (request, response, next) => {
     try {
+      if (!requireProFeature(response, "track-body-trend")) return;
       const date = calendarDateParamSchema.parse(request.params.date);
       const query = bodyTrendDateQuerySchema.parse(request.query);
       sendJson(response, bodyTrendDateDetailResponseSchema, await requestStore(response).bodyTrendDateDetail(date, query));
@@ -150,6 +165,7 @@ export function makeDataRoutes(storeManager: ProfileStoreManager): express.Route
 
   router.get("/calendar", async (request, response, next) => {
     try {
+      if (!requireProFeature(response, "track-calendar")) return;
       const query = calendarMonthQuerySchema.parse(request.query);
       sendJson(response, calendarMonthResponseSchema, await requestStore(response).calendarMonth(query));
     } catch (error) {

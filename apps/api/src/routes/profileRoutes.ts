@@ -4,6 +4,8 @@ import type { ProfileStoreManager } from "../storage/profileStoreManager.js";
 import {
   assignedProfilesResponseSchema,
   cloudAiConsentResponseSchema,
+  hasFeature,
+  PRO_FEATURE_GATING_ENABLED,
   measurementRegistryResetResponseSchema,
   profileDeleteResponseSchema,
   profileIdResponseSchema,
@@ -20,6 +22,7 @@ import { sendJson } from "./sendJson.js";
 import type { PairingStore } from "../pairing.js";
 import type { AuthorizationPrincipal } from "../createApp.js";
 import { resolvePrincipalStore } from "../requestPrincipal.js";
+import type { EntitlementReader } from "../entitlementStore.js";
 
 const maximumProfilePhotoBytes = 256 * 1024;
 
@@ -280,7 +283,12 @@ function photoValidationError(message: string): z.ZodError {
   return new z.ZodError([{ code: z.ZodIssueCode.custom, path: ["contentBase64"], message }]);
 }
 
-export function makeProfilesRoutes(storeManager: ProfileStoreManager, pairingStore: PairingStore): express.Router {
+export function makeProfilesRoutes(
+  storeManager: ProfileStoreManager,
+  pairingStore: PairingStore,
+  entitlementStore?: EntitlementReader,
+  gatingEnabled = PRO_FEATURE_GATING_ENABLED
+): express.Router {
   const router = express.Router();
 
   router.get("/", (_request, response) => {
@@ -300,6 +308,10 @@ export function makeProfilesRoutes(storeManager: ProfileStoreManager, pairingSto
 
   router.post("/", async (request, response, next) => {
     try {
+      if (storeManager.listProfiles().length > 0 && !hasFeature(entitlementStore?.get().tier ?? "free", "additional-profile-creation", gatingEnabled)) {
+        response.status(403).json({ error: "Creating another profile requires Vitana Pro.", code: "PRO_REQUIRED" });
+        return;
+      }
       const parsed = createProfileSchema.parse(request.body ?? {});
       const created = await storeManager.createProfile(parsed.displayName);
       sendJson(response.status(201), profileListEntrySchema, created);

@@ -309,6 +309,34 @@ textarea {
   color: var(--ink-on-accent);
 }
 
+.pro-locked-view {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-3);
+  min-height: 280px;
+  align-content: center;
+  padding: var(--space-8);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.pro-locked-view h2,
+.pro-locked-view p {
+  margin: 0;
+}
+
+.pro-locked-view p {
+  color: var(--muted);
+}
+
+.pro-locked-label {
+  color: var(--primary-strong);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
 .export-page {
   display: grid;
   gap: var(--space-8);
@@ -3377,6 +3405,11 @@ label {
 
 .profile-create-disclosure[open] summary {
   margin-bottom: var(--space-3);
+}
+
+.profile-create-pro-note {
+  margin: 0 0 var(--space-3);
+  color: var(--muted);
 }
 
 .profile-create-row {

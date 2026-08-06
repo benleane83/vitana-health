@@ -20,3 +20,4 @@ export * from "./healthConnectSync.js";
 export * from "./healthSource.js";
 export * from "./pinnedHttp.js";
 export * from "./networkRetry.js";
+export * from "./entitlement.js";

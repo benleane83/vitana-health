@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { AnalyticsSummary, AppBootstrap, Profile, ProfileListEntry } from "@vitana/shared";
+import type { AnalyticsSummary, AppBootstrap, EntitlementResponse, Profile, ProfileListEntry } from "@vitana/shared";
 import { api } from "../../api.js";
 import { ProfileEditDialog, ProfileManagerDialog } from "../../components/ProfileDialogs.js";
 import { numberOrUndefined } from "../../utils.js";
@@ -10,6 +10,7 @@ type ProfileSnapshot = {
   analytics?: AnalyticsSummary;
   profiles: ProfileListEntry[];
   activeProfileId?: string;
+  entitlement?: EntitlementResponse;
 };
 
 type ProfileUiState = {
@@ -215,7 +216,7 @@ export function useProfileLifecycle(onNotice: (message: string) => void, confirm
 
 export type ProfileLifecycle = ReturnType<typeof useProfileLifecycle>;
 
-export function ProfileLifecycleDialogs({ lifecycle }: { lifecycle: ProfileLifecycle }) {
+export function ProfileLifecycleDialogs({ lifecycle, allowProfileCreation }: { lifecycle: ProfileLifecycle; allowProfileCreation: boolean }) {
   return (
     <>
       {lifecycle.ui.editorOpen ? (
@@ -236,6 +237,7 @@ export function ProfileLifecycleDialogs({ lifecycle }: { lifecycle: ProfileLifec
           activeProfile={lifecycle.activeProfile}
           activeProfileId={lifecycle.activeProfileId}
           newProfileName={lifecycle.ui.newProfileName}
+          allowProfileCreation={allowProfileCreation}
           onNewProfileNameChange={lifecycle.setNewProfileName}
           onClose={lifecycle.closeManager}
           onSwitchProfile={(profileId) => { void lifecycle.switchProfile(profileId); }}
@@ -251,14 +253,16 @@ export function ProfileLifecycleDialogs({ lifecycle }: { lifecycle: ProfileLifec
 }
 
 async function loadSnapshot(signal: AbortSignal | undefined, includeProfiles: boolean): Promise<Partial<ProfileSnapshot>> {
-  const [bootstrap, analytics, profileList] = await Promise.all([
+  const [bootstrap, analytics, profileList, entitlement] = await Promise.all([
     api.bootstrap(signal),
     api.analytics(signal),
-    includeProfiles ? api.profiles.list(signal) : undefined
+    includeProfiles ? api.profiles.list(signal) : undefined,
+    api.entitlement.get(signal).catch(() => ({ tier: "free", source: null, overridden: false } as const))
   ]);
   return {
     bootstrap,
     analytics,
+    entitlement,
     ...(profileList ? { profiles: profileList.profiles, activeProfileId: profileList.activeProfileId } : {})
   };
 }

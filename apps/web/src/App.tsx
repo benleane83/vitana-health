@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { defaultMeasurementTypes, safetyNotice } from "@vitana/shared";
+import { defaultMeasurementTypes, hasFeature } from "@vitana/shared";
 import type { AppRoute, ImportMode, InsightsTab, SettingsView, TrackView } from "./types.js";
 import { ProfileLifecycleDialogs, useProfileLifecycle } from "./features/profiles/useProfileLifecycle.js";
 import { ConfirmDialog } from "./components/ConfirmDialog.js";
@@ -53,6 +53,7 @@ export function App() {
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const profileLifecycle = useProfileLifecycle(setMessage, confirm);
   const { bootstrap, analytics, profiles, activeProfileId, profile, activeProfile } = profileLifecycle;
+  const tier = profileLifecycle.entitlement?.tier ?? "free";
 
   const recordedMeasurementTypes = useMemo(() => {
     const measurementTypes = bootstrap?.measurementTypes?.length
@@ -461,6 +462,8 @@ export function App() {
               onDataChanged={() => profileLifecycle.refresh({ profiles: false })}
               onNotice={setMessage}
               confirm={confirm}
+              calendarAllowed={hasFeature(tier, "track-calendar")}
+              bodyTrendAllowed={hasFeature(tier, "track-body-trend")}
             />
           </ErrorBoundary>
         ) : null}
@@ -491,6 +494,7 @@ export function App() {
               onTabChange={navigateInsights}
               onDataChanged={() => profileLifecycle.refresh({ profiles: false })}
               onNotice={setMessage}
+              aiQueryAllowed={hasFeature(tier, "ai-query")}
             />
           </ErrorBoundary>
         ) : null}
@@ -510,7 +514,10 @@ export function App() {
       </div>
 
 
-      <ProfileLifecycleDialogs lifecycle={profileLifecycle} />
+      <ProfileLifecycleDialogs
+        lifecycle={profileLifecycle}
+        allowProfileCreation={profiles.length === 0 || hasFeature(tier, "additional-profile-creation")}
+      />
 
       {/* Accessible confirmation dialog — replaces window.confirm */}
       {confirmState ? (

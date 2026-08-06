@@ -21,12 +21,14 @@ import {
   deleteHealthEventResponseSchema,
   deleteObservationResponseSchema,
   desktopUpdateStateSchema,
+  entitlementResponseSchema,
   healthDataChartSeriesResponseSchema,
   healthDataDetailResponseSchema,
   healthDataSummaryResponseSchema,
   healthEventListQuerySchema,
   healthEventMutationResponseSchema,
   healthResponseSchema,
+  googlePlayEntitlementClaimSchema,
   importMutationResponseSchema,
   journalPageResponseSchema,
   journalQuerySchema,
@@ -64,6 +66,7 @@ import type {
   CreateHealthEventInput,
   HealthEventListQuery,
   HealthConnectImportPayload,
+  GooglePlayEntitlementClaim,
   JournalQueryInput,
   ManualObservationPayload,
   PersonalReferenceRangeInput,
@@ -150,6 +153,14 @@ export function createApiClient(transport: ApiTransport) {
      */
     request,
     health: () => request(healthResponseSchema, "/api/health"),
+    entitlement: {
+        get: () => request(entitlementResponseSchema, "/api/entitlement"),
+        claimGooglePlay: (claim: GooglePlayEntitlementClaim) =>
+          request(entitlementResponseSchema, "/api/entitlement/claim", {
+            method: "POST",
+            body: googlePlayEntitlementClaimSchema.parse(claim)
+          })
+    },
     desktopUpdates: {
       get: () => request(desktopUpdateStateSchema, "/api/settings/updates"),
       check: () => request(desktopUpdateStateSchema, "/api/settings/updates/check", { method: "POST" }),
