@@ -276,6 +276,7 @@ export function ProfileManagerDialog({
   activeProfile,
   activeProfileId,
   newProfileName,
+  allowProfileCreation,
   onNewProfileNameChange,
   onClose,
   onSwitchProfile,
@@ -288,6 +289,7 @@ export function ProfileManagerDialog({
   activeProfile?: ProfileListEntry | Profile;
   activeProfileId?: string;
   newProfileName: string;
+  allowProfileCreation: boolean;
   onNewProfileNameChange: (value: string) => void;
   onClose: () => void;
   onSwitchProfile: (profileId: string) => void;
@@ -355,6 +357,7 @@ export function ProfileManagerDialog({
 
       <details className="profile-create-disclosure">
         <summary>Add profile</summary>
+        {!allowProfileCreation ? <p className="profile-create-pro-note">Creating multiple profiles requires Vitana Pro.</p> : null}
         <form
           className="profile-create-row"
           onSubmit={(event) => {
@@ -365,12 +368,13 @@ export function ProfileManagerDialog({
           <label htmlFor="profile-new-name">Profile name</label>
           <input
             id="profile-new-name"
+            disabled={!allowProfileCreation || busy}
             value={newProfileName}
             onChange={(event) => onNewProfileNameChange(event.target.value)}
             placeholder="New profile name"
             maxLength={80}
           />
-          <button disabled={busy}>Create profile</button>
+          <button disabled={!allowProfileCreation || busy}>Create profile</button>
         </form>
       </details>
 

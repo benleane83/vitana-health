@@ -55,7 +55,8 @@ support remains inactive and Scan and Sync stay available without a purchase.
 Record the billing state in the release notes so the tested behavior is explicit.
 
 Before the first billing-enabled build, create a managed one-time product in Play Console with
-the product ID `scan_sync_unlock` and activate it for the app. Add license tester accounts, then
+the product ID `vitana_pro_unlock` and activate it for the app. Product IDs are permanent, so do
+not recreate the earlier draft `scan_sync_unlock` product. Add license tester accounts, then
 exercise purchase, cancellation, pending payment, acknowledgement, reinstall, and restore using
 Google's test payment methods; license testers are not charged. Enable gating only in a new,
 versioned AAB and return that artifact to closed testing before promotion. Do not activate billing
@@ -118,7 +119,7 @@ Local-only use is separate from Demo mode. It stores the user's local profile an
 ### Billing-enabled releases only
 
 - [ ] Cached entitlement handling cannot permanently retain ownership after an authoritative online Play query reports no active purchase; the offline grace policy is defined and tested.
-- [ ] The active `scan_sync_unlock` managed one-time product is tested with Play license testers for purchase, cancellation, pending payment, acknowledgement, refund/revocation, reinstall, offline expiry, and restore.
+- [ ] The active `vitana_pro_unlock` managed one-time product is tested with Play license testers for purchase, cancellation, pending payment, acknowledgement, refund/revocation, reinstall, offline expiry, and restore.
 - [ ] Existing free-test users either become locked or are grandfathered according to the documented launch decision, without losing access to existing health data.
 - [ ] Purchase metadata handling is reflected in the privacy policy and Play Data Safety answers.
 - [ ] Billing is enabled in a new versioned AAB, and that exact artifact completes internal and closed-track testing before promotion; billing is not introduced by OTA update.

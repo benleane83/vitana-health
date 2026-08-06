@@ -10,7 +10,7 @@ import type { RootStackParamList, TabParamList } from "../navigationTypes";
 import { Button, Card, Loading, Message, Screen } from "../ui/components";
 import { colors, radii, spacing, type } from "../ui/theme";
 import { ProfileAvatar } from "../ui/ProfileAvatar";
-import { dashboardMetrics } from "./dashboardMetrics";
+import { dashboardMetrics, formatDashboardMetricValue } from "./dashboardMetrics";
 
 type DashboardNavigation = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, "Dashboard">,
@@ -111,9 +111,10 @@ export function DashboardScreen() {
           <View style={styles.metricGrid}>
             {visibleMetrics.map((metric) => {
               const observed = formatObservedDate(metric.observedAt);
+              const value = formatDashboardMetricValue(metric.value);
               return (
                 <Pressable
-                  accessibilityLabel={`${metric.label}, ${metric.value} ${metric.unit}, ${observed}${metric.isPinned ? ", pinned" : ""}`}
+                  accessibilityLabel={`${metric.label}, ${value} ${metric.unit}, ${observed}${metric.isPinned ? ", pinned" : ""}`}
                   accessibilityRole="button"
                   key={metric.code}
                   onPress={() => navigation.navigate("TrackDetail", {
@@ -127,7 +128,7 @@ export function DashboardScreen() {
                     {metric.isPinned ? <Pin accessibilityElementsHidden color={colors.primary} fill={colors.primary} size={15} /> : null}
                   </View>
                   <Text numberOfLines={1} adjustsFontSizeToFit style={styles.metricValue}>
-                    {metric.value} <Text style={styles.metricUnit}>{metric.unit}</Text>
+                    {value} <Text style={styles.metricUnit}>{metric.unit}</Text>
                   </Text>
                   <Text style={styles.metricDate}>{observed}</Text>
                 </Pressable>

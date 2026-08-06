@@ -33,6 +33,7 @@ describe("useProfileLifecycle", () => {
       profiles: [],
       activeProfileId: "profile-b"
     } as never);
+    vi.spyOn(api.entitlement, "get").mockResolvedValue({ tier: "free", source: null, overridden: false });
 
     const { result } = renderHook(() => useProfileLifecycle(() => undefined, async () => true));
     await waitFor(() => expect(bootstrap).toHaveBeenCalledTimes(1));
@@ -56,6 +57,7 @@ describe("useProfileLifecycle", () => {
     });
     vi.spyOn(api, "analytics").mockResolvedValue({} as never);
     vi.spyOn(api.profiles, "list").mockResolvedValue({ profiles: [] } as never);
+    vi.spyOn(api.entitlement, "get").mockResolvedValue({ tier: "free", source: null, overridden: false });
 
     const { result } = renderHook(() => useProfileLifecycle(() => undefined, async () => true));
     await waitFor(() => expect(signals).toHaveLength(1));

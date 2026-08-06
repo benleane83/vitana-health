@@ -28,6 +28,9 @@ beforeEach(() => {
     if (url.includes("/api/profiles")) {
       return Promise.resolve(mockResponse({ profiles: [], activeProfileId: "self" }));
     }
+    if (url.includes("/api/entitlement")) {
+      return Promise.resolve(mockResponse({ tier: "free", source: null, overridden: false }));
+    }
     if (url.includes("/api/analytics")) {
       return Promise.resolve(mockResponse({
         counts: { imports: 0, observations: 0, samples: 0, activities: 0, healthEvents: 0, careItems: 0, insights: 0 },
@@ -388,13 +391,13 @@ describe("App smoke", () => {
     const biologicalAge = screen.getByRole("tab", { name: /biological age/i });
     biologicalAge.focus();
     fireEvent.keyDown(biologicalAge, { key: "ArrowRight" });
-    expect(screen.getByRole("tab", { name: /ai query/i })).toHaveFocus();
-    expect(screen.getByRole("tab", { name: /ai query/i })).toHaveAttribute("aria-selected", "true");
-    fireEvent.keyDown(screen.getByRole("tab", { name: /ai query/i }), { key: "ArrowRight" });
     expect(screen.getByRole("tab", { name: /ai review/i })).toHaveFocus();
     expect(screen.getByRole("tab", { name: /ai review/i })).toHaveAttribute("aria-selected", "true");
-    expect(globalThis.location.pathname).toBe("/insights/ai-review");
-    fireEvent.keyDown(screen.getByRole("tab", { name: /ai review/i }), { key: "Home" });
+    fireEvent.keyDown(screen.getByRole("tab", { name: /ai review/i }), { key: "ArrowRight" });
+    expect(screen.getByRole("tab", { name: /ai query/i })).toHaveFocus();
+    expect(screen.getByRole("tab", { name: /ai query/i })).toHaveAttribute("aria-selected", "true");
+    expect(globalThis.location.pathname).toBe("/insights/ai-query");
+    fireEvent.keyDown(screen.getByRole("tab", { name: /ai query/i }), { key: "Home" });
     expect(screen.getByRole("tab", { name: /biological age/i })).toHaveFocus();
   });
 

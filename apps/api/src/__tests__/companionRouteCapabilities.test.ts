@@ -78,6 +78,8 @@ describe("companion route capabilities", () => {
     expect(companionCapabilityFor("POST", "/import/health-connect/sessions")).toBe("health-connect:import");
     expect(companionCapabilityFor("POST", "/import/health-connect/sessions/session-1/chunks")).toBe("health-connect:import");
     expect(companionCapabilityFor("DELETE", "/observations/obs-1")).toBe("observations:write");
+    expect(companionCapabilityFor("GET", "/entitlement")).toBe("entitlement:read");
+    expect(companionCapabilityFor("POST", "/entitlement/claim")).toBe("entitlement:write");
   });
 
   it("does not leak access through near-miss paths or the wrong method", () => {

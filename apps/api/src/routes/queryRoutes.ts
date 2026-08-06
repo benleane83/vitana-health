@@ -1,12 +1,17 @@
 import express from "express";
-import { aiQueryRequestSchema, llmConfigResponseSchema } from "@vitana/shared";
+import { aiQueryRequestSchema, hasFeature, llmConfigResponseSchema, PRO_FEATURE_GATING_ENABLED } from "@vitana/shared";
 import { sendJson } from "./sendJson.js";
 import type { ProfileStoreManager } from "../storage/profileStoreManager.js";
 import { currentModelConfig } from "../modelClient.js";
 import { executeAiQuery } from "../aiQueryService.js";
 import { hasCloudAiConsent } from "../privacy.js";
+import type { EntitlementReader } from "../entitlementStore.js";
 
-export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Router {
+export function makeQueryRoutes(
+  storeManager: ProfileStoreManager,
+  entitlementStore?: EntitlementReader,
+  gatingEnabled = PRO_FEATURE_GATING_ENABLED
+): express.Router {
   const router = express.Router();
 
   function activeStore() {
@@ -33,6 +38,10 @@ export function makeQueryRoutes(storeManager: ProfileStoreManager): express.Rout
   router.post("/ai", async (request, response, next) => {
     try {
       response.setHeader("x-vitana-lifecycle", "supported");
+      if (!hasFeature(entitlementStore?.get().tier ?? "free", "ai-query", gatingEnabled)) {
+        response.status(403).json({ error: "AI Query requires Vitana Pro.", code: "PRO_REQUIRED" });
+        return;
+      }
       if (!await ensureCloudConsent(response)) {
         return;
       }

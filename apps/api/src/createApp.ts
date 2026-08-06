@@ -32,6 +32,8 @@ import { makeBackupRoutes, isInMaintenanceMode } from "./routes/backupRoutes.js"
 import { apiRateLimitOptions } from "./rateLimit.js";
 import { makeCompanionMigrationRoutes } from "./routes/companionMigrationRoutes.js";
 import { makeCompanionSyncRoutes } from "./routes/companionSyncRoutes.js";
+import { makeEntitlementRoutes } from "./routes/entitlementRoutes.js";
+import { DesktopEntitlementStore, type EntitlementReader } from "./entitlementStore.js";
 import { z } from "zod";
 import type { AuthorizationPrincipal, OwnerPrincipal } from "./requestPrincipal.js";
 import type { DesktopRuntimeSettingsResponse, DesktopRuntimeSettingsUpdate, DesktopUpdateState } from "@vitana/shared";
@@ -65,6 +67,7 @@ export interface AppOptions extends BrowserOriginOptions {
     download: () => Promise<DesktopUpdateState>;
     restartToInstall: () => Promise<DesktopUpdateState>;
   };
+  entitlementStore?: EntitlementReader;
 }
 
 /** Constant-time comparison of the launch nonce supplied by the renderer against the configured one. */
@@ -103,6 +106,7 @@ export function createApp(
 ): express.Application {
   const app = express();
   const allowedBrowserOrigins = browserOriginAllowlist(options);
+  const entitlementStore = options.entitlementStore ?? new DesktopEntitlementStore();
 
   app.disable("x-powered-by");
 
@@ -302,11 +306,11 @@ export function createApp(
 
   // Feature route modules
   app.use("/api/profile", makeProfileRoutes(storeManager));
-  app.use("/api/profiles", makeProfilesRoutes(storeManager, pairingStore));
+  app.use("/api/profiles", makeProfilesRoutes(storeManager, pairingStore, entitlementStore));
   app.use("/api/import", makeImportRoutes(storeManager));
   app.use("/api/companion/migrations", makeCompanionMigrationRoutes(storeManager));
   app.use("/api/companion/sync", makeCompanionSyncRoutes(storeManager, pairingStore));
-  app.use("/api/query", makeQueryRoutes(storeManager));
+  app.use("/api/query", makeQueryRoutes(storeManager, entitlementStore));
   app.use("/api/llm", makeLlmRoutes());
   app.use("/api/settings", makeSettingsRoutes({
     assertSafeCloudEndpoint: options.assertSafeCloudModelEndpoint,
@@ -315,7 +319,8 @@ export function createApp(
     desktopUpdaterController: options.desktopUpdaterController
   }));
   app.use("/api/backups", makeBackupRoutes(storeManager, pairingStore));
-  app.use("/api", makeDataRoutes(storeManager));
+  app.use("/api/entitlement", makeEntitlementRoutes(entitlementStore));
+  app.use("/api", makeDataRoutes(storeManager, entitlementStore));
 
   // Static web serving
   if (options.webRoot && existsSync(options.webRoot)) {

@@ -50,6 +50,7 @@ import {
   deleteObservationsByTypeResponseSchema,
   desktopRuntimeSettingsResponseSchema,
   desktopUpdateStateSchema,
+  entitlementResponseSchema,
   healthDataDetailResponseSchema,
   healthDataSummaryResponseSchema,
   healthResponseSchema,
@@ -321,6 +322,9 @@ export const api = {
       request(pairingMutationResponseSchema, `/api/pairing/approve/${id}`, { method: "POST", body: { profileId } }),
     deny: (id: string) => request(pairingMutationResponseSchema, `/api/pairing/deny/${id}`, { method: "POST" }),
     revoke: (id: string) => request(pairedDeviceSchema, `/api/pairing/revoke/${id}`, { method: "POST" })
+  },
+  entitlement: {
+    get: (signal?: AbortSignal) => request(entitlementResponseSchema, "/api/entitlement", { signal })
   },
   profiles: {
     list: (signal?: AbortSignal) => request(profilesResponseSchema, "/api/profiles", { signal }),
