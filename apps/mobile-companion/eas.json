@@ -29,6 +29,27 @@
         "VITANA_ALLOW_CLEARTEXT": "0"
       }
     },
+    "ios-simulator": {
+      "distribution": "internal",
+      "channel": "preview",
+      "ios": {
+        "simulator": true
+      },
+      "env": {
+        "VITANA_ALLOW_CLEARTEXT": "0"
+      }
+    },
+    "ios-device-farm": {
+      "distribution": "store",
+      "channel": "preview",
+      "autoIncrement": true,
+      "ios": {
+        "resourceClass": "m-medium"
+      },
+      "env": {
+        "VITANA_ALLOW_CLEARTEXT": "0"
+      }
+    },
     "production": {
       "channel": "production",
       "autoIncrement": true,

@@ -1,5 +1,5 @@
 ---
-target: critique my mobile app UI under /apps/android-companion
+target: critique my mobile app UI under /apps/mobile-companion
 total_score: 20
 p0_count: 0
 p1_count: 3
@@ -28,7 +28,7 @@ slug: apps-android-companion
 
 **LLM assessment:** Moderate product-slop risk, not decorative AI slop. The companion avoids glassmorphism, ornamental gradients, oversized type, and gratuitous motion. Its problem is subtler: generic blue-gray tokens, repeated white cards, text-character icons, raw state names, and shallow hierarchy make it feel like a competent React Native starter rather than the mobile expression of Local Fitness Advisor.
 
-**Deterministic scan:** 16 advisory findings, all `design-system-color`. Fifteen are in `apps/android-companion/src/PairScreen.tsx` and one is in `apps/android-companion/src/ui/theme.ts`. The scan confirms that pairing has a parallel hard-coded palette rather than even using the mobile theme. The `#000` camera-preview fallback is a likely anti-pattern false positive, although the remaining literals are still valid design-governance findings. The detector exited 1 despite its documentation saying findings exit 2.
+**Deterministic scan:** 16 advisory findings, all `design-system-color`. Fifteen are in `apps/mobile-companion/src/PairScreen.tsx` and one is in `apps/mobile-companion/src/ui/theme.ts`. The scan confirms that pairing has a parallel hard-coded palette rather than even using the mobile theme. The `#000` camera-preview fallback is a likely anti-pattern false positive, although the remaining literals are still valid design-governance findings. The detector exited 1 despite its documentation saying findings exit 2.
 
 **Visual overlays:** No reliable user-visible overlay is available. No Expo web target, connected Android device, emulator, or ADB runtime could be verified. The active port 5173 is the desktop Vite app, not the Android target. Mobile visual conclusions therefore use source and deterministic evidence; the desktop comparison was inspected separately in a fresh browser tab.
 
@@ -63,7 +63,7 @@ The assigned profile and local-first connection create a reassuring entry. Pairi
 
 **Fix:** Add a shared presentation model with formatted value, display unit, quality state, provenance, observed/imported timestamps, range compatibility, and user-safe warning copy. Quarantine invalid readings before dashboard use and expose the same verdict on both platforms.
 
-**Suggested command:** `$impeccable harden apps/android-companion`
+**Suggested command:** `$impeccable harden apps/mobile-companion`
 
 ### [P1] Import controls create preventable data errors
 
@@ -71,7 +71,7 @@ The assigned profile and local-first connection create a reassuring entry. Pairi
 
 **Fix:** Replace free text with searchable native selectors backed by shared measurement metadata, unit-aware defaults, numeric constraints, field-level errors, and a review summary for accepted, skipped, and questionable rows.
 
-**Suggested command:** `$impeccable harden apps/android-companion/src/screens/ImportScreen.tsx`
+**Suggested command:** `$impeccable harden apps/mobile-companion/src/screens/ImportScreen.tsx`
 
 ### [P1] Accessibility semantics are incomplete
 
@@ -79,7 +79,7 @@ The assigned profile and local-first connection create a reassuring entry. Pairi
 
 **Fix:** Add native roles and selected states, announcement semantics, accessible icon labels, chart summaries, a tabular trend alternative, and dynamic-type/touch-target verification.
 
-**Suggested command:** `$impeccable audit apps/android-companion`
+**Suggested command:** `$impeccable audit apps/mobile-companion`
 
 ### [P2] Mobile does not carry the committed product identity
 

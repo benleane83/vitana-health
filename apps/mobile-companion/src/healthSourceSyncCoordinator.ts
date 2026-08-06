@@ -1,9 +1,9 @@
 import type { AppStateStatus } from "react-native";
-import type { HealthConnectSyncProgress, SyncResult } from "./syncHealthConnect";
+import type { HealthSourceSyncProgress, HealthSourceSyncResult } from "@vitana/shared";
 
 export function shouldCancelHealthSourceSync(
   appState: AppStateStatus,
-  stage: HealthConnectSyncProgress["stage"] | undefined
+  stage: HealthSourceSyncProgress["stage"] | undefined
 ): boolean {
   return appState !== "active" && stage !== "permissions";
 }
@@ -15,7 +15,7 @@ export function shouldCancelHealthSourceSync(
  * gives the UI a single place to cancel from.
  */
 class HealthSourceSyncCoordinator {
-  private active?: Promise<SyncResult>;
+  private active?: Promise<HealthSourceSyncResult>;
   private controller?: AbortController;
 
   get busy(): boolean {
@@ -23,7 +23,7 @@ class HealthSourceSyncCoordinator {
   }
 
   /** Joins the in-flight sync when one exists rather than starting a second read. */
-  run(perform: (signal: AbortSignal) => Promise<SyncResult>): Promise<SyncResult> {
+  run(perform: (signal: AbortSignal) => Promise<HealthSourceSyncResult>): Promise<HealthSourceSyncResult> {
     if (this.active) return this.active;
     const controller = new AbortController();
     this.controller = controller;

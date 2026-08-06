@@ -58,7 +58,7 @@ Added a `ReplicaProjection` cached on the repository and keyed on
 projection is rebuilt only when a sync actually applied something. Row bucketing is now a
 single pass into a `Map<string, unknown[]>` instead of 13 `Array.filter` passes.
 
-`apps/android-companion/src/connected/connectedRepository.ts`
+`apps/mobile-companion/src/connected/connectedRepository.ts`
 
 ### P2 — `summarize()` was O(codes × observations) `DONE`
 
@@ -67,7 +67,7 @@ latest timestamp. `indexMeasurements()` now builds all per-code counts, sample/a
 buckets and `lastMeasuredAt` in one pass, and `summarize()` / `summaryRowFor()` /
 `detailEntries()` read from that index.
 
-`apps/android-companion/src/connected/connectedRepository.ts`
+`apps/mobile-companion/src/connected/connectedRepository.ts`
 
 ### P3 — PC-side: two full DuckDB exports + JSON diff per mutation `DEFERRED`
 
@@ -88,7 +88,7 @@ Removed the read and moved the writes onto two prepared statements reused across
 page, so a 1 000-row page is now 1 000 statement executions instead of 2 000 plus
 statement re-compilation.
 
-`apps/android-companion/src/standalone/sqliteLocalStore.ts` (`writeReplicaChanges`)
+`apps/mobile-companion/src/standalone/sqliteLocalStore.ts` (`writeReplicaChanges`)
 
 ### P5 — `healthDataDetail` returned unbounded `chartPoints` `DONE`
 
@@ -98,7 +98,7 @@ with even downsampling that always preserves the first and last sample. Verified
 `mergeHealthDataDetail` in `@vitana/shared`, which dedupes by
 `kind\0timestamp\0value\0unit` and re-sorts, so downsampled pages still merge correctly.
 
-`apps/android-companion/src/connected/connectedRepository.ts`
+`apps/mobile-companion/src/connected/connectedRepository.ts`
 
 ### P6 — `recordReplicaChanges` inserted one row at a time `DONE`
 
@@ -120,7 +120,7 @@ nothing, and served stale data indefinitely with no error.
 `hasRewound()` compares the handshake high-water mark against the cached cursor and
 discards the local replica so the next pass takes a fresh snapshot.
 
-`apps/android-companion/src/connected/syncCoordinator.ts`
+`apps/mobile-companion/src/connected/syncCoordinator.ts`
 
 ### B2 — An interrupted first snapshot restarted from zero `DONE`
 
@@ -153,7 +153,7 @@ background call and be skipped by the freshness gate. The in-flight record now t
 `force`; a forced request only joins an already-forced call, otherwise it chains after the
 current one.
 
-`apps/android-companion/src/MobileApiProvider.tsx`
+`apps/mobile-companion/src/MobileApiProvider.tsx`
 
 ### B5 — Staleness compared the device clock to the PC clock `DONE`
 
@@ -169,7 +169,7 @@ refreshed. Added a device-local `applied_at` column, and the freshness gate now 
 "Forget my synced health data" disposed the store but left the memoised `coordinator` and
 `repository` pointing at the closed handle, so the next sync threw. Both are now cleared.
 
-`apps/android-companion/src/connected/connectedDataSource.ts`
+`apps/mobile-companion/src/connected/connectedDataSource.ts`
 
 ### B7 — Mode switch closed and re-derived the SQLCipher key `DONE`
 
@@ -187,7 +187,7 @@ failed switch cannot leak the lease).
 no-op whenever `foreign_keys` is off. On a privacy-critical path that risked orphaned
 health data. Both tables are now deleted explicitly inside one transaction.
 
-`apps/android-companion/src/standalone/sqliteLocalStore.ts`
+`apps/mobile-companion/src/standalone/sqliteLocalStore.ts`
 
 ---
 
@@ -211,14 +211,14 @@ Deletion counts were hardcoded to `0` while entries still advertised `canDelete`
 confirmation sheet claimed nothing would be removed. Connected mode does support deletes
 via the live API, so real counts are now reported.
 
-`apps/android-companion/src/connected/connectedRepository.ts`
+`apps/mobile-companion/src/connected/connectedRepository.ts`
 
 ### T4 — Redundant index on `connected_replica_entities` `DONE`
 
 `connected_replica_entities_type_idx (replica_id, entity_type)` duplicated the leading
 columns of the primary key. Dropped in the v4 migration.
 
-`apps/android-companion/src/standalone/migrations.ts`
+`apps/mobile-companion/src/standalone/migrations.ts`
 
 ### T5 — `synchronous = FULL` for a re-derivable cache `DEFERRED`
 
@@ -234,7 +234,7 @@ Added two coordinator tests covering the bugs that had no coverage:
 - resumes an interrupted first snapshot instead of re-downloading it (B2)
 - re-snapshots when the paired PC reports less history than the cache holds (B1)
 
-`apps/android-companion/src/connected/syncCoordinator.test.ts`
+`apps/mobile-companion/src/connected/syncCoordinator.test.ts`
 
 Not added: a test for force-vs-background sync coalescing (B4). That logic lives inside
 `MobileApiProvider`, and there is no React test harness in this workspace — adding one for
@@ -261,7 +261,7 @@ resolved to validate the changes above.
 
 | Suite | Result |
 |-------|--------|
-| `npm test --workspace @vitana/android-companion` | 25 files, 111 tests passed |
+| `npm test --workspace @vitana/mobile-companion` | 25 files, 111 tests passed |
 | `npm run test:core` | 82 files, 509 tests passed |
 | `npm run test:integration` | 6 files, 93 tests passed, 1 file skipped |
 

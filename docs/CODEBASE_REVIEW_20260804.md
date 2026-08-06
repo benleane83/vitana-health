@@ -1,7 +1,7 @@
 # Pre-Beta Codebase Review
 
 **Reviewed:** 2026-08-04
-**Scope:** `apps/api`, `apps/web`, `apps/android-companion`, `apps/desktop`, `packages/shared`, `packages/api-client`, `scripts/`, root build & test config
+**Scope:** `apps/api`, `apps/web`, `apps/mobile-companion`, `apps/desktop`, `packages/shared`, `packages/api-client`, `scripts/`, root build & test config
 **Goal:** find what is still cheap to change today and permanent once beta testers hold real encrypted profiles.
 
 ## Method
@@ -102,7 +102,7 @@ Phase 10 already moved the audit write out of the mutation queue so backups do n
 <a id="f4"></a>
 ## 4. A category that stops producing records never advances its cursor again
 
-`apps/android-companion/src/syncHealthConnect.ts:401-405` advances `advanced[descriptor.category]` only for categories in `categoriesWithRecords`. The intent is visible in the user-facing string at line 418 — "The sync start date was kept for those categories" — and for a category that has *never* produced data that is right, because it preserves the backfill window.
+`apps/mobile-companion/src/syncHealthConnect.ts:401-405` advances `advanced[descriptor.category]` only for categories in `categoriesWithRecords`. The intent is visible in the user-facing string at line 418 — "The sync start date was kept for those categories" — and for a category that has *never* produced data that is right, because it preserves the backfill window.
 
 But it does not distinguish that case from a category that produced data for months and then stopped, which is what happens when a user uninstalls the app that was writing to Health Connect, swaps watches, or revokes a single writer. That category's cursor is now frozen at its last productive sync and every subsequent sync re-reads the entire span from there to now, forever, growing without bound. On battery and on a phone radio.
 
@@ -146,19 +146,19 @@ The surrounding controls are good — `MAX_ROW_LIMIT = 200` is applied on every 
 
 ## 10. Lease counting increments before both databases are open
 
-`apps/android-companion/src/standalone/sqliteLocalStore.ts:86-103` increments `databaseLeases` first, then opens the durable database, then the replica. If the replica open throws, the catch decrements the lease — but `sharedDatabase` stays resolved. The next acquire skips the durable open, increments again, and the accounting now describes a state that does not exist. Under enough retries a release can close a handle another caller holds.
+`apps/mobile-companion/src/standalone/sqliteLocalStore.ts:86-103` increments `databaseLeases` first, then opens the durable database, then the replica. If the replica open throws, the catch decrements the lease — but `sharedDatabase` stays resolved. The next acquire skips the durable open, increments again, and the accounting now describes a state that does not exist. Under enough retries a release can close a handle another caller holds.
 
 **Recommendation:** Increment only after both opens resolve.
 
 ## 11. `ChunkBuilder` re-serializes to measure
 
-`apps/android-companion/src/syncHealthConnect.ts:459,487` stringifies each value to size it, and `reset()` re-stringifies the accumulated chunk for its base size. On a 365-day first sync this is the hot loop, and it is quadratic in chunk length.
+`apps/mobile-companion/src/syncHealthConnect.ts:459,487` stringifies each value to size it, and `reset()` re-stringifies the accumulated chunk for its base size. On a 365-day first sync this is the hot loop, and it is quadratic in chunk length.
 
 **Recommendation:** Keep a running byte total and compute the chunk's constant base size once at module scope.
 
 ## 12. The "Sync" import source is offered where no provider exists
 
-`apps/android-companion/src/screens/ImportScreen.tsx:112-128` lists the `sync` source unconditionally, with copy that already branches on `Platform.OS`. `healthSourceProvider.ts:31` correctly returns `undefined` off Android, which was the whole point of the `HealthSourceProvider` seam — but the screen does not consult it, so on iOS the tile is present and tapping it fails. iOS is not a target yet; fixing it now costs one filter and stops the seam from rotting.
+`apps/mobile-companion/src/screens/ImportScreen.tsx:112-128` lists the `sync` source unconditionally, with copy that already branches on `Platform.OS`. `healthSourceProvider.ts:31` correctly returns `undefined` off Android, which was the whole point of the `HealthSourceProvider` seam — but the screen does not consult it, so on iOS the tile is present and tapping it fails. iOS is not a target yet; fixing it now costs one filter and stops the seam from rotting.
 
 **Recommendation:** Hide the tile when `activeHealthSourceProvider()` is undefined.
 

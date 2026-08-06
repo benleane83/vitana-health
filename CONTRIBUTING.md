@@ -71,7 +71,7 @@ This npm workspace is organized around these dependency boundaries:
 | API client | `packages/api-client` | Shared | Typed API transport used by browser and companion clients |
 | API and storage | `apps/api` | Shared | Express API, profile lifecycle, encrypted DuckDB repositories, imports, analytics, pairing, and reports |
 | PC web UI | `apps/web` | Shared, API client | React/Vite desktop browser interface |
-| Mobile companion | `apps/android-companion` | Shared, API client | Expo/React Native companion, demo mode, pairing, and native adapters |
+| Mobile companion | `apps/mobile-companion` | Shared, API client | Expo/React Native companion, demo mode, pairing, and native adapters |
 | Desktop host | `apps/desktop` | API; packaged web output | Electron secure storage, process lifecycle, and Windows installer |
 
 Keep database-specific operations behind the storage abstractions in `apps/api/src/storage`. Runtime code must not restore the retired JSON profile backend or perform whole-profile reads. Shared and API-client changes can affect every app and therefore require broader validation than leaf-workspace changes.
@@ -85,7 +85,7 @@ Use the narrowest command that covers a change, then run `npm run validate:fast`
 | Shared domain | `npm run validate:shared` | Run affected app validation because all apps consume it |
 | API routes and services | `npm run validate:api` | `npm run test:integration` for HTTP or lifecycle behavior |
 | Web UI | `npm run validate:web` | `npm run test:integration` for full UI/API flows |
-| Android companion | `npm run validate:android` | Use manually dispatched Android native CI for native modules or permissions |
+| Mobile companion | `npm run validate:mobile` | Use platform-native CI for native modules or permissions |
 | Electron/packaging | `npm run validate:desktop` | Use manually dispatched Windows desktop smoke CI for packaging changes |
 | Storage, encryption, or recovery | `npm run validate:storage` | Includes integration and durability suites; Windows CI remains authoritative |
 

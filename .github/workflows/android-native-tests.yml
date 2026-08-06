@@ -30,9 +30,9 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Generate Android host
-        working-directory: apps/android-companion
+        working-directory: apps/mobile-companion
         run: npx expo prebuild --platform android --no-install
 
       - name: Run pinned HTTP module tests
-        working-directory: apps/android-companion/android
+        working-directory: apps/mobile-companion/android
         run: ./gradlew :vitana-pinned-http:testDebugUnitTest

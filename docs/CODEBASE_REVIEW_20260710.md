@@ -64,19 +64,19 @@ The health endpoint is now O(1) — it no longer computes analytics. Each wareho
 
 #### [OPEN] P0 — Health Connect disclosure and Play privacy work are missing
 
-The app requests all supported Health Connect permissions together and has no first-run explanation of why each category is needed (`apps/android-companion/src/syncHealthConnect.ts`). No privacy-policy flow, Play Data Safety declaration, or Health Connect declaration is present in the repository.
+The app requests all supported Health Connect permissions together and has no first-run explanation of why each category is needed (`apps/mobile-companion/src/syncHealthConnect.ts`). No privacy-policy flow, Play Data Safety declaration, or Health Connect declaration is present in the repository.
 
 **Recommendation:** Add just-in-time rationale, a privacy-policy link, data inventory and retention/deletion language, least-privilege permission selection, and complete Play Console declarations before submission.
 
 #### [IN PROGRESS] P1 — Sync is inefficient and loses useful provenance
 
-A persistent device identifier exists, but every sync still rereads and accumulates the previous 30 days, the upload label remains static, and incremental cursors/chunking/provider provenance are absent (`apps/android-companion/src/endpointStore.ts`, `src/syncHealthConnect.ts`).
+A persistent device identifier exists, but every sync still rereads and accumulates the previous 30 days, the upload label remains static, and incremental cursors/chunking/provider provenance are absent (`apps/mobile-companion/src/endpointStore.ts`, `src/syncHealthConnect.ts`).
 
 **Remaining work:** Persist a per-device sync cursor with overlap, chunk uploads, preserve provider record/origin metadata, and map all supported exercise fields.
 
 #### [IN PROGRESS] P1 — Endpoint pairing and resilient networking are incomplete
 
-Free-form endpoint configuration has been replaced with QR pairing, HTTPS enforcement, server identity pinning, and explicit unpairing. Profile refresh still uses an unpinned and unauthenticated fetch, and the app has no consistent timeout, cancellation, or retry policy for all network operations (`apps/android-companion/App.tsx`).
+Free-form endpoint configuration has been replaced with QR pairing, HTTPS enforcement, server identity pinning, and explicit unpairing. Profile refresh still uses an unpinned and unauthenticated fetch, and the app has no consistent timeout, cancellation, or retry policy for all network operations (`apps/mobile-companion/App.tsx`).
 
 **Remaining work:** Route profile requests through the authenticated pinned client and establish bounded timeout, cancellation, and retry behavior.
 
@@ -108,7 +108,7 @@ All `/api` requests now pass through centralized authentication in `apps/api/src
 
 #### [DONE] P0 — Health Connect transport protection
 
-Production and preview builds disable cleartext traffic (`apps/android-companion/eas.json`), production sync requires HTTPS and a paired token (`src/syncHealthConnect.ts`), and QR pairing pins the server public-key fingerprint (`src/PairScreen.tsx`, `src/pinnedFetch.ts`). The development profile intentionally retains cleartext only for local development.
+Production and preview builds disable cleartext traffic (`apps/mobile-companion/eas.json`), production sync requires HTTPS and a paired token (`src/syncHealthConnect.ts`), and QR pairing pins the server public-key fingerprint (`src/PairScreen.tsx`, `src/pinnedFetch.ts`). The development profile intentionally retains cleartext only for local development.
 
 #### [DONE] P0 — Privacy claims and cloud-model consent
 
@@ -150,7 +150,7 @@ Shared CSV import deduplication continues to use 32-bit FNV-1a (`packages/shared
 
 #### [DONE] P1 — Denying one optional permission prevents all sync
 
-Any missing requested permission aborts the complete sync (`apps/android-companion/src/syncHealthConnect.ts`).
+Any missing requested permission aborts the complete sync (`apps/mobile-companion/src/syncHealthConnect.ts`).
 
 **Recommendation:** Sync granted categories, clearly report omissions, and let users select and change categories later.
 

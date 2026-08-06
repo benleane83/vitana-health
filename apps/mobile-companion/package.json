@@ -1,5 +1,5 @@
 {
-  "name": "@vitana/android-companion",
+  "name": "@vitana/mobile-companion",
   "version": "0.1.2",
   "license": "Elastic-2.0",
   "main": "index.ts",
@@ -58,10 +58,30 @@
     "build:android:preview": "npx -y eas-cli@20.5.1 build --platform android --profile preview",
     "build:android:development": "npx -y eas-cli@20.5.1 build --platform android --profile development",
     "build:android:production": "npx -y eas-cli@20.5.1 build --platform android --profile production",
+    "build:ios:simulator": "npx -y eas-cli@20.5.1 build --platform ios --profile ios-simulator",
+    "build:ios:device-farm": "npx -y eas-cli@20.5.1 build --platform ios --profile ios-device-farm",
+    "build:ios:production": "npx -y eas-cli@20.5.1 build --platform ios --profile production",
+    "submit:ios:production": "npx -y eas-cli@20.5.1 submit --platform ios --profile production --latest",
     "update:preview": "npx -y eas-cli@20.5.1 update --channel preview --environment preview",
     "update:production": "npx -y eas-cli@20.5.1 update --channel production --environment production"
   },
   "expo": {
+    "autolinking": {
+      "ios": {
+        "exclude": [
+          "react-native-iap",
+          "react-native-nitro-modules"
+        ]
+      }
+    },
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "exclude": [
+          "expo-health-connect",
+          "vitana-pinned-http"
+        ]
+      }
+    },
     "install": {
       "exclude": [
         "react"

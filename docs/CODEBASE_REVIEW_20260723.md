@@ -54,7 +54,7 @@ The `replace` decision now swaps the complete staged database rather than mergin
 
 ### P0 — Android Standalone data becomes invisible after every relaunch — RESOLVED
 
-Each native repository creation generates a new profile ID (`apps/android-companion/src/standalone/createStandaloneRepository.native.ts:5-13`). Initialization inserts that new profile and uses it for all subsequent profile-filtered queries (`apps/android-companion/src/standalone/sqliteLocalStore.ts:95-108`). The encrypted database and key persist, but the selected profile ID does not, so prior readings remain orphaned and the relaunched app appears empty. Standalone is the default for an unpaired installation (`apps/android-companion/src/operatingModeStore.ts:16-21`).
+Each native repository creation generates a new profile ID (`apps/mobile-companion/src/standalone/createStandaloneRepository.native.ts:5-13`). Initialization inserts that new profile and uses it for all subsequent profile-filtered queries (`apps/mobile-companion/src/standalone/sqliteLocalStore.ts:95-108`). The encrypted database and key persist, but the selected profile ID does not, so prior readings remain orphaned and the relaunched app appears empty. Standalone is the default for an unpaired installation (`apps/mobile-companion/src/operatingModeStore.ts:16-21`).
 
 **Status: resolved.** Encrypted SQLite initialization now adopts the persisted profile containing the most observations/imports before considering a generated default, with deterministic tie-breakers for an empty database. Repository recreation therefore continues querying the existing profile-scoped observations instead of creating and selecting an empty profile.
 
@@ -81,7 +81,7 @@ Each native repository creation generates a new profile ID (`apps/android-compan
 
 ### P1 — Production behavior and Play declarations disagree — RESOLVED
 
-The production app exposes and defaults to encrypted Standalone storage (`App.tsx:115-170`, `operatingModeStore.ts:16-21`), while the privacy policy and Data Safety document describe health data as transferred to and retained only by the paired desktop (`docs/PRIVACY_POLICY.md:15-23`, `docs/PLAY_DATA_SAFETY.md:9-20`). Production also contacts Expo for EAS updates (`apps/android-companion/app.config.js:70-74`), despite the absolute “no vendor data uploads” statement.
+The production app exposes and defaults to encrypted Standalone storage (`App.tsx:115-170`, `operatingModeStore.ts:16-21`), while the privacy policy and Data Safety document describe health data as transferred to and retained only by the paired desktop (`docs/PRIVACY_POLICY.md:15-23`, `docs/PLAY_DATA_SAFETY.md:9-20`). Production also contacts Expo for EAS updates (`apps/mobile-companion/app.config.js:70-74`), despite the absolute “no vendor data uploads” statement.
 
 The manifest requests extended Health Connect history permission (`app.config.js:34`), but the Health Connect declaration does not explicitly name or justify that special permission (`docs/HEALTH_CONNECT_DECLARATION.md:5-15`).
 
@@ -89,7 +89,7 @@ The manifest requests extended Health Connect history permission (`app.config.js
 
 ### P1 — Paid-release configuration is internally inconsistent — DEFERRED FOR FREE CLOSED TESTING
 
-Purchase gating is hard-disabled and all users are treated as entitled (`apps/android-companion/src/entitlementService.ts:3-4`, `src/EntitlementProvider.tsx:20-25`). The IAP plugin and Billing permission still ship, while the release runbook requires testing `scan_sync_unlock` (`docs/ANDROID_RELEASE.md:37-42,73-80`).
+Purchase gating is hard-disabled and all users are treated as entitled (`apps/mobile-companion/src/entitlementService.ts:3-4`, `src/EntitlementProvider.tsx:20-25`). The IAP plugin and Billing permission still ship, while the release runbook requires testing `scan_sync_unlock` (`docs/ANDROID_RELEASE.md:37-42,73-80`).
 
 If gating is enabled as written, a cached AsyncStorage boolean permanently grants offline ownership even when the store no longer reports the purchase (`entitlementService.ts:91-107,188-196`).
 
@@ -99,7 +99,7 @@ This finding is not resolved for paid distribution. Before enabling gating, repl
 
 ### P1 — Demo mode can close and then reuse the Standalone database — RESOLVED
 
-The Standalone data source is memoized independently of Demo mode (`apps/android-companion/src/MobileApiProvider.tsx:93-103`). Changing to Demo mode changes `source`, whose effect cleanup disposes the Standalone repository (`MobileApiProvider.tsx:279-284`, `standaloneDataSource.ts:44-46`). Turning Demo mode off reuses that same data-source object with its closed repository.
+The Standalone data source is memoized independently of Demo mode (`apps/mobile-companion/src/MobileApiProvider.tsx:93-103`). Changing to Demo mode changes `source`, whose effect cleanup disposes the Standalone repository (`MobileApiProvider.tsx:279-284`, `standaloneDataSource.ts:44-46`). Turning Demo mode off reuses that same data-source object with its closed repository.
 
 **Status: resolved.** Demo mode now removes the Standalone source from its memoized source slot. Entering Demo disposes the old source, and leaving Demo creates a new source that reopens the persisted encrypted database instead of reusing the disposed object.
 
@@ -157,7 +157,7 @@ The Windows tag workflow verifies signatures, updater metadata, smoke behavior, 
 - `packages/shared/src/registry.ts`, `apps/api/src/storage/duckdbProjections.ts`, and `duckdbCommands.ts` are large change hotspots. Split by domain when next modified; do not introduce a new framework solely for this.
 - Health Connect and pinned networking are Android-specific implementations rather than platform interfaces, increasing the cost of the planned iOS app.
 - `expo-keep-awake` is imported directly but only available transitively; declare it explicitly or remove the import.
-- Remove the unused `apps/android-companion/modules/lfa-pinned-http` directory and empty `VitanaPinnedHttp.types.ts`.
+- Remove the unused `apps/mobile-companion/modules/lfa-pinned-http` directory and empty `VitanaPinnedHttp.types.ts`.
 - Generate the companion device ID with `expo-crypto`, and align token SecureStore accessibility with the device-only database key policy.
 - Replace O(n²) chart-point deduplication in `packages/shared/src/mobileFeatures.ts:85-88` with a keyed set when touching pagination.
 

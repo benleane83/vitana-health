@@ -33,7 +33,7 @@ vi.mock("./endpointStore", () => ({
 }));
 vi.mock("./pinnedFetch", () => ({ LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS: 60_000, pinnedFetch: mocks.pinnedFetch }));
 
-import { HEALTH_CONNECT_DESCRIPTORS, chunkPayload, syncHealthConnect, type HealthConnectImportPayload } from "./syncHealthConnect";
+import { HEALTH_CONNECT_DESCRIPTORS, chunkPayload, syncHealthConnect, type HealthConnectImportPayload } from "./syncHealthConnect.android";
 
 const sessionsPath = "/api/import/health-connect/sessions";
 

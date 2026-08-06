@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-const appDirectory = fileURLToPath(new URL("../apps/android-companion/", import.meta.url));
+const appDirectory = fileURLToPath(new URL("../apps/mobile-companion/", import.meta.url));
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const child = spawn(npmCommand, ["run", "preview:web"], {
   cwd: appDirectory,

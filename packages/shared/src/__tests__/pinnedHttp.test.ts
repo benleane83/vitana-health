@@ -7,7 +7,7 @@ import { isAbortError, isRetryableNetworkError } from "../networkRetry.js";
 const kotlinModule = readFileSync(
   fileURLToPath(
     new URL(
-      "../../../../apps/android-companion/modules/vitana-pinned-http/android/src/main/java/app/vitanahealth/pinnedhttp/VitanaPinnedHttpModule.kt",
+      "../../../../apps/mobile-companion/modules/vitana-pinned-http/android/src/main/java/app/vitanahealth/pinnedhttp/VitanaPinnedHttpModule.kt",
       import.meta.url
     )
   ),

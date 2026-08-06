@@ -37,9 +37,9 @@ Vitana Health generates wellness-oriented summaries and questions to discuss wit
 
 Use the **Export** tab to download a PDF for the active profile. It includes profile details, data totals, recent measurements, flagged lab results and reference ranges, trends, and imported-source provenance. The report is a non-diagnostic summary intended to support a conversation with a healthcare professional.
 
-## Android companion app
+## Mobile companion app
 
-The Vitana Android companion app lives at `apps/android-companion`.
+The Vitana Expo companion app lives at `apps/mobile-companion` and targets Android and iOS.
 
 It supports:
 
@@ -48,11 +48,13 @@ It supports:
 - Tracking of health measurements and trends
 - Manual Activity, Body, and Lab observations
 - Camera/gallery report capture with OCR, editable row review, and approved-row commit
-- Manual "Sync now" for Health Connect, with category selection and 30-365 day initial sync window (30 days by default)
+- Manual "Sync now" for Health Connect on Android, with category selection and 30-365 day initial sync window (30 days by default)
+
+The initial iOS MVP supports pairing, encrypted offline data, Dashboard, Track, Care, manual entry, report capture, standalone use, and Demo mode. HealthKit ingestion and paid purchase gating are deferred; Scan and Sync-capable features remain unlocked while gating is disabled.
 
 Dashboard, Track, and Care data are retained in an encrypted read-only phone replica for immediate and offline viewing. The phone refreshes that replica from the paired PC in the background and when the user pulls to refresh. Unpairing removes the downloaded replica. Report images and OCR drafts remain in memory only and are cleared after commit, cancellation, disconnect, or app backgrounding. OCR, parsing, and the authoritative Connected health-data store remain on the paired PC.
 
-See the [Android privacy policy](docs/PRIVACY_POLICY.md), [Health Connect data inventory](docs/HEALTH_CONNECT_DATA_INVENTORY.md), and release declaration instructions in [Android release](docs/ANDROID_RELEASE.md).
+See the [privacy policy](docs/PRIVACY_POLICY.md), [Health Connect data inventory](docs/HEALTH_CONNECT_DATA_INVENTORY.md), and Android release instructions in [Android release](docs/ANDROID_RELEASE.md).
 
 The API import pipeline uses deterministic IDs so re-running sync keeps existing records deduplicated.
 
@@ -150,19 +152,19 @@ Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:4317/api/analytics/storage"
 
 The application does not create a separate plaintext analytics warehouse. JSON remains available as an explicit data export format, but it is not a runtime storage backend or profile migration source.
 
-### Android companion development and release
+### Mobile companion development and release
 
 #### Preview the companion on Windows
 
 Use the watcher-free Expo Web preview before publishing an EAS Update:
 
 ```powershell
-npm run preview:web -w apps/android-companion
+npm run preview:web -w apps/mobile-companion
 ```
 
 Open `http://127.0.0.1:8082` and use the browser's responsive device toolbar to test phone-sized layouts. The command creates a fresh static export before serving it, avoiding Metro's unreliable recursive file watcher on Windows mapped drives. Restart the command after source changes to rebuild the preview.
 
-For hot reload on a local drive or a system with Watchman, use `npm run web -w apps/android-companion` instead.
+For hot reload on a local drive or a system with Watchman, use `npm run web -w apps/mobile-companion` instead.
 
 For a deterministic preview that starts with read-only sample data and does not require a paired PC:
 
@@ -178,12 +180,12 @@ After starting the mobile demo:
 
 For the PC app, run `npm run dev`, then use `npm run dev:health` to verify its API and web UI before browser inspection.
 
-This is a rendering preview rather than a second companion client. The Android pairing flow is unchanged, and camera capture, Health Connect, native secure storage, certificate pinning, and Android permission behavior still require an Android development or preview build. Use the web preview for navigation, layout, forms, dashboard and Track presentation, loading states, and other platform-neutral UI work.
+This is a rendering preview rather than a second companion client. Camera capture, Health Connect, native secure storage, certificate pinning, and platform permission behavior still require a native development or preview build. Use the web preview for navigation, layout, forms, dashboard and Track presentation, loading states, and other platform-neutral UI work.
 
 #### Build an APK for sideloading
 
 ```powershell
-cd apps/android-companion
+cd apps/mobile-companion
 npm install
 npx eas login
 npx eas build --platform android --profile preview
@@ -194,16 +196,16 @@ For a direct-to-phone install flow (no manual APK download and no adb), open the
 Recommended commands from the repo root:
 
 ```powershell
-npm run build:android:preview -w apps/android-companion
+npm run build:android:preview -w apps/mobile-companion
 ```
 
 After the first install on your phone, publish most code changes over-the-air (OTA) without rebuilding the APK:
 
 ```powershell
-npm run update:preview -w apps/android-companion -- --message "sync improvements"
+npm run update:preview -w apps/mobile-companion -- --message "sync improvements"
 ```
 
-This publishes to the `preview` EAS Update channel configured in `apps/android-companion/eas.json`.
+This publishes to the `preview` EAS Update channel configured in `apps/mobile-companion/eas.json`.
 
 When to rebuild instead of OTA:
 
