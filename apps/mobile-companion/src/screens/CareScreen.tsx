@@ -86,18 +86,9 @@ export function CareScreen() {
   const [feedback, setFeedback] = useState<Feedback>();
 
   const load = useCallback(async (synchronize = false) => {
-    if (standaloneMode) {
-      setItems([]);
-      setEvents([]);
-      setItemsHasMore(false);
-      setEventsHasMore(false);
-      setLoading(false);
-      setFeedback(undefined);
-      return;
-    }
     setLoading(true);
     try {
-      if (synchronize) await synchronizeConnectedData(true);
+      if (synchronize && !standaloneMode && !demoMode) await synchronizeConnectedData(true);
       const [nextItems, nextEvents] = await Promise.all([
         listCareItems({ limit: CARE_PAGE_SIZE, kind: careItemKindFilter || undefined }),
         listHealthEvents({ limit: CARE_PAGE_SIZE, kind: healthEventKindFilter || undefined })
@@ -111,7 +102,7 @@ export function CareScreen() {
     } finally {
       setLoading(false);
     }
-  }, [careItemKindFilter, healthEventKindFilter, listCareItems, listHealthEvents, standaloneMode, synchronizeConnectedData]);
+  }, [careItemKindFilter, demoMode, healthEventKindFilter, listCareItems, listHealthEvents, standaloneMode, synchronizeConnectedData]);
 
   // Without this the list silently stopped at the first page, which reads to a user as data loss.
   async function loadMore() {
@@ -144,11 +135,11 @@ export function CareScreen() {
     return () => clearTimeout(timeout);
   }, [feedback]);
   useEffect(() => {
-    if (connectionState !== "online") {
+    if (!demoMode && !standaloneMode && connectionState !== "online") {
       setEditorMode("closed");
       setEditingId(undefined);
     }
-  }, [connectionState]);
+  }, [connectionState, demoMode, standaloneMode]);
 
   async function save() {
     setBusy(true);
@@ -246,18 +237,7 @@ export function CareScreen() {
     setEditingId(undefined);
   }
 
-  const canWrite = !demoMode && connectionState === "online";
-
-  if (standaloneMode) {
-    return (
-      <Screen>
-        <Message
-          title="Care requires a paired PC"
-          detail="Pair with your PC to view and manage Care records. Health data already on this phone remains separate until you choose to merge or delete it during setup."
-        />
-      </Screen>
-    );
-  }
+  const canWrite = demoMode || standaloneMode || connectionState === "online";
 
   const listData: Array<CareItem | HealthEvent> = editorMode === "closed" ? (view === "health-events" ? events : items) : [];
   const renderRow = (entry: CareItem | HealthEvent) => ("occurredAt" in entry ? (
@@ -304,8 +284,8 @@ export function CareScreen() {
               </View>
               {canWrite && editorMode === "closed" ? <Button disabled={busy} onPress={startCreate}>{view === "items" ? "Add care item" : "Add health event"}</Button> : null}
             </View>
-            {demoMode ? <Message title="Demo mode is read-only" detail="Connect to your paired PC to create, edit, or delete care records." /> : null}
-            {connectionState !== "online" ? <Message title={connectionStateLabel(connectionState)} detail={error ?? "Showing read-only Care data. Reconnect or pull to refresh."} tone="warning" /> : null}
+            {demoMode ? <Message title="Demo care records" detail="Try adding, editing, or completing records. Your changes reset when Demo mode restarts." /> : null}
+            {!demoMode && !standaloneMode && connectionState !== "online" ? <Message title={connectionStateLabel(connectionState)} detail={error ?? "Showing read-only Care data. Reconnect or pull to refresh."} tone="warning" /> : null}
             {feedback ? <Message title={feedback.tone === "success" ? "Care updated" : "Care error"} detail={feedback.detail} tone={feedback.tone} /> : null}
             {editorMode === "closed" ? (
               view === "items" ? (

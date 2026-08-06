@@ -222,6 +222,37 @@ export const migrations: readonly Migration[] = [
     DROP TABLE IF EXISTS connected_replica_entities;
     DROP TABLE IF EXISTS connected_replicas;
   `
+  },
+  {
+    version: 6,
+    sql: `
+    CREATE TABLE health_events (
+      profile_id TEXT NOT NULL,
+      id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      status TEXT NOT NULL,
+      occurred_at TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      PRIMARY KEY (profile_id, id),
+      FOREIGN KEY (profile_id) REFERENCES profiles(id)
+    );
+    CREATE INDEX health_events_filter_idx
+      ON health_events(profile_id, kind, status, occurred_at DESC);
+    CREATE TABLE care_items (
+      profile_id TEXT NOT NULL,
+      id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      status TEXT NOT NULL,
+      priority TEXT NOT NULL,
+      due_start TEXT,
+      title TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      PRIMARY KEY (profile_id, id),
+      FOREIGN KEY (profile_id) REFERENCES profiles(id)
+    );
+    CREATE INDEX care_items_filter_idx
+      ON care_items(profile_id, status, kind, priority, due_start);
+  `
   }
 ];
 

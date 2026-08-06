@@ -2,6 +2,13 @@ import * as Crypto from "expo-crypto";
 import * as SecureStore from "expo-secure-store";
 import { deleteDatabaseAsync, openDatabaseAsync, type SQLiteDatabase } from "expo-sqlite";
 import type {
+  CareItem,
+  CareItemListQuery,
+  CompleteCareItemInput,
+  CreateCareItemInput,
+  CreateHealthEventInput,
+  HealthEvent,
+  HealthEventListQuery,
   MobileImportResult,
   CalendarMonthQuery,
   MobileMigrationBatch,
@@ -14,6 +21,7 @@ import type {
   ReplicaPage,
   UpdateObservationInput
 } from "@vitana/shared";
+import { defaultHealthEventKindForCareItem } from "@vitana/shared";
 import {
   generateDatabaseKeyHex,
   openWithDatabaseKey,
@@ -372,6 +380,8 @@ export class SqliteLocalStore implements LocalStore {
   async deleteSelectedDataset(): Promise<void> {
     const profileId = this.requireProfileId();
     await this.database.withTransactionAsync(async () => {
+      await this.database.runAsync("DELETE FROM care_items WHERE profile_id = ?", profileId);
+      await this.database.runAsync("DELETE FROM health_events WHERE profile_id = ?", profileId);
       await this.database.runAsync("DELETE FROM observations WHERE profile_id = ?", profileId);
       await this.database.runAsync("DELETE FROM observation_groups WHERE profile_id = ?", profileId);
       await this.database.runAsync("DELETE FROM data_sources WHERE profile_id = ?", profileId);
@@ -456,15 +466,21 @@ export class SqliteLocalStore implements LocalStore {
     const row = await this.database.getFirstAsync<{
       imports: number;
       observations: number;
+      healthEvents: number;
+      careItems: number;
     }>(`
       SELECT
         (SELECT COUNT(*) FROM source_imports WHERE profile_id = ?) AS imports,
-        (SELECT COUNT(*) FROM observations WHERE profile_id = ?) AS observations
-    `, this.requireProfileId(), this.requireProfileId());
+        (SELECT COUNT(*) FROM observations WHERE profile_id = ?) AS observations,
+        (SELECT COUNT(*) FROM health_events WHERE profile_id = ?) AS healthEvents,
+        (SELECT COUNT(*) FROM care_items WHERE profile_id = ?) AS careItems
+    `, this.requireProfileId(), this.requireProfileId(), this.requireProfileId(), this.requireProfileId());
     return {
       ...emptyCounts(),
       imports: row?.imports ?? 0,
-      observations: row?.observations ?? 0
+      observations: row?.observations ?? 0,
+      healthEvents: row?.healthEvents ?? 0,
+      careItems: row?.careItems ?? 0
     };
   }
 
@@ -941,6 +957,128 @@ export class SqliteLocalStore implements LocalStore {
     return changed ? existing : undefined;
   }
 
+  async listHealthEvents(query: HealthEventListQuery = {}) {
+    const { where, parameters } = healthEventWhere(this.requireProfileId(), query);
+    const limit = boundedLimit(query.limit);
+    const offset = boundedOffset(query.offset);
+    const [count, rows] = await Promise.all([
+      this.database.getFirstAsync<{ total: number }>(`SELECT COUNT(*) AS total FROM health_events ${where}`, ...parameters),
+      this.database.getAllAsync<{ payload_json: string }>(
+        `SELECT payload_json FROM health_events ${where} ORDER BY occurred_at DESC, id DESC LIMIT ? OFFSET ?`,
+        ...parameters, limit, offset
+      )
+    ]);
+    const total = count?.total ?? 0;
+    const items = rows.map((row) => JSON.parse(row.payload_json) as HealthEvent);
+    const included = query.includeId && !items.some((item) => item.id === query.includeId)
+      ? await this.healthEventById(query.includeId)
+      : undefined;
+    if (included) items.push(included);
+    return { items, total, offset, limit, hasMore: offset + rows.length < total };
+  }
+
+  async createHealthEvent(payload: CreateHealthEventInput): Promise<HealthEvent> {
+    await this.assertWritable();
+    const event: HealthEvent = { id: `event-${Crypto.randomUUID()}`, source: "manual-entry", ...payload };
+    await this.insertHealthEvent(event);
+    return event;
+  }
+
+  async updateHealthEvent(id: string, payload: CreateHealthEventInput): Promise<HealthEvent | undefined> {
+    await this.assertWritable();
+    const existing = await this.healthEventById(id);
+    if (!existing) return undefined;
+    const event: HealthEvent = { id, source: existing.source, ...payload };
+    const result = await this.database.runAsync(
+      `UPDATE health_events SET kind = ?, status = ?, occurred_at = ?, payload_json = ? WHERE profile_id = ? AND id = ?`,
+      event.kind, event.status, event.occurredAt, JSON.stringify(event), this.requireProfileId(), id
+    );
+    return result.changes === 1 ? event : undefined;
+  }
+
+  async deleteHealthEvent(id: string): Promise<HealthEvent | undefined> {
+    await this.assertWritable();
+    const existing = await this.healthEventById(id);
+    if (!existing) return undefined;
+    const result = await this.database.runAsync("DELETE FROM health_events WHERE profile_id = ? AND id = ?", this.requireProfileId(), id);
+    return result.changes === 1 ? existing : undefined;
+  }
+
+  async listCareItems(query: CareItemListQuery = {}) {
+    const { where, parameters } = careItemWhere(this.requireProfileId(), query);
+    const limit = boundedLimit(query.limit);
+    const offset = boundedOffset(query.offset);
+    const [count, rows] = await Promise.all([
+      this.database.getFirstAsync<{ total: number }>(`SELECT COUNT(*) AS total FROM care_items ${where}`, ...parameters),
+      this.database.getAllAsync<{ payload_json: string }>(
+        `SELECT payload_json FROM care_items ${where} ORDER BY due_start IS NULL, due_start, title, id LIMIT ? OFFSET ?`,
+        ...parameters, limit, offset
+      )
+    ]);
+    const total = count?.total ?? 0;
+    const items = rows.map((row) => JSON.parse(row.payload_json) as CareItem);
+    const included = query.includeId && !items.some((item) => item.id === query.includeId)
+      ? await this.careItemById(query.includeId)
+      : undefined;
+    if (included) items.push(included);
+    return { items, total, offset, limit, hasMore: offset + rows.length < total };
+  }
+
+  async createCareItem(payload: CreateCareItemInput): Promise<CareItem> {
+    await this.assertWritable();
+    if (payload.status === "completed") throw new Error("Use the completion action to complete a care item.");
+    const item: CareItem = { id: `care-${Crypto.randomUUID()}`, ...payload };
+    await this.insertCareItem(item);
+    return item;
+  }
+
+  async updateCareItem(id: string, payload: CreateCareItemInput): Promise<CareItem | undefined> {
+    await this.assertWritable();
+    const existing = await this.careItemById(id);
+    if (!existing) return undefined;
+    if (existing.status !== "completed" && payload.status === "completed") throw new Error("Use the completion action to complete a care item.");
+    const item: CareItem = existing.status === "completed"
+      ? { ...existing, ...payload, status: "completed", completedAt: existing.completedAt, completedHealthEventId: existing.completedHealthEventId, completedHealthEvent: existing.completedHealthEvent }
+      : { id, ...payload };
+    const result = await this.database.runAsync(
+      `UPDATE care_items SET kind = ?, status = ?, priority = ?, due_start = ?, title = ?, payload_json = ? WHERE profile_id = ? AND id = ?`,
+      item.kind, item.status, item.priority, item.dueStart ?? null, item.title, JSON.stringify(item), this.requireProfileId(), id
+    );
+    return result.changes === 1 ? item : undefined;
+  }
+
+  async completeCareItem(id: string, payload: CompleteCareItemInput) {
+    await this.assertWritable();
+    const existing = await this.careItemById(id);
+    if (!existing) return undefined;
+    if (existing.status !== "open") throw new Error("Only open care items can be completed.");
+    const eventKind = payload.kind ?? defaultHealthEventKindForCareItem[existing.kind];
+    const healthEvent: HealthEvent | undefined = eventKind ? {
+      id: `event-${Crypto.randomUUID()}`, kind: eventKind, status: "completed", occurredAt: payload.occurredAt,
+      source: "manual-entry", notes: `Completed care item: ${existing.title}`
+    } : undefined;
+    const careItem: CareItem = {
+      ...existing, status: "completed", completedAt: payload.occurredAt,
+      ...(healthEvent ? { completedHealthEventId: healthEvent.id, completedHealthEvent: { id: healthEvent.id, kind: healthEvent.kind, occurredAt: healthEvent.occurredAt } } : {})
+    };
+    await this.database.withTransactionAsync(async () => {
+      if (healthEvent) await this.insertHealthEvent(healthEvent);
+      await this.database.runAsync(
+        `UPDATE care_items SET status = 'completed', payload_json = ? WHERE profile_id = ? AND id = ?`,
+        JSON.stringify(careItem), this.requireProfileId(), id
+      );
+    });
+    return { careItem, healthEvent };
+  }
+
+  async deleteCareItem(id: string): Promise<CareItem | undefined> {
+    await this.assertWritable();
+    const existing = await this.careItemById(id);
+    if (!existing) return undefined;
+    const result = await this.database.runAsync("DELETE FROM care_items WHERE profile_id = ? AND id = ?", this.requireProfileId(), id);
+    return result.changes === 1 ? existing : undefined;
+  }
+
   async replicaMetadata(identity: ReplicaIdentity) {
     const row = await this.replicaDatabase.getFirstAsync<{
       server_instance_id: string;
@@ -1200,6 +1338,67 @@ export class SqliteLocalStore implements LocalStore {
     };
   }
 
+  private async healthEventById(id: string): Promise<HealthEvent | undefined> {
+    const row = await this.database.getFirstAsync<{ payload_json: string }>(
+      "SELECT payload_json FROM health_events WHERE profile_id = ? AND id = ?",
+      this.requireProfileId(), id
+    );
+    return row ? JSON.parse(row.payload_json) as HealthEvent : undefined;
+  }
+
+  private async careItemById(id: string): Promise<CareItem | undefined> {
+    const row = await this.database.getFirstAsync<{ payload_json: string }>(
+      "SELECT payload_json FROM care_items WHERE profile_id = ? AND id = ?",
+      this.requireProfileId(), id
+    );
+    return row ? JSON.parse(row.payload_json) as CareItem : undefined;
+  }
+
+  private async insertHealthEvent(event: HealthEvent): Promise<void> {
+    await this.database.runAsync(
+      `INSERT INTO health_events (profile_id, id, kind, status, occurred_at, payload_json) VALUES (?, ?, ?, ?, ?, ?)`,
+      this.requireProfileId(), event.id, event.kind, event.status, event.occurredAt, JSON.stringify(event)
+    );
+  }
+
+  private async insertCareItem(item: CareItem): Promise<void> {
+    await this.database.runAsync(
+      `INSERT INTO care_items (profile_id, id, kind, status, priority, due_start, title, payload_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      this.requireProfileId(), item.id, item.kind, item.status, item.priority, item.dueStart ?? null, item.title, JSON.stringify(item)
+    );
+  }
+
+}
+
+function boundedLimit(limit: number | undefined): number {
+  return Math.min(Math.max(Math.trunc(limit ?? 20), 1), 100);
+}
+
+function boundedOffset(offset: number | undefined): number {
+  return Math.max(Math.trunc(offset ?? 0), 0);
+}
+
+function healthEventWhere(profileId: string, query: HealthEventListQuery) {
+  const clauses = ["profile_id = ?"];
+  const parameters: Array<string> = [profileId];
+  if (query.kind) { clauses.push("kind = ?"); parameters.push(query.kind); }
+  if (query.status) { clauses.push("status = ?"); parameters.push(query.status); }
+  if (query.occurredFrom) { clauses.push("occurred_at >= ?"); parameters.push(query.occurredFrom); }
+  if (query.occurredTo) { clauses.push("occurred_at <= ?"); parameters.push(query.occurredTo); }
+  if (query.search) { clauses.push("lower(payload_json) LIKE ?"); parameters.push(`%${query.search.toLowerCase()}%`); }
+  return { where: `WHERE ${clauses.join(" AND ")}`, parameters };
+}
+
+function careItemWhere(profileId: string, query: CareItemListQuery) {
+  const clauses = ["profile_id = ?"];
+  const parameters: Array<string> = [profileId];
+  if (query.kind) { clauses.push("kind = ?"); parameters.push(query.kind); }
+  if (query.status) { clauses.push("status = ?"); parameters.push(query.status); }
+  if (query.priority) { clauses.push("priority = ?"); parameters.push(query.priority); }
+  if (query.dueFrom) { clauses.push("due_start >= ?"); parameters.push(query.dueFrom); }
+  if (query.dueTo) { clauses.push("due_start <= ?"); parameters.push(query.dueTo); }
+  if (query.search) { clauses.push("lower(title || ' ' || payload_json) LIKE ?"); parameters.push(`%${query.search.toLowerCase()}%`); }
+  return { where: `WHERE ${clauses.join(" AND ")}`, parameters };
 }
 
 function replicaIdentity(page: ReplicaPage): ReplicaIdentity {

@@ -6,6 +6,7 @@ import type {
 } from "@vitana/shared";
 import type {
   CompanionDataSource,
+  CompanionCareService,
   CompanionLifecycleService,
   CompanionMaintenanceService,
   CompanionMutationService,
@@ -26,7 +27,7 @@ export interface StandaloneMigrationSource {
   archiveAfterMigration(receipt: MobileMigrationReceipt, serverUrl: string): Promise<void>;
 }
 
-export function createStandaloneDataSource(): CompanionDataSource & CompanionMutationService & CompanionObservationMutationService & CompanionMaintenanceService & CompanionLifecycleService & StandaloneMigrationSource {
+export function createStandaloneDataSource(): CompanionDataSource & CompanionCareService & CompanionMutationService & CompanionObservationMutationService & CompanionMaintenanceService & CompanionLifecycleService & StandaloneMigrationSource {
   let repository = createStandaloneRepository();
   const getRepository = (): Promise<MobileProfileRepository & Pick<LocalProfileRepository, "bodyTrendTimeline" | "calendarMonth" | "healthDataChartSeries">> => repository;
   return {
@@ -40,6 +41,15 @@ export function createStandaloneDataSource(): CompanionDataSource & CompanionMut
       (await getRepository()).healthDataDetail(measurementCode, page),
     healthDataChartSeries: async (measurementCode, options) =>
       (await getRepository()).healthDataChartSeries(measurementCode, options),
+    listHealthEvents: async (query) => (await repository).listHealthEvents(query),
+    createHealthEvent: async (payload) => (await repository).createHealthEvent(payload),
+    updateHealthEvent: async (id, payload) => (await repository).updateHealthEvent(id, payload),
+    deleteHealthEvent: async (id) => (await repository).deleteHealthEvent(id),
+    listCareItems: async (query) => (await repository).listCareItems(query),
+    createCareItem: async (payload) => (await repository).createCareItem(payload),
+    updateCareItem: async (id, payload) => (await repository).updateCareItem(id, payload),
+    completeCareItem: async (id, payload) => (await repository).completeCareItem(id, payload),
+    deleteCareItem: async (id) => (await repository).deleteCareItem(id),
     updateObservation: async (id, input) => {
       const updated = await (await getRepository()).updateObservation(id, input);
       if (!updated) throw new Error("Observation not found.");

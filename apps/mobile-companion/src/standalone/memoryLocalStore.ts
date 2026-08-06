@@ -1,5 +1,12 @@
 import type {
+  CareItem,
+  CareItemListQuery,
+  CompleteCareItemInput,
+  CreateCareItemInput,
+  CreateHealthEventInput,
   DataSource,
+    HealthEvent,
+    HealthEventListQuery,
   CalendarMonthQuery,
   HealthDataChartSeries,
   HealthDataChartSeriesOptions,
@@ -16,6 +23,7 @@ import type {
   SourceImport,
   UpdateObservationInput
 } from "@vitana/shared";
+import { defaultHealthEventKindForCareItem } from "@vitana/shared";
 import {
   DEFAULT_MIGRATION_BATCH_SIZE,
   MEASUREMENT_SCOPED_REPLICA_TYPES,
@@ -36,6 +44,8 @@ export interface MemoryLocalStoreState {
   dataSources: Map<string, DataSource>;
   observationGroups: Map<string, ObservationGroup>;
   observations: Map<string, Observation>;
+  healthEvents: Map<string, HealthEvent>;
+  careItems: Map<string, CareItem>;
   migrationFingerprints: Map<string, string>;
 }
 
@@ -46,6 +56,8 @@ export function createMemoryLocalStoreState(): MemoryLocalStoreState {
     dataSources: new Map(),
     observationGroups: new Map(),
     observations: new Map(),
+    healthEvents: new Map(),
+    careItems: new Map(),
     migrationFingerprints: new Map()
   };
 }
@@ -120,7 +132,9 @@ export class MemoryLocalStore implements LocalStore {
     return {
       ...emptyCounts(),
       imports: this.profileValues(this.state.sourceImports).length,
-      observations: this.profileValues(this.state.observations).length
+      observations: this.profileValues(this.state.observations).length,
+      healthEvents: this.profileValues(this.state.healthEvents).length,
+      careItems: this.profileValues(this.state.careItems).length
     };
   }
 
@@ -363,6 +377,101 @@ export class MemoryLocalStore implements LocalStore {
     return structuredClone(existing);
   }
 
+  async listHealthEvents(query: HealthEventListQuery = {}) {
+    const values = this.profileValues(this.state.healthEvents)
+      .filter((entry) => (!query.kind || entry.kind === query.kind) && (!query.status || entry.status === query.status))
+      .filter((entry) => !query.occurredFrom || entry.occurredAt >= query.occurredFrom)
+      .filter((entry) => !query.occurredTo || entry.occurredAt <= query.occurredTo)
+      .filter((entry) => !query.search || `${entry.provider ?? ""} ${entry.notes ?? ""}`.toLowerCase().includes(query.search.toLowerCase()))
+      .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt));
+    return withIncludedId(paginate(values, query), query.includeId, this.state.healthEvents.get(key(this.requireProfileId(), query.includeId ?? "")));
+  }
+
+  async createHealthEvent(payload: CreateHealthEventInput): Promise<HealthEvent> {
+    this.assertWritable();
+    const event: HealthEvent = { id: localId("event"), source: "manual-entry", ...payload };
+    this.state.healthEvents.set(key(this.requireProfileId(), event.id), event);
+    return structuredClone(event);
+  }
+
+  async updateHealthEvent(id: string, payload: CreateHealthEventInput): Promise<HealthEvent | undefined> {
+    this.assertWritable();
+    const eventKey = key(this.requireProfileId(), id);
+    const existing = this.state.healthEvents.get(eventKey);
+    if (!existing) return undefined;
+    const event: HealthEvent = { id, source: existing.source, ...payload };
+    this.state.healthEvents.set(eventKey, event);
+    return structuredClone(event);
+  }
+
+  async deleteHealthEvent(id: string): Promise<HealthEvent | undefined> {
+    this.assertWritable();
+    const eventKey = key(this.requireProfileId(), id);
+    const existing = this.state.healthEvents.get(eventKey);
+    if (existing) this.state.healthEvents.delete(eventKey);
+    return existing ? structuredClone(existing) : undefined;
+  }
+
+  async listCareItems(query: CareItemListQuery = {}) {
+    const values = this.profileValues(this.state.careItems)
+      .filter((entry) => (!query.kind || entry.kind === query.kind) && (!query.status || entry.status === query.status))
+      .filter((entry) => !query.priority || entry.priority === query.priority)
+      .filter((entry) => !query.dueFrom || (entry.dueStart !== undefined && entry.dueStart >= query.dueFrom))
+      .filter((entry) => !query.dueTo || (entry.dueStart !== undefined && entry.dueStart <= query.dueTo))
+      .filter((entry) => !query.search || `${entry.title} ${entry.notes ?? ""}`.toLowerCase().includes(query.search.toLowerCase()))
+      .sort((left, right) => (left.dueStart ?? "9999").localeCompare(right.dueStart ?? "9999") || left.title.localeCompare(right.title));
+    return withIncludedId(paginate(values, query), query.includeId, this.state.careItems.get(key(this.requireProfileId(), query.includeId ?? "")));
+  }
+
+  async createCareItem(payload: CreateCareItemInput): Promise<CareItem> {
+    this.assertWritable();
+    if (payload.status === "completed") throw new Error("Use the completion action to complete a care item.");
+    const item: CareItem = { id: localId("care"), ...payload };
+    this.state.careItems.set(key(this.requireProfileId(), item.id), item);
+    return structuredClone(item);
+  }
+
+  async updateCareItem(id: string, payload: CreateCareItemInput): Promise<CareItem | undefined> {
+    this.assertWritable();
+    const itemKey = key(this.requireProfileId(), id);
+    const existing = this.state.careItems.get(itemKey);
+    if (!existing) return undefined;
+    if (existing.status !== "completed" && payload.status === "completed") throw new Error("Use the completion action to complete a care item.");
+    const item: CareItem = existing.status === "completed"
+      ? { ...existing, ...payload, status: "completed", completedAt: existing.completedAt, completedHealthEventId: existing.completedHealthEventId, completedHealthEvent: existing.completedHealthEvent }
+      : { id, ...payload };
+    this.state.careItems.set(itemKey, item);
+    return structuredClone(item);
+  }
+
+  async completeCareItem(id: string, payload: CompleteCareItemInput) {
+    this.assertWritable();
+    const itemKey = key(this.requireProfileId(), id);
+    const existing = this.state.careItems.get(itemKey);
+    if (!existing) return undefined;
+    if (existing.status !== "open") throw new Error("Only open care items can be completed.");
+    const eventKind = payload.kind ?? defaultHealthEventKindForCareItem[existing.kind];
+    const healthEvent: HealthEvent | undefined = eventKind ? {
+      id: localId("event"), kind: eventKind, status: "completed", occurredAt: payload.occurredAt,
+      source: "manual-entry", notes: `Completed care item: ${existing.title}`
+    } : undefined;
+    const careItem: CareItem = {
+      ...existing, status: "completed", completedAt: payload.occurredAt,
+      ...(healthEvent ? { completedHealthEventId: healthEvent.id, completedHealthEvent: { id: healthEvent.id, kind: healthEvent.kind, occurredAt: healthEvent.occurredAt } } : {})
+    };
+    if (healthEvent) this.state.healthEvents.set(key(this.requireProfileId(), healthEvent.id), healthEvent);
+    this.state.careItems.set(itemKey, careItem);
+    return structuredClone({ careItem, healthEvent });
+  }
+
+  async deleteCareItem(id: string): Promise<CareItem | undefined> {
+    this.assertWritable();
+    const itemKey = key(this.requireProfileId(), id);
+    const existing = this.state.careItems.get(itemKey);
+    if (existing) this.state.careItems.delete(itemKey);
+    return existing ? structuredClone(existing) : undefined;
+  }
+
   async close(): Promise<void> {}
 
   async replicaMetadata(identity: ReplicaIdentity) {
@@ -459,7 +568,9 @@ export class MemoryLocalStore implements LocalStore {
       this.state.sourceImports,
       this.state.dataSources,
       this.state.observationGroups,
-      this.state.observations
+      this.state.observations,
+      this.state.healthEvents,
+      this.state.careItems
     ]) {
       for (const entryKey of values.keys()) {
         if (entryKey.startsWith(`${profileId}\u0000`)) values.delete(entryKey);
@@ -492,6 +603,25 @@ export class MemoryLocalStore implements LocalStore {
 
 function key(profileId: string, id: string): string {
   return `${profileId}\u0000${id}`;
+}
+
+function localId(prefix: string): string {
+  return `${prefix}-${globalThis.crypto.randomUUID()}`;
+}
+
+function paginate<T>(values: T[], query: { limit?: number; offset?: number }) {
+  const limit = Math.min(Math.max(Math.trunc(query.limit ?? 20), 1), 100);
+  const offset = Math.max(Math.trunc(query.offset ?? 0), 0);
+  return { items: structuredClone(values.slice(offset, offset + limit)), total: values.length, offset, limit, hasMore: offset + limit < values.length };
+}
+
+function withIncludedId<T extends { id: string }>(
+  page: ReturnType<typeof paginate<T>>,
+  includeId: string | undefined,
+  included: T | undefined
+) {
+  if (includeId && included && !page.items.some((item) => item.id === includeId)) page.items.push(structuredClone(included));
+  return page;
 }
 
 function replicaId(identity: ReplicaIdentity): string {

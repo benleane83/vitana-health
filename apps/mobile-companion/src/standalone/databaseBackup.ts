@@ -27,7 +27,9 @@ const trackedTables = [
   "source_imports",
   "data_sources",
   "observation_groups",
-  "observations"
+  "observations",
+  "health_events",
+  "care_items"
 ] as const;
 
 export function migrationBackupName(databaseName: string, fromVersion: number, suffix: string): string {
