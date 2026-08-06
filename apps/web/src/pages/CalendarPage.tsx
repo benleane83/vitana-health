@@ -168,12 +168,12 @@ export function CalendarPage({
     <section className="panel calendar-page" aria-labelledby="calendar-heading">
       <header className="calendar-header">
         <div>
-          <h1 id="calendar-heading">Calendar</h1>
+          <h2 id="calendar-heading">Calendar</h2>
           <p>Compare your recorded measurements and health events.</p>
         </div>
         <div className="calendar-month-controls">
           <button type="button" aria-label="Previous month" onClick={onPreviousMonth}>‹</button>
-          <h2 aria-live="polite">{dateFormatter.format(new Date(`${month}-01T00:00:00Z`))}</h2>
+          <h3 aria-live="polite">{dateFormatter.format(new Date(`${month}-01T00:00:00Z`))}</h3>
           <button type="button" aria-label="Next month" onClick={onNextMonth}>›</button>
           <button type="button" onClick={onToday}>Today</button>
         </div>

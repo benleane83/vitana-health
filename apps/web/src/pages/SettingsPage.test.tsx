@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getDesktop: vi.fn(),
@@ -41,7 +41,23 @@ beforeEach(() => {
   mocks.resetMeasurementMetadata.mockResolvedValue({ profileId: "self", refreshed: 108, inserted: 0 });
 });
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe("desktop update settings", () => {
+  it("announces horizontal tabs when the workspace collapses", () => {
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    }));
+
+    render(<SettingsPage view="app" onViewChange={() => {}} confirm={vi.fn()} />);
+
+    expect(screen.getByRole("tablist", { name: "Settings sections" })).toHaveAttribute("aria-orientation", "horizontal");
+  });
+
   it("shows the immutable channel and delegates download", async () => {
     mocks.downloadUpdates.mockResolvedValue({
       status: "downloading",

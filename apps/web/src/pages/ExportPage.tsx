@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { KeyboardEvent } from "react";
 import { safetyNotice } from "@vitana/shared";
 import type { BackupInspectResponse, RestoreDecision } from "@vitana/shared";
+import { useResponsiveTabOrientation } from "../hooks/useResponsiveTabOrientation.js";
 
 const minBackupPassphraseLength = 12;
 type ExportView = "report" | "backup";
@@ -55,6 +56,7 @@ export function ExportPage({
   onReplacementAcknowledgmentChange: (profileId: string, acknowledged: boolean) => void;
   onRestoreBackup: () => void;
 }) {
+  const tabOrientation = useResponsiveTabOrientation();
   const [view, setView] = useState<ExportView>("report");
   const canCreateBackup = backupPassphrase.length >= minBackupPassphraseLength && backupPassphrase === backupPassphraseConfirmation;
   const canInspectBackup = Boolean(restoreFile) && restorePassphrase.length >= minBackupPassphraseLength;
@@ -87,15 +89,15 @@ export function ExportPage({
   }
 
   return (
-    <section className="export-page">
-      <div className="export-header">
+    <section className="export-page" aria-labelledby="export-title" aria-describedby="export-description">
+      <header className="route-page-header">
         <div>
-          <h1>Export</h1>
+          <h1 id="export-title">Export</h1>
+          <p id="export-description" className="route-page-description">Download a shareable report or create and restore encrypted local profile backups.</p>
         </div>
-        <p className="export-copy">Download a shareable report or create and restore encrypted local profile backups.</p>
-      </div>
+      </header>
       <div className="export-workspace">
-        <div className="export-tabs" role="tablist" aria-label="Export tools" aria-orientation="vertical">
+        <div className="export-tabs" role="tablist" aria-label="Export tools" aria-orientation={tabOrientation}>
           <button
             id={reportTabId}
             type="button"

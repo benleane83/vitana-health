@@ -52,7 +52,7 @@ export function SummaryPage({
     <section className="panel summary-panel">
       <div className="summary-header">
         <div>
-          <h1>Track health data</h1>
+          <h2>Measurements</h2>
         </div>
         <div className="summary-controls" role="group" aria-label="Sort summary rows">
           <button
