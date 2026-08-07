@@ -4,6 +4,7 @@ import {
 } from "../registry.js";
 import {
   classifyValue,
+  classifyValueWithRange,
   convertMeasurementValue,
   findMeasurementType,
   getPreferredUnit,
@@ -71,11 +72,16 @@ describe("classifyValue", () => {
       measurementCode: "glucose", normalLow: 4, normalHigh: 6, optimalLow: 4.5, optimalHigh: 5.5,
       unit: "mmol/L", updatedAt: "2026-01-01T00:00:00.000Z"
     };
-    expect(resolveReferenceRange(glucose, "mg/dL", personal, "adult")).toMatchObject({
+    const resolved = resolveReferenceRange(glucose, "mg/dL", personal, "adult");
+    expect(resolved).toMatchObject({
       source: "personal",
       effective: { low: expect.any(Number), high: expect.any(Number), unit: "mg/dL" },
+      optimal: { low: expect.any(Number), high: expect.any(Number), unit: "mg/dL" },
       catalog: expect.any(Object)
     });
+    expect(resolved.optimal?.low).toBeCloseTo(81.08, 1);
+    expect(resolved.optimal?.high).toBeCloseTo(99.1, 1);
+    expect(classifyValueWithRange(79, resolved.effective)).toBe("normal");
     expect(resolveReferenceRange(glucose, "mmol/L", undefined, "adult").source).toBe("catalog");
     expect(resolveReferenceRange(glucose, "mmol/L", undefined, "child")).toEqual({ source: "none" });
     expect(resolveReferenceRange(glucose, "mmol/L", personal, "pet").source).toBe("personal");

@@ -92,8 +92,18 @@ export const personalReferenceRangeSchema = z.object({
   if (range.normalLow !== undefined && range.normalHigh !== undefined && range.normalLow > range.normalHigh) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["normalHigh"], message: "Normal upper bound must be greater than or equal to lower bound." });
   }
+  if ((range.optimalLow === undefined) !== (range.optimalHigh === undefined)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: [range.optimalLow === undefined ? "optimalLow" : "optimalHigh"], message: "Enter both optimal reference-range bounds." });
+  }
   if (range.optimalLow !== undefined && range.optimalHigh !== undefined && range.optimalLow > range.optimalHigh) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["optimalHigh"], message: "Optimal upper bound must be greater than or equal to lower bound." });
+  }
+  if (range.optimalLow !== undefined && range.optimalHigh !== undefined) {
+    if (range.normalLow === undefined || range.normalHigh === undefined) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["optimalLow"], message: "Optimal bounds require both normal reference-range bounds." });
+    } else if (range.optimalLow < range.normalLow || range.optimalHigh > range.normalHigh) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["optimalLow"], message: "Optimal range must sit within the normal range." });
+    }
   }
 });
 

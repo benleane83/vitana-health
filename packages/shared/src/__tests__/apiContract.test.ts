@@ -10,7 +10,8 @@ import {
   calendarMonthResponseSchema,
   careItemSchema,
   healthDataSummaryResponseSchema,
-  healthEventSchema
+  healthEventSchema,
+  personalReferenceRangeInputSchema
 } from "../apiContract.js";
 
 /**
@@ -18,6 +19,26 @@ import {
  * under the hood, so an empty object satisfied every one of them and drift went unnoticed.
  */
 describe("response contracts", () => {
+  it("validates tri-state optimal reference-range inputs", () => {
+    for (const input of [
+      { low: 4, high: 6, unit: "mmol/L" },
+      { low: 4, high: 6, optimalLow: 4.5, optimalHigh: 5.5, unit: "mmol/L" },
+      { low: 4, high: 6, optimalLow: null, optimalHigh: null, unit: "mmol/L" }
+    ]) {
+      expect(personalReferenceRangeInputSchema.safeParse(input).success).toBe(true);
+    }
+
+    for (const input of [
+      { low: 4, high: 6, optimalLow: 4.5, unit: "mmol/L" },
+      { low: 4, high: 6, optimalLow: null, optimalHigh: 5.5, unit: "mmol/L" },
+      { low: 4, optimalLow: 4.5, optimalHigh: 5.5, unit: "mmol/L" },
+      { low: 4, high: 6, optimalLow: 5.5, optimalHigh: 4.5, unit: "mmol/L" },
+      { low: 4, high: 6, optimalLow: 3.5, optimalHigh: 5.5, unit: "mmol/L" }
+    ]) {
+      expect(personalReferenceRangeInputSchema.safeParse(input).success).toBe(false);
+    }
+  });
+
   it("validates bounded calendar month requests", () => {
     expect(calendarMonthQuerySchema.parse({
       month: "2026-08",

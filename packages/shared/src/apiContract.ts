@@ -238,6 +238,8 @@ const optionalTrimmedString = (max: number) => z.string().trim().max(max).option
 export const personalReferenceRangeInputSchema = z.object({
   low: z.number().finite().optional(),
   high: z.number().finite().optional(),
+  optimalLow: z.number().finite().nullable().optional(),
+  optimalHigh: z.number().finite().nullable().optional(),
   unit: z.string().trim().min(1).max(80)
 }).strict().superRefine((range, context) => {
   if (range.low === undefined && range.high === undefined) {
@@ -245,6 +247,29 @@ export const personalReferenceRangeInputSchema = z.object({
   }
   if (range.low !== undefined && range.high !== undefined && range.low > range.high) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["high"], message: "Upper bound must be greater than or equal to lower bound." });
+  }
+  const optimalLow = range.optimalLow;
+  const optimalHigh = range.optimalHigh;
+  const hasOptimalLow = optimalLow !== undefined;
+  const hasOptimalHigh = optimalHigh !== undefined;
+  if (hasOptimalLow !== hasOptimalHigh) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: [hasOptimalLow ? "optimalHigh" : "optimalLow"], message: "Enter both optimal reference-range bounds." });
+    return;
+  }
+  if (!hasOptimalLow || !hasOptimalHigh) return;
+  if ((optimalLow === null) !== (optimalHigh === null)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["optimalHigh"], message: "Clear both optimal reference-range bounds together." });
+    return;
+  }
+  if (optimalLow === null || optimalHigh === null || optimalLow === undefined || optimalHigh === undefined) return;
+  if (range.low === undefined || range.high === undefined) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["optimalLow"], message: "Optimal bounds require both normal reference-range bounds." });
+    return;
+  }
+  if (optimalLow > optimalHigh) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["optimalHigh"], message: "Optimal upper bound must be greater than or equal to lower bound." });
+  } else if (optimalLow < range.low || optimalHigh > range.high) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["optimalLow"], message: "Optimal range must sit within the normal range." });
   }
 });
 export type PersonalReferenceRangeInput = z.infer<typeof personalReferenceRangeInputSchema>;
@@ -765,6 +790,7 @@ export const referenceRangeStateResponseSchema: z.ZodType<ReferenceRangeState> =
   personal: referenceRangeSchema.optional(),
   catalog: referenceRangeSchema.optional(),
   effective: referenceRangeSchema.optional(),
+  optimal: referenceRangeSchema.optional(),
   source: z.enum(["personal", "catalog", "none"])
 }).strict();
 
@@ -804,7 +830,8 @@ export const healthDataDetailResponseSchema: z.ZodType<HealthDataDetail> = z.obj
     timestamp: z.string(),
     value: z.number(),
     unit: z.string(),
-    referenceRange: referenceRangeSchema.optional()
+    referenceRange: referenceRangeSchema.optional(),
+    optimalRange: referenceRangeSchema.optional()
   }).strict()),
   counts: sourceCountsSchema.extend({ total: nonNegativeInt }),
   deletion: z.object({
@@ -833,7 +860,8 @@ export const healthDataChartSeriesResponseSchema: z.ZodType<HealthDataChartSerie
     count: nonNegativeInt,
     minValue: z.number().optional(),
     maxValue: z.number().optional(),
-    referenceRange: referenceRangeSchema.optional()
+    referenceRange: referenceRangeSchema.optional(),
+    optimalRange: referenceRangeSchema.optional()
   }).strict()),
   totalPoints: nonNegativeInt,
   truncated: z.boolean()

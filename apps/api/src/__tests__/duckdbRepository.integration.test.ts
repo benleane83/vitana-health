@@ -569,13 +569,15 @@ describe("DuckDbRepository fidelity", () => {
     const fixture = createDuckDbHealthStoreFixture();
     const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
     try {
-      expect((await repository.measurementDetail("weight")).referenceRange).toMatchObject({
+      const initialDetail = await repository.measurementDetail("weight");
+      expect(initialDetail.referenceRange).toMatchObject({
         source: "personal",
-        personal: { low: 60, high: 90, unit: "kg" }
+        personal: { low: 60, high: 90, unit: "kg" },
+        optimal: { low: 65, high: 85, unit: "kg" }
       });
+      expect(initialDetail.chartPoints[0]?.optimalRange).toEqual({ low: 65, high: 85, unit: "kg" });
       await repository.upsertPersonalReferenceRange("weight", { low: 130, high: 200, unit: "lb" });
-      const snapshot = await repository.snapshot();
-      expect(snapshot.personalReferenceRanges[0]).toMatchObject({
+      expect((await repository.snapshot()).personalReferenceRanges[0]).toMatchObject({
         measurementCode: "weight",
         normalLow: expect.closeTo(58.967, 3),
         normalHigh: expect.closeTo(90.718, 3),
@@ -583,7 +585,26 @@ describe("DuckDbRepository fidelity", () => {
         optimalHigh: 85,
         unit: "kg"
       });
-      expect((await repository.measurementDetail("weight")).entries[0]?.status).toBe("normal");
+      await repository.upsertPersonalReferenceRange("weight", {
+        low: 120, high: 210, optimalLow: 150, optimalHigh: 190, unit: "lb"
+      });
+      expect((await repository.snapshot()).personalReferenceRanges[0]).toMatchObject({
+        normalLow: expect.closeTo(54.431, 3),
+        normalHigh: expect.closeTo(95.254, 3),
+        optimalLow: expect.closeTo(68.039, 3),
+        optimalHigh: expect.closeTo(86.183, 3),
+        unit: "kg"
+      });
+      const detail = await repository.measurementDetail("weight");
+      const chart = await repository.measurementChartSeries("weight", { range: "all", mode: "raw" });
+      expect(detail.referenceRange.optimal).toMatchObject({ low: expect.closeTo(68.039, 3), high: expect.closeTo(86.183, 3) });
+      expect(detail.entries[0]?.status).toBe("normal");
+      expect(chart.points[0]?.optimalRange).toMatchObject({ low: expect.closeTo(68.039, 3), high: expect.closeTo(86.183, 3) });
+      await repository.upsertPersonalReferenceRange("weight", {
+        low: 120, high: 210, optimalLow: null, optimalHigh: null, unit: "lb"
+      });
+      expect((await repository.snapshot()).personalReferenceRanges[0]).not.toHaveProperty("optimalLow");
+      expect((await repository.measurementDetail("weight")).referenceRange).not.toHaveProperty("optimal");
       expect((await repository.deletePersonalReferenceRange("weight")).source).toBe("catalog");
       expect((await repository.snapshot()).personalReferenceRanges).toEqual([]);
     } finally {

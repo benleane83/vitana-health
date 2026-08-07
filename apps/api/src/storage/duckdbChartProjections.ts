@@ -179,6 +179,7 @@ function chartPointFromRow(
   subjectKind: NonNullable<Profile["subjectKind"]>
 ): HealthDataChartSeriesPoint {
   const unit = String(row.unit);
+  const resolvedRange = type ? resolveReferenceRange(type, unit, personalRange, subjectKind) : undefined;
   return {
     timestamp: isoTimestamp(row.bucket),
     value: Number(row.value),
@@ -186,6 +187,7 @@ function chartPointFromRow(
     count: Number(row.count),
     minValue: optionalNumber(row.min_value),
     maxValue: optionalNumber(row.max_value),
-    referenceRange: type ? resolveReferenceRange(type, unit, personalRange, subjectKind).effective : undefined
+    referenceRange: resolvedRange?.effective,
+    optimalRange: resolvedRange?.optimal
   };
 }

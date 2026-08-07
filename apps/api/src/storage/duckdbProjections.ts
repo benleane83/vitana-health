@@ -484,7 +484,10 @@ export async function measurementDetail(
           personalRange,
           subjectKind
         )
-      : { source: "none" }
+      : { source: "none" },
+    optimalRangeForUnit: type
+      ? (unit) => resolveReferenceRange(type, unit, personalRange, subjectKind).optimal
+      : undefined
   });
 }
 

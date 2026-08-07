@@ -107,6 +107,12 @@ export function resolveReferenceRange(
   if ((personal.normalLow !== undefined && low === undefined) || (personal.normalHigh !== undefined && high === undefined)) {
     return { ...(catalog ? { catalog } : {}), source: "none" };
   }
+  const optimalLow = personal.optimalLow === undefined
+    ? undefined
+    : convertMeasurementValue(personal.optimalLow, type, personal.unit, unit);
+  const optimalHigh = personal.optimalHigh === undefined
+    ? undefined
+    : convertMeasurementValue(personal.optimalHigh, type, personal.unit, unit);
   const normalRange = {
     ...(low === undefined ? {} : { low }),
     ...(high === undefined ? {} : { high }),
@@ -115,7 +121,16 @@ export function resolveReferenceRange(
   if (low === undefined && high === undefined) {
     return { ...(catalog ? { catalog } : {}), source: "none" };
   }
-  return { personal: normalRange, ...(catalog ? { catalog } : {}), effective: normalRange, source: "personal" };
+  const optimal = optimalLow === undefined || optimalHigh === undefined
+    ? undefined
+    : { low: optimalLow, high: optimalHigh, unit };
+  return {
+    personal: normalRange,
+    ...(catalog ? { catalog } : {}),
+    effective: normalRange,
+    ...(optimal ? { optimal } : {}),
+    source: "personal"
+  };
 }
 
 export function classifyValueWithRange(
