@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
     importManualObservations: vi.fn(),
     updateObservation: vi.fn(),
     deleteObservation: vi.fn(),
+    setPersonalReferenceRange: vi.fn(),
+    removePersonalReferenceRange: vi.fn(),
     listHealthEvents: vi.fn(),
     listCareItems: vi.fn(),
     createHealthEvent: vi.fn(),
@@ -158,6 +160,28 @@ describe("connected data source", () => {
     expect(mocks.synchronize).toHaveBeenCalledOnce();
     expect(mocks.createCompanionApi).toHaveBeenCalledWith(connection, 60_000);
     expect(source.connectionError(summary)).toBeUndefined();
+  });
+
+  it("writes personal reference ranges live and refreshes the replica", async () => {
+    mocks.live.setPersonalReferenceRange.mockResolvedValue({ source: "personal" });
+    const source = createConnectedDataSource(connection);
+
+    await source.setPersonalReferenceRange("weight", {
+      low: 130,
+      high: 190,
+      optimalLow: 145,
+      optimalHigh: 175,
+      unit: "lb"
+    });
+
+    expect(mocks.live.setPersonalReferenceRange).toHaveBeenCalledWith("weight", {
+      low: 130,
+      high: 190,
+      optimalLow: 145,
+      optimalHigh: 175,
+      unit: "lb"
+    });
+    expect(mocks.synchronize).toHaveBeenCalledOnce();
   });
 
   it("reports a mutation refresh failure instead of leaving the replica silently stale", async () => {

@@ -22,7 +22,8 @@ import {
   type JournalPage,
   type JournalQueryInput,
   type ManualObservationPayload,
-  type MobileImportResult
+  type MobileImportResult,
+  type PersonalReferenceRange
 } from "@vitana/shared";
 import type {
   CompanionCareService,
@@ -351,8 +352,18 @@ function makeSummary(rows: HealthDataSummaryTypeRow[], now: Date): HealthDataSum
 function makeDetail(metric: DemoMetric, now: Date): HealthDataDetail {
   const measurementType = defaultMeasurementTypes.find((entry) => entry.code === metric.code);
   if (!measurementType) throw new Error(`Unknown demo measurement: ${metric.code}`);
+  const personalRange: PersonalReferenceRange | undefined = metric.code === "weight" ? {
+    measurementCode: "weight",
+    normalLow: 68,
+    normalHigh: 82,
+    optimalLow: 72,
+    optimalHigh: 78,
+    unit: "kg",
+    updatedAt: now.toISOString()
+  } : undefined;
+  const rangeState = resolveReferenceRange(measurementType, metric.unit, personalRange, "adult");
   const entries = [...metric.values].reverse().map((value, index): HealthDataDetailEntry => {
-    const referenceRange = getReferenceRange(measurementType, metric.unit);
+    const referenceRange = rangeState.effective;
     return {
       kind: metric.kind,
       id: `demo-${metric.code}-${index}`,
@@ -392,9 +403,10 @@ function makeDetail(metric: DemoMetric, now: Date): HealthDataDetail {
       timestamp: entry.timestamp,
       value: entry.value,
       unit: entry.unit,
-      referenceRange: entry.referenceRange
+      referenceRange: entry.referenceRange,
+      optimalRange: rangeState.optimal
     })),
-    referenceRange: resolveReferenceRange(measurementType, metric.unit, undefined, "adult"),
+    referenceRange: rangeState,
     counts: { ...counts, total: entries.length },
     deletion: { observationEntries: counts.observations, deletableEntries: counts.observations },
     pagination: { limit: entries.length, loaded: entries.length, total: entries.length, hasMore: false }

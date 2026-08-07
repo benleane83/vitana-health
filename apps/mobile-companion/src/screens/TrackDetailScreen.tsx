@@ -1,12 +1,14 @@
 import { Fragment, memo, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { FlatList, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
+import Svg, { Circle, Line, Path, Rect, Text as SvgText } from "react-native-svg";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { Picker } from "@react-native-picker/picker";
 import { ChevronRight, CalendarDays, Clock3 } from "lucide-react-native";
 import {
   calendarDateToUtcMidnight,
   calculateChartDomain,
+  convertMeasurementValue,
   isUtcMidnightTimestamp,
   localCalendarDate,
   localDateFromCalendarDate,
@@ -31,12 +33,17 @@ type ReadingDraft = { observedAt: Date; value: string; unit: string; note: strin
 
 export function TrackDetailScreen({ route }: Props) {
   const {
+    bootstrap,
     connectionState,
     deleteObservation,
+    demoMode,
     healthDataChartSeries,
     healthDataDetail,
     importManualObservations,
+    operatingMode,
     refreshTrack,
+    removePersonalReferenceRange,
+    setPersonalReferenceRange,
     updateObservation
   } = useMobileApi();
   const [detail, setDetail] = useState<HealthDataDetail>();
@@ -55,6 +62,15 @@ export function TrackDetailScreen({ route }: Props) {
   const [pendingDeletion, setPendingDeletion] = useState<HealthDataDetailEntry>();
   const [actionFeedback, setActionFeedback] = useState<{ entryId?: string; detail: string; title: string; tone: "success" | "danger" }>();
   const [draft, setDraft] = useState<ReadingDraft>({ observedAt: new Date(), value: "", unit: "", note: "" });
+  const [editingRange, setEditingRange] = useState(false);
+  const [editingOptimalRange, setEditingOptimalRange] = useState(false);
+  const [removeOptimalRange, setRemoveOptimalRange] = useState(false);
+  const [rangeLow, setRangeLow] = useState("");
+  const [rangeHigh, setRangeHigh] = useState("");
+  const [optimalLow, setOptimalLow] = useState("");
+  const [optimalHigh, setOptimalHigh] = useState("");
+  const [rangeUnit, setRangeUnit] = useState("");
+  const [rangeError, setRangeError] = useState<string>();
   const deletionTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // The undo banner tells the user the reading is already removed, so a staged deletion has to
   // survive this screen going away. These refs let the unmount cleanup commit it rather than just
@@ -71,6 +87,7 @@ export function TrackDetailScreen({ route }: Props) {
     setSelectedEntryId(undefined);
     setAdding(false);
     setEditing(undefined);
+    setEditingRange(false);
     setPendingDeletion(undefined);
     setActionFeedback(undefined);
     void healthDataDetail(route.params.measurementCode).then((value) => {
@@ -254,6 +271,93 @@ export function TrackDetailScreen({ route }: Props) {
       }
     }
 
+  function beginRangeEdit() {
+    if (!detail) return;
+    const range = detail.referenceRange.personal ?? detail.referenceRange.effective;
+    setRangeLow(range?.low === undefined ? "" : String(range.low));
+    setRangeHigh(range?.high === undefined ? "" : String(range.high));
+    setOptimalLow(detail.referenceRange.optimal?.low === undefined ? "" : String(detail.referenceRange.optimal.low));
+    setOptimalHigh(detail.referenceRange.optimal?.high === undefined ? "" : String(detail.referenceRange.optimal.high));
+    setEditingOptimalRange(Boolean(detail.referenceRange.optimal));
+    setRemoveOptimalRange(false);
+    setRangeUnit(range?.unit ?? rangeUnits[0] ?? "");
+    setRangeError(undefined);
+    setEditingRange(true);
+  }
+
+  function changeRangeUnit(nextUnit: string) {
+    if (!measurementType || !rangeUnit || nextUnit === rangeUnit) {
+      setRangeUnit(nextUnit);
+      return;
+    }
+    const values = [rangeLow, rangeHigh, optimalLow, optimalHigh]
+      .map((value) => value.trim() === "" ? undefined : Number(value));
+    const converted = values.map((value) =>
+      value === undefined ? undefined : convertMeasurementValue(value, measurementType, rangeUnit, nextUnit));
+    if (values.some((value, index) => value !== undefined && converted[index] === undefined)) {
+      setRangeError(`Values cannot be converted from ${rangeUnit} to ${nextUnit}.`);
+      return;
+    }
+    const [nextLow, nextHigh, nextOptimalLow, nextOptimalHigh] = converted;
+    setRangeLow(nextLow === undefined ? "" : String(nextLow));
+    setRangeHigh(nextHigh === undefined ? "" : String(nextHigh));
+    setOptimalLow(nextOptimalLow === undefined ? "" : String(nextOptimalLow));
+    setOptimalHigh(nextOptimalHigh === undefined ? "" : String(nextOptimalHigh));
+    setRangeUnit(nextUnit);
+    setRangeError(undefined);
+  }
+
+  async function saveRange() {
+    const low = rangeLow.trim() === "" ? undefined : Number(rangeLow);
+    const high = rangeHigh.trim() === "" ? undefined : Number(rangeHigh);
+    const nextOptimalLow = optimalLow.trim() === "" ? undefined : Number(optimalLow);
+    const nextOptimalHigh = optimalHigh.trim() === "" ? undefined : Number(optimalHigh);
+    if (low === undefined && high === undefined) return setRangeError("Enter a lower bound, an upper bound, or both.");
+    if ((low !== undefined && !Number.isFinite(low)) || (high !== undefined && !Number.isFinite(high))) return setRangeError("Bounds must be finite numbers.");
+    if (low !== undefined && high !== undefined && low > high) return setRangeError("Upper bound must be greater than or equal to lower bound.");
+    if (editingOptimalRange && !removeOptimalRange) {
+      if (nextOptimalLow === undefined || nextOptimalHigh === undefined) return setRangeError("Enter both optimal reference-range bounds.");
+      if (!Number.isFinite(nextOptimalLow) || !Number.isFinite(nextOptimalHigh)) return setRangeError("Optimal bounds must be finite numbers.");
+      if (low === undefined || high === undefined) return setRangeError("Optimal bounds require both normal reference-range bounds.");
+      if (nextOptimalLow > nextOptimalHigh) return setRangeError("Optimal upper bound must be greater than or equal to lower bound.");
+      if (nextOptimalLow < low || nextOptimalHigh > high) return setRangeError("Optimal range must sit within the normal range.");
+    }
+    setActionBusy(true);
+    setRangeError(undefined);
+    try {
+      await setPersonalReferenceRange(route.params.measurementCode, {
+        low,
+        high,
+        unit: rangeUnit,
+        ...(removeOptimalRange
+          ? { optimalLow: null, optimalHigh: null }
+          : editingOptimalRange
+            ? { optimalLow: nextOptimalLow, optimalHigh: nextOptimalHigh }
+            : {})
+      });
+      await refreshAfterMutation("Reference range updated.");
+      setEditingRange(false);
+    } catch (caught) {
+      setRangeError(userFacingError(caught, "Unable to save the reference range. Try again."));
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function removeRange() {
+    setActionBusy(true);
+    setRangeError(undefined);
+    try {
+      await removePersonalReferenceRange(route.params.measurementCode);
+      await refreshAfterMutation("Personal reference range removed.");
+      setEditingRange(false);
+    } catch (caught) {
+      setRangeError(userFacingError(caught, "Unable to remove the reference range. Try again."));
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
   function stageDeletion(entry: HealthDataDetailEntry) {
       setEditing(undefined);
       setSelectedEntryId(undefined);
@@ -298,8 +402,16 @@ export function TrackDetailScreen({ route }: Props) {
   if (loading) return <Screen><Loading label="Loading metric…" /></Screen>;
   if (!detail) return <Screen><Message title="Metric unavailable" detail={error} /></Screen>;
   const latest = detail.entries[0];
+  const measurementType = bootstrap?.measurementTypes.find((candidate) => candidate.code === detail.measurement.code);
+  const rangeUnits = [...new Set([
+    measurementType?.canonicalUnit,
+    ...Object.values(measurementType?.preferredUnits ?? {}),
+    detail.referenceRange.effective?.unit,
+    latest?.unit
+  ].filter((unit): unit is string => Boolean(unit)))];
   const visibleEntries = detail.entries.filter((entry) => entry.id !== pendingDeletion?.id);
   const readOnly = connectionState !== "online";
+  const canEditRange = !readOnly && operatingMode === "connected" && !demoMode;
   const hasEditableEntries = !readOnly && visibleEntries.some((entry) => entry.kind === "observation" && entry.canDelete);
 
   const renderEntry = (entry: HealthDataDetailEntry) => {
@@ -412,9 +524,70 @@ export function TrackDetailScreen({ route }: Props) {
               </Card>
             ) : null}
             <Card>
-              <Text style={styles.heading}>Reference range</Text>
-              <Text style={styles.value}>{formatReferenceRange(detail.referenceRange.effective)}</Text>
-              <Text style={styles.meta}>{referenceRangeSourceLabel(detail.referenceRange.source)}</Text>
+              <View style={styles.referenceHeader}>
+                <Text style={styles.heading}>Reference range</Text>
+                {canEditRange && !editingRange ? (
+                  <Pressable accessibilityRole="button" disabled={actionBusy} onPress={beginRangeEdit} style={styles.textAction}>
+                    <Text style={styles.textActionLabel}>{detail.referenceRange.personal ? "Edit" : "Set range"}</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+              {!editingRange ? (
+                detail.referenceRange.optimal ? (
+                  <View style={styles.rangeValues}>
+                    <Text style={styles.meta}>Normal</Text>
+                    <Text style={styles.value}>{formatReferenceRange(detail.referenceRange.effective)}</Text>
+                    <Text style={styles.meta}>{referenceRangeSourceLabel(detail.referenceRange.source)}</Text>
+                    <Text style={styles.meta}>Optimal</Text>
+                    <Text style={styles.value}>{formatReferenceRange(detail.referenceRange.optimal)}</Text>
+                  </View>
+                ) : (
+                  <>
+                    <Text style={styles.value}>{formatReferenceRange(detail.referenceRange.effective)}</Text>
+                    <Text style={styles.meta}>{referenceRangeSourceLabel(detail.referenceRange.source)}</Text>
+                  </>
+                )
+              ) : (
+                <View style={styles.rangeEditor}>
+                  <RangeField disabled={actionBusy} label="Normal lower bound" onChangeText={setRangeLow} value={rangeLow} />
+                  <RangeField disabled={actionBusy} label="Normal upper bound" onChangeText={setRangeHigh} value={rangeHigh} />
+                  <Text style={styles.label}>Unit</Text>
+                  <View style={styles.pickerField}>
+                    <Picker accessibilityLabel="Reference range unit" enabled={!actionBusy} selectedValue={rangeUnit} style={styles.picker} onValueChange={changeRangeUnit}>
+                      {rangeUnits.map((unit) => <Picker.Item key={unit} label={unit} value={unit} />)}
+                    </Picker>
+                  </View>
+                  {!editingOptimalRange ? (
+                    <Pressable accessibilityRole="button" disabled={actionBusy} onPress={() => { setEditingOptimalRange(true); setRemoveOptimalRange(false); }} style={styles.inlineAction}>
+                      <Text style={styles.textActionLabel}>Add optimal range</Text>
+                    </Pressable>
+                  ) : (
+                    <View style={styles.optimalEditor}>
+                      <View style={styles.referenceHeader}>
+                        <Text style={styles.value}>Optimal range</Text>
+                        <Pressable accessibilityRole="button" disabled={actionBusy} onPress={() => {
+                          setOptimalLow("");
+                          setOptimalHigh("");
+                          setEditingOptimalRange(false);
+                          setRemoveOptimalRange(Boolean(detail.referenceRange.optimal));
+                        }} style={styles.textAction}>
+                          <Text style={styles.textActionLabel}>Remove</Text>
+                        </Pressable>
+                      </View>
+                      <RangeField disabled={actionBusy} label="Optimal lower bound" onChangeText={setOptimalLow} value={optimalLow} />
+                      <RangeField disabled={actionBusy} label="Optimal upper bound" onChangeText={setOptimalHigh} value={optimalHigh} />
+                      <Text style={styles.meta}>Optimal must sit within the normal range.</Text>
+                    </View>
+                  )}
+                  <Text style={styles.meta}>This changes status labels and chart guides only. It does not provide medical advice.</Text>
+                  {rangeError ? <Text accessibilityRole="alert" style={styles.errorText}>{rangeError}</Text> : null}
+                  <View style={styles.recordActions}>
+                    <Button disabled={actionBusy} onPress={() => { void saveRange(); }}>{actionBusy ? "Saving…" : "Save"}</Button>
+                    <Button secondary disabled={actionBusy} onPress={() => setEditingRange(false)}>Cancel</Button>
+                    {detail.referenceRange.personal ? <Button danger disabled={actionBusy} onPress={() => { void removeRange(); }}>Remove personal range</Button> : null}
+                  </View>
+                </View>
+              )}
             </Card>
             <Card>
               <Text style={styles.heading}>Trend</Text>
@@ -630,6 +803,15 @@ function formatChartValue(value: number): string {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
 }
 
+function RangeField({ label, value, onChangeText, disabled }: { label: string; value: string; onChangeText: (value: string) => void; disabled: boolean }) {
+  return (
+    <View style={styles.flex}>
+      <Text style={styles.label}>{label}</Text>
+      <TextInput accessibilityLabel={label} editable={!disabled} inputMode="decimal" keyboardType="decimal-pad" onChangeText={onChangeText} style={styles.input} value={value} />
+    </View>
+  );
+}
+
 function formatReferenceRange(range: HealthDataDetail["referenceRange"]["effective"]): string {
   if (!range) return "Not set";
   if (range.low !== undefined && range.high !== undefined) {
@@ -719,9 +901,14 @@ const TrendChart = memo(function TrendChart({
   }, [detail.measurement.code, latestPoint?.timestamp]);
 
   const referenceRange = detail.referenceRange.effective;
+  const optimalRange = detail.referenceRange.optimal;
   const chartReferenceRange = useMemo(
     () => (referenceRange && chartPoints.every((point) => point.unit === referenceRange.unit) ? referenceRange : undefined),
     [chartPoints, referenceRange]
+  );
+  const chartOptimalRange = useMemo(
+    () => (optimalRange && chartPoints.every((point) => point.unit === optimalRange.unit) ? optimalRange : undefined),
+    [chartPoints, optimalRange]
   );
   const referenceBounds = useMemo(
     () => [chartReferenceRange?.low, chartReferenceRange?.high]
@@ -790,8 +977,24 @@ const TrendChart = memo(function TrendChart({
           <Text style={styles.meta}>Reference range: {formatReferenceRange(chartReferenceRange)} · {referenceRangeSourceLabel(detail.referenceRange.source)}</Text>
         </View>
       ) : null}
+      {chartOptimalRange ? (
+        <View accessibilityLabel={`Optimal range: ${formatReferenceRange(chartOptimalRange)}`} style={styles.chartLegend}>
+          <View style={styles.optimalSwatch} />
+          <Text style={styles.meta}>Optimal range</Text>
+        </View>
+      ) : null}
       {points.length > 1 ? <Text style={styles.chartHint}>Tap a point to compare a reading.</Text> : null}
-      <Svg accessibilityLabel={`${detail.measurement.displayName} trend with ${points.length} selectable points${chartReferenceRange ? ` and reference range ${formatReferenceRange(chartReferenceRange)}` : ""}`} height={height} width="100%" viewBox={`0 0 ${width} ${height}`}>
+      <Svg accessibilityLabel={`${detail.measurement.displayName} trend with ${points.length} selectable points${chartReferenceRange ? ` and reference range ${formatReferenceRange(chartReferenceRange)}` : ""}${chartOptimalRange ? ` and optimal range ${formatReferenceRange(chartOptimalRange)}` : ""}`} height={height} width="100%" viewBox={`0 0 ${width} ${height}`}>
+        {chartOptimalRange?.low !== undefined && chartOptimalRange.high !== undefined ? (
+          <Rect
+            fill={colors.success}
+            fillOpacity={0.16}
+            height={Math.max(0, ((chartOptimalRange.high - chartOptimalRange.low) / yRange) * (chartBottom - chartTop))}
+            width={chartRight - chartLeft}
+            x={chartLeft}
+            y={chartBottom - ((chartOptimalRange.high - domain.yMin) / yRange) * (chartBottom - chartTop)}
+          />
+        ) : null}
         {yTicks.map((tick) => {
           const y = chartBottom - ((tick - domain.yMin) / yRange) * (chartBottom - chartTop);
           return (
@@ -868,6 +1071,13 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", justifyContent: "space-between" },
   rowEnd: { alignItems: "center", flexDirection: "row", gap: spacing.xs },
   latestRow: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
+  referenceHeader: { alignItems: "center", flexDirection: "row", gap: spacing.sm, justifyContent: "space-between" },
+  rangeValues: { gap: spacing.xs },
+  rangeEditor: { gap: spacing.sm },
+  optimalEditor: { backgroundColor: colors.surfaceMuted, borderRadius: 8, gap: spacing.sm, padding: spacing.sm },
+  textAction: { justifyContent: "center", minHeight: 44, paddingHorizontal: spacing.sm },
+  inlineAction: { alignItems: "flex-start", justifyContent: "center", minHeight: 44 },
+  textActionLabel: { color: colors.primaryStrong, fontSize: 15, fontWeight: "700" },
   recordActions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   editor: { borderTopColor: colors.border, borderTopWidth: 1, gap: spacing.sm, paddingTop: spacing.md },
   input: {
@@ -880,6 +1090,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm
   },
+  pickerField: { backgroundColor: colors.background, borderColor: colors.border, borderRadius: 8, borderWidth: 1, height: 52, overflow: "hidden" },
+  picker: { color: colors.text, height: 52 },
   flex: { flex: 1, gap: spacing.xs },
   value: { color: colors.text, fontSize: 17, fontWeight: "700" },
   meta: { color: colors.muted, fontSize: 14, lineHeight: 19 },
@@ -909,6 +1121,7 @@ const styles = StyleSheet.create({
   chartReadingValue: { color: colors.text, fontSize: 17, fontWeight: "800" },
   chartLegend: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
   referenceLine: { borderColor: colors.success, borderStyle: "dashed", borderTopWidth: 2, width: 28 },
+  optimalSwatch: { backgroundColor: colors.successMuted, borderColor: colors.success, borderRadius: 3, borderWidth: 1, height: 12, width: 28 },
   chartHint: { color: colors.muted, fontSize: 14, lineHeight: 19 },
   status: { alignSelf: "flex-start", borderRadius: 999, marginLeft: spacing.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   statusText: { fontSize: 14, fontWeight: "700", textTransform: "capitalize" },
