@@ -77,6 +77,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     kind: "point",
     canonicalUnit: "kg",
     aliases: ["muscle mass", "muscle"],
+    loincCode: "73964-9",
     aggregation: "latest"
   },
   {
