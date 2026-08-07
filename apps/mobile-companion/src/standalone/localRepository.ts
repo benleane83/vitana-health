@@ -6,6 +6,12 @@ import {
   getReferenceRange,
   resolveReferenceRange,
   type AppBootstrap,
+  type BodyTrendQuery,
+  type CompleteCareItemInput,
+  type CreateCareItemInput,
+  type CreateHealthEventInput,
+  type CalendarMonthData,
+  type CalendarMonthQuery,
   type HealthDataDetail,
   type HealthDataChartSeriesOptions,
   type HealthDataSummary,
@@ -19,6 +25,8 @@ import {
   type UpdateObservationInput
 } from "@vitana/shared";
 import type { LocalStore } from "./localStore";
+import { calendarMonthFromEntries } from "../calendarProjection";
+import { bodyTrendFromObservations } from "../bodyTrendProjection";
 
 const DEFAULT_DETAIL_LIMIT = 50;
 const MAX_DETAIL_LIMIT = 100;
@@ -126,6 +134,20 @@ export class LocalProfileRepository implements MobileProfileRepository {
     };
   }
 
+  async calendarMonth(query: CalendarMonthQuery): Promise<CalendarMonthData> {
+    await this.ensureInitialized();
+    return calendarMonthFromEntries(query, await this.store.observationsForCalendar(query));
+  }
+
+  async bodyTrendTimeline(query: BodyTrendQuery) {
+    await this.ensureInitialized();
+    const [profile, observations] = await Promise.all([
+      this.store.getProfile(),
+      this.store.observationsForBodyTrend(query)
+    ]);
+    return bodyTrendFromObservations(query, observations, profile.units);
+  }
+
   async healthDataDetail(measurementCode: string, page: MobileDetailPage = {}): Promise<HealthDataDetail> {
     await this.ensureInitialized();
     const limit = Math.min(Math.max(Math.trunc(page.limit ?? DEFAULT_DETAIL_LIMIT), 1), MAX_DETAIL_LIMIT);
@@ -231,6 +253,59 @@ export class LocalProfileRepository implements MobileProfileRepository {
     return deletedObservation
       ? { deletedCount: 1, deletedObservation, counts: await this.bootstrap().then((value) => value.counts) }
       : undefined;
+  }
+
+  async listHealthEvents(query = {}) {
+    await this.ensureInitialized();
+    return this.store.listHealthEvents(query);
+  }
+
+  async createHealthEvent(payload: CreateHealthEventInput) {
+    await this.ensureInitialized();
+    return { healthEvent: await this.store.createHealthEvent(payload), counts: (await this.bootstrap()).counts };
+  }
+
+  async updateHealthEvent(id: string, payload: CreateHealthEventInput) {
+    await this.ensureInitialized();
+    const healthEvent = await this.store.updateHealthEvent(id, payload);
+    if (!healthEvent) throw new Error("Health event not found.");
+    return { healthEvent, counts: (await this.bootstrap()).counts };
+  }
+
+  async deleteHealthEvent(id: string) {
+    await this.ensureInitialized();
+    const deletedHealthEvent = await this.store.deleteHealthEvent(id);
+    return { deletedCount: deletedHealthEvent ? 1 : 0, deletedHealthEvent, counts: (await this.bootstrap()).counts };
+  }
+
+  async listCareItems(query = {}) {
+    await this.ensureInitialized();
+    return this.store.listCareItems(query);
+  }
+
+  async createCareItem(payload: CreateCareItemInput) {
+    await this.ensureInitialized();
+    return { careItem: await this.store.createCareItem(payload), counts: (await this.bootstrap()).counts };
+  }
+
+  async updateCareItem(id: string, payload: CreateCareItemInput) {
+    await this.ensureInitialized();
+    const careItem = await this.store.updateCareItem(id, payload);
+    if (!careItem) throw new Error("Care item not found.");
+    return { careItem, counts: (await this.bootstrap()).counts };
+  }
+
+  async completeCareItem(id: string, payload: CompleteCareItemInput) {
+    await this.ensureInitialized();
+    const completed = await this.store.completeCareItem(id, payload);
+    if (!completed) throw new Error("Care item not found.");
+    return { ...completed, counts: (await this.bootstrap()).counts };
+  }
+
+  async deleteCareItem(id: string) {
+    await this.ensureInitialized();
+    const deletedCareItem = await this.store.deleteCareItem(id);
+    return { deletedCount: deletedCareItem ? 1 : 0, deletedCareItem, counts: (await this.bootstrap()).counts };
   }
 
   async mergeImport(imported: ParsedImport): Promise<MobileImportResult> {

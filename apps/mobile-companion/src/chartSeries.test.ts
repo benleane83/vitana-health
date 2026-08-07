@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { HealthDataDetail } from "@vitana/shared";
-import { chartSeriesFromDetail } from "./chartSeries";
+import { chartSeriesFromDetail, showsChartDisplayModeControls } from "./chartSeries";
 
 function detail(aggregation: HealthDataDetail["measurement"]["aggregation"]): HealthDataDetail {
   return {
@@ -53,5 +53,19 @@ describe("chartSeriesFromDetail", () => {
       maxValue: 300
     });
     expect(readings.points.map((point) => point.value)).toEqual([100, 200, 300]);
+  });
+});
+
+describe("showsChartDisplayModeControls", () => {
+  it("hides display mode controls for latest measurements", () => {
+    const series = chartSeriesFromDetail(detail("latest"), { range: "all", mode: "auto" });
+
+    expect(showsChartDisplayModeControls(series)).toBe(false);
+  });
+
+  it("shows display mode controls for aggregatable measurements", () => {
+    const series = chartSeriesFromDetail(detail("sum"), { range: "all", mode: "auto" });
+
+    expect(showsChartDisplayModeControls(series)).toBe(true);
   });
 });

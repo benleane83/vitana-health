@@ -3,6 +3,10 @@ export type RootStackParamList = {
   Pair: undefined;
   Connection: { activatePairing?: boolean } | undefined;
   License: undefined;
+  TrackMetrics: undefined;
+  TrackJournal: undefined;
+  TrackCalendar: undefined;
+  TrackBodyTrend: undefined;
   TrackDetail: { measurementCode: string; displayName: string };
 };
 
@@ -10,5 +14,8 @@ export type TabParamList = {
   Dashboard: undefined;
   Import: undefined;
   Track: undefined;
-  Care: undefined;
+  Care: {
+    view?: "items";
+    editCareItemId?: string;
+  } | undefined;
 };

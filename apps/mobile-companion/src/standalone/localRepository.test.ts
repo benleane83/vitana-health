@@ -28,6 +28,45 @@ function profile(id: string): Profile {
 }
 
 describe("local profile repository", () => {
+  it("persists and manages standalone care records across repository recreation", async () => {
+    const state = createMemoryLocalStoreState();
+    const repository = new LocalProfileRepository(new MemoryLocalStore(state), profile("profile-a"));
+    const created = await repository.createCareItem({
+      title: "Annual check-up",
+      kind: "visit",
+      dueStart: "2026-08-20T09:00:00.000Z",
+      priority: "high",
+      status: "open",
+      notes: "Bring medication list"
+    });
+
+    expect((await repository.listCareItems({ status: "open", limit: 1 })).items).toEqual([
+      expect.objectContaining({ id: created.careItem.id, title: "Annual check-up" })
+    ]);
+    const completed = await repository.completeCareItem(created.careItem.id, {
+      occurredAt: "2026-08-19T09:00:00.000Z"
+    });
+    expect(completed).toMatchObject({
+      careItem: { status: "completed", completedAt: "2026-08-19T09:00:00.000Z" },
+      healthEvent: { kind: "visit", status: "completed" },
+      counts: { careItems: 1, healthEvents: 1 }
+    });
+    expect((await repository.listCareItems({ status: "open", includeId: created.careItem.id })).items[0])
+      .toMatchObject({ id: created.careItem.id, status: "completed" });
+
+    const reopened = new LocalProfileRepository(new MemoryLocalStore(state), profile("profile-a"));
+    expect((await reopened.listHealthEvents({ kind: "visit" })).items).toHaveLength(1);
+    await reopened.updateHealthEvent(completed.healthEvent!.id, {
+      kind: "visit",
+      status: "completed",
+      occurredAt: "2026-08-19T10:00:00.000Z",
+      provider: "Dr Patel"
+    });
+    expect((await reopened.listHealthEvents({ search: "patel" })).items[0].provider).toBe("Dr Patel");
+    expect((await reopened.deleteCareItem(created.careItem.id)).deletedCount).toBe(1);
+    expect((await reopened.bootstrap()).counts).toMatchObject({ careItems: 0, healthEvents: 1 });
+  });
+
   it("persists a manual import through Dashboard, Track, detail, retry, and reopen", async () => {
     const state = createMemoryLocalStoreState();
     const first = new LocalProfileRepository(new MemoryLocalStore(state), profile("profile-a"));
@@ -39,6 +78,11 @@ describe("local profile repository", () => {
       value: 72.5,
       sourceKind: "manual-entry"
     });
+    expect(await first.calendarMonth({ month: "2026-07", timezone: "UTC", measurementCodes: ["weight"] }))
+      .toMatchObject({
+        month: "2026-07",
+        measurements: [{ date: "2026-07-18", measurementCode: "weight", value: 72.5, count: 1 }]
+      });
 
     const duplicate = await first.importManualObservations(reading);
     expect(duplicate.outcome.observations).toEqual({ attempted: 1, accepted: 0, duplicates: 1, rejected: 0 });
@@ -49,6 +93,28 @@ describe("local profile repository", () => {
     await reopened.reset();
     const afterReset = new LocalProfileRepository(new MemoryLocalStore(state), profile("profile-a"));
     expect((await afterReset.bootstrap()).counts.observations).toBe(0);
+  });
+
+  it("projects a grouped standalone body-composition import into Body Trend", async () => {
+    const repository = new LocalProfileRepository(new MemoryLocalStore(), profile("profile-a"));
+    await repository.importManualObservations({
+      observedAt: "2026-07-18T06:00:00.000Z",
+      label: "Smart scale",
+      observations: [
+        { measurementCode: "skeletal_muscle_mass", measurementName: "Skeletal muscle mass", value: 31, unit: "kg" },
+        { measurementCode: "fat_mass", measurementName: "Fat mass", value: 20, unit: "kg" },
+        { measurementCode: "bone_mineral_content", measurementName: "Bone mineral content", value: 3.2, unit: "kg" },
+        { measurementCode: "weight", measurementName: "Weight", value: 74.2, unit: "kg" }
+      ]
+    });
+
+    const result = await repository.bodyTrendTimeline({ range: "all", timezone: "UTC" });
+    expect(result.points).toEqual([
+      expect.objectContaining({
+        date: "2026-07-18",
+        components: { skeletalMuscleMass: 31, fatMass: 20, boneMineralContent: 3.2, weight: 74.2 }
+      })
+    ]);
   });
 
   it.each([

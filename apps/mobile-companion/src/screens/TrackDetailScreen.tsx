@@ -20,6 +20,7 @@ import {
   type HealthDataDetailEntry
 } from "@vitana/shared";
 import { useMobileApi } from "../MobileApiProvider";
+import { showsChartDisplayModeControls } from "../chartSeries";
 import type { RootStackParamList } from "../navigationTypes";
 import { Button, Card, Loading, Message, Screen } from "../ui/components";
 import { colors, spacing } from "../ui/theme";
@@ -758,7 +759,7 @@ const TrendChart = memo(function TrendChart({
           <ChartToggle key={option.value} label={option.label} onPress={() => onRangeChange(option.value)} selected={range === option.value} />
         ))}
       </View>
-      {detail.measurement.aggregation !== "latest" ? (
+      {showsChartDisplayModeControls(series) ? (
         <View accessibilityLabel="Trend chart display" accessibilityRole="radiogroup" style={styles.chartControls}>
           <ChartToggle label="Adaptive" onPress={() => onModeChange("auto")} selected={mode === "auto"} />
           <ChartToggle label="Readings" onPress={() => onModeChange("raw")} selected={mode === "raw"} />

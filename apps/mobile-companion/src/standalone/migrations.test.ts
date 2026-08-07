@@ -76,6 +76,10 @@ describe("standalone schema migrations", () => {
     expect(resumableSql).toContain("ADD COLUMN snapshot_cursor");
     expect(resumableSql).toContain("ADD COLUMN applied_at");
     expect(resumableSql).toContain("DROP INDEX IF EXISTS connected_replica_entities_type_idx");
+    const careSql = migrationSql(5);
+    expect(careSql).toContain("CREATE TABLE health_events");
+    expect(careSql).toContain("CREATE TABLE care_items");
+    expect(careSql).toContain("care_items_filter_idx");
   });
 
   it("evicts the replica cache from the durable database and never rebuilds it there", () => {

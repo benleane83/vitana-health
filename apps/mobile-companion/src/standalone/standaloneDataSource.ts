@@ -6,6 +6,7 @@ import type {
 } from "@vitana/shared";
 import type {
   CompanionDataSource,
+  CompanionCareService,
   CompanionLifecycleService,
   CompanionMaintenanceService,
   CompanionMutationService,
@@ -26,17 +27,29 @@ export interface StandaloneMigrationSource {
   archiveAfterMigration(receipt: MobileMigrationReceipt, serverUrl: string): Promise<void>;
 }
 
-export function createStandaloneDataSource(): CompanionDataSource & CompanionMutationService & CompanionObservationMutationService & CompanionMaintenanceService & CompanionLifecycleService & StandaloneMigrationSource {
+export function createStandaloneDataSource(): CompanionDataSource & CompanionCareService & CompanionMutationService & CompanionObservationMutationService & CompanionMaintenanceService & CompanionLifecycleService & StandaloneMigrationSource {
   let repository = createStandaloneRepository();
-  const getRepository = (): Promise<MobileProfileRepository & Pick<LocalProfileRepository, "healthDataChartSeries">> => repository;
+  const getRepository = (): Promise<MobileProfileRepository & Pick<LocalProfileRepository, "bodyTrendTimeline" | "calendarMonth" | "healthDataChartSeries">> => repository;
   return {
     bootstrap: async () => (await getRepository()).bootstrap(),
     analytics: async () => (await getRepository()).analytics(),
     summary: async () => (await getRepository()).summary(),
+    bodyTrendTimeline: async (query) => (await getRepository()).bodyTrendTimeline(query),
+    calendarMonth: async (query) => (await getRepository()).calendarMonth(query),
+    journal: async (query) => ({ timezone: query.timezone, days: [] }),
     healthDataDetail: async (measurementCode: string, page?: MobileDetailPage) =>
       (await getRepository()).healthDataDetail(measurementCode, page),
     healthDataChartSeries: async (measurementCode, options) =>
       (await getRepository()).healthDataChartSeries(measurementCode, options),
+    listHealthEvents: async (query) => (await repository).listHealthEvents(query),
+    createHealthEvent: async (payload) => (await repository).createHealthEvent(payload),
+    updateHealthEvent: async (id, payload) => (await repository).updateHealthEvent(id, payload),
+    deleteHealthEvent: async (id) => (await repository).deleteHealthEvent(id),
+    listCareItems: async (query) => (await repository).listCareItems(query),
+    createCareItem: async (payload) => (await repository).createCareItem(payload),
+    updateCareItem: async (id, payload) => (await repository).updateCareItem(id, payload),
+    completeCareItem: async (id, payload) => (await repository).completeCareItem(id, payload),
+    deleteCareItem: async (id) => (await repository).deleteCareItem(id),
     updateObservation: async (id, input) => {
       const updated = await (await getRepository()).updateObservation(id, input);
       if (!updated) throw new Error("Observation not found.");

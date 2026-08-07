@@ -1,114 +1,129 @@
-import { useMemo, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Activity, BookOpenText, CalendarDays, ChartNoAxesCombined, ChevronRight } from "lucide-react-native";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { filterAndSortSummary, type SummarySort } from "@vitana/shared";
-import { useMobileApi } from "../MobileApiProvider";
-import { connectionStateLabel } from "../connectionState";
+import { hasFeature, type ProFeature } from "@vitana/shared";
+import { useEntitlement } from "../EntitlementProvider";
 import type { RootStackParamList } from "../navigationTypes";
-import { Button, Card, Loading, Message, Screen } from "../ui/components";
-import { colors, spacing } from "../ui/theme";
+import { Screen } from "../ui/components";
+import { colors, radii, spacing, type } from "../ui/theme";
+
+const trackDestinations = [
+  {
+    description: "Browse every measurement and view its history.",
+    icon: Activity,
+    label: "Measurements",
+    route: "TrackMetrics" as const
+  },
+  {
+    description: "Your activity, sleep, and health events, day by day.",
+    icon: BookOpenText,
+    label: "Journal",
+    route: "TrackJournal" as const
+  },
+  {
+    description: "See measurements and events across each month.",
+    icon: CalendarDays,
+    label: "Calendar",
+    proFeature: "track-calendar" as ProFeature,
+    route: "TrackCalendar" as const
+  },
+  {
+    description: "See how your body composition changes over time.",
+    icon: ChartNoAxesCombined,
+    label: "Body Trend",
+    proFeature: "track-body-trend" as ProFeature,
+    route: "TrackBodyTrend" as const
+  }
+] as const;
 
 export function TrackScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { connectionState, summary, trackLoading, error, refreshTrack } = useMobileApi();
-  const [search, setSearch] = useState("");
-  const [sort, setSort] = useState<SummarySort>("recency");
-  const visible = useMemo(
-    () => summary ? filterAndSortSummary(summary, search, sort) : undefined,
-    [search, sort, summary]
-  );
-
-  if (trackLoading && !visible) return <Screen><Loading label="Loading Track…" /></Screen>;
-  if (!visible) return (
-    <Screen>
-      <Message title="Track unavailable" detail={error ?? "Reconnect to your paired PC and try again."} tone="warning" />
-      <Button disabled={trackLoading} onPress={() => { void refreshTrack({ synchronize: true }); }}>{trackLoading ? "Retrying…" : "Retry"}</Button>
-    </Screen>
-  );
+  const { state: entitlement } = useEntitlement();
 
   return (
     <Screen>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={trackLoading} onRefresh={() => { void refreshTrack({ synchronize: true }); }} />}
-      >
-        {connectionState !== "online" ? (
-          <Message title={connectionStateLabel(connectionState)} detail={error ?? "Reconnect to refresh Track data."} />
-        ) : null}
-        <TextInput
-          accessibilityLabel="Search metrics"
-          onChangeText={setSearch}
-          placeholder="Search metrics"
-          maxLength={100}
-          style={styles.input}
-          value={search}
-        />
-        <View style={styles.sorts}>
-          {(["recency", "count", "name"] as const).map((value) => (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ selected: sort === value }}
-              key={value}
-              onPress={() => setSort(value)}
-              style={[styles.chip, sort === value && styles.chipSelected]}
-            >
-              <Text style={[styles.chipText, sort === value && styles.chipTextSelected]}>{value}</Text>
-            </Pressable>
-          ))}
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.intro}>
+          <Text style={styles.title}>Review your health data</Text>
+          <Text style={styles.subtitle}>Choose a view based on what you want to understand.</Text>
         </View>
-        {visible.categories.length === 0 ? <Message title="No matching metrics" /> : null}
-        {visible.categories.map((category) => (
-          <View key={category.key} style={styles.category}>
-            <Text style={styles.heading}>{category.label}</Text>
-            {category.rows.map((row) => (
+        <View style={styles.destinationList}>
+          {trackDestinations.map((destination, index) => {
+            const Icon = destination.icon;
+            const proFeature = "proFeature" in destination ? destination.proFeature : undefined;
+            const disabled = proFeature ? !hasFeature(entitlement.tier, proFeature) : false;
+            return (
               <Pressable
+                accessibilityLabel={destination.label}
+                accessibilityHint={disabled ? "Available in Vitana Pro" : `Opens the ${destination.label} view`}
                 accessibilityRole="button"
-                key={row.code}
-                onPress={() => navigation.navigate("TrackDetail", {
-                  measurementCode: row.code,
-                  displayName: row.displayName
-                })}
+                accessibilityState={{ disabled }}
+                disabled={disabled}
+                key={destination.label}
+                onPress={() => navigation.navigate(destination.route)}
+                style={({ pressed }) => [
+                  styles.destination,
+                  index > 0 && styles.destinationDivider,
+                  pressed && !disabled && styles.destinationPressed,
+                  disabled && styles.destinationDisabled
+                ]}
               >
-                <Card>
-                  <View style={styles.row}>
-                    <View style={styles.rowText}>
-                      <Text numberOfLines={2} style={styles.name}>{row.displayName}</Text>
-                      <Text style={styles.meta}>{new Intl.NumberFormat().format(row.counts.total)} {row.counts.total === 1 ? "record" : "records"}</Text>
-                    </View>
-                    <Text style={styles.chevron}>›</Text>
+                <View style={[styles.iconBox, disabled && styles.iconBoxDisabled]}>
+                  <Icon color={disabled ? colors.muted : colors.primary} size={22} strokeWidth={2} />
+                </View>
+                <View style={styles.destinationText}>
+                  <View style={styles.destinationHeading}>
+                    <Text style={styles.destinationLabel}>{destination.label}</Text>
                   </View>
-                </Card>
+                  <Text style={styles.destinationDescription}>{destination.description}</Text>
+                  {disabled ? <Text style={styles.proUnavailable}>Available in Vitana Pro</Text> : null}
+                </View>
+                {!disabled ? <ChevronRight color={colors.primary} size={22} /> : null}
               </Pressable>
-            ))}
-          </View>
-        ))}
+            );
+          })}
+        </View>
       </ScrollView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  content: { gap: spacing.md, paddingBottom: spacing.xl },
-  input: {
+  content: { gap: spacing.lg, paddingBottom: spacing.xl },
+  intro: { gap: spacing.xs },
+  title: { color: colors.text, fontSize: type.heading, fontWeight: "800" },
+  subtitle: { color: colors.muted, fontSize: type.body, lineHeight: 22 },
+  destinationList: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
-    borderRadius: 10,
+    borderRadius: radii.lg,
     borderWidth: 1,
-    color: colors.text,
-    minHeight: 48,
-    paddingHorizontal: spacing.md
+    overflow: "hidden"
   },
-  sorts: { flexDirection: "row", gap: spacing.sm },
-  chip: { backgroundColor: colors.surface, borderRadius: 999, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  chipSelected: { backgroundColor: colors.primary },
-  chipText: { color: colors.text, textTransform: "capitalize" },
-  chipTextSelected: { color: "#fff" },
-  category: { gap: spacing.sm },
-  heading: { color: colors.text, fontSize: 18, fontWeight: "800" },
-  row: { alignItems: "center", flexDirection: "row", gap: spacing.sm, justifyContent: "space-between" },
-  rowText: { flex: 1, minWidth: 0 },
-  name: { color: colors.text, fontSize: 16, fontWeight: "700" },
-  meta: { color: colors.muted, fontSize: 14, lineHeight: 18 },
-  chevron: { color: colors.primary, fontSize: 28 }
+  destination: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.md,
+    minHeight: 88,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md
+  },
+  destinationDivider: { borderTopColor: colors.border, borderTopWidth: 1 },
+  destinationPressed: { backgroundColor: colors.surfaceMuted },
+  destinationDisabled: { opacity: 0.62 },
+  iconBox: {
+    alignItems: "center",
+    backgroundColor: colors.primaryMuted,
+    borderRadius: radii.md,
+    height: 44,
+    justifyContent: "center",
+    width: 44
+  },
+  iconBoxDisabled: { backgroundColor: colors.surfaceMuted },
+  destinationText: { flex: 1, gap: spacing.xs, minWidth: 0 },
+  destinationHeading: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  destinationLabel: { color: colors.text, fontSize: type.title, fontWeight: "800" },
+  destinationDescription: { color: colors.muted, fontSize: type.label, lineHeight: 19 },
+  proUnavailable: { color: colors.info, fontSize: type.label, fontWeight: "700" },
 });

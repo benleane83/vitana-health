@@ -32,9 +32,9 @@ import {
   saveConnection,
   updateHealthSourceCursors,
   updateHealthSourceSessionKey,
-  type HealthConnectCategory,
-  type HealthSourceCursors
+  type HealthConnectCategory
 } from "../endpointStore";
+import { earliestHealthSourceCursor } from "../healthSourceCursor";
 import { healthSourceSyncCoordinator, shouldCancelHealthSourceSync } from "../healthSourceSyncCoordinator";
 import { activeHealthSourceProvider } from "../healthSourceProvider";
 import { useMobileApi } from "../MobileApiProvider";
@@ -798,24 +798,6 @@ function formatObservedDate(date: Date): string {
 
 function formatDateOnly(value: string): string {
   return dateOnlyToLocalDate(value).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
-}
-
-/**
- * A selected category with no cursor still needs a full backfill, so the panel only claims a start
- * date once every selected category has one.
- */
-function earliestHealthSourceCursor(
-  cursors: HealthSourceCursors,
-  categories: readonly HealthConnectCategory[]
-): string | null {
-  if (categories.length === 0) return null;
-  let earliest: string | null = null;
-  for (const category of categories) {
-    const cursor = cursors[category];
-    if (!cursor) return null;
-    if (!earliest || cursor < earliest) earliest = cursor;
-  }
-  return earliest;
 }
 
 function formatSyncCursor(cursor: string | null): string {

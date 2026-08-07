@@ -190,6 +190,86 @@ describe("connected replica repository", () => {
     const all = await repository.healthDataChartSeries("weight", { range: "all", mode: "raw" });
     expect(all.points.length).toBeLessThanOrEqual(500);
   });
+
+  it("builds offline Calendar data from samples and aggregates", async () => {
+    const store = new MemoryLocalStore();
+    const changes: ReplicaPage["changes"] = [
+      upsert("profile", "profile-1", {
+        id: "profile-1",
+        displayName: "Cached profile",
+        subjectKind: "adult",
+        units: "metric",
+        updatedAt: "2026-08-07T12:00:00.000Z"
+      }),
+      upsert("measurement-type", "steps", {
+        code: "steps",
+        display: "Steps",
+        category: "activity",
+        kind: "interval",
+        canonicalUnit: "count",
+        aliases: [],
+        aggregation: "sum"
+      }),
+      upsert("measurement-type", "heart_rate", {
+        code: "heart_rate",
+        display: "Heart rate",
+        category: "cardio",
+        kind: "interval",
+        canonicalUnit: "bpm",
+        aliases: [],
+        aggregation: "average"
+      }),
+      upsert("data-source", "source-1", {
+        id: "source-1",
+        sourceKind: "health-connect",
+        label: "Health Connect",
+        createdAt: "2026-08-01T00:00:00.000Z"
+      }),
+      upsert("time-series-sample", "steps-1", {
+        id: "steps-1",
+        measurementCode: "steps",
+        startAt: "2026-08-04T08:00:00.000Z",
+        endAt: "2026-08-04T09:00:00.000Z",
+        value: 1200,
+        unit: "count",
+        sourceId: "source-1"
+      }),
+      upsert("measurement-aggregate", "heart-rate-1", {
+        id: "heart-rate-1",
+        measurementCode: "heart_rate",
+        granularity: "15m",
+        startAt: "2026-08-04T09:00:00.000Z",
+        endAt: "2026-08-04T09:15:00.000Z",
+        average: 72,
+        minimum: 64,
+        maximum: 81,
+        count: 12,
+        unit: "bpm",
+        sourceId: "source-1"
+      })
+    ];
+    await store.applyReplicaPage({
+      protocolVersion: 2,
+      ...identity,
+      kind: "snapshot",
+      changes,
+      highWaterMark: { revision: 1, sequence: changes.length },
+      complete: true,
+      cachedAt: "2026-08-07T12:00:00.000Z"
+    });
+    const repository = new ConnectedReplicaRepository(store, identity);
+
+    await expect(repository.calendarMonth({
+      month: "2026-08",
+      timezone: "UTC",
+      measurementCodes: ["steps", "heart_rate"]
+    })).resolves.toMatchObject({
+      measurements: [
+        { date: "2026-08-04", measurementCode: "heart_rate", value: 72, count: 12, min: 64, max: 81 },
+        { date: "2026-08-04", measurementCode: "steps", value: 1200, count: 1, min: 1200, max: 1200 }
+      ]
+    });
+  });
 });
 
 function upsert(

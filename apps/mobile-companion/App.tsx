@@ -18,7 +18,12 @@ import { assertTransportSecurity } from "./src/transportSecurity";
 import { DashboardScreen } from "./src/screens/DashboardScreen";
 import { ImportScreen } from "./src/screens/ImportScreen";
 import { TrackDetailScreen } from "./src/screens/TrackDetailScreen";
+import { TrackCalendarScreen } from "./src/screens/TrackCalendarScreen";
+import { TrackBodyTrendScreen } from "./src/screens/TrackBodyTrendScreen";
+import { TrackJournalScreen } from "./src/screens/TrackJournalScreen";
+import { TrackMetricsScreen } from "./src/screens/TrackMetricsScreen";
 import { TrackScreen } from "./src/screens/TrackScreen";
+import { ProFeatureScreen } from "./src/screens/ProFeatureScreen";
 import { CareScreen } from "./src/screens/CareScreen";
 import { Button, Card, Loading, Message, Screen } from "./src/ui/components";
 import { colors, radii, spacing, type } from "./src/ui/theme";
@@ -39,6 +44,10 @@ export default function App() {
                   <Stack.Screen name="Pair" component={PairRoute} options={{ presentation: "modal", title: "Pair this phone" }} />
                   <Stack.Screen name="Connection" component={ConnectionScreen} options={{ presentation: "modal", title: "Connection" }} />
                   <Stack.Screen name="License" component={LicenseScreen} options={{ title: "Software license" }} />
+                  <Stack.Screen name="TrackMetrics" component={TrackMetricsScreen} options={{ title: "Measurements" }} />
+                  <Stack.Screen name="TrackJournal" component={TrackJournalScreen} options={{ title: "Journal" }} />
+                  <Stack.Screen name="TrackCalendar" component={ProCalendarRoute} options={{ title: "Calendar" }} />
+                  <Stack.Screen name="TrackBodyTrend" component={ProBodyTrendRoute} options={{ title: "Body Trend" }} />
                   <Stack.Screen
                     name="TrackDetail"
                     component={TrackDetailScreen}
@@ -53,6 +62,14 @@ export default function App() {
       </AppErrorBoundary>
     </SafeAreaProvider>
   );
+}
+
+function ProCalendarRoute() {
+  return <ProFeatureScreen feature="track-calendar" label="Calendar"><TrackCalendarScreen /></ProFeatureScreen>;
+}
+
+function ProBodyTrendRoute() {
+  return <ProFeatureScreen feature="track-body-trend" label="Body Trend"><TrackBodyTrendScreen /></ProFeatureScreen>;
 }
 
 /**

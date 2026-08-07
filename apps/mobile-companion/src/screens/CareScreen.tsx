@@ -3,6 +3,7 @@ import { FlatList, Platform, Pressable, RefreshControl, StyleSheet, Text, TextIn
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Picker } from "@react-native-picker/picker";
 import { useIsFocused } from "@react-navigation/native";
+import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import {
   careItemKindCodes,
   careItemKindLabels,
@@ -23,6 +24,7 @@ import {
 import { CalendarDays } from "lucide-react-native";
 import { useMobileApi } from "../MobileApiProvider";
 import { connectionStateLabel } from "../connectionState";
+import type { TabParamList } from "../navigationTypes";
 import { Button, Card, Message, Screen } from "../ui/components";
 import { colors, radii, spacing, type } from "../ui/theme";
 import { userFacingError } from "../userFacingError";
@@ -49,7 +51,7 @@ const defaultCareItem: CreateCareItemInput = {
   notes: ""
 };
 
-export function CareScreen() {
+export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamList, "Care">) {
   const isFocused = useIsFocused();
   const {
     connectionState,
@@ -86,20 +88,15 @@ export function CareScreen() {
   const [feedback, setFeedback] = useState<Feedback>();
 
   const load = useCallback(async (synchronize = false) => {
-    if (standaloneMode) {
-      setItems([]);
-      setEvents([]);
-      setItemsHasMore(false);
-      setEventsHasMore(false);
-      setLoading(false);
-      setFeedback(undefined);
-      return;
-    }
     setLoading(true);
     try {
-      if (synchronize) await synchronizeConnectedData(true);
+      if (synchronize && !standaloneMode && !demoMode) await synchronizeConnectedData(true);
       const [nextItems, nextEvents] = await Promise.all([
-        listCareItems({ limit: CARE_PAGE_SIZE, kind: careItemKindFilter || undefined }),
+        listCareItems({
+          limit: CARE_PAGE_SIZE,
+          kind: careItemKindFilter || undefined,
+          includeId: route.params?.editCareItemId
+        }),
         listHealthEvents({ limit: CARE_PAGE_SIZE, kind: healthEventKindFilter || undefined })
       ]);
       setItems(nextItems.items);
@@ -111,7 +108,7 @@ export function CareScreen() {
     } finally {
       setLoading(false);
     }
-  }, [careItemKindFilter, healthEventKindFilter, listCareItems, listHealthEvents, standaloneMode, synchronizeConnectedData]);
+  }, [careItemKindFilter, demoMode, healthEventKindFilter, listCareItems, listHealthEvents, route.params?.editCareItemId, standaloneMode, synchronizeConnectedData]);
 
   // Without this the list silently stopped at the first page, which reads to a user as data loss.
   async function loadMore() {
@@ -136,6 +133,25 @@ export function CareScreen() {
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
+    if (!isFocused || !route.params?.view) return;
+    setView("items");
+    setEditorMode("closed");
+    setEditingId(undefined);
+    setFeedback(undefined);
+    navigation.setParams({ view: undefined });
+  }, [isFocused, navigation, route.params?.view]);
+  useEffect(() => {
+    const editCareItemId = route.params?.editCareItemId;
+    if (!isFocused || loading || !editCareItemId) return;
+    const item = items.find((entry) => entry.id === editCareItemId);
+    navigation.setParams({ editCareItemId: undefined });
+    if (!item) {
+      setFeedback({ detail: "This care item is no longer available.", tone: "danger" });
+      return;
+    }
+    startEditCareItem(item);
+  }, [isFocused, items, loading, navigation, route.params?.editCareItemId]);
+  useEffect(() => {
     if (!isFocused) setFeedback(undefined);
   }, [isFocused]);
   useEffect(() => {
@@ -144,11 +160,11 @@ export function CareScreen() {
     return () => clearTimeout(timeout);
   }, [feedback]);
   useEffect(() => {
-    if (connectionState !== "online") {
+    if (!demoMode && !standaloneMode && connectionState !== "online") {
       setEditorMode("closed");
       setEditingId(undefined);
     }
-  }, [connectionState]);
+  }, [connectionState, demoMode, standaloneMode]);
 
   async function save() {
     setBusy(true);
@@ -246,18 +262,7 @@ export function CareScreen() {
     setEditingId(undefined);
   }
 
-  const canWrite = !demoMode && connectionState === "online";
-
-  if (standaloneMode) {
-    return (
-      <Screen>
-        <Message
-          title="Care requires a paired PC"
-          detail="Pair with your PC to view and manage Care records. Health data already on this phone remains separate until you choose to merge or delete it during setup."
-        />
-      </Screen>
-    );
-  }
+  const canWrite = demoMode || standaloneMode || connectionState === "online";
 
   const listData: Array<CareItem | HealthEvent> = editorMode === "closed" ? (view === "health-events" ? events : items) : [];
   const renderRow = (entry: CareItem | HealthEvent) => ("occurredAt" in entry ? (
@@ -304,8 +309,8 @@ export function CareScreen() {
               </View>
               {canWrite && editorMode === "closed" ? <Button disabled={busy} onPress={startCreate}>{view === "items" ? "Add care item" : "Add health event"}</Button> : null}
             </View>
-            {demoMode ? <Message title="Demo mode is read-only" detail="Connect to your paired PC to create, edit, or delete care records." /> : null}
-            {connectionState !== "online" ? <Message title={connectionStateLabel(connectionState)} detail={error ?? "Showing read-only Care data. Reconnect or pull to refresh."} tone="warning" /> : null}
+            {demoMode ? <Message title="Demo care records" detail="Try adding, editing, or completing records. Your changes reset when Demo mode restarts." /> : null}
+            {!demoMode && !standaloneMode && connectionState !== "online" ? <Message title={connectionStateLabel(connectionState)} detail={error ?? "Showing read-only Care data. Reconnect or pull to refresh."} tone="warning" /> : null}
             {feedback ? <Message title={feedback.tone === "success" ? "Care updated" : "Care error"} detail={feedback.detail} tone={feedback.tone} /> : null}
             {editorMode === "closed" ? (
               view === "items" ? (

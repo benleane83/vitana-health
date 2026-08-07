@@ -8,6 +8,10 @@ import type {
 const maxRawChartPoints = 500;
 const maxDailyChartBuckets = 366;
 
+export function showsChartDisplayModeControls(series: HealthDataChartSeries | undefined): boolean {
+  return series?.aggregation !== "latest";
+}
+
 export function chartSeriesFromDetail(
   detail: HealthDataDetail,
   options: HealthDataChartSeriesOptions,

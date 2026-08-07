@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Profile } from "@vitana/shared";
 import * as SecureStore from "expo-secure-store";
 import { deleteDatabaseAsync, openDatabaseAsync } from "expo-sqlite";
+import { LOCAL_SCHEMA_VERSION } from "./localStore";
 
 vi.mock("expo-crypto", () => ({ getRandomBytesAsync: vi.fn() }));
 vi.mock("expo-secure-store", () => ({
@@ -20,8 +21,8 @@ vi.mock("expo-file-system", () => ({
   Paths: { document: "document" }
 }));
 vi.mock("./migrations", () => ({
-  migrate: vi.fn(async () => ({ schemaVersion: 5, readOnly: false, appliedVersions: [] })),
-  readSchemaVersion: vi.fn(async () => 5),
+  migrate: vi.fn(async () => ({ schemaVersion: LOCAL_SCHEMA_VERSION, readOnly: false, appliedVersions: [] })),
+  readSchemaVersion: vi.fn(async () => LOCAL_SCHEMA_VERSION),
   replicaSchemaSql: "CREATE TABLE IF NOT EXISTS connected_replicas (replica_id TEXT PRIMARY KEY);",
   replicaResetSql: "DROP TABLE IF EXISTS connected_replicas;"
 }));
