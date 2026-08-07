@@ -236,6 +236,6 @@ function microMolesPerMgDl(code: string): number | undefined {
 
 function mgPerDlFactor(code: string): number {
   if (code === "triglycerides") return 88.57;
-  if (code === "total_cholesterol" || code === "hdl_cholesterol" || code === "ldl_cholesterol") return 38.67;
+  if (code === "total_cholesterol" || code === "non_hdl_cholesterol" || code === "hdl_cholesterol" || code === "ldl_cholesterol") return 38.67;
   return 18.0182;
 }

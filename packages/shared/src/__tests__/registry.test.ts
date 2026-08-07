@@ -116,6 +116,32 @@ describe("findMeasurementType", () => {
     expect(findMeasurementType("blood glucose")?.code).toBe("glucose");
   });
 
+  it("assigns the supplied laboratory LOINC codes to their registry measurements", () => {
+    const expectedCodes: Record<string, string> = {
+      "789-8": "red_blood_cell_count",
+      "6690-2": "white_blood_cell_count",
+      "10466-1": "anion_gap",
+      "751-8": "neutrophil_count",
+      "742-7": "monocyte_count",
+      "731-0": "lymphocyte_count",
+      "711-2": "eosinophil_count",
+      "26444-0": "basophil_count",
+      "5905-5": "monocyte_percentage",
+      "20570-8": "haematocrit_percentage",
+      "713-8": "eosinophil_percentage",
+      "706-2": "basophil_percentage",
+      "22753-8": "unsaturated_iron_binding_capacity",
+      "98996-2": "transferrin",
+      "8098-6": "thyroglobulin_antibodies",
+      "14629-0": "bilirubin_direct",
+      "70204-3": "non_hdl_cholesterol"
+    };
+
+    for (const [loincCode, measurementCode] of Object.entries(expectedCodes)) {
+      expect(defaultMeasurementTypes.find((type) => type.code === measurementCode)?.loincCode).toBe(loincCode);
+    }
+  });
+
   it("finds Health Connect activity codes by their canonical codes", () => {
     expect(findMeasurementType("activity_sessions")?.code).toBe("activity_sessions");
     expect(findMeasurementType("total_calories_burned")?.code).toBe("total_calories_burned");
