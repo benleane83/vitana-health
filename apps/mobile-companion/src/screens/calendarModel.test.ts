@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMonthCells, heatBuckets } from "./calendarModel";
+import { buildMonthCells, heatBuckets, localDayRange } from "./calendarModel";
 
 describe("mobile calendar model", () => {
   it("builds complete Sunday-first weeks without shrinking the grid", () => {
@@ -18,5 +18,12 @@ describe("mobile calendar model", () => {
     ]);
 
     expect([...buckets.values()]).toEqual([1, 3, 5]);
+  });
+
+  it("builds a local day range across daylight-saving transitions", () => {
+    expect(localDayRange("2026-03-08", "America/New_York")).toEqual({
+      start: "2026-03-08T05:00:00.000Z",
+      end: "2026-03-09T03:59:59.999Z"
+    });
   });
 });

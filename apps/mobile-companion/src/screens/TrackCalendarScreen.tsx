@@ -2,14 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
-import type { CalendarMonthData } from "@vitana/shared";
+import { healthEventKindLabels, type CalendarMonthData, type HealthEvent } from "@vitana/shared";
 import { useMobileApi } from "../MobileApiProvider";
 import { Button, Message, Screen } from "../ui/components";
 import { colors, radii, spacing, type } from "../ui/theme";
-import { buildMonthCells, heatBuckets, localeWeekStart } from "./calendarModel";
+import { buildMonthCells, heatBuckets, localeWeekStart, localDayRange } from "./calendarModel";
 
 export function TrackCalendarScreen() {
-  const { bootstrap, calendarMonth, summary } = useMobileApi();
+  const { bootstrap, calendarMonth, listHealthEvents, summary } = useMobileApi();
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   const today = localDate(new Date(), timezone);
   const recorded = useMemo(() => {
@@ -27,6 +27,9 @@ export function TrackCalendarScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [retryToken, setRetryToken] = useState(0);
+  const [eventDetails, setEventDetails] = useState<HealthEvent[]>([]);
+  const [eventLoading, setEventLoading] = useState(false);
+  const [eventError, setEventError] = useState<string>();
 
   useEffect(() => {
     if (!selectedCode && recorded[0]) setSelectedCode(recorded[0].code);
@@ -50,6 +53,32 @@ export function TrackCalendarScreen() {
       });
     return () => controller.abort();
   }, [calendarMonth, month, retryToken, selectedCode, timezone]);
+
+  useEffect(() => {
+    const summary = data?.events.find((entry) => entry.date === selectedDate);
+    if (!summary?.count) {
+      setEventDetails([]);
+      setEventError(undefined);
+      setEventLoading(false);
+      return;
+    }
+    let active = true;
+    const { start, end } = localDayRange(selectedDate, timezone);
+    setEventDetails([]);
+    setEventError(undefined);
+    setEventLoading(true);
+    void listHealthEvents({ status: "completed", occurredFrom: start, occurredTo: end, limit: 100 })
+      .then((result) => {
+        if (active) setEventDetails(result.items);
+      })
+      .catch(() => {
+        if (active) setEventError("We couldn't load health event details.");
+      })
+      .finally(() => {
+        if (active) setEventLoading(false);
+      });
+    return () => { active = false; };
+  }, [data, listHealthEvents, selectedDate, timezone]);
 
   const measurement = bootstrap?.measurementTypes.find((entry) => entry.code === selectedCode);
   const points = data?.measurements.filter((point) => point.measurementCode === selectedCode) ?? [];
@@ -140,7 +169,20 @@ export function TrackCalendarScreen() {
               <Text style={styles.readingValue}>{formatValue(selectedPoint.value)} <Text style={styles.readingUnit}>{selectedPoint.unit}</Text></Text>
             </View>
           ) : <Text style={styles.emptyText}>No {measurement?.display.toLowerCase() ?? "measurement"} recorded.</Text>}
-          {selectedEvents ? <Text style={styles.eventSummary}>{selectedEvents.count} completed health {selectedEvents.count === 1 ? "event" : "events"}</Text> : <Text style={styles.emptyText}>No completed health events.</Text>}
+          {selectedEvents ? (
+            <View style={styles.eventSection}>
+              <Text style={styles.eventSummary}>{selectedEvents.count} health {selectedEvents.count === 1 ? "event" : "events"}</Text>
+              {eventLoading ? <ActivityIndicator color={colors.primary} size="small" /> : null}
+              {eventError ? <Text style={styles.eventError}>{eventError}</Text> : null}
+              {!eventLoading && !eventError ? eventDetails.map((event) => (
+                <View key={event.id} style={styles.eventDetail}>
+                  <Text style={styles.eventKind}>{healthEventKindLabels[event.kind]}</Text>
+                  {event.provider ? <Text style={styles.eventMeta}>Provider: {event.provider}</Text> : null}
+                  {event.notes ? <Text style={styles.eventNotes}>{event.notes}</Text> : null}
+                </View>
+              )) : null}
+            </View>
+          ) : <Text style={styles.emptyText}>No health events.</Text>}
         </View>
       </ScrollView>
     </Screen>
@@ -220,5 +262,11 @@ const styles = StyleSheet.create({
   readingValue: { color: colors.textStrong, fontSize: type.title, fontWeight: "800" },
   readingUnit: { color: colors.muted, fontSize: type.label, fontWeight: "500" },
   eventSummary: { backgroundColor: colors.blushMuted, borderRadius: radii.sm, color: colors.blush, fontSize: type.label, fontWeight: "700", padding: spacing.sm },
+  eventSection: { gap: spacing.sm },
+  eventDetail: { borderTopColor: colors.border, borderTopWidth: 1, gap: 3, paddingTop: spacing.sm },
+  eventKind: { color: colors.textStrong, fontSize: type.label, fontWeight: "800" },
+  eventMeta: { color: colors.muted, fontSize: 12 },
+  eventNotes: { color: colors.text, fontSize: type.label, lineHeight: 19 },
+  eventError: { color: colors.warning, fontSize: type.label, lineHeight: 19 },
   emptyText: { color: colors.muted, fontSize: type.label, lineHeight: 19 }
 });

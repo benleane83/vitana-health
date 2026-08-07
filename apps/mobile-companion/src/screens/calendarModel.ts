@@ -35,3 +35,34 @@ export function heatBuckets(points: CalendarMeasurementPoint[]): Map<string, num
     unique.length === 1 ? 3 : 1 + Math.round((unique.indexOf(point.value) * 4) / (unique.length - 1))
   ]));
 }
+
+export function localDayRange(date: string, timezone: string): { start: string; end: string } {
+  const [year, month, day] = date.split("-").map(Number);
+  const next = new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10);
+  return {
+    start: zonedMidnightIso(date, timezone),
+    end: new Date(new Date(zonedMidnightIso(next, timezone)).getTime() - 1).toISOString()
+  };
+}
+
+function zonedMidnightIso(date: string, timezone: string): string {
+  const [year, month, day] = date.split("-").map(Number);
+  let instant = Date.UTC(year, month - 1, day);
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23"
+  });
+  for (let iteration = 0; iteration < 2; iteration += 1) {
+    const parts = formatter.formatToParts(new Date(instant));
+    const value = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((part) => part.type === type)?.value ?? 0);
+    const represented = Date.UTC(value("year"), value("month") - 1, value("day"), value("hour"), value("minute"), value("second"));
+    instant += Date.UTC(year, month - 1, day) - represented;
+  }
+  return new Date(instant).toISOString();
+}
