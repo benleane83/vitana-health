@@ -929,4 +929,114 @@ describe("App — measurement detail", () => {
     });
     await waitFor(() => expect(screen.queryByRole("dialog", { name: /edit observation/i })).not.toBeInTheDocument());
   });
+
+  it("opens the exact recorded group from a measurement row and edits it as one record", async () => {
+    globalThis.history.replaceState({}, "", "/track/glucose");
+    const group = {
+      id: "morning-vitals-1",
+      kind: "custom",
+      label: "Morning vitals",
+      collectedAt: "2026-08-07T08:15:00.000Z",
+      source: { kind: "manual-entry", label: "Manual observations" },
+      editable: true,
+      observations: [{
+        id: "glucose-group-1",
+        measurementCode: "glucose",
+        displayName: "Glucose",
+        observedAt: "2026-08-07T08:15:00.000Z",
+        value: 5.2,
+        unit: "mmol/L",
+        note: "Fasting",
+        status: "normal"
+      }]
+    };
+    global.fetch = mockFetch({
+      "/api/store": { ...makeEmptyStore(), measurementTypes: defaultMeasurementTypes },
+      "/api/analytics": makeEmptyAnalytics(),
+      "/api/profiles": { profiles: [], activeProfileId: "self" },
+      "/api/summary/glucose/chart": {
+        generatedAt: "2026-08-07T08:15:00.000Z", measurementCode: "glucose", range: "all",
+        requestedMode: "auto", granularity: "raw", aggregation: "average", points: [],
+        totalPoints: 0, truncated: false
+      },
+      "/api/summary/glucose": {
+        generatedAt: "2026-08-07T08:15:00.000Z",
+        measurement: {
+          code: "glucose", displayName: "Glucose", category: "lab",
+          counts: { observations: 1, samples: 0, activities: 0, total: 1 },
+          lastMeasuredAt: "2026-08-07T08:15:00.000Z"
+        },
+        entries: [{
+          kind: "observation", id: "glucose-group-1", measurementCode: "glucose", displayName: "Glucose",
+          timestamp: "2026-08-07T08:15:00.000Z", value: 5.2, unit: "mmol/L",
+          sourceLabel: "Manual observations", sourceKind: "manual-entry", canDelete: true,
+          observationGroup: {
+            id: "morning-vitals-1", kind: "custom", label: "Morning vitals",
+            collectedAt: "2026-08-07T08:15:00.000Z"
+          }
+        }],
+        chartPoints: [],
+        isPinned: false,
+        referenceRange: { source: "none" },
+        counts: { observations: 1, samples: 0, activities: 0, total: 1 },
+        deletion: { observationEntries: 1, deletableEntries: 1 },
+        pagination: { limit: 50, loaded: 1, total: 1, hasMore: false }
+      },
+      "/api/observation-groups/morning-vitals-1": group
+    });
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "View group" }));
+
+    expect(globalThis.location.pathname).toBe("/track/groups/morning-vitals-1");
+    expect(await screen.findByRole("heading", { name: "Morning vitals" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Glucose" })).toBeInTheDocument();
+    expect(screen.getByText("Fasting")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit group" }));
+    fireEvent.change(screen.getByLabelText("Group label"), { target: { value: "Discarded label" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByRole("heading", { name: "Morning vitals" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit group" }));
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "5.6" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => {
+      const saveRequest = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([url, init]) =>
+        String(url).includes("/api/observation-groups/morning-vitals-1") && init?.method === "PATCH"
+      );
+      expect(JSON.parse(String(saveRequest?.[1]?.body))).toMatchObject({
+        expectedCollectedAt: "2026-08-07T08:15:00.000Z",
+        label: "Morning vitals",
+        updates: [{ id: "glucose-group-1", value: 5.6, unit: "mmol/L" }],
+        creates: [],
+        removals: []
+      });
+    });
+  });
+
+  it("explains why an imported recorded group is read-only", async () => {
+    globalThis.history.replaceState({}, "", "/track/groups/imported-panel-1");
+    global.fetch = mockFetch({
+      "/api/store": { ...makeEmptyStore(), measurementTypes: defaultMeasurementTypes },
+      "/api/analytics": makeEmptyAnalytics(),
+      "/api/profiles": { profiles: [], activeProfileId: "self" },
+      "/api/observation-groups/imported-panel-1": {
+        id: "imported-panel-1",
+        kind: "lab_panel",
+        label: "Imported panel",
+        collectedAt: "2026-08-07T08:15:00.000Z",
+        source: { kind: "blood-test-csv", label: "Lab CSV", importFileName: "panel.csv" },
+        editable: false,
+        readOnlyReason: "Imported or synchronized groups are read-only to preserve their provenance.",
+        observations: []
+      }
+    });
+
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "Imported panel" })).toBeInTheDocument();
+    expect(screen.getByText(/read-only to preserve their provenance/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit group" })).not.toBeInTheDocument();
+  });
 });

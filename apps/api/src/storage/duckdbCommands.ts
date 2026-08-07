@@ -36,6 +36,7 @@ import {
   type Profile,
   type UpdateCareItemInput,
   type UpdateHealthEventInput,
+  type UpdateObservationGroupInput,
   type UpdateObservationInput,
   type UpdateObservationResponse
 } from "@vitana/shared";
@@ -54,7 +55,13 @@ import {
   profileFromRow,
   run
 } from "./duckdbRows.js";
-import { CareItemCompletionConflictError, HealthEventDeleteConflictError, RepositoryValidationError } from "./profileRepository.js";
+import {
+  CareItemCompletionConflictError,
+  HealthEventDeleteConflictError,
+  ObservationGroupConflictError,
+  ObservationGroupReadOnlyError,
+  RepositoryValidationError
+} from "./profileRepository.js";
 import type { StoredProfilePhoto } from "./profileRepository.js";
 import { selectColumns } from "./duckdbColumns.js";
 
@@ -385,6 +392,114 @@ export async function updateObservation(
   const updatedObservation = observationFromRow(updatedRows[0]);
   await insertAudit(connection, "observation-updated", `${updatedObservation.measurementCode} observation updated for ${updatedObservation.observedAt}.`);
   return { updatedObservation, counts: await storageCounts(connection) };
+}
+
+export interface UpdateObservationGroupCommandResult {
+  updatedObservations: Observation[];
+  deletedIds: string[];
+}
+
+export async function updateObservationGroup(
+  connection: duckdb.Connection,
+  id: string,
+  input: UpdateObservationGroupInput
+): Promise<UpdateObservationGroupCommandResult | undefined> {
+  const groupRows = await allWithParams(connection, `
+    SELECT g.collected_at, g.source_id, s.source_kind
+    FROM observation_groups g
+    LEFT JOIN sources s ON s.id = g.source_id
+    WHERE g.id = ?
+    LIMIT 1;
+  `, id);
+  const group = groupRows[0];
+  if (!group) return undefined;
+  if (group.source_kind !== "manual-entry" || !group.source_id) {
+    throw new ObservationGroupReadOnlyError();
+  }
+  const previousCollectedAt = optionalTimestamp(group.collected_at);
+  if (input.expectedCollectedAt !== undefined && input.expectedCollectedAt !== previousCollectedAt) {
+    throw new ObservationGroupConflictError();
+  }
+
+  const existingRows = await allWithParams(
+    connection,
+    `SELECT ${observationColumns} FROM observations WHERE observation_group_id = ? ORDER BY ordinal;`,
+    id
+  );
+  const existingIds = new Set(existingRows.map((row) => String(row.id)));
+  const requestedIds = [...input.updates.map((entry) => entry.id), ...input.removals];
+  if (requestedIds.some((observationId) => !existingIds.has(observationId))) {
+    throw new ObservationGroupConflictError("One or more observations no longer belong to this group.");
+  }
+  if (existingRows.length - input.removals.length + input.creates.length === 0) {
+    throw new RepositoryValidationError("An observation group must contain at least one observation.");
+  }
+
+  const canonicalUpdates = input.updates.map((entry) => {
+    const canonical = canonicalizeMeasurement(entry.measurementCode, entry.value, entry.unit);
+    if (canonical.rejected) throw new RepositoryValidationError(describeMeasurementRejection(canonical));
+    return { entry, canonical };
+  });
+  const creates: Observation[] = input.creates.map((entry) => ({
+    id: `observation_${globalThis.crypto.randomUUID().replaceAll("-", "")}`,
+    measurementCode: entry.measurementCode,
+    observedAt: input.collectedAt,
+    value: entry.value,
+    unit: entry.unit,
+    sourceId: String(group.source_id),
+    observationGroupId: id,
+    note: entry.note
+  }));
+  for (const entry of creates) {
+    const canonical = canonicalizeMeasurement(entry.measurementCode, entry.value, entry.unit);
+    if (canonical.rejected) throw new RepositoryValidationError(describeMeasurementRejection(canonical));
+  }
+
+  await run(connection, "UPDATE observation_groups SET label = ?, collected_at = ? WHERE id = ?;",
+    input.label, input.collectedAt, id);
+  if (previousCollectedAt && previousCollectedAt !== input.collectedAt) {
+    await run(connection, `
+      UPDATE observations
+      SET observed_at = ?
+      WHERE observation_group_id = ? AND observed_at = ?;
+    `, input.collectedAt, id, previousCollectedAt);
+  }
+  for (const { entry, canonical } of canonicalUpdates) {
+    await run(connection, `
+      UPDATE observations
+      SET measurement_code = ?, value = ?, unit = ?, source_unit = ?, note = ?
+      WHERE id = ? AND observation_group_id = ?;
+    `, entry.measurementCode, canonical.value, canonical.unit, canonical.sourceUnit ?? null,
+    entry.note ?? null, entry.id, id);
+  }
+  if (input.removals.length > 0) {
+    await run(
+      connection,
+      `DELETE FROM observations WHERE observation_group_id = ? AND id IN (${input.removals.map(() => "?").join(", ")});`,
+      id,
+      ...input.removals
+    );
+  }
+  if (creates.length > 0) {
+    const inserted = await insertObservationRows(connection, creates, await nextOrdinal(connection, "observations"));
+    if (inserted.accepted.length !== creates.length || inserted.inserted.length !== creates.length) {
+      throw new RepositoryValidationError(inserted.rejections[0] ?? "An observation could not be added.");
+    }
+  }
+  const updatedRows = await allWithParams(
+    connection,
+    `SELECT ${observationColumns} FROM observations WHERE observation_group_id = ? ORDER BY ordinal;`,
+    id
+  );
+  await insertAudit(
+    connection,
+    "observation-group-updated",
+    `${input.label} (${id}) updated: ${input.updates.length} changed, ${input.creates.length} added, ${input.removals.length} removed.`
+  );
+  return {
+    updatedObservations: updatedRows.map(observationFromRow),
+    deletedIds: input.removals
+  };
 }
 
 export async function deleteObservationsByMeasurementCode(

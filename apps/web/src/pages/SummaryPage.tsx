@@ -146,6 +146,7 @@ export function ObservationTypeDetailPage({
   loadMoreBusy,
   onBack,
   onEditObservation,
+  onViewObservationGroup,
   onDeleteObservation,
   onDeleteAll,
   onLoadMore,
@@ -173,6 +174,7 @@ export function ObservationTypeDetailPage({
   loadMoreBusy: boolean;
   onBack: () => void;
   onEditObservation: (entry: HealthDataDetailEntry) => void;
+  onViewObservationGroup: (groupId: string) => void;
   onDeleteObservation: (entry: HealthDataDetailEntry) => void | Promise<void>;
   onDeleteAll: () => void | Promise<void>;
   onLoadMore: () => void | Promise<void>;
@@ -526,7 +528,18 @@ export function ObservationTypeDetailPage({
                             <strong>{formatDetailValue(entry.value)}</strong>
                             {entry.unit ? <span>{entry.unit}</span> : null}
                           </td>
-                          <td data-label="Source / note" className="summary-entry-context">{renderEntryContext(entry)}</td>
+                          <td data-label="Source / note" className="summary-entry-context">
+                            <span>{renderEntryContext(entry)}</span>
+                            {entry.observationGroup ? (
+                              <button
+                                type="button"
+                                className="summary-view-group"
+                                onClick={() => onViewObservationGroup(entry.observationGroup!.id)}
+                              >
+                                View group
+                              </button>
+                            ) : null}
+                          </td>
                           <td data-label="Action" className="summary-entry-action">
                             {entry.canDelete ? (
                               <div className="summary-row-actions">

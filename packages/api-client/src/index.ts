@@ -41,6 +41,7 @@ import {
   healthConnectImportRequestSchema,
   mobileMigrationStartResponseSchema,
   measurementPinStateResponseSchema,
+  observationGroupDetailResponseSchema,
   paginatedCareItemsResponseSchema,
   paginatedHealthEventsResponseSchema,
   personalReferenceRangeInputSchema,
@@ -51,6 +52,7 @@ import {
   sleepSessionListQuerySchema,
   sleepSessionPageResponseSchema,
   updateObservationResponseSchema,
+  updateObservationGroupInputSchema,
   uploadImportDraftResponseSchema
 } from "@vitana/shared";
 
@@ -72,6 +74,7 @@ import type {
   PersonalReferenceRangeInput,
   SleepSessionListQuery,
   UpdateObservationInput,
+  UpdateObservationGroupInput,
   MobileMigrationBatch,
   MobileMigrationCompletionRequest,
   MobileMigrationStartRequest,
@@ -219,6 +222,13 @@ export function createApiClient(transport: ApiTransport) {
         { signal }
       );
     },
+    observationGroup: (id: string, signal?: AbortSignal) =>
+      request(observationGroupDetailResponseSchema, `/api/observation-groups/${encodeURIComponent(id)}`, { signal }),
+    updateObservationGroup: (id: string, input: UpdateObservationGroupInput) =>
+      request(observationGroupDetailResponseSchema, `/api/observation-groups/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: updateObservationGroupInputSchema.parse(input)
+      }),
     healthDataDetail: (
       measurementCode: string,
       page?: { limit?: number; offset?: number },

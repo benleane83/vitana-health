@@ -30,6 +30,7 @@ import {
   type MobileMigrationManifest,
   type MeasurementPinState,
   type Observation,
+  type ObservationGroupDetail,
   type PersonalReferenceRange,
   type PersonalReferenceRangeInput,
   type Profile,
@@ -39,6 +40,7 @@ import {
   type UpdateCareItemInput,
   type UpdateHealthEventInput,
   type UpdateObservationInput,
+  type UpdateObservationGroupInput,
   type UpdateObservationResponse
 } from "@vitana/shared";
 import type { MeasurementDetailPage } from "../summary.js";
@@ -98,6 +100,7 @@ import {
   updateCareItem as updateDuckDbCareItem,
   updateHealthEvent as updateDuckDbHealthEvent,
   updateObservation as updateDuckDbObservation,
+  updateObservationGroup as updateDuckDbObservationGroup,
   unpinMeasurement as unpinDuckDbMeasurement,
   upsertPersonalReferenceRange as upsertDuckDbPersonalReferenceRange
 } from "./duckdbCommands.js";
@@ -137,6 +140,7 @@ import {
   measurementDetail as readMeasurementDetail,
   measurementChartSeries as readMeasurementChartSeries,
   measurementDetails as readMeasurementDetails,
+  observationGroupDetail as readObservationGroupDetail,
   referenceRangeState as readReferenceRangeState,
   sleepSessions as readSleepSessions,
   storageCounts as readStorageCounts,
@@ -653,8 +657,30 @@ export class DuckDbRepository implements ProfileRepository {
       if (changes.length === 0 && previouslyReplicated) {
         return [replicaTombstone("observation", id)];
       }
+
       return changes;
     });
+  }
+
+  async getObservationGroup(id: string): Promise<ObservationGroupDetail | undefined> {
+    this.assertOpen();
+    return readObservationGroupDetail(this.reader, id);
+  }
+
+  async updateObservationGroup(
+    id: string,
+    input: UpdateObservationGroupInput
+  ): Promise<ObservationGroupDetail | undefined> {
+    this.assertOpen();
+    const result = await this.transaction(
+      () => updateDuckDbObservationGroup(this.connection, id, input),
+      (updated) => updated ? [
+        ...updated.updatedObservations.flatMap(replicaObservationUpsert),
+        ...updated.deletedIds.map((observationId) => replicaTombstone("observation", observationId))
+      ] : [],
+      { affectsStorageCounts: true }
+    );
+    return result ? readObservationGroupDetail(this.reader, id) : undefined;
   }
 
   async deleteObservationsByMeasurementCode(measurementCode: string): Promise<DeleteObservationsByTypeResponse> {

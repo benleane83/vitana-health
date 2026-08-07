@@ -2117,6 +2117,71 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+.summary-entry-context span,
+.summary-view-group {
+  display: block;
+}
+
+.summary-view-group {
+  margin-top: var(--space-2);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.observation-group-page {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.observation-group-metadata,
+.observation-group-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--space-4);
+}
+
+.observation-group-metadata {
+  margin: 0;
+}
+
+.observation-group-metadata div,
+.observation-group-fields label {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.observation-group-metadata dt {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.observation-group-metadata dd {
+  margin: 0;
+}
+
+.observation-group-page table input,
+.observation-group-page table select {
+  min-width: 8rem;
+}
+
+.observation-group-actions {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.link-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  text-align: left;
+  text-decoration: underline;
+}
+
 .summary-entry-action {
   width: 1%;
 }

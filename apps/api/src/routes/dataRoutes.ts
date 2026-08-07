@@ -32,6 +32,7 @@ import {
   journalQuerySchema,
   linkedHealthEventConflictSchema,
   measurementPinStateResponseSchema,
+  observationGroupDetailResponseSchema,
   paginatedCareItemsResponseSchema,
   paginatedHealthEventsResponseSchema,
   personalReferenceRangeInputSchema,
@@ -40,6 +41,7 @@ import {
   sleepSessionListQuerySchema,
   sleepSessionPageResponseSchema,
   updateObservationInputSchema,
+  updateObservationGroupInputSchema,
   updateObservationResponseSchema
 } from "@vitana/shared";
 import { sendJson } from "./sendJson.js";
@@ -50,7 +52,13 @@ import { buildClinicianReport } from "../clinicianReport.js";
 import { createClinicianReportPdf } from "../pdfReport.js";
 import type { AuthorizationPrincipal } from "../requestPrincipal.js";
 import { resolvePrincipalStore } from "../requestPrincipal.js";
-import { CareItemCompletionConflictError, HealthEventDeleteConflictError, RepositoryValidationError } from "../storage/profileRepository.js";
+import {
+  CareItemCompletionConflictError,
+  HealthEventDeleteConflictError,
+  ObservationGroupConflictError,
+  ObservationGroupReadOnlyError,
+  RepositoryValidationError
+} from "../storage/profileRepository.js";
 import type { EntitlementReader } from "../entitlementStore.js";
 
 const measurementCodeParamSchema = z
@@ -390,6 +398,45 @@ export function makeDataRoutes(
       }
       sendJson(response, deleteCareItemResponseSchema, deleted);
     } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/observation-groups/:id", async (request, response, next) => {
+    try {
+      const id = recordIdParamSchema.parse(request.params.id);
+      const group = await requestStore(response).getObservationGroup(id);
+      if (!group) {
+        response.status(404).json({ error: "Observation group not found.", code: "OBSERVATION_GROUP_NOT_FOUND" });
+        return;
+      }
+      sendJson(response, observationGroupDetailResponseSchema, group);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.patch("/observation-groups/:id", async (request, response, next) => {
+    try {
+      const id = recordIdParamSchema.parse(request.params.id);
+      const updated = await requestStore(response).updateObservationGroup(
+        id,
+        updateObservationGroupInputSchema.parse(request.body)
+      );
+      if (!updated) {
+        response.status(404).json({ error: "Observation group not found.", code: "OBSERVATION_GROUP_NOT_FOUND" });
+        return;
+      }
+      sendJson(response, observationGroupDetailResponseSchema, updated);
+    } catch (error) {
+      if (error instanceof ObservationGroupReadOnlyError) {
+        response.status(403).json({ error: error.message, code: error.code });
+        return;
+      }
+      if (error instanceof ObservationGroupConflictError) {
+        response.status(409).json({ error: error.message, code: error.code });
+        return;
+      }
       next(error);
     }
   });

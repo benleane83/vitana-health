@@ -34,6 +34,7 @@ import type {
   Insight,
   JournalPage,
   MeasurementPinState,
+  ObservationGroupDetail,
   Profile,
   ProfilePhotoResponse,
   ProfileListEntry,
@@ -769,6 +770,56 @@ export const referenceRangeStateResponseSchema: z.ZodType<ReferenceRangeState> =
 }).strict();
 
 const healthDataDetailEntryKindSchema = z.enum(["observation", "sample", "activity"]);
+
+const observationGroupMemberInputSchema = z.object({
+  measurementCode: z.string().trim().min(1).max(120),
+  value: z.number().finite(),
+  unit: z.string().trim().min(1).max(80),
+  note: z.string().trim().max(4000).optional()
+}).strict();
+
+export const updateObservationGroupInputSchema = z.object({
+  expectedCollectedAt: isoTimestampSchema.optional(),
+  label: z.string().trim().min(1).max(160),
+  collectedAt: isoTimestampSchema,
+  creates: z.array(observationGroupMemberInputSchema).max(250).default([]),
+  updates: z.array(observationGroupMemberInputSchema.extend({
+    id: z.string().trim().min(1).max(160)
+  }).strict()).max(250).default([]),
+  removals: z.array(z.string().trim().min(1).max(160)).max(250).default([])
+}).strict().superRefine((input, context) => {
+  const ids = [...input.updates.map((entry) => entry.id), ...input.removals];
+  if (new Set(ids).size !== ids.length) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "An observation can only be changed once." });
+  }
+});
+export type UpdateObservationGroupInput = z.infer<typeof updateObservationGroupInputSchema>;
+
+export const observationGroupDetailResponseSchema: z.ZodType<ObservationGroupDetail> = z.object({
+  id: z.string(),
+  kind: observationGroupKindSchema,
+  label: z.string(),
+  collectedAt: isoTimestampSchema.optional(),
+  source: z.object({
+    kind: sourceKindSchema,
+    label: z.string(),
+    importFileName: z.string().optional(),
+    importedAt: isoTimestampSchema.optional()
+  }).strict(),
+  editable: z.boolean(),
+  readOnlyReason: z.string().optional(),
+  observations: z.array(z.object({
+    id: z.string(),
+    measurementCode: z.string(),
+    displayName: z.string(),
+    observedAt: isoTimestampSchema,
+    value: z.number(),
+    unit: z.string(),
+    note: z.string().optional(),
+    referenceRange: referenceRangeSchema.optional(),
+    status: measurementStatusSchema.optional()
+  }).strict())
+}).strict();
 
 export const healthDataDetailResponseSchema: z.ZodType<HealthDataDetail> = z.object({
   generatedAt: z.string(),
