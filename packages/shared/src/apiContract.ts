@@ -445,7 +445,7 @@ export const bodyTrendTimelineResponseSchema: z.ZodType<BodyTrendTimeline> = z.o
     observedAt: isoTimestampSchema,
     sourceLabel: z.string().min(1).max(160).optional(),
     components: z.object({
-      skeletalMuscleMass: z.number().finite(),
+      muscleMass: z.number().finite(),
       fatMass: z.number().finite(),
       boneMineralContent: z.number().finite(),
       weight: z.number().finite().optional()

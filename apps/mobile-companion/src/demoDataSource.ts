@@ -64,7 +64,7 @@ function makeBodyTrendObservations(now: Date) {
   return values.flatMap((components, sessionIndex) => {
     const observedAt = new Date(now.getTime() - (values.length - 1 - sessionIndex) * 14 * 86_400_000).toISOString();
     const sessionId = `demo-body-${sessionIndex + 1}`;
-    return ["skeletal_muscle_mass", "fat_mass", "bone_mineral_content", "weight"].map((measurementCode, metricIndex) => ({
+    return ["muscle_mass", "fat_mass", "bone_mineral_content", "weight"].map((measurementCode, metricIndex) => ({
       id: `${sessionId}-${measurementCode}`,
       measurementCode,
       observationGroupId: sessionId,

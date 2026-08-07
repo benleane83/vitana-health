@@ -161,6 +161,16 @@ describe("computeAnalytics — trendCards", () => {
     const result = analyticsOf(store);
     expect(result.trendCards.find((c) => c.code === "weight")).toBeUndefined();
   });
+
+  it("does not generate a trend card when repeated readings have not changed", () => {
+    const store = makeEmptyStore();
+    store.observations = [
+      makeObservation({ id: "h1", measurementCode: "height", observedAt: "2026-01-01T00:00:00.000Z", value: 176, unit: "cm", sourceId: "src1" }),
+      makeObservation({ id: "h2", measurementCode: "height", observedAt: "2026-01-15T00:00:00.000Z", value: 176, unit: "cm", sourceId: "src1" })
+    ];
+
+    expect(analyticsOf(store).trendCards.find((card) => card.code === "height")).toBeUndefined();
+  });
 });
 
 describe("computeAnalytics — labAlerts", () => {

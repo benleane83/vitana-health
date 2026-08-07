@@ -350,6 +350,7 @@ describe("parseBodyCompositionText", () => {
         "WEIGHT 74.8kg",
         "FAT % 16.3 %",
         "MUSCLE MASS 59.5kg",
+        "SKELETAL MUSCLE MASS 34.9kg",
         "DESIRABLE RANGE"
       ].join("\n")
     );
@@ -357,8 +358,11 @@ describe("parseBodyCompositionText", () => {
     expect(result.rows).toEqual(expect.arrayContaining([
       expect.objectContaining({ measurementCode: "weight", value: 74.8, included: true }),
       expect.objectContaining({ measurementCode: "body_fat_pct", value: 16.3, included: true }),
-      expect.objectContaining({ measurementCode: "skeletal_muscle_mass", value: 59.5, included: true })
+      expect.objectContaining({ measurementCode: "muscle_mass", value: 59.5, included: true }),
+      expect.objectContaining({ measurementCode: "skeletal_muscle_mass", value: 34.9, included: true })
     ]));
+    expect(result.rows.filter((row) => row.measurementCode === "muscle_mass")).toHaveLength(1);
+    expect(result.rows.filter((row) => row.measurementCode === "skeletal_muscle_mass")).toHaveLength(1);
     expect(result.diagnostics).not.toContain("Skipped measurements in a body composition history section.");
   });
 });

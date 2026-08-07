@@ -160,6 +160,7 @@ function trendCard(code: string, observations: Observation[], type: MeasurementT
   const last = points[points.length - 1].value;
   const delta = last - first;
   const direction: "up" | "down" | "flat" = Math.abs(delta) < 0.01 ? "flat" : delta > 0 ? "up" : "down";
+  if (direction === "flat") return undefined;
   return {
     code,
     label: type.display,

@@ -76,7 +76,7 @@ export function TrackBodyTrendScreen() {
         {error ? <View style={styles.errorStack}><Message title="Body Trend unavailable" detail={error} tone="warning" /><Button secondary onPress={() => setRetryToken((value) => value + 1)}>Retry</Button></View> : null}
         {loading && !timeline ? <Loading label="Loading Body Trend…" /> : null}
         {!loading && !error && timeline?.points.length === 0 ? (
-          <Message title="No complete body-composition readings" detail="Body Trend needs muscle, fat, and bone mass recorded together. Weight is optional." />
+          <Message title="No complete body-composition readings" detail="Body Trend needs Muscle Mass or Skeletal Muscle Mass, fat mass, and bone mineral content recorded together. Weight is optional." />
         ) : null}
         {timeline?.points.length ? (
           <View style={styles.chartCard}>
@@ -123,7 +123,7 @@ function TrendBar({ domain, point, selected, unit, onPress }: {
   const weightBottom = point.components.weight === undefined ? undefined : point.components.weight / domain * chartHeight;
   return (
     <Pressable
-      accessibilityLabel={`${formatDate(point.date)}. Muscle ${formatValue(point.components.skeletalMuscleMass)} ${unit}, fat ${formatValue(point.components.fatMass)} ${unit}, bone ${formatValue(point.components.boneMineralContent)} ${unit}${point.components.weight === undefined ? ". No weight" : `, weight ${formatValue(point.components.weight)} ${unit}`}`}
+      accessibilityLabel={`${formatDate(point.date)}. Muscle Mass ${formatValue(point.components.muscleMass)} ${unit}, fat ${formatValue(point.components.fatMass)} ${unit}, bone ${formatValue(point.components.boneMineralContent)} ${unit}${point.components.weight === undefined ? ". No weight" : `, weight ${formatValue(point.components.weight)} ${unit}`}`}
       accessibilityRole="button"
       accessibilityState={{ selected }}
       onPress={onPress}
@@ -132,7 +132,7 @@ function TrendBar({ domain, point, selected, unit, onPress }: {
       <View style={[styles.plot, selected && styles.plotSelected]}>
         {weightBottom !== undefined ? <View style={[styles.weightMarker, { bottom: weightBottom }]} /> : null}
         <View style={styles.stack}>
-          <View style={[styles.segment, styles.muscle, { height: height(point.components.skeletalMuscleMass) }]} />
+          <View style={[styles.segment, styles.muscle, { height: height(point.components.muscleMass) }]} />
           <View style={[styles.segment, styles.fat, { height: height(point.components.fatMass) }]} />
           <View style={[styles.segment, styles.bone, { height: height(point.components.boneMineralContent) }]} />
         </View>
@@ -144,7 +144,7 @@ function TrendBar({ domain, point, selected, unit, onPress }: {
 
 function Inspector({ point, unit }: { point: BodyTrendPoint; unit: string }) {
   const rows = [
-    ["Skeletal muscle", point.components.skeletalMuscleMass, colors.primary],
+    ["Muscle Mass", point.components.muscleMass, colors.primary],
     ["Fat mass", point.components.fatMass, colors.blush],
     ["Bone mineral", point.components.boneMineralContent, colors.info],
     ["Weight", point.components.weight, colors.textStrong]
@@ -174,7 +174,7 @@ function Legend({ color, label, line = false }: { color: string; label: string; 
 }
 
 function componentTotal(point: BodyTrendPoint) {
-  return point.components.skeletalMuscleMass + point.components.fatMass + point.components.boneMineralContent;
+  return point.components.muscleMass + point.components.fatMass + point.components.boneMineralContent;
 }
 
 function formatValue(value: number) {

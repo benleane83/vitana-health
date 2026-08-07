@@ -1319,7 +1319,7 @@ describe("DuckDbRepository fidelity", () => {
   it.skipIf(!httpfsExtensionPath)("returns schema-compatible Body Trend date detail groups", async () => {
     const databasePath = join(root, "databases", "health-store-body-trend-detail.duckdb-poc");
     const fixture = createDuckDbHealthStoreFixture();
-    const bodyCompositionCodes = new Set(["skeletal_muscle_mass", "fat_mass", "bone_mineral_content"]);
+    const bodyCompositionCodes = new Set(["muscle_mass", "skeletal_muscle_mass", "fat_mass", "bone_mineral_content"]);
     fixture.measurementTypes.push(...defaultMeasurementTypes.filter((measurement) => bodyCompositionCodes.has(measurement.code)));
     fixture.observationGroups.push({
       id: "body-trend-group",
@@ -1329,7 +1329,8 @@ describe("DuckDbRepository fidelity", () => {
       collectedAt: "2026-08-01T09:00:00.000Z"
     });
     const bodyCompositionObservations: Array<[string, string, number]> = [
-      ["body-muscle", "skeletal_muscle_mass", 31.6],
+      ["body-muscle", "muscle_mass", 56.4],
+      ["body-skeletal-muscle", "skeletal_muscle_mass", 31.6],
       ["body-fat", "fat_mass", 17.8],
       ["body-bone", "bone_mineral_content", 3.1]
     ];
@@ -1344,11 +1345,17 @@ describe("DuckDbRepository fidelity", () => {
     })));
     const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
     try {
+      const timeline = await repository.bodyTrendTimeline({ range: "all", timezone: "UTC" });
       const detail = await repository.bodyTrendDateDetail("2026-08-01", { timezone: "UTC" });
 
+      expect(timeline.points).toEqual([expect.objectContaining({
+        sessionId: "body-trend-group",
+        components: expect.objectContaining({ muscleMass: 56.4, fatMass: 17.8, boneMineralContent: 3.1 })
+      })]);
       expect(detail.selectedSession).toMatchObject({
         sessionId: "body-trend-group",
         metrics: expect.arrayContaining([
+          expect.objectContaining({ measurementCode: "muscle_mass", observedAt: "2026-08-01T09:00:00.000Z" }),
           expect.objectContaining({ measurementCode: "skeletal_muscle_mass", observedAt: "2026-08-01T09:00:00.000Z" }),
           expect.objectContaining({ measurementCode: "fat_mass" }),
           expect.objectContaining({ measurementCode: "bone_mineral_content" })

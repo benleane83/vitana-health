@@ -8,13 +8,14 @@ import {
 } from "@vitana/shared";
 
 export const BODY_TREND_CODES = [
+  "muscle_mass",
   "skeletal_muscle_mass",
   "fat_mass",
   "bone_mineral_content",
   "weight"
 ] as const;
 
-const REQUIRED_CODES = BODY_TREND_CODES.slice(0, 3);
+const REQUIRED_CODES = ["fat_mass", "bone_mineral_content"] as const;
 const MAX_POINTS = 500;
 
 export interface BodyTrendObservation {
@@ -34,7 +35,7 @@ export function bodyTrendFromObservations(
   now = new Date()
 ): BodyTrendTimeline {
   const registry = new Map(defaultMeasurementTypes.map((type) => [type.code, type]));
-  const massType = registry.get("weight");
+  const massType = registry.get("muscle_mass") ?? registry.get("skeletal_muscle_mass");
   const groups = new Map<string, BodyTrendObservation[]>();
   const cutoff = rangeCutoff(query.range, now);
 
@@ -58,14 +59,15 @@ export function bodyTrendFromObservations(
         latestByCode.set(observation.measurementCode, observation);
       }
     }
-    if (!REQUIRED_CODES.every((code) => latestByCode.has(code))) continue;
+    const muscleCode = latestByCode.has("muscle_mass") ? "muscle_mass" : latestByCode.has("skeletal_muscle_mass") ? "skeletal_muscle_mass" : undefined;
+    if (!muscleCode || !REQUIRED_CODES.every((code) => latestByCode.has(code))) continue;
 
     const converted = (code: string) => {
       const observation = latestByCode.get(code)!;
       const type = registry.get(code) ?? massType;
       return type ? toPreferredMeasurementValue(observation.value, observation.unit, type, units) : observation;
     };
-    const muscle = converted("skeletal_muscle_mass");
+    const muscle = converted(muscleCode);
     const fat = converted("fat_mass");
     const bone = converted("bone_mineral_content");
     const weight = latestByCode.has("weight") ? converted("weight") : undefined;
@@ -81,7 +83,7 @@ export function bodyTrendFromObservations(
       observedAt,
       ...(sourceLabel ? { sourceLabel } : {}),
       components: {
-        skeletalMuscleMass: muscle.value,
+        muscleMass: muscle.value,
         fatMass: fat.value,
         boneMineralContent: bone.value,
         ...(weight ? { weight: weight.value } : {})

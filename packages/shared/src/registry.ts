@@ -70,13 +70,23 @@ const measurementTypeDefinitions: MeasurementType[] = [
     aggregation: "latest"
   },
   {
+    code: "muscle_mass",
+    display: "Muscle mass",
+    description: "The estimated total weight of your muscle tissue, as reported by a body-composition device.",
+    category: "body",
+    kind: "point",
+    canonicalUnit: "kg",
+    aliases: ["muscle mass", "muscle"],
+    aggregation: "latest"
+  },
+  {
     code: "skeletal_muscle_mass",
     display: "Skeletal muscle mass",
     description: "The estimated weight of the muscles attached to your bones that you use to move.",
     category: "body",
     kind: "point",
     canonicalUnit: "kg",
-    aliases: ["skeletal muscle mass", "smm", "muscle mass", "skeletal muscle"],
+    aliases: ["skeletal muscle mass", "smm", "skeletal muscle"],
     aggregation: "latest"
   },
   {

@@ -422,7 +422,7 @@ export interface BodyTrendQuery {
 }
 
 export interface BodyTrendComponentValues {
-  skeletalMuscleMass: number;
+  muscleMass: number;
   fatMass: number;
   boneMineralContent: number;
   weight?: number;
