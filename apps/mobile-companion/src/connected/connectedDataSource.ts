@@ -139,7 +139,9 @@ export function createConnectedDataSource(
     bootstrap: () => cachedRead((current) => current.bootstrap()),
     analytics: () => cachedRead((current) => current.analytics()),
     summary: () => cachedRead((current) => current.summary()),
-    bodyTrendTimeline: (query, signal) => live.bodyTrendTimeline(query, signal),
+    calendarMonth: (query) => cachedRead((current) => current.calendarMonth(query)),
+    journal: (query) => cachedRead((current) => current.journal(query)),
+    bodyTrendTimeline: (query) => cachedRead((current) => current.bodyTrendTimeline(query)),
     healthDataDetail: (measurementCode: string, page?: DetailPage) =>
       cachedRead((current) => current.healthDataDetail(measurementCode, page)),
     healthDataChartSeries: (measurementCode, options) =>

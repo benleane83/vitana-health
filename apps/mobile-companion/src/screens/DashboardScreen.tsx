@@ -131,7 +131,7 @@ export function DashboardScreen() {
           </View>
           <Pressable
             accessibilityRole="button"
-            onPress={() => navigation.navigate("Track")}
+            onPress={() => navigation.navigate("TrackMetrics")}
             style={styles.viewAll}
           >
             <Text style={styles.viewAllText}>View all</Text>

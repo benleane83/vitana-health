@@ -13,6 +13,10 @@ export interface CalendarProjectionEntry {
   value: number;
   unit: string;
   sourceLabel?: string;
+  calendarDate?: string;
+  count?: number;
+  min?: number;
+  max?: number;
 }
 
 export function calendarMonthFromEntries(
@@ -25,7 +29,7 @@ export function calendarMonthFromEntries(
   const groups = new Map<string, CalendarProjectionEntry[]>();
   for (const entry of entries) {
     if (!requestedCodes.has(entry.measurementCode)) continue;
-    const date = localDate(entry.observedAt, query.timezone);
+    const date = entry.calendarDate ?? localDate(entry.observedAt, query.timezone);
     if (!date.startsWith(`${query.month}-`)) continue;
     const key = `${date}\u0000${entry.measurementCode}`;
     groups.set(key, [...(groups.get(key) ?? []), entry]);
@@ -36,15 +40,16 @@ export function calendarMonthFromEntries(
     const ordered = [...records].sort((left, right) => left.observedAt.localeCompare(right.observedAt) || left.id.localeCompare(right.id));
     const values = ordered.map((entry) => entry.value);
     const aggregation = aggregationByCode.get(measurementCode) ?? "none";
-    const value = aggregate(values, aggregation);
+    const count = ordered.reduce((sum, entry) => sum + (entry.count ?? 1), 0);
+    const value = aggregate(ordered, aggregation, count);
     return {
       date,
       measurementCode,
       value,
       unit: ordered.at(-1)!.unit,
-      count: ordered.length,
-      min: Math.min(...values),
-      max: Math.max(...values),
+      count,
+      min: Math.min(...ordered.map((entry) => entry.min ?? entry.value)),
+      max: Math.max(...ordered.map((entry) => entry.max ?? entry.value)),
       aggregation,
       sources: [...new Set(ordered.flatMap((entry) => entry.sourceLabel ? [entry.sourceLabel] : []))].sort()
     } satisfies CalendarMeasurementPoint;
@@ -73,9 +78,16 @@ export function calendarMonthFromEntries(
   };
 }
 
-function aggregate(values: number[], aggregation: CalendarMeasurementPoint["aggregation"]): number {
+function aggregate(
+  entries: CalendarProjectionEntry[],
+  aggregation: CalendarMeasurementPoint["aggregation"],
+  count: number
+): number {
+  const values = entries.map((entry) => entry.value);
   if (aggregation === "sum") return values.reduce((sum, value) => sum + value, 0);
-  if (aggregation === "average") return values.reduce((sum, value) => sum + value, 0) / values.length;
+  if (aggregation === "average") {
+    return entries.reduce((sum, entry) => sum + entry.value * (entry.count ?? 1), 0) / count;
+  }
   if (aggregation === "min") return Math.min(...values);
   if (aggregation === "max") return Math.max(...values);
   return values.at(-1)!;

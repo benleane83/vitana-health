@@ -8,6 +8,8 @@ import {
   toPreferredMeasurementValue,
   type ActivitySession,
   type AppBootstrap,
+  type BodyTrendQuery,
+  type CalendarMonthQuery,
   type CareItem,
   type CareItemListQuery,
   type DataSource,
@@ -20,6 +22,7 @@ import {
   type HealthEvent,
   type HealthEventListQuery,
   type HealthStoreData,
+  type JournalQueryInput,
   type MeasurementType,
   type Observation,
   type ObservationGroup,
@@ -31,6 +34,9 @@ import {
   type TimeSeriesSample
 } from "@vitana/shared";
 import { chartRangeCutoff, chartSeriesFromPoints } from "../chartSeries";
+import { BODY_TREND_CODES, bodyTrendFromObservations } from "../bodyTrendProjection";
+import { calendarMonthFromEntries } from "../calendarProjection";
+import { journalFromSnapshot } from "../journalProjection";
 import type { LocalStore, LocalReplicaMetadata, ReplicaEntityFilter } from "../standalone/localStore";
 
 const ACTIVITY_SESSIONS_CODE = "activity_sessions";
@@ -95,6 +101,93 @@ export class ConnectedReplicaRepository {
 
   async summary(): Promise<HealthDataSummary> {
     return summarize(await this.readProjection());
+  }
+
+  async calendarMonth(query: CalendarMonthQuery) {
+    const { data } = await this.readProjection();
+    const sources = new Map(data.dataSources.map((entry) => [entry.id, entry.label]));
+    const earliestFineAggregateByCode = new Map<string, string>();
+    for (const entry of data.measurementAggregates) {
+      if (entry.granularity !== "15m") continue;
+      const current = earliestFineAggregateByCode.get(entry.measurementCode);
+      if (!current || entry.startAt < current) earliestFineAggregateByCode.set(entry.measurementCode, entry.startAt);
+    }
+    const aggregates = data.measurementAggregates.filter((entry) => entry.granularity === "15m"
+      || entry.endAt <= (earliestFineAggregateByCode.get(entry.measurementCode) ?? "9999-12-31T23:59:59.999Z"));
+    const entries = [
+      ...data.observations.map((entry) => ({
+        id: entry.id,
+        measurementCode: entry.measurementCode,
+        observedAt: entry.observedAt,
+        value: entry.value,
+        unit: entry.unit,
+        sourceLabel: sources.get(entry.sourceId),
+        calendarDate: sourceCalendarDate(entry.sourceJson)
+      })),
+      ...data.timeSeriesSamples.map((entry) => ({
+        id: entry.id,
+        measurementCode: entry.measurementCode,
+        observedAt: entry.endAt,
+        value: entry.value,
+        unit: entry.unit,
+        sourceLabel: sources.get(entry.sourceId),
+        calendarDate: sourceCalendarDate(entry.sourceJson)
+      })),
+      ...aggregates.map((entry) => ({
+        id: entry.id,
+        measurementCode: entry.measurementCode,
+        observedAt: entry.endAt,
+        value: entry.average,
+        unit: entry.unit,
+        sourceLabel: sources.get(entry.sourceId),
+        calendarDate: entry.calendarDate,
+        count: entry.count,
+        min: entry.minimum,
+        max: entry.maximum
+      })),
+      ...data.activitySessions.map((entry) => ({
+        id: entry.id,
+        measurementCode: ACTIVITY_SESSIONS_CODE,
+        observedAt: entry.endAt ?? entry.startAt,
+        value: entry.durationMinutes ?? durationMinutes(entry.startAt, entry.endAt),
+        unit: "min",
+        sourceLabel: sources.get(entry.sourceId)
+      }))
+    ];
+    return calendarMonthFromEntries(query, entries, data.healthEvents ?? []);
+  }
+
+  async journal(query: JournalQueryInput) {
+    const { data } = await this.readProjection();
+    return journalFromSnapshot(query, {
+      activities: data.activitySessions,
+      dataSources: data.dataSources,
+      healthEvents: data.healthEvents ?? [],
+      measurementTypes: data.measurementTypes,
+      observations: data.observations,
+      samples: data.timeSeriesSamples
+    });
+  }
+
+  async bodyTrendTimeline(query: BodyTrendQuery) {
+    const { data } = await this.readProjection();
+    const codes = new Set<string>(BODY_TREND_CODES);
+    const sources = new Map(data.dataSources.map((entry) => [entry.id, entry.label]));
+    return bodyTrendFromObservations(
+      query,
+      data.observations
+        .filter((entry) => codes.has(entry.measurementCode))
+        .map((entry) => ({
+          id: entry.id,
+          measurementCode: entry.measurementCode,
+          observedAt: entry.observedAt,
+          value: entry.value,
+          unit: entry.unit,
+          observationGroupId: entry.observationGroupId,
+          sourceLabel: sources.get(entry.sourceId)
+        })),
+      data.profile.units
+    );
   }
 
   async healthDataDetail(measurementCode: string, page: { limit?: number; offset?: number } = {}): Promise<HealthDataDetail> {
@@ -309,6 +402,17 @@ export class ConnectedReplicaRepository {
       auditEvents: []
     };
   }
+}
+
+function sourceCalendarDate(value: unknown): string | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const calendarDate = (value as Record<string, unknown>).calendarDate;
+  return typeof calendarDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(calendarDate) ? calendarDate : undefined;
+}
+
+function durationMinutes(startAt: string, endAt?: string): number {
+  if (!endAt) return 0;
+  return Math.max(0, (Date.parse(endAt) - Date.parse(startAt)) / 60_000);
 }
 
 function projectionKey(metadata: LocalReplicaMetadata | undefined): string {

@@ -6,6 +6,9 @@ const mocks = vi.hoisted(() => ({
     summary: vi.fn(),
     healthDataDetail: vi.fn(),
     healthDataChartSeries: vi.fn(),
+    calendarMonth: vi.fn(),
+    journal: vi.fn(),
+    bodyTrendTimeline: vi.fn(),
     importManualObservations: vi.fn(),
     updateObservation: vi.fn(),
     deleteObservation: vi.fn(),
@@ -25,6 +28,9 @@ const mocks = vi.hoisted(() => ({
     summary: vi.fn(),
     healthDataDetail: vi.fn(),
     healthDataChartSeries: vi.fn(),
+    calendarMonth: vi.fn(),
+    journal: vi.fn(),
+    bodyTrendTimeline: vi.fn(),
     listHealthEvents: vi.fn(),
     listCareItems: vi.fn(),
     metadata: vi.fn()
@@ -46,6 +52,9 @@ vi.mock("./connectedRepository", () => ({
     summary = mocks.cached.summary;
     healthDataDetail = mocks.cached.healthDataDetail;
     healthDataChartSeries = mocks.cached.healthDataChartSeries;
+    calendarMonth = mocks.cached.calendarMonth;
+    journal = mocks.cached.journal;
+    bodyTrendTimeline = mocks.cached.bodyTrendTimeline;
     listHealthEvents = mocks.cached.listHealthEvents;
     listCareItems = mocks.cached.listCareItems;
     metadata = mocks.cached.metadata;
@@ -220,6 +229,32 @@ describe("connected data source", () => {
     expect(mocks.live.healthDataDetail).not.toHaveBeenCalled();
     expect(mocks.live.healthDataChartSeries).not.toHaveBeenCalled();
     expect(mocks.live.listCareItems).not.toHaveBeenCalled();
+  });
+
+  it("reads Journal, Calendar, and Body Trend from the replica", async () => {
+    mocks.cached.journal.mockResolvedValue({ timezone: "UTC", days: [] });
+    mocks.cached.calendarMonth.mockResolvedValue({ month: "2026-07", timezone: "UTC", measurements: [], events: [] });
+    mocks.cached.bodyTrendTimeline.mockResolvedValue({
+      generatedAt: "2026-07-25T14:00:00.000Z",
+      range: "all",
+      timezone: "UTC",
+      unit: "kg",
+      points: [],
+      totalPoints: 0,
+      truncated: false
+    });
+    const source = createConnectedDataSource(connection);
+
+    await source.journal({ timezone: "UTC", dayLimit: 14 });
+    await source.calendarMonth({ month: "2026-07", timezone: "UTC", measurementCodes: ["weight"] });
+    await source.bodyTrendTimeline({ range: "all", timezone: "UTC" });
+
+    expect(mocks.cached.journal).toHaveBeenCalledOnce();
+    expect(mocks.cached.calendarMonth).toHaveBeenCalledOnce();
+    expect(mocks.cached.bodyTrendTimeline).toHaveBeenCalledOnce();
+    expect(mocks.live.journal).not.toHaveBeenCalled();
+    expect(mocks.live.calendarMonth).not.toHaveBeenCalled();
+    expect(mocks.live.bodyTrendTimeline).not.toHaveBeenCalled();
   });
 
   it("skips fresh background synchronization but honors an explicit refresh", async () => {
