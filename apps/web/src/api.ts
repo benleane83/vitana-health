@@ -265,6 +265,8 @@ export const api = {
   bodyTrendDateDetail: sharedApi.bodyTrendDateDetail,
   calendarMonth: sharedApi.calendarMonth,
   journal: sharedApi.journal,
+  observationGroup: sharedApi.observationGroup,
+  updateObservationGroup: sharedApi.updateObservationGroup,
   healthDataDetail: sharedApi.healthDataDetail,
   healthDataChartSeries: sharedApi.healthDataChartSeries,
   setPersonalReferenceRange: sharedApi.setPersonalReferenceRange,

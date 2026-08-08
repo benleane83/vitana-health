@@ -385,10 +385,66 @@ describe("App — import tab", () => {
     expect(screen.getByRole("checkbox", { name: /row 2: save/i })).toBeChecked();
     const measurement = screen.getByRole("combobox", { name: /row 2 known measurement/i });
     expect(measurement).toHaveValue("");
+    expect(measurement).toHaveFocus();
+    expect(screen.queryByRole("textbox", { name: /row 2 display name/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: /row 2 measurement code/i })).not.toBeInTheDocument();
+    fireEvent.change(measurement, { target: { value: "custom" } });
+    fireEvent.click(screen.getByRole("option", { name: "Use a custom measurement" }));
+    expect(screen.getByRole("textbox", { name: /row 2 display name/i })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: /row 2 measurement code/i })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: /row 2 display name/i }), { target: { value: "Custom score" } });
     fireEvent.change(measurement, { target: { value: "iron" } });
     fireEvent.click(screen.getByRole("option", { name: /Iron Lab/i }));
     expect(screen.getByRole("combobox", { name: /row 2 known measurement/i })).toHaveValue("Iron");
     expect(screen.getByRole("textbox", { name: /row 2 unit/i })).toHaveValue("µmol/L");
+    expect(screen.queryByRole("textbox", { name: /row 2 display name/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: /row 2 measurement code/i })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: /row 2 value/i }), { target: { value: "12" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save approved rows" }));
+
+    await waitFor(() => {
+      const request = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([url, init]) =>
+        String(url).includes("/api/import/upload/commit") && init?.method === "POST"
+      );
+      const rows = JSON.parse(String(request?.[1]?.body)).rows;
+      expect(rows).toContainEqual(expect.objectContaining({
+        label: "Iron",
+        measurementCode: "iron",
+        displayName: "Iron",
+        value: 12,
+        unit: "µmol/L",
+        included: true
+      }));
+      expect(rows[1]).not.toHaveProperty("manuallyAdded");
+    });
+  });
+
+  it("generates a standard code from a custom manual measurement name", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("tab", { name: /^import$/i }));
+    fireEvent.change(screen.getByRole("combobox", { name: /observation group/i }), { target: { value: "__custom__" } });
+
+    const measurement = screen.getByRole("combobox", { name: /row 1: select known measurement/i });
+    fireEvent.change(measurement, { target: { value: "custom" } });
+    fireEvent.click(screen.getByRole("option", { name: "Use a custom measurement" }));
+    fireEvent.change(screen.getByRole("textbox", { name: /row 1 measurement name/i }), { target: { value: "Custom score" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /row 1 value/i }), { target: { value: "7" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /row 1 unit/i }), { target: { value: "points" } });
+    expect(screen.queryByRole("textbox", { name: /row 1 measurement code/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^import observations$/i }));
+    fireEvent.change(screen.getByRole("textbox", { name: /group name/i }), { target: { value: "Custom readings" } });
+    const confirmation = within(screen.getByRole("dialog")).getByRole("button", { name: /^import observations$/i });
+    await waitFor(() => expect(confirmation).toBeEnabled());
+    fireEvent.click(confirmation);
+
+    await waitFor(() => {
+      const request = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([url, init]) =>
+        String(url).includes("/api/import/observations/manual") && init?.method === "POST"
+      );
+      expect(JSON.parse(String(request?.[1]?.body))).toMatchObject({
+        observations: [{ measurementName: "Custom score", measurementCode: "manual_custom_score" }]
+      });
+    });
   });
 
   it("rejects oversized structured uploads before reading or uploading them", async () => {
@@ -638,7 +694,7 @@ describe("App — import tab", () => {
     expect(measurements.map((measurement) => (measurement as HTMLInputElement).value))
       .toEqual(["Body fat percentage", "", "Weight"]);
     expect(screen.getByRole("textbox", { name: /row 2 measurement name/i })).toHaveValue("custom_score");
-    expect(screen.getByRole("textbox", { name: /row 2 measurement code/i })).toHaveValue("custom_score");
+    expect(screen.queryByRole("textbox", { name: /row 2 measurement code/i })).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: /row 1 value/i })).toHaveValue("");
     expect(screen.getByRole("textbox", { name: /row 3 value/i })).toHaveValue("");
     expect(screen.getByRole("textbox", { name: /row 2 unit/i })).toHaveValue("points");
@@ -928,5 +984,166 @@ describe("App — measurement detail", () => {
       });
     });
     await waitFor(() => expect(screen.queryByRole("dialog", { name: /edit observation/i })).not.toBeInTheDocument());
+  });
+
+  it("opens the exact recorded group from a measurement row and edits it as one record", async () => {
+    globalThis.history.replaceState({}, "", "/track/glucose");
+    const group = {
+      id: "morning-vitals-1",
+      kind: "custom",
+      label: "Morning vitals",
+      collectedAt: "2026-08-07T08:15:00.000Z",
+      source: {
+        kind: "manual-entry", label: "Manual observations", importFileName: "import_0385e9b8d0.json",
+        importedAt: "2026-08-07T08:16:00.000Z"
+      },
+      editable: true,
+      observations: [{
+        id: "glucose-group-1",
+        measurementCode: "glucose",
+        displayName: "Glucose",
+        observedAt: "2026-08-07T08:15:00.000Z",
+        value: 5.2,
+        unit: "mmol/L",
+        note: "Fasting",
+        status: "normal"
+      }]
+    };
+    global.fetch = mockFetch({
+      "/api/store": { ...makeEmptyStore(), measurementTypes: defaultMeasurementTypes },
+      "/api/analytics": makeEmptyAnalytics(),
+      "/api/profiles": { profiles: [], activeProfileId: "self" },
+      "/api/summary/glucose/chart": {
+        generatedAt: "2026-08-07T08:15:00.000Z", measurementCode: "glucose", range: "all",
+        requestedMode: "auto", granularity: "raw", aggregation: "average", points: [],
+        totalPoints: 0, truncated: false
+      },
+      "/api/summary/glucose": {
+        generatedAt: "2026-08-07T08:15:00.000Z",
+        measurement: {
+          code: "glucose", displayName: "Glucose", category: "lab",
+          counts: { observations: 1, samples: 0, activities: 0, total: 1 },
+          lastMeasuredAt: "2026-08-07T08:15:00.000Z"
+        },
+        entries: [{
+          kind: "observation", id: "glucose-group-1", measurementCode: "glucose", displayName: "Glucose",
+          timestamp: "2026-08-07T08:15:00.000Z", value: 5.2, unit: "mmol/L",
+          sourceLabel: "Manual observations", sourceKind: "manual-entry", canDelete: true,
+          observationGroup: {
+            id: "morning-vitals-1", kind: "custom", label: "Morning vitals",
+            collectedAt: "2026-08-07T08:15:00.000Z"
+          }
+        }],
+        chartPoints: [],
+        isPinned: false,
+        referenceRange: { source: "none" },
+        counts: { observations: 1, samples: 0, activities: 0, total: 1 },
+        deletion: { observationEntries: 1, deletableEntries: 1 },
+        pagination: { limit: 50, loaded: 1, total: 1, hasMore: false }
+      },
+      "/api/observation-groups/morning-vitals-1": group
+    });
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "View Morning vitals group" }));
+
+    expect(globalThis.location.pathname).toBe("/track/groups/morning-vitals-1");
+    expect(await screen.findByRole("heading", { name: "Morning vitals" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Glucose" })).toBeInTheDocument();
+    expect(screen.getByText("Fasting")).toBeInTheDocument();
+    expect(screen.getByText("Record source")).toBeInTheDocument();
+    expect(screen.getByText("Imported")).toBeInTheDocument();
+    expect(screen.queryByText("import_0385e9b8d0.json")).not.toBeInTheDocument();
+
+    const historyBack = vi.spyOn(globalThis.history, "back").mockImplementation(() => undefined);
+    fireEvent.click(screen.getByRole("button", { name: /back to measurements/i }));
+    expect(historyBack).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit group" }));
+    expect(screen.getByRole("button", { name: "Remove glucose observation" })).toHaveAttribute("title", "Remove observation");
+    fireEvent.change(screen.getByLabelText("Group label"), { target: { value: "Discarded label" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByRole("heading", { name: "Morning vitals" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit group" }));
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "5.6" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => {
+      const saveRequest = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([url, init]) =>
+        String(url).includes("/api/observation-groups/morning-vitals-1") && init?.method === "PATCH"
+      );
+      expect(JSON.parse(String(saveRequest?.[1]?.body))).toMatchObject({
+        expectedCollectedAt: "2026-08-07T08:15:00.000Z",
+        label: "Morning vitals",
+        updates: [{ id: "glucose-group-1", value: 5.6, unit: "mmol/L" }],
+        creates: [],
+        removals: []
+      });
+    });
+  });
+
+  it("filters group editor measurement choices to the recorded group category", async () => {
+    globalThis.history.replaceState({}, "", "/track/groups/body-scan-1");
+    global.fetch = mockFetch({
+      "/api/store": { ...makeEmptyStore(), measurementTypes: defaultMeasurementTypes },
+      "/api/analytics": makeEmptyAnalytics(),
+      "/api/profiles": { profiles: [], activeProfileId: "self" },
+      "/api/observation-groups/body-scan-1": {
+        id: "body-scan-1",
+        kind: "body_composition_report",
+        label: "Body scan",
+        collectedAt: "2026-08-07T08:15:00.000Z",
+        source: { kind: "body-composition-report", label: "Body composition report" },
+        editable: true,
+        observations: [{
+          id: "body-fat-1",
+          measurementCode: "body_fat_pct",
+          displayName: "Body fat percentage",
+          observedAt: "2026-08-07T08:15:00.000Z",
+          value: 24.5,
+          unit: "%"
+        }]
+      }
+    });
+
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "Body scan" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit group" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open measurement choices" }));
+
+    expect(screen.getByRole("listbox")).toHaveClass("is-upward");
+    expect(screen.getByRole("option", { name: /Weight/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Glucose/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: /Weight/ }));
+    expect(screen.getByDisplayValue("kg")).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox", { name: "Measurement for row 1" }), { target: { value: "custom" } });
+    fireEvent.click(screen.getByRole("option", { name: "Use a custom measurement" }));
+    fireEvent.change(screen.getByRole("textbox", { name: /custom measurement name for row 1/i }), { target: { value: "Scan score" } });
+    expect(screen.queryByRole("textbox", { name: /measurement code/i })).not.toBeInTheDocument();
+  });
+
+  it("explains why an imported recorded group is read-only", async () => {
+    globalThis.history.replaceState({}, "", "/track/groups/imported-panel-1");
+    global.fetch = mockFetch({
+      "/api/store": { ...makeEmptyStore(), measurementTypes: defaultMeasurementTypes },
+      "/api/analytics": makeEmptyAnalytics(),
+      "/api/profiles": { profiles: [], activeProfileId: "self" },
+      "/api/observation-groups/imported-panel-1": {
+        id: "imported-panel-1",
+        kind: "lab_panel",
+        label: "Imported panel",
+        collectedAt: "2026-08-07T08:15:00.000Z",
+        source: { kind: "blood-test-csv", label: "Lab CSV", importFileName: "panel.csv" },
+        editable: false,
+        readOnlyReason: "This group is synchronized from another source and cannot be edited here.",
+        observations: []
+      }
+    });
+
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "Imported panel" })).toBeInTheDocument();
+    expect(screen.getByText(/cannot be edited here/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit group" })).not.toBeInTheDocument();
   });
 });

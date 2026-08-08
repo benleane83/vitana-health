@@ -13,6 +13,7 @@ import { appBuildLabel } from "./src/appBuildInfo";
 import { EntitlementProvider } from "./src/EntitlementProvider";
 import { ELASTIC_LICENSE_2_0_DISPLAY_TEXT, SOFTWARE_COPYRIGHT } from "./src/legal";
 import { PairScreen } from "./src/PairScreen";
+import { parsePairingPayload } from "./src/pairingPayload";
 import type { RootStackParamList, TabParamList } from "./src/navigationTypes";
 import { assertTransportSecurity } from "./src/transportSecurity";
 import { DashboardScreen } from "./src/screens/DashboardScreen";
@@ -31,6 +32,15 @@ import { colors, radii, spacing, type } from "./src/ui/theme";
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tabs = createBottomTabNavigator<TabParamList>();
 
+const linking = {
+  prefixes: ["vitana://"],
+  config: {
+    screens: {
+      Pair: "pair"
+    }
+  }
+};
+
 export default function App() {
   return (
     <SafeAreaProvider>
@@ -38,7 +48,7 @@ export default function App() {
         <TransportSecurityGate>
           <EntitlementProvider>
             <MobileApiProvider>
-              <NavigationContainer>
+              <NavigationContainer linking={linking}>
                 <Stack.Navigator>
                   <Stack.Screen name="Main" component={MainTabs} options={{ headerShown: false }} />
                   <Stack.Screen name="Pair" component={PairRoute} options={{ presentation: "modal", title: "Pair this phone" }} />
@@ -122,10 +132,19 @@ function MainTabs() {
   );
 }
 
-function PairRoute({ navigation }: NativeStackScreenProps<RootStackParamList, "Pair">) {
+function PairRoute({ navigation, route }: NativeStackScreenProps<RootStackParamList, "Pair">) {
   const { reloadConnection } = useMobileApi();
+  let initialPayload;
+  try {
+    initialPayload = route.params?.url && route.params.pairingCode
+      ? parsePairingPayload(`vitana://pair?${new URLSearchParams(route.params as Record<string, string>).toString()}`, !__DEV__)
+      : undefined;
+  } catch {
+    initialPayload = undefined;
+  }
   return (
     <PairScreen
+      initialPayload={initialPayload}
       onComplete={() => {
         void reloadConnection().then(() => navigation.replace("Connection", { activatePairing: true }));
       }}

@@ -538,6 +538,32 @@ export interface Observation {
   sourceJson?: unknown;
 }
 
+export interface ObservationGroupDetail {
+  id: string;
+  kind: ObservationGroupKind;
+  label: string;
+  collectedAt?: string;
+  source: {
+    kind: SourceKind;
+    label: string;
+    importFileName?: string;
+    importedAt?: string;
+  };
+  editable: boolean;
+  readOnlyReason?: string;
+  observations: Array<{
+    id: string;
+    measurementCode: string;
+    displayName: string;
+    observedAt: string;
+    value: number;
+    unit: string;
+    note?: string;
+    referenceRange?: ReferenceRange;
+    status?: "low" | "normal" | "high" | "unknown";
+  }>;
+}
+
 export interface UpdateObservationResponse {
   updatedObservation: Observation;
   counts: AppBootstrap["counts"];
@@ -607,6 +633,7 @@ export interface AuditEvent {
     | "insight-generated"
     | "export-created"
     | "observation-updated"
+    | "observation-group-updated"
     | "observation-deleted"
     | "observation-type-deleted"
     | "daily-step-aggregates-deleted"

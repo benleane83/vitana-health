@@ -1644,6 +1644,7 @@ h3 {
 }
 
 .summary-row-edit,
+.summary-row-view-group,
 .summary-row-delete {
   display: inline-grid;
   place-items: center;
@@ -1664,6 +1665,7 @@ h3 {
 }
 
 .summary-row-edit svg,
+.summary-row-view-group svg,
 .summary-row-delete svg {
   width: 1rem;
   height: 1rem;
@@ -1672,6 +1674,13 @@ h3 {
 
 @media (hover: hover) and (pointer: fine) {
   .summary-row-edit:hover:not(:disabled) {
+    background: var(--surface-3);
+    border-color: var(--line-strong);
+    color: var(--text);
+    transform: none;
+  }
+
+  .summary-row-view-group:hover:not(:disabled) {
     background: var(--surface-3);
     border-color: var(--line-strong);
     color: var(--text);
@@ -1687,6 +1696,7 @@ h3 {
 }
 
 .summary-row-edit:active:not(:disabled),
+.summary-row-view-group:active:not(:disabled),
 .summary-row-delete:active:not(:disabled) {
   transform: none;
 }
@@ -2206,6 +2216,159 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+.summary-entry-context span {
+  display: block;
+}
+
+.observation-group-page {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.observation-group-metadata,
+.observation-group-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--space-4);
+}
+
+.observation-group-metadata {
+  margin: 0;
+}
+
+.observation-group-metadata div,
+.observation-group-fields label {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.observation-group-metadata dt {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.observation-group-metadata dd {
+  margin: 0;
+}
+
+.observation-group-page table input,
+.observation-group-page table select {
+  min-width: 8rem;
+}
+
+.observation-group-actions {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.observation-group-editor > .query-table-scroll {
+  margin-top: var(--space-5);
+}
+
+.observation-group-add {
+  margin-top: var(--space-5);
+}
+
+.observation-group-row-remove {
+  display: inline-grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0;
+  border-radius: var(--radius-md);
+  border-color: oklch(70% 0.18 35 / 0.28);
+  background: transparent;
+  color: var(--danger);
+  transform: none;
+}
+
+.observation-group-row-remove svg {
+  width: 1rem;
+  height: 1rem;
+  fill: currentColor;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .observation-group-row-remove:hover:not(:disabled) {
+    background: oklch(70% 0.18 35 / 0.14);
+    border-color: oklch(70% 0.18 35 / 0.5);
+    color: oklch(78% 0.19 35);
+    transform: none;
+  }
+}
+
+.observation-group-row-remove:active:not(:disabled) {
+  transform: none;
+}
+
+@media (max-width: 620px) {
+  .observation-group-editor .query-table-scroll {
+    overflow: visible;
+  }
+
+  .observation-group-editor table,
+  .observation-group-editor tbody,
+  .observation-group-editor tr,
+  .observation-group-editor td {
+    display: block;
+    width: 100%;
+  }
+
+  .observation-group-editor thead {
+    display: none;
+  }
+
+  .observation-group-editor tbody {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .observation-group-editor tr {
+    padding: var(--space-4);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--surface-2);
+  }
+
+  .observation-group-editor td {
+    display: grid;
+    grid-template-columns: minmax(5.5rem, 36%) minmax(0, 1fr);
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) 0;
+    border: 0;
+  }
+
+  .observation-group-editor td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 0.8rem;
+    font-weight: 700;
+  }
+
+  .observation-group-editor td input,
+  .observation-group-editor td select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .observation-group-editor .observation-group-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+.link-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  text-align: left;
+  text-decoration: underline;
+}
+
 .summary-entry-action {
   width: 1%;
 }
@@ -2424,6 +2587,11 @@ h3 {
 
 .measurement-combobox-menu.is-open {
   display: block;
+}
+
+.measurement-combobox-menu.is-upward {
+  top: auto;
+  bottom: calc(100% + var(--space-1));
 }
 
 .measurement-combobox-option,

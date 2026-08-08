@@ -47,6 +47,71 @@ afterEach(() => {
 });
 
 describe("DuckDbRepository fidelity", () => {
+  it.skipIf(!httpfsExtensionPath)("retrieves and atomically edits a phone-scanned report group without overwriting distinct timestamps", async () => {
+    const databasePath = join(root, "databases", "observation-group-edit.duckdb-poc");
+    const fixture = createDuckDbHealthStoreFixture();
+    fixture.sourceImports[0]!.sourceKind = "blood-test-report";
+    fixture.sourceImports[0]!.fileName = "scan-2026-07-12.pdf";
+    fixture.dataSources[0]!.sourceKind = "blood-test-report";
+    fixture.dataSources[0]!.label = "Blood test report: scanned from phone";
+    fixture.observations.push({
+      id: "observation-distinct",
+      measurementCode: "weight",
+      observedAt: "2026-07-12T10:04:00.000Z",
+      value: 79,
+      unit: "kg",
+      sourceId: "source-1",
+      observationGroupId: "group-1"
+    });
+    const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
+    try {
+      expect(await repository.getObservationGroup("group-1")).toMatchObject({
+        id: "group-1",
+        editable: true,
+        source: { kind: "blood-test-report", label: "Blood test report: scanned from phone" },
+        observations: [{ id: "observation-z" }, { id: "observation-distinct" }]
+      });
+
+      const updated = await repository.updateObservationGroup("group-1", {
+        expectedCollectedAt: "2026-07-12T10:02:00.000Z",
+        label: "Morning readings",
+        collectedAt: "2026-07-13T08:15:00.000Z",
+        creates: [{ measurementCode: "weight", value: 78, unit: "kg", note: "Added" }],
+        updates: [{
+          id: "observation-z",
+          measurementCode: "weight",
+          value: 80,
+          unit: "kg",
+          note: "Corrected"
+        }],
+        removals: []
+      });
+
+      expect(updated).toMatchObject({
+        label: "Morning readings",
+        collectedAt: "2026-07-13T08:15:00.000Z"
+      });
+      expect(updated!.observations).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: "observation-z", observedAt: "2026-07-13T08:15:00.000Z", value: 80, note: "Corrected" }),
+        expect.objectContaining({ id: "observation-distinct", observedAt: "2026-07-12T10:04:00.000Z" }),
+        expect.objectContaining({ observedAt: "2026-07-13T08:15:00.000Z", value: 78, note: "Added" })
+      ]));
+      const beforeRejectedUpdate = await repository.snapshot();
+      await expect(repository.updateObservationGroup("group-1", {
+        expectedCollectedAt: "2026-07-12T10:02:00.000Z",
+        label: "Should not persist",
+        collectedAt: "2026-07-14T08:15:00.000Z",
+        creates: [],
+        updates: [],
+        removals: []
+      })).rejects.toThrow("changed before these edits");
+      expect(await repository.snapshot()).toEqual(beforeRejectedUpdate);
+      expect(beforeRejectedUpdate.auditEvents[0]).toMatchObject({ eventType: "observation-group-updated" });
+    } finally {
+      await repository.close();
+    }
+  }, 30_000);
+
   it.skipIf(!httpfsExtensionPath)("exports every backup collection through bounded stable pages", async () => {
     const databasePath = join(root, "databases", "health-store-paged-export.duckdb-poc");
     const fixture = createDuckDbHealthStoreFixture();

@@ -19,12 +19,14 @@ import type {
   JournalQuery,
   MobileMigrationBatch,
   MobileMigrationManifest,
+  ObservationGroupDetail,
   PersonalReferenceRangeInput,
   HealthEventMutationResponse,
   SleepSessionListQueryContract,
   UpdateCareItemInput,
   UpdateHealthEventInput,
   UpdateObservationInput,
+  UpdateObservationGroupInput,
   UpdateObservationResponse
 } from "@vitana/shared";
 import type { StoreSecurityMode } from "./types.js";
@@ -252,6 +254,17 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
     return this.enqueueMutation(async () => {
       return this.repository.updateObservation(id, input);
     });
+  }
+
+  getObservationGroup(id: string): Promise<ObservationGroupDetail | undefined> {
+    return this.repository.getObservationGroup(id);
+  }
+
+  updateObservationGroup(
+    id: string,
+    input: UpdateObservationGroupInput
+  ): Promise<ObservationGroupDetail | undefined> {
+    return this.enqueueMutation(() => this.repository.updateObservationGroup(id, input));
   }
 
   deleteObservationsByMeasurementCode(measurementCode: string): Promise<DeleteObservationsByTypeResponse> {

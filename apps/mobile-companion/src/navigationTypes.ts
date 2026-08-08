@@ -1,6 +1,6 @@
 export type RootStackParamList = {
   Main: undefined;
-  Pair: undefined;
+  Pair: { app?: string; url?: string; pairingCode?: string; publicKeyHash?: string } | undefined;
   Connection: { activatePairing?: boolean } | undefined;
   License: undefined;
   TrackMetrics: undefined;

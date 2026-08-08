@@ -661,7 +661,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     category: "lab",
     kind: "panel-component",
     canonicalUnit: "U/L",
-    aliases: ["aspartate aminotransferase", "ast", "sgot"],
+    aliases: ["aspartate aminotransferase", "ast", "sgot", "ast aspartate aminotransferase"],
     loincCode: "1920-8",
     aggregation: "latest"
   },
@@ -753,7 +753,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     category: "lab",
     kind: "panel-component",
     canonicalUnit: "mmol/L",
-    aliases: ["urea", "blood urea nitrogen", "bun"],
+    aliases: ["urea", "blood urea nitrogen", "bun", "urea nitrogen"],
     loincCode: "6299-2",
     aggregation: "latest"
   },
@@ -825,7 +825,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     category: "lab",
     kind: "panel-component",
     canonicalUnit: "g/L",
-    aliases: ["total protein", "serum total protein"],
+    aliases: ["total protein", "serum total protein", "protein total"],
     loincCode: "2885-2",
     normalLow: 60,
     normalHigh: 80,
@@ -928,7 +928,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     category: "lab",
     kind: "panel-component",
     canonicalUnit: "×10¹²/L",
-    aliases: ["red blood cell count", "red blood cells", "rbc"],
+    aliases: ["red blood cell count", "red blood cells", "rbc", "red cell count"],
     loincCode: "789-8",
     aggregation: "latest"
   },
@@ -1121,7 +1121,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     category: "lab",
     kind: "panel-component",
     canonicalUnit: "%",
-    aliases: ["transferrin saturation", "iron saturation", "tsat"],
+    aliases: ["transferrin saturation", "iron saturation", "tsat", "transferrin saturation %sat"],
     loincCode: "2502-3",
     aggregation: "latest"
   },
@@ -1277,7 +1277,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     category: "lab",
     kind: "panel-component",
     canonicalUnit: "nmol/L",
-    aliases: ["total testosterone", "testosterone"],
+    aliases: ["total testosterone", "testosterone", "testosterone total"],
     loincCode: "14913-8",
     aggregation: "latest"
   },

@@ -310,6 +310,11 @@ export function fallbackBodyCompositionCode(value: string): string {
   return normalized ? `body_comp_${normalized}` : `body_comp_${stableId("field", [value])}`;
 }
 
+export function isAdministrativeMeasurementLabel(value: string): boolean {
+  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ");
+  return normalized.includes("lab no") || normalized.includes("license no");
+}
+
 export function toDisplayName(value: string): string {
   return value.trim().replace(/[_-]+/g, " ").replace(/\s+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }

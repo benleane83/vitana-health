@@ -35,6 +35,22 @@ describe("parseStructuredUpload — long format", () => {
     expect(glucoseRow?.confidence).toBe("high");
   });
 
+  it("maps known aliases with decorative punctuation", () => {
+    const draft = parseStructuredUpload(
+      "labs.csv",
+      [
+        "observedAt,measurement,value,unit",
+        "2026-07-01T08:00:00Z,Protein (Total),7.1,g/dL",
+        "2026-07-01T08:00:00Z,Direct Bilirubin*,0.2,mg/dL"
+      ].join("\n")
+    );
+
+    expect(draft.rows).toEqual([
+      expect.objectContaining({ measurementCode: "total_protein", included: true, confidence: "high" }),
+      expect.objectContaining({ measurementCode: "bilirubin_direct", included: true, confidence: "high" })
+    ]);
+  });
+
   it("excludes unknown/ambiguous measurements by default and flags them", () => {
     const draft = parseStructuredUpload("labs.csv", longFormatCsv);
     const unknownRow = draft.rows.find((row) => row.value === 12);
@@ -50,6 +66,21 @@ describe("parseStructuredUpload — long format", () => {
     );
     expect(draft.rows).toHaveLength(0);
     expect(draft.diagnostics.some((message) => message.includes("no numeric value"))).toBe(true);
+  });
+
+  it("skips administrative identifier labels instead of drafting them for review", () => {
+    const draft = parseStructuredUpload(
+      "labs.csv",
+      [
+        "observedAt,measurement,value,unit",
+        "2026-07-01T08:00:00Z,Lab No: 123456,123456,number",
+        "2026-07-01T08:00:00Z,License No. 7890,7890,number",
+        "2026-07-01T08:00:00Z,glucose,95,mg/dL"
+      ].join("\n")
+    );
+
+    expect(draft.rows).toEqual([expect.objectContaining({ measurementCode: "glucose" })]);
+    expect(draft.diagnostics.filter((message) => message.includes("administrative identifier"))).toHaveLength(2);
   });
 });
 

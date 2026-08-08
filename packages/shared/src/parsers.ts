@@ -1,5 +1,5 @@
 export * from "./parserTypes.js";
-export { checksum, parseCsv } from "./parserPrimitives.js";
+export { checksum, fallbackMeasurementCode, parseCsv } from "./parserPrimitives.js";
 export {
   buildManualLabEntryImport,
   buildManualObservationImport,

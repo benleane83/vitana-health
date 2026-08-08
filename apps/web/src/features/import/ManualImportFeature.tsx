@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   defaultMeasurementTypes,
+  fallbackMeasurementCode,
   filterManualGroupTemplates,
   findKnownMeasurement,
   getPreferredUnit,
@@ -321,7 +322,7 @@ function toManualPayload({
       findKnownMeasurement(markerName, measurementTypes);
     return {
       measurementName: markerName || known?.display,
-      measurementCode: row.measurementCode?.trim() || known?.code,
+      measurementCode: row.measurementCode?.trim() || known?.code || fallbackMeasurementCode(markerName),
       value,
       unit: row.unit.trim() || known?.canonicalUnit
     };

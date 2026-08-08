@@ -4,6 +4,7 @@ import {
   checksum,
   escapeRegExp,
   fallbackBodyCompositionCode,
+  isAdministrativeMeasurementLabel,
   looksLikeDateOnly,
   normalizeBodyCompositionUnit,
   readDate,
@@ -45,6 +46,10 @@ export function parseBodyCompositionText(fileName: string, sourceText: string, i
     const parseLine = /\bbmr\b/i.test(line) && lines[index + 1] ? `${line} ${lines[index + 1]}` : line;
     const candidates = parseBodyCompositionLine(parseLine);
     for (const candidate of candidates) {
+      if (isAdministrativeMeasurementLabel(candidate.label)) {
+        diagnostics.push(`Skipped administrative identifier: "${candidate.label}".`);
+        continue;
+      }
       const measurementType = findMeasurementType(candidate.label);
       const measurementCode = measurementType?.code ?? fallbackBodyCompositionCode(candidate.label);
       const displayName = measurementType?.display ?? toDisplayName(candidate.label);

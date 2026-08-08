@@ -22,6 +22,9 @@ export function MeasurementCombobox({
   ariaLabel,
   measurementTypes,
   selectedCode,
+  selectedLabel,
+  autoFocus = false,
+  menuPlacement = "below",
   onSelect,
   onSelectCustom,
   customLabel = "Use a custom measurement"
@@ -30,15 +33,19 @@ export function MeasurementCombobox({
   ariaLabel: string;
   measurementTypes: MeasurementType[];
   selectedCode: string;
+  selectedLabel?: string;
+  autoFocus?: boolean;
+  menuPlacement?: "above" | "below";
   onSelect: (measurement: MeasurementType) => void;
   onSelectCustom?: () => void;
   customLabel?: string;
 }) {
   const selectedMeasurement = measurementTypes.find((type) => type.code === selectedCode);
-  const [inputValue, setInputValue] = useState(selectedMeasurement?.display ?? "");
+  const selectedDisplay = selectedMeasurement?.display ?? selectedLabel ?? "";
+  const [inputValue, setInputValue] = useState(selectedDisplay);
   const measurementItems = useMemo(
-    () => findMeasurementMatches(measurementTypes, inputValue, selectedMeasurement?.display),
-    [inputValue, measurementTypes, selectedMeasurement?.display]
+    () => findMeasurementMatches(measurementTypes, inputValue, selectedDisplay),
+    [inputValue, measurementTypes, selectedDisplay]
   );
   const items = useMemo<ComboboxItem[]>(
     () => onSelectCustom ? [...measurementItems, customItem] : measurementItems,
@@ -49,8 +56,12 @@ export function MeasurementCombobox({
     : null, [selectedMeasurement]);
 
   useEffect(() => {
-    setInputValue(selectedMeasurement?.display ?? "");
-  }, [selectedMeasurement?.code, selectedMeasurement?.display]);
+    setInputValue(selectedDisplay);
+  }, [selectedCode, selectedDisplay]);
+
+  useEffect(() => {
+    if (autoFocus) document.getElementById(id)?.focus();
+  }, [autoFocus, id]);
 
   const {
     getInputProps,
@@ -67,7 +78,7 @@ export function MeasurementCombobox({
     itemToString: (item) => item?.kind === "measurement" ? item.measurement.display : "",
     onInputValueChange: ({ inputValue: nextInputValue }) => setInputValue(nextInputValue ?? ""),
     onIsOpenChange: ({ isOpen: nextIsOpen }) => {
-      if (!nextIsOpen) setInputValue(selectedMeasurement?.display ?? "");
+      if (!nextIsOpen) setInputValue(selectedDisplay);
     },
     onSelectedItemChange: ({ selectedItem }) => {
       if (!selectedItem) return;
@@ -103,7 +114,7 @@ export function MeasurementCombobox({
           </svg>
         </button>
       </div>
-      <ul {...getMenuProps()} className={`measurement-combobox-menu${isOpen ? " is-open" : ""}`}>
+      <ul {...getMenuProps()} className={`measurement-combobox-menu${isOpen ? " is-open" : ""}${menuPlacement === "above" ? " is-upward" : ""}`}>
         {isOpen && measurementItems.length === 0 ? (
           <li className="measurement-combobox-empty">No known measurements match.</li>
         ) : null}

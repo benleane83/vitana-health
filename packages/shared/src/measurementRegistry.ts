@@ -9,13 +9,21 @@ import type {
 import { defaultMeasurementTypes } from "./registry.js";
 
 export function findMeasurementType(input: string, registry = defaultMeasurementTypes): MeasurementType | undefined {
-  const normalized = input.trim().toLowerCase().replaceAll("_", " ");
+  const normalized = normalizeMeasurementLookup(input);
   return registry.find((type) => {
-    if (type.code.replaceAll("_", " ") === normalized) {
+    if (normalizeMeasurementLookup(type.code) === normalized) {
       return true;
     }
-    return type.aliases.some((alias) => alias.trim().toLowerCase().replaceAll("_", " ") === normalized);
+    return type.aliases.some((alias) => normalizeMeasurementLookup(alias) === normalized);
   });
+}
+
+function normalizeMeasurementLookup(value: string): string {
+  return value.trim().toLowerCase()
+    .replaceAll("_", " ")
+    .replace(/[()[\]{}*†‡]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export function classifyValue(

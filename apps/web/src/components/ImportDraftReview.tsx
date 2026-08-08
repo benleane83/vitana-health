@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { getPreferredUnit, type MeasurementType, type UnitSystem } from "@vitana/shared";
+import { fallbackMeasurementCode, getPreferredUnit, type MeasurementType, type UnitSystem } from "@vitana/shared";
 import type { UploadEditableRow } from "../types.js";
 import { MeasurementCombobox } from "./MeasurementCombobox.js";
 
@@ -65,7 +65,7 @@ export function ImportDraftReview({
     const rowNumber = originalIndex + 1;
     const forcedCustom = Boolean(customMeasurementRows[row.id]);
     const selectedMeasurementCode = forcedCustom ? "" : resolveKnownMeasurementSelection(row, measurementTypes);
-    const showCustomFields = selectedMeasurementCode === "";
+    const showCustomFields = forcedCustom || (!row.manuallyAdded && selectedMeasurementCode === "");
     return (
       <div className="bodycomp-row" role="row" key={row.id} data-included={row.included}>
         <span role="cell" className="bodycomp-include-cell">
@@ -95,9 +95,15 @@ export function ImportDraftReview({
             ariaLabel={`Row ${rowNumber} known measurement`}
             measurementTypes={measurementTypes}
             selectedCode={selectedMeasurementCode}
+            autoFocus={row.manuallyAdded === true}
             customLabel="Use a custom measurement"
             onSelectCustom={() => {
               setCustomMeasurementRows((current) => ({ ...current, [row.id]: true }));
+              onRowChange(row.id, {
+                displayName: "",
+                measurementCode: "",
+                generatedCode: true
+              });
             }}
             onSelect={(selectedMeasurement) => {
               setCustomMeasurementRows((current) => {
@@ -121,17 +127,12 @@ export function ImportDraftReview({
               <input
                 id={`upload-displayname-${row.id}`}
                 value={row.displayName}
-                onChange={(event) => onRowChange(row.id, { displayName: event.target.value })}
+                onChange={(event) => onRowChange(row.id, {
+                  displayName: event.target.value,
+                  measurementCode: fallbackMeasurementCode(event.target.value),
+                  generatedCode: true
+                })}
                 aria-label={`Row ${rowNumber} display name`}
-              />
-              <label htmlFor={`upload-code-${row.id}`} className="sr-only">
-                Row {rowNumber} measurement code
-              </label>
-              <input
-                id={`upload-code-${row.id}`}
-                value={row.measurementCode}
-                onChange={(event) => onRowChange(row.id, { measurementCode: event.target.value })}
-                aria-label={`Row ${rowNumber} measurement code`}
               />
             </>
           ) : null}

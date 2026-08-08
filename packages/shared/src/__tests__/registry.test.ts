@@ -109,6 +109,11 @@ describe("findMeasurementType", () => {
     expect(findMeasurementType("heart rate")?.code).toBe("heart_rate");
   });
 
+  it("ignores decorative punctuation in measurement labels", () => {
+    expect(findMeasurementType("Protein (Total)")?.code).toBe("total_protein");
+    expect(findMeasurementType("Direct Bilirubin*")?.code).toBe("bilirubin_direct");
+  });
+
   it("does not resolve retired Samsung-prefixed alias", () => {
     expect(findMeasurementType("com.samsung.health.step_count")).toBeUndefined();
   });

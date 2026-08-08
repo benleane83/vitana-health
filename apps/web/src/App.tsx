@@ -31,6 +31,9 @@ export function App() {
   const [summaryDetailCode, setSummaryDetailCode] = useState<string | undefined>(
     () => summaryDetailCodeFromPathname(window.location.pathname)
   );
+  const [observationGroupId, setObservationGroupId] = useState<string | undefined>(
+    () => observationGroupIdFromPathname(window.location.pathname)
+  );
   const [trackView, setTrackView] = useState<TrackView>(() => trackViewFromPathname(window.location.pathname));
   const [bodyTrendDate, setBodyTrendDate] = useState<string | undefined>(
     () => bodyTrendDateFromPathname(window.location.pathname)
@@ -76,6 +79,7 @@ export function App() {
       setImportMode(importModeFromPathname(window.location.pathname));
       setSettingsView(settingsViewFromPathname(window.location.pathname));
       setSummaryDetailCode(summaryDetailCodeFromPathname(window.location.pathname));
+      setObservationGroupId(observationGroupIdFromPathname(window.location.pathname));
       setTrackView(trackViewFromPathname(window.location.pathname));
       setBodyTrendDate(bodyTrendDateFromPathname(window.location.pathname));
     };
@@ -101,10 +105,10 @@ export function App() {
     };
   }, [profileMenuOpen]);
 
-  function pushPath(nextPath: string) {
+  function pushPath(nextPath: string, state: Record<string, unknown> = {}) {
     if (window.location.pathname === nextPath) return;
     setMessage(undefined);
-    window.history.pushState({}, "", nextPath);
+    window.history.pushState(state, "", nextPath);
     pathnameRef.current = nextPath;
   }
 
@@ -123,6 +127,7 @@ export function App() {
     if (nextRoute === "import") setImportMode(nextImportMode);
     if (nextRoute === "track") {
       setSummaryDetailCode(undefined);
+      setObservationGroupId(undefined);
       setTrackView("measurements");
     }
     setRoute(nextRoute);
@@ -163,6 +168,7 @@ export function App() {
     pushPath(nextPath);
     setRoute("track");
     setSummaryDetailCode(measurementCode);
+    setObservationGroupId(undefined);
     setTrackView("measurements");
   }
 
@@ -172,6 +178,7 @@ export function App() {
         : nextView === "journal" ? "/track/journal" : "/track"
     );
     setSummaryDetailCode(undefined);
+    setObservationGroupId(undefined);
     setTrackView(nextView);
     setBodyTrendDate(undefined);
     setRoute("track");
@@ -183,6 +190,22 @@ export function App() {
     setTrackView("body-trend");
     setBodyTrendDate(date);
     setRoute("track");
+  }
+
+  function navigateObservationGroup(groupId: string) {
+    pushPath(`/track/groups/${encodeURIComponent(groupId)}`, { observationGroupReturnPath: window.location.pathname });
+    setSummaryDetailCode(undefined);
+    setObservationGroupId(groupId);
+    setTrackView("measurements");
+    setRoute("track");
+  }
+
+  function navigateBackFromObservationGroup() {
+    if (typeof window.history.state?.observationGroupReturnPath === "string") {
+      window.history.back();
+      return;
+    }
+    navigate("track");
   }
 
   function confirm(
@@ -450,15 +473,18 @@ export function App() {
           <ErrorBoundary label="Track">
             <TrackRoute
               detailCode={summaryDetailCode}
+              observationGroupId={observationGroupId}
               view={trackView}
               activeProfileId={activeProfileId}
               measurementTypes={recordedMeasurementTypes}
+              units={profile?.units ?? "metric"}
               latestMetrics={analytics?.latestMetrics ?? []}
               onViewChange={navigateTrackView}
               bodyTrendDate={bodyTrendDate}
               onSelectBodyTrendDate={navigateBodyTrendDate}
-              onBack={() => navigate("track")}
+              onBack={navigateBackFromObservationGroup}
               onSelectDetail={navigateSummaryDetail}
+              onViewObservationGroup={navigateObservationGroup}
               onDataChanged={() => profileLifecycle.refresh({ profiles: false })}
               onNotice={setMessage}
               confirm={confirm}
@@ -573,13 +599,24 @@ function summaryDetailCodeFromPathname(pathname: string): string | undefined {
   const prefix = pathname.startsWith("/track/") ? "/track/" : undefined;
   if (!prefix) return undefined;
   const raw = pathname.slice(prefix.length);
-  if (!raw || raw === "calendar" || raw === "body-trend" || raw === "journal" || raw.startsWith("body-trend/")) return undefined;
+  if (!raw || raw === "calendar" || raw === "body-trend" || raw === "journal" || raw === "groups" || raw.startsWith("groups/") || raw.startsWith("body-trend/")) return undefined;
   try {
     return decodeURIComponent(raw);
   } catch {
     return raw;
   }
+}
 
+function observationGroupIdFromPathname(pathname: string): string | undefined {
+  const prefix = "/track/groups/";
+  if (!pathname.startsWith(prefix)) return undefined;
+  const raw = pathname.slice(prefix.length);
+  if (!raw || raw.includes("/")) return undefined;
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
 }
 
 function bodyTrendDateFromPathname(pathname: string): string | undefined {

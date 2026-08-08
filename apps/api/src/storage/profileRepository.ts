@@ -33,6 +33,7 @@ import type {
   LinkedCareItemConflict,
   MeasurementAggregate,
   MeasurementPinState,
+  ObservationGroupDetail,
   MobileMigrationBatch,
   MobileMigrationBatchAcknowledgement,
   MobileMigrationManifest,
@@ -52,6 +53,7 @@ import type {
   UpdateCareItemInput,
   UpdateHealthEventInput,
   UpdateObservationInput,
+  UpdateObservationGroupInput,
   UpdateObservationResponse
 } from "@vitana/shared";
 import type {
@@ -105,6 +107,24 @@ export class RepositoryValidationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "RepositoryValidationError";
+  }
+}
+
+export class ObservationGroupReadOnlyError extends Error {
+  readonly code = "OBSERVATION_GROUP_READ_ONLY" as const;
+
+  constructor(message = "Only manually entered observation groups can be edited.") {
+    super(message);
+    this.name = "ObservationGroupReadOnlyError";
+  }
+}
+
+export class ObservationGroupConflictError extends Error {
+  readonly code = "OBSERVATION_GROUP_CONFLICT" as const;
+
+  constructor(message = "The observation group changed before these edits could be saved.") {
+    super(message);
+    this.name = "ObservationGroupConflictError";
   }
 }
 
@@ -207,6 +227,8 @@ export interface ProfileRepository {
   completeCareItem(id: string, input: CompleteCareItemInput): Promise<CompleteCareItemResponse | undefined>;
   deleteCareItem(id: string): Promise<DeleteCareItemResponse | undefined>;
   updateObservation(id: string, input: UpdateObservationInput): Promise<UpdateObservationResponse | undefined>;
+  getObservationGroup(id: string): Promise<ObservationGroupDetail | undefined>;
+  updateObservationGroup(id: string, input: UpdateObservationGroupInput): Promise<ObservationGroupDetail | undefined>;
   deleteObservation(id: string): Promise<DeleteObservationResponse | undefined>;
   deleteObservationsByMeasurementCode(measurementCode: string): Promise<DeleteObservationsByTypeResponse>;
   deleteDailyAggregateStepSamples(): Promise<DeleteObservationsByTypeResponse>;

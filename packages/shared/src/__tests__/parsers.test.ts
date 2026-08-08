@@ -277,6 +277,16 @@ describe("parseBloodTestScanText", () => {
     expect(result.reportDate).toBe("2026-05-18T22:50:00.000Z");
   });
 
+  it("skips administrative identifier lines instead of drafting them as unknown measurements", () => {
+    const result = parseBloodTestScanText(
+      "results.pdf",
+      "Lab No: 123456\nLicense No. 7890\nGlucose 95 mg/dL"
+    );
+
+    expect(result.rows).toEqual([expect.objectContaining({ measurementCode: "glucose" })]);
+    expect(result.diagnostics.filter((message) => message.includes("administrative identifier"))).toHaveLength(2);
+  });
+
   it("prioritizes report dates and excludes the active profile birth date", () => {
     const result = parseBloodTestScanText(
       "LabResults_CliniPath_2.pdf",
@@ -364,6 +374,16 @@ describe("parseBodyCompositionText", () => {
     expect(result.rows.filter((row) => row.measurementCode === "muscle_mass")).toHaveLength(1);
     expect(result.rows.filter((row) => row.measurementCode === "skeletal_muscle_mass")).toHaveLength(1);
     expect(result.diagnostics).not.toContain("Skipped measurements in a body composition history section.");
+  });
+
+  it("skips administrative identifier lines instead of drafting them as unknown measurements", () => {
+    const result = parseBodyCompositionText(
+      "body.pdf",
+      "Lab No: 123456\nLicense No. 7890\nWeight 76.7 kg"
+    );
+
+    expect(result.rows).toEqual([expect.objectContaining({ measurementCode: "weight", value: 76.7 })]);
+    expect(result.diagnostics.filter((message) => message.includes("administrative identifier"))).toHaveLength(2);
   });
 });
 

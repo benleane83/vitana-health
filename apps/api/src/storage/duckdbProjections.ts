@@ -32,6 +32,7 @@ import {
   type JournalTimelineItem,
   type MeasurementType,
   type ObservationGroup,
+  type ObservationGroupDetail,
   type PaginatedResult,
   type PersonalReferenceRange,
   type Profile,
@@ -136,6 +137,86 @@ export async function appBootstrap(
     manualObservationGroupTemplates: [...templatesByLabel.values()],
     latestInsight: insightRows[0] ? insightFromRow(insightRows[0]) : undefined,
     counts
+  };
+}
+
+export async function observationGroupDetail(
+  connection: duckdb.Connection,
+  id: string
+): Promise<ObservationGroupDetail | undefined> {
+  const groupRows = await allWithParams(connection, `
+    SELECT
+      g.id, g.kind, g.label, g.collected_at,
+      s.source_kind, COALESCE(s.label, g.source_id) AS source_label,
+      i.file_name, i.imported_at
+    FROM observation_groups g
+    LEFT JOIN sources s ON s.id = g.source_id
+    LEFT JOIN imports i ON i.id = COALESCE(g.import_id, s.import_id)
+    WHERE g.id = ?
+    LIMIT 1;
+  `, id);
+  const group = groupRows[0];
+  if (!group) return undefined;
+
+  const [profileRows, typeRows, rangeRows, observationRows] = await Promise.all([
+    all(connection, "SELECT units, subject_kind FROM profile LIMIT 1;"),
+    all(connection, `SELECT ${measurementTypeColumns} FROM measurement_types;`),
+    all(connection, "SELECT measurement_code, normal_low, normal_high, optimal_low, optimal_high, unit, updated_at FROM personal_reference_ranges;"),
+    allWithParams(connection, `
+      SELECT ${qualifiedObservationColumns}, COALESCE(m.display, o.measurement_code) AS display_name
+      FROM observations o
+      LEFT JOIN measurement_types m ON m.code = o.measurement_code
+      WHERE o.observation_group_id = ?
+      ORDER BY o.observed_at, o.ordinal;
+    `, id)
+  ]);
+  const types = new Map(typeRows.map((row) => {
+    const type = measurementTypeFromRow(row);
+    return [type.code, type];
+  }));
+  const ranges = new Map(rangeRows.map((row) => {
+    const range = personalReferenceRangeFromRow(row);
+    return [range.measurementCode, range];
+  }));
+  const units = String(profileRows[0]?.units ?? "metric") as Profile["units"];
+  const subjectKind = String(profileRows[0]?.subject_kind ?? "adult") as NonNullable<Profile["subjectKind"]>;
+  const sourceKind = String(group.source_kind ?? "derived") as ObservationGroupDetail["source"]["kind"];
+  const editable = sourceKind === "manual-entry" || sourceKind === "blood-test-report" || sourceKind === "body-composition-report";
+
+  return {
+    id: String(group.id),
+    kind: String(group.kind) as ObservationGroup["kind"],
+    label: String(group.label),
+    collectedAt: optionalTimestamp(group.collected_at),
+    source: {
+      kind: sourceKind,
+      label: String(group.source_label ?? "Unknown source"),
+      importFileName: optionalString(group.file_name),
+      importedAt: optionalTimestamp(group.imported_at)
+    },
+    editable,
+    readOnlyReason: editable ? undefined : "This group is synchronized from another source and cannot be edited here.",
+    observations: observationRows.map((row) => {
+      const observation = observationFromRow(row);
+      const type = types.get(observation.measurementCode);
+      const display = type
+        ? toPreferredMeasurementValue(observation.value, observation.unit, type, units)
+        : observation;
+      const referenceRange = type
+        ? resolveReferenceRange(type, display.unit, ranges.get(observation.measurementCode), subjectKind).effective
+        : undefined;
+      return {
+        id: observation.id,
+        measurementCode: observation.measurementCode,
+        displayName: String(row.display_name),
+        observedAt: observation.observedAt,
+        value: display.value,
+        unit: display.unit,
+        note: observation.note,
+        referenceRange,
+        status: classifyValueWithRange(display.value, referenceRange)
+      };
+    })
   };
 }
 

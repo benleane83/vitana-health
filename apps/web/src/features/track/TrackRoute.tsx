@@ -11,6 +11,7 @@ import type {
   LatestMetric,
   PersonalReferenceRangeInput,
   SleepSessionPage,
+  UnitSystem,
   UpdateObservationInput
 } from "@vitana/shared";
 import { api } from "../../api.js";
@@ -20,6 +21,7 @@ import type { TrackView } from "../../types.js";
 import { BodyTrendRoute } from "./BodyTrendRoute.js";
 import { CalendarRoute } from "./CalendarRoute.js";
 import { JournalRoute } from "./JournalRoute.js";
+import { ObservationGroupRoute } from "./ObservationGroupRoute.js";
 import { ProLockedView } from "../../components/ProLockedView.js";
 
 type RemoteState<T> = {
@@ -37,15 +39,18 @@ type ConfirmAction = (
 
 export function TrackRoute({
   detailCode,
+  observationGroupId,
   view,
   activeProfileId,
   measurementTypes,
+  units,
   latestMetrics,
   onViewChange,
   bodyTrendDate,
   onSelectBodyTrendDate,
   onBack,
   onSelectDetail,
+  onViewObservationGroup,
   onDataChanged,
   onNotice,
   confirm,
@@ -53,15 +58,18 @@ export function TrackRoute({
   bodyTrendAllowed
 }: {
   detailCode?: string;
+  observationGroupId?: string;
   view: TrackView;
   activeProfileId?: string;
   measurementTypes: MeasurementType[];
+  units: UnitSystem;
   latestMetrics: LatestMetric[];
   onViewChange: (view: TrackView) => void;
   bodyTrendDate?: string;
   onSelectBodyTrendDate: (date: string) => void;
   onBack: () => void;
   onSelectDetail: (measurementCode: string) => void;
+  onViewObservationGroup: (groupId: string) => void;
   onDataChanged: () => Promise<void>;
   onNotice: (message: string) => void;
   confirm: ConfirmAction;
@@ -375,6 +383,17 @@ export function TrackRoute({
         />
       ) : view === "journal" ? (
         <JournalRoute activeProfileId={activeProfileId} />
+      ) : observationGroupId ? (
+        <ObservationGroupRoute
+          groupId={observationGroupId}
+          activeProfileId={activeProfileId}
+          measurementTypes={measurementTypes}
+          units={units}
+          onBack={onBack}
+          onSelectMeasurement={onSelectDetail}
+          onDataChanged={onDataChanged}
+          onNotice={onNotice}
+        />
       ) : detailCode ? (
         <ObservationTypeDetailPage
           key={`${activeProfileId ?? ""}:${detailCode}`}
@@ -393,6 +412,7 @@ export function TrackRoute({
           loadMoreBusy={loadMoreBusy}
           onBack={onBack}
           onEditObservation={setObservationBeingEdited}
+          onViewObservationGroup={onViewObservationGroup}
           onDeleteObservation={deleteObservation}
           onDeleteAll={deleteAll}
           onLoadMore={loadMore}

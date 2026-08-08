@@ -468,14 +468,18 @@ function toEditableRow(row: UploadDraftRow): UploadEditableRow {
 }
 
 function toDraftRow(row: UploadEditableRow): UploadDraftRow {
+  const { manuallyAdded: _manuallyAdded, ...draftRow } = row;
   const value = Number.parseFloat(row.value);
-  if (!Number.isFinite(value)) throw new Error(`Enter a numeric value for ${row.displayName || row.label}.`);
-  if (!row.measurementCode.trim()) throw new Error(`Measurement code is required for ${row.displayName || row.label}.`);
-  if (!row.unit.trim()) throw new Error(`Unit is required for ${row.displayName || row.label}.`);
+  const displayName = row.displayName.trim() || row.label.trim();
+  if (!displayName) throw new Error("Measurement name is required.");
+  if (!Number.isFinite(value)) throw new Error(`Enter a numeric value for ${displayName}.`);
+  if (!row.measurementCode.trim()) throw new Error(`Measurement code is required for ${displayName}.`);
+  if (!row.unit.trim()) throw new Error(`Unit is required for ${displayName}.`);
   return {
-    ...row,
+    ...draftRow,
+    label: row.label.trim() || displayName,
     measurementCode: row.measurementCode.trim(),
-    displayName: row.displayName.trim() || row.label.trim(),
+    displayName,
     value,
     unit: row.unit.trim()
   };
