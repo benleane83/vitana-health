@@ -17,6 +17,15 @@ test("Windows smoke derives the NSIS executable name from desktop package metada
   assert.doesNotMatch(script, /\$applicationName = "\$productName\.exe"/);
 });
 
+test("Windows smoke discovers the NSIS uninstaller instead of assuming its filename", () => {
+  const script = readFileSync(new URL("./windows-desktop-smoke.ps1", import.meta.url), "utf8");
+
+  assert.match(script, /Get-ChildItem \$installRoot -Filter "Uninstall\*\.exe" -File/);
+  assert.match(script, /\$uninstallers\.Count -ne 1/);
+  assert.match(script, /\$uninstaller = \$uninstallers\[0\]\.FullName/);
+  assert.doesNotMatch(script, /Join-Path \$installRoot "Uninstall Vitana Health\.exe"/);
+});
+
 test("Windows smoke does not require elevated firewall configuration from the per-user NSIS installer", () => {
   const script = readFileSync(new URL("./windows-desktop-smoke.ps1", import.meta.url), "utf8");
 

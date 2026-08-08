@@ -261,7 +261,11 @@ try {
   }
   Stop-DesktopProcess $secondLaunch
 
-  $uninstaller = Join-Path $installRoot "Uninstall Vitana Health.exe"
+  $uninstallers = @(Get-ChildItem $installRoot -Filter "Uninstall*.exe" -File)
+  if ($uninstallers.Count -ne 1) {
+    throw "Expected exactly one NSIS uninstaller in $installRoot, found $($uninstallers.Count)."
+  }
+  $uninstaller = $uninstallers[0].FullName
   $uninstallProcess = Start-Process -FilePath $uninstaller -ArgumentList "/S" -Wait -PassThru
   if ($uninstallProcess.ExitCode -ne 0) {
     throw "Uninstaller exited with code $($uninstallProcess.ExitCode)."
