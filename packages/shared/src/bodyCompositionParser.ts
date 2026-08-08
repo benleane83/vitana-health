@@ -210,6 +210,7 @@ function parseBodyCompositionLine(line: string): BodyCompositionLineCandidate[] 
   const candidates: BodyCompositionLineCandidate[] = [];
   for (const label of knownBodyCompositionLabels) {
     if (label === "tbw" && /\btbw\s*%/i.test(normalizedLine)) continue;
+    if (candidates.some((candidate) => candidate.label.includes(label))) continue;
     const labelIndex = findBodyCompositionLabelIndex(lowerLine, label);
     if (labelIndex === -1) continue;
     const tail = normalizedLine.slice(labelIndex + label.length);
@@ -257,7 +258,7 @@ function isPlausibleBodyCompositionValue(measurementCode: string, value: number,
   if (measurementCode === "visceral_fat_level") return value >= 0 && value <= 100;
   if (measurementCode === "basal_metabolic_rate") return value >= 500 && value <= 5000;
   if (measurementCode === "weight") return value >= 10 && value <= 500;
-  if (["fat_mass", "lean_body_mass", "skeletal_muscle_mass", "total_body_water", "bone_mineral_content", "protein_mass"].includes(measurementCode)) {
+  if (["fat_mass", "lean_body_mass", "muscle_mass", "skeletal_muscle_mass", "total_body_water", "bone_mineral_content", "protein_mass"].includes(measurementCode)) {
     return value >= 0 && value <= 300 && unit !== "%";
   }
   return true;

@@ -21,6 +21,7 @@ import type {
   ManualObservationPayload,
   MobileMigrationManifest,
   MobileMigrationReceipt,
+  PersonalReferenceRangeInput,
   UpdateObservationInput
 } from "@vitana/shared";
 import { clearConnection, clearSelectedProfileId, loadConnection } from "./endpointStore";
@@ -32,6 +33,7 @@ import type {
   CompanionDataSource,
   CompanionLifecycleService,
   CompanionMaintenanceService,
+  CompanionReferenceRangeMutationService,
   DetailPage
 } from "./companionDataSource";
 import { createDemoDataSource } from "./demoDataSource";
@@ -95,6 +97,8 @@ interface MobileApiContextValue {
   importManualObservations(payload: ManualObservationPayload): Promise<unknown>;
   updateObservation(id: string, input: UpdateObservationInput): Promise<void>;
   deleteObservation(id: string): Promise<void>;
+  setPersonalReferenceRange(measurementCode: string, input: PersonalReferenceRangeInput): Promise<void>;
+  removePersonalReferenceRange(measurementCode: string): Promise<void>;
   resetStandaloneData(): Promise<void>;
   listHealthEvents(query?: HealthEventListQuery): Promise<Awaited<ReturnType<CompanionCareService["listHealthEvents"]>>>;
   createHealthEvent(payload: CreateHealthEventInput): Promise<void>;
@@ -465,6 +469,14 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     await runMutation(() => requireObservationMutationService(source).deleteObservation(id));
   }, [runMutation, source]);
 
+  const setPersonalReferenceRange = useCallback(async (measurementCode: string, input: PersonalReferenceRangeInput) => {
+    await runMutation(() => requireReferenceRangeMutationService(source).setPersonalReferenceRange(measurementCode, input));
+  }, [runMutation, source]);
+
+  const removePersonalReferenceRange = useCallback(async (measurementCode: string) => {
+    await runMutation(() => requireReferenceRangeMutationService(source).removePersonalReferenceRange(measurementCode));
+  }, [runMutation, source]);
+
   const resetStandaloneData = useCallback(async () => {
     if (operatingMode !== "standalone" || !standaloneSource) throw new Error("Local phone data is unavailable for reset.");
     await (standaloneSource as CompanionMaintenanceService).resetLocalData();
@@ -653,6 +665,8 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     importManualObservations,
     updateObservation,
     deleteObservation,
+    setPersonalReferenceRange,
+    removePersonalReferenceRange,
     resetStandaloneData,
     listHealthEvents,
     createHealthEvent,
@@ -670,7 +684,7 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     analytics, bodyTrendTimeline, bootstrap, calendarMonth, cancelPendingConnection, clearTransientData, completeCareItem, connection, connectionState, createCareItem, createHealthEvent,
     dashboardLoading, deleteCareItem, deleteHealthEvent, deleteObservation, demoMode, discardStandaloneDataAndConnect, disconnect, error, healthDataChartSeries, healthDataDetail, journal,
     importManualObservations, listCareItems, listHealthEvents, operatingMode, refreshAfterImport, refreshDashboard,
-    profilePhoto, refreshTrack, reloadConnection, resetStandaloneData, setDemoMode, setOperatingMode, summary, syncing, synchronizeConnectedData, trackLoading,
+    profilePhoto, refreshTrack, reloadConnection, removePersonalReferenceRange, resetStandaloneData, setDemoMode, setOperatingMode, setPersonalReferenceRange, summary, syncing, synchronizeConnectedData, trackLoading,
     migrateStandaloneData, migrationProgress, standaloneMigrationManifest, transientRevision, updateCareItem, updateHealthEvent, updateObservation
   ]);
   return <MobileApiContext.Provider value={value}>{children}</MobileApiContext.Provider>;
@@ -702,4 +716,14 @@ function requireObservationMutationService(
     throw new Error("Observation editing is unavailable until a writable data source is ready.");
   }
   return candidate as CompanionObservationMutationService;
+}
+
+function requireReferenceRangeMutationService(
+  source: CompanionDataSource | undefined
+): CompanionReferenceRangeMutationService {
+  const candidate = source as Partial<CompanionReferenceRangeMutationService> | undefined;
+  if (!candidate?.setPersonalReferenceRange || !candidate.removePersonalReferenceRange) {
+    throw new Error("Personal reference ranges require a paired PC.");
+  }
+  return candidate as CompanionReferenceRangeMutationService;
 }

@@ -767,7 +767,7 @@ export class SqliteLocalStore implements LocalStore {
       FROM observations o
       LEFT JOIN data_sources ds ON ds.profile_id = o.profile_id AND ds.id = o.source_id
       WHERE o.profile_id = ?
-        AND o.measurement_code IN ('skeletal_muscle_mass', 'fat_mass', 'bone_mineral_content', 'weight')
+        AND o.measurement_code IN ('muscle_mass', 'skeletal_muscle_mass', 'fat_mass', 'bone_mineral_content', 'weight')
         ${rangeSql}
       ORDER BY o.observed_at DESC, o.id DESC
       LIMIT 8000

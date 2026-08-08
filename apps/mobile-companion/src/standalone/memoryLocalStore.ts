@@ -286,7 +286,7 @@ export class MemoryLocalStore implements LocalStore {
 
   async observationsForBodyTrend(query: import("@vitana/shared").BodyTrendQuery) {
     const profileId = this.requireProfileId();
-    const codes = new Set(["skeletal_muscle_mass", "fat_mass", "bone_mineral_content", "weight"]);
+    const codes = new Set(["muscle_mass", "skeletal_muscle_mass", "fat_mass", "bone_mineral_content", "weight"]);
     const cutoff = bodyTrendCutoff(query.range);
     return this.profileValues(this.state.observations)
       .filter((observation) => codes.has(observation.measurementCode) && (!cutoff || observation.observedAt >= cutoff))

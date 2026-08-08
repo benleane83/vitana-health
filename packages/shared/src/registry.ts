@@ -70,13 +70,24 @@ const measurementTypeDefinitions: MeasurementType[] = [
     aggregation: "latest"
   },
   {
+    code: "muscle_mass",
+    display: "Muscle mass",
+    description: "The estimated total weight of your muscle tissue, as reported by a body-composition device.",
+    category: "body",
+    kind: "point",
+    canonicalUnit: "kg",
+    aliases: ["muscle mass", "muscle"],
+    loincCode: "73964-9",
+    aggregation: "latest"
+  },
+  {
     code: "skeletal_muscle_mass",
     display: "Skeletal muscle mass",
     description: "The estimated weight of the muscles attached to your bones that you use to move.",
     category: "body",
     kind: "point",
     canonicalUnit: "kg",
-    aliases: ["skeletal muscle mass", "smm", "muscle mass", "skeletal muscle"],
+    aliases: ["skeletal muscle mass", "smm", "skeletal muscle"],
     aggregation: "latest"
   },
   {
@@ -562,6 +573,17 @@ const measurementTypeDefinitions: MeasurementType[] = [
     aggregation: "latest"
   },
   {
+    code: "non_hdl_cholesterol",
+    display: "Non-HDL cholesterol",
+    description: "A blood test measuring cholesterol carried by all particles other than HDL, including LDL and VLDL.",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "mmol/L",
+    aliases: ["non hdl cholesterol", "non-hdl cholesterol", "non hdl", "non-hdl", "non hdlc"],
+    loincCode: "70204-3",
+    aggregation: "latest"
+  },
+  {
     code: "hdl_cholesterol",
     display: "HDL cholesterol",
     description: "A blood test measuring high-density lipoprotein cholesterol, one type of cholesterol-carrying particle in your blood.",
@@ -655,6 +677,17 @@ const measurementTypeDefinitions: MeasurementType[] = [
     aggregation: "latest"
   },
   {
+    code: "bilirubin_direct",
+    display: "Direct bilirubin",
+    description: "A blood test measuring conjugated bilirubin, the form of bilirubin processed by the liver.",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "µmol/L",
+    aliases: ["direct bilirubin", "conjugated bilirubin", "bilirubin direct"],
+    loincCode: "14629-0",
+    aggregation: "latest"
+  },
+  {
     code: "calcium",
     display: "Calcium",
     description: "A blood test measuring calcium, a mineral important for bones, muscles, and nerves.",
@@ -689,6 +722,17 @@ const measurementTypeDefinitions: MeasurementType[] = [
     canonicalUnit: "mmol/L",
     aliases: ["bicarbonate", "serum bicarbonate"],
     loincCode: "1960-4",
+    aggregation: "latest"
+  },
+  {
+    code: "anion_gap",
+    display: "Anion gap",
+    description: "A calculated blood test value that helps assess the balance of charged particles and acid-base status in your blood.",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "mmol/L",
+    aliases: ["anion gap", "serum anion gap", "ag"],
+    loincCode: "10466-1",
     aggregation: "latest"
   },
   {
@@ -742,7 +786,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     category: "lab",
     kind: "panel-component",
     canonicalUnit: "µmol/L",
-    aliases: ["iron", "serum iron"],
+    aliases: ["iron", "serum iron", "fe++"],
     loincCode: "14801-5",
     normalLow: 9,
     normalHigh: 31,
@@ -796,6 +840,17 @@ const measurementTypeDefinitions: MeasurementType[] = [
     canonicalUnit: "mIU/L",
     aliases: ["thyroid stimulating hormone", "tsh"],
     loincCode: "3016-3",
+    aggregation: "latest"
+  },
+  {
+    code: "thyroglobulin_antibodies",
+    display: "Thyroglobulin antibodies",
+    description: "A blood test measuring antibodies against thyroglobulin, which can help assess autoimmune thyroid disease.",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "IU/mL",
+    aliases: ["thyroglobulin antibodies", "thyroglobulin antibody", "anti thyroglobulin", "anti-thyroglobulin", "tgab"],
+    loincCode: "8098-6",
     aggregation: "latest"
   },
   {
@@ -900,6 +955,17 @@ const measurementTypeDefinitions: MeasurementType[] = [
     aggregation: "latest"
   },
   {
+    code: "haematocrit_percentage",
+    display: "Haematocrit %",
+    description: "A calculated blood test measuring the percentage of your blood volume that is made up of red blood cells.",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "%",
+    aliases: ["haematocrit percentage", "haematocrit %", "hematocrit percentage", "hematocrit %", "calculated hematocrit"],
+    loincCode: "20570-8",
+    aggregation: "latest"
+  },
+  {
     code: "mean_corpuscular_volume",
     display: "MCV (Mean corpuscular volume)",
     description: "A blood test measuring the average size of your red blood cells.",
@@ -967,7 +1033,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     category: "lab",
     kind: "panel-component",
     canonicalUnit: "%",
-    aliases: ["lymphocytes", "lymphocyte percentage", "lymphocyte %", "lymph %"],
+    aliases: ["lymphocyte percentage", "lymphocyte %", "lymphocytes %", "lymph %"],
     loincCode: "736-9",
     aggregation: "latest"
   },
@@ -1027,6 +1093,28 @@ const measurementTypeDefinitions: MeasurementType[] = [
     aggregation: "latest"
   },
   {
+    code: "unsaturated_iron_binding_capacity",
+    display: "Unsaturated iron-binding capacity",
+    description: "A blood test measuring the unused capacity of transferrin to bind iron.",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "µmol/L",
+    aliases: ["unsaturated iron binding capacity", "uibc"],
+    loincCode: "22753-8",
+    aggregation: "latest"
+  },
+  {
+    code: "transferrin",
+    display: "Transferrin",
+    description: "A blood test measuring transferrin, the protein that carries iron through your bloodstream.",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "g/L",
+    aliases: ["transferrin", "serum transferrin"],
+    loincCode: "98996-2",
+    aggregation: "latest"
+  },
+  {
     code: "transferrin_saturation",
     display: "Transferrin saturation",
     description: "A calculated value showing what percentage of the iron-carrying protein transferrin is carrying iron.",
@@ -1039,13 +1127,101 @@ const measurementTypeDefinitions: MeasurementType[] = [
   },
   {
     code: "neutrophil_percentage",
-    display: "Neutrophils",
+    display: "Neutrophils %",
     description: "A blood test measuring the proportion of your white blood cells that are neutrophils, a type of immune cell.",
     category: "lab",
     kind: "panel-component",
     canonicalUnit: "%",
-    aliases: ["neutrophils", "neutrophil percentage", "neutrophil %", "neut %"],
+    aliases: ["neutrophil percentage", "neutrophils %", "neutrophil %", "neut %"],
     loincCode: "770-8",
+    aggregation: "latest"
+  },
+  {
+    code: "neutrophil_count",
+    display: "Neutrophil count",
+    description: "A blood test measuring the number of neutrophils, a type of white blood cell that helps fight infection.",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "×10⁹/L",
+    aliases: ["neutrophils", "neutrophil count", "absolute neutrophil count", "anc"],
+    loincCode: "751-8",
+    aggregation: "latest"
+  },
+  {
+    code: "monocyte_count",
+    display: "Monocyte count",
+    description: "A blood test measuring the number of monocytes, a type of white blood cell involved in immune response.",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "×10⁹/L",
+    aliases: ["monocytes", "monocyte count", "absolute monocyte count"],
+    loincCode: "742-7",
+    aggregation: "latest"
+  },
+  {
+    code: "lymphocyte_count",
+    display: "Lymphocyte count",
+    description: "A blood test measuring the number of lymphocytes, white blood cells that support immune defenses.",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "×10⁹/L",
+    aliases: ["lymphocytes", "lymphocyte count", "absolute lymphocyte count", "alc"],
+    loincCode: "731-0",
+    aggregation: "latest"
+  },
+  {
+    code: "eosinophil_count",
+    display: "Eosinophil count",
+    description: "A blood test measuring the number of eosinophils, white blood cells involved in allergic and parasite responses.",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "×10⁹/L",
+    aliases: ["eosinophils", "eosinophil count", "absolute eosinophil count"],
+    loincCode: "711-2",
+    aggregation: "latest"
+  },
+  {
+    code: "basophil_count",
+    display: "Basophil count",
+    description: "A blood test measuring the number of basophils, a type of white blood cell involved in inflammatory and allergic responses.",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "×10⁹/L",
+    aliases: ["basophils", "basophil count", "absolute basophil count"],
+    loincCode: "26444-0",
+    aggregation: "latest"
+  },
+  {
+    code: "monocyte_percentage",
+    display: "Monocytes %",
+    description: "A blood test measuring the proportion of your white blood cells that are monocytes.",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "%",
+    aliases: ["monocyte percentage", "monocytes %", "monocyte %", "mono %"],
+    loincCode: "5905-5",
+    aggregation: "latest"
+  },
+  {
+    code: "eosinophil_percentage",
+    display: "Eosinophils %",
+    description: "A blood test measuring the proportion of your white blood cells that are eosinophils.",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "%",
+    aliases: ["eosinophil percentage", "eosinophils %", "eosinophil %", "eos %"],
+    loincCode: "713-8",
+    aggregation: "latest"
+  },
+  {
+    code: "basophil_percentage",
+    display: "Basophils %",
+    description: "A blood test measuring the proportion of your white blood cells that are basophils.",
+    category: "lab",
+    kind: "panel-component",
+    canonicalUnit: "%",
+    aliases: ["basophil percentage", "basophils %", "basophil %", "baso %"],
+    loincCode: "706-2",
     aggregation: "latest"
   },
   {
@@ -1370,6 +1546,7 @@ function unitAliasesFor(type: MeasurementType): Record<string, string[]> {
       "µmol/L": ["μmol/l", "umol/l", "µmol/l"],
       "g/dL": ["g/dl", "g / dl"],
       "g/L": ["g/l"],
+      "IU/mL": ["iu/ml", "[IU]/mL", "units/mL"],
       "%": ["percent"],
       "beats/min": ["bpm", "beats per minute", "count/min"],
       "breaths/min": ["breaths per minute"],
@@ -1400,7 +1577,7 @@ function imperialUnitFor(type: MeasurementType): string | undefined {
     if (type.canonicalUnit === "cm") return "in";
     if (type.canonicalUnit === "°C") return "°F";
     if (type.canonicalUnit === "L" && type.category === "body") return "fl oz";
-    if (type.code === "glucose" || type.code === "total_cholesterol" || type.code === "hdl_cholesterol" || type.code === "ldl_cholesterol" || type.code === "triglycerides" || type.code === "creatinine" || type.code === "uric_acid") return "mg/dL";
+    if (type.code === "glucose" || type.code === "total_cholesterol" || type.code === "non_hdl_cholesterol" || type.code === "hdl_cholesterol" || type.code === "ldl_cholesterol" || type.code === "triglycerides" || type.code === "creatinine" || type.code === "uric_acid") return "mg/dL";
     if (type.code === "hba1c") return "%";
     if (type.code === "haemoglobin") return "g/dL";
     return undefined;

@@ -198,6 +198,10 @@ export function ObservationTypeDetailPage({
   const [editingRange, setEditingRange] = useState(false);
   const [rangeLow, setRangeLow] = useState("");
   const [rangeHigh, setRangeHigh] = useState("");
+  const [optimalLow, setOptimalLow] = useState("");
+  const [optimalHigh, setOptimalHigh] = useState("");
+  const [editingOptimalRange, setEditingOptimalRange] = useState(false);
+  const [removeOptimalRange, setRemoveOptimalRange] = useState(false);
   const [rangeUnit, setRangeUnit] = useState("");
   const [rangeError, setRangeError] = useState<string>();
   const [selectedSleepSessionId, setSelectedSleepSessionId] = useState<string>();
@@ -230,6 +234,10 @@ export function ObservationTypeDetailPage({
     const range = detail?.referenceRange.personal ?? detail?.referenceRange.effective;
     setRangeLow(range?.low === undefined ? "" : String(range.low));
     setRangeHigh(range?.high === undefined ? "" : String(range.high));
+    setOptimalLow(detail?.referenceRange.optimal?.low === undefined ? "" : String(detail.referenceRange.optimal.low));
+    setOptimalHigh(detail?.referenceRange.optimal?.high === undefined ? "" : String(detail.referenceRange.optimal.high));
+    setEditingOptimalRange(Boolean(detail?.referenceRange.optimal));
+    setRemoveOptimalRange(false);
     setRangeUnit(range?.unit ?? rangeUnits[0] ?? defaultUnit);
     setRangeError(undefined);
     setEditingRange(true);
@@ -242,14 +250,22 @@ export function ObservationTypeDetailPage({
     }
     const low = rangeLow === "" ? undefined : Number(rangeLow);
     const high = rangeHigh === "" ? undefined : Number(rangeHigh);
+    const currentOptimalLow = optimalLow === "" ? undefined : Number(optimalLow);
+    const currentOptimalHigh = optimalHigh === "" ? undefined : Number(optimalHigh);
     const convertedLow = low === undefined ? undefined : convertMeasurementValue(low, measurementType, rangeUnit, nextUnit);
     const convertedHigh = high === undefined ? undefined : convertMeasurementValue(high, measurementType, rangeUnit, nextUnit);
-    if ((low !== undefined && convertedLow === undefined) || (high !== undefined && convertedHigh === undefined)) {
+    const convertedOptimalLow = currentOptimalLow === undefined ? undefined : convertMeasurementValue(currentOptimalLow, measurementType, rangeUnit, nextUnit);
+    const convertedOptimalHigh = currentOptimalHigh === undefined ? undefined : convertMeasurementValue(currentOptimalHigh, measurementType, rangeUnit, nextUnit);
+    if ((low !== undefined && convertedLow === undefined) || (high !== undefined && convertedHigh === undefined) ||
+        (currentOptimalLow !== undefined && convertedOptimalLow === undefined) ||
+        (currentOptimalHigh !== undefined && convertedOptimalHigh === undefined)) {
       setRangeError(`Values cannot be converted from ${rangeUnit} to ${nextUnit}.`);
       return;
     }
     setRangeLow(convertedLow === undefined ? "" : String(convertedLow));
     setRangeHigh(convertedHigh === undefined ? "" : String(convertedHigh));
+    setOptimalLow(convertedOptimalLow === undefined ? "" : String(convertedOptimalLow));
+    setOptimalHigh(convertedOptimalHigh === undefined ? "" : String(convertedOptimalHigh));
     setRangeUnit(nextUnit);
     setRangeError(undefined);
   }
@@ -258,6 +274,8 @@ export function ObservationTypeDetailPage({
     event.preventDefault();
     const low = rangeLow.trim() === "" ? undefined : Number(rangeLow);
     const high = rangeHigh.trim() === "" ? undefined : Number(rangeHigh);
+    const nextOptimalLow = optimalLow.trim() === "" ? undefined : Number(optimalLow);
+    const nextOptimalHigh = optimalHigh.trim() === "" ? undefined : Number(optimalHigh);
     if (low === undefined && high === undefined) {
       setRangeError("Enter a lower bound, an upper bound, or both.");
       return;
@@ -270,8 +288,39 @@ export function ObservationTypeDetailPage({
       setRangeError("Upper bound must be greater than or equal to lower bound.");
       return;
     }
+    if (editingOptimalRange && !removeOptimalRange) {
+      if (nextOptimalLow === undefined || nextOptimalHigh === undefined) {
+        setRangeError("Enter both optimal reference-range bounds.");
+        return;
+      }
+      if (!Number.isFinite(nextOptimalLow) || !Number.isFinite(nextOptimalHigh)) {
+        setRangeError("Optimal bounds must be finite numbers.");
+        return;
+      }
+      if (low === undefined || high === undefined) {
+        setRangeError("Optimal bounds require both normal reference-range bounds.");
+        return;
+      }
+      if (nextOptimalLow > nextOptimalHigh) {
+        setRangeError("Optimal upper bound must be greater than or equal to lower bound.");
+        return;
+      }
+      if (nextOptimalLow < low || nextOptimalHigh > high) {
+        setRangeError("Optimal range must sit within the normal range.");
+        return;
+      }
+    }
     try {
-      await onSetPersonalReferenceRange({ low, high, unit: rangeUnit });
+      await onSetPersonalReferenceRange({
+        low,
+        high,
+        unit: rangeUnit,
+        ...(removeOptimalRange
+          ? { optimalLow: null, optimalHigh: null }
+          : editingOptimalRange
+            ? { optimalLow: nextOptimalLow, optimalHigh: nextOptimalHigh }
+            : {})
+      });
       setEditingRange(false);
       setRangeError(undefined);
     } catch (error) {
@@ -387,10 +436,20 @@ export function ObservationTypeDetailPage({
             <div>
               <h2 id="reference-range-heading">Reference range</h2>
               {!editingRange ? (
-                <>
-                  <strong>{formatReferenceRange(detail.referenceRange.effective)}</strong>
-                  <span>{referenceRangeSourceLabel(detail.referenceRange.source)}</span>
-                </>
+                detail.referenceRange.optimal ? (
+                  <div className="summary-reference-range-values">
+                    <span>Normal</span>
+                    <strong>{formatReferenceRange(detail.referenceRange.effective)}</strong>
+                    <small>{referenceRangeSourceLabel(detail.referenceRange.source)}</small>
+                    <span>Optimal</span>
+                    <strong>{formatReferenceRange(detail.referenceRange.optimal)}</strong>
+                  </div>
+                ) : (
+                  <>
+                    <strong>{formatReferenceRange(detail.referenceRange.effective)}</strong>
+                    <span>{referenceRangeSourceLabel(detail.referenceRange.source)}</span>
+                  </>
+                )
               ) : null}
             </div>
             {!editingRange ? (
@@ -400,7 +459,7 @@ export function ObservationTypeDetailPage({
             ) : (
               <form className="summary-reference-range-editor" onSubmit={(event) => void submitRange(event)}>
                 <label>
-                  Lower bound
+                  Normal lower bound
                   <input
                     type="number"
                     inputMode="decimal"
@@ -411,7 +470,7 @@ export function ObservationTypeDetailPage({
                   />
                 </label>
                 <label>
-                  Upper bound
+                  Normal upper bound
                   <input
                     type="number"
                     inputMode="decimal"
@@ -427,6 +486,51 @@ export function ObservationTypeDetailPage({
                     {rangeUnits.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
                   </select>
                 </label>
+                <div className="summary-reference-range-optional">
+                  {!editingOptimalRange ? (
+                    <button
+                      type="button"
+                      className="summary-reference-range-disclosure"
+                      onClick={() => {
+                        setEditingOptimalRange(true);
+                        setRemoveOptimalRange(false);
+                      }}
+                      disabled={actionBusy}
+                    >
+                      Add optimal range
+                    </button>
+                  ) : (
+                    <>
+                      <div className="summary-reference-range-optimal-heading">
+                        <strong>Optimal range</strong>
+                        <button
+                          type="button"
+                          className="summary-reference-range-disclosure"
+                          onClick={() => {
+                            setOptimalLow("");
+                            setOptimalHigh("");
+                            setEditingOptimalRange(false);
+                            setRemoveOptimalRange(Boolean(detail.referenceRange.optimal));
+                          }}
+                          disabled={actionBusy}
+                        >
+                          Remove optimal range
+                        </button>
+                      </div>
+                      <div className="summary-reference-range-optimal-fields">
+                        <label>
+                          Optimal lower bound
+                          <input type="number" inputMode="decimal" step="any" value={optimalLow} onChange={(event) => setOptimalLow(event.target.value)} disabled={actionBusy} />
+                        </label>
+                        <label>
+                          Optimal upper bound
+                          <input type="number" inputMode="decimal" step="any" value={optimalHigh} onChange={(event) => setOptimalHigh(event.target.value)} disabled={actionBusy} />
+                        </label>
+                      </div>
+                      <p>Optimal must sit within the normal range.</p>
+                    </>
+                  )}
+                </div>
                 <p className="summary-reference-range-copy">
                   This changes status labels and chart guides only. It does not provide medical advice.
                 </p>

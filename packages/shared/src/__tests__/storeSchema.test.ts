@@ -49,6 +49,17 @@ describe("persisted health store schema", () => {
     expect(() => parsePersistedHealthStore(store({
       personalReferenceRanges: [{ measurementCode: "glucose", unit: "mmol/L", updatedAt: "2026-01-01T00:00:00.000Z" }]
     }))).toThrow(/bound/i);
+    for (const range of [
+      { normalLow: 4, normalHigh: 6, optimalLow: 4.5 },
+      { normalLow: 4, optimalLow: 4.5, optimalHigh: 5.5 },
+      { normalLow: 4, normalHigh: 6, optimalLow: 3.5, optimalHigh: 5.5 }
+    ]) {
+      expect(() => parsePersistedHealthStore(store({
+        personalReferenceRanges: [{
+          measurementCode: "glucose", ...range, unit: "mmol/L", updatedAt: "2026-01-01T00:00:00.000Z"
+        }]
+      }))).toThrow(/optimal/i);
+    }
   });
 
   it("preserves persisted profile metadata and audit events", () => {

@@ -71,6 +71,8 @@ describe("DetailTrendChart", () => {
     expect(screen.getByText(/reference range: 3.9–5.5 mmol\/l/i)).toBeInTheDocument();
     expect(screen.getByText(/ref\. low 3.9/i)).toBeInTheDocument();
     expect(screen.getByText(/ref\. high 5.5/i)).toBeInTheDocument();
+    expect(document.querySelector(".summary-detail-optimal-band")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: /chart range legend/i })).not.toBeInTheDocument();
 
     const chartPoints = document.querySelectorAll<SVGCircleElement>(".summary-detail-chart-hit-target");
     fireEvent.focus(chartPoints[2]!);
@@ -83,6 +85,26 @@ describe("DetailTrendChart", () => {
     expect(onRangeChange).toHaveBeenCalledWith("1m");
     expect(screen.getByRole("button", { name: "Adaptive" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Readings" })).toBeInTheDocument();
+  });
+
+  it("renders one nested optimal band and a conditional range legend", () => {
+    const optimalSeries = {
+      ...series,
+      points: series.points.map((point) => ({
+        ...point,
+        optimalRange: { low: 4.4, high: 5.2, unit: "mmol/L" }
+      }))
+    };
+
+    render(<DetailTrendChart detail={detail} series={optimalSeries} range="all" mode="auto" busy={false} onRangeChange={vi.fn()} onModeChange={vi.fn()} />);
+
+    expect(document.querySelectorAll(".summary-detail-reference-band")).toHaveLength(1);
+    expect(document.querySelectorAll(".summary-detail-optimal-band")).toHaveLength(1);
+    expect(document.querySelectorAll(".summary-detail-reference-line")).toHaveLength(2);
+    const legend = screen.getByLabelText(/chart range legend/i);
+    expect(legend).toHaveTextContent("Normal range");
+    expect(legend).toHaveTextContent("Optimal range");
+    expect(screen.getByText(/optimal range: 4.4–5.2 mmol\/l/i)).toBeInTheDocument();
   });
 
   it("hides aggregation mode controls for latest measurements while retaining time controls", () => {

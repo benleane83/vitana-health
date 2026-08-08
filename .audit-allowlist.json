@@ -1,4 +1,17 @@
 {
-  "allowedHighOrCriticalPackages": [],
-  "notes": "DuckDB's build-only node-gyp is overridden to 12.4.0 so all native tooling resolves patched tar 7 releases."
+  "allowedHighOrCriticalPackages": [
+    "@expo/cli",
+    "@expo/metro",
+    "@expo/metro-config",
+    "@react-native/community-cli-plugin",
+    "@react-native/virtualized-lists",
+    "expo",
+    "image-size",
+    "metro",
+    "metro-config",
+    "metro-transform-worker",
+    "react-native",
+    "react-native-screens"
+  ],
+  "notes": "Temporary exceptions for Expo SDK 57 and React Native 0.86 transitive advisories. npm audit only offers an incompatible Expo 53 downgrade; remove these entries when the active Expo/React Native release train ships compatible fixes. DuckDB's build-only node-gyp is overridden to 12.4.0 so all native tooling resolves patched tar 7 releases."
 }

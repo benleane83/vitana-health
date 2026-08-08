@@ -422,7 +422,7 @@ export interface BodyTrendQuery {
 }
 
 export interface BodyTrendComponentValues {
-  skeletalMuscleMass: number;
+  muscleMass: number;
   fatMass: number;
   boneMineralContent: number;
   weight?: number;
@@ -499,6 +499,7 @@ export interface ReferenceRangeState {
   personal?: ReferenceRange;
   catalog?: ReferenceRange;
   effective?: ReferenceRange;
+  optimal?: ReferenceRange;
   source: ReferenceRangeSource;
 }
 
@@ -859,6 +860,7 @@ export interface HealthDataDetailChartPoint {
   value: number;
   unit: string;
   referenceRange?: ReferenceRange;
+  optimalRange?: ReferenceRange;
 }
 
 export type HealthDataChartRange = "all" | "1y" | "3m" | "1m";
@@ -878,6 +880,7 @@ export interface HealthDataChartSeriesPoint {
   minValue?: number;
   maxValue?: number;
   referenceRange?: ReferenceRange;
+  optimalRange?: ReferenceRange;
 }
 
 export interface HealthDataChartSeries {

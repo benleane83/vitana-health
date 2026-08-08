@@ -11,6 +11,8 @@ import {
   describeMeasurementRejection,
   isHealthEventKind,
   insightSchema,
+  personalReferenceRangeInputSchema,
+  personalReferenceRangeSchema,
   profileSchema,
   updateCareItemInputSchema,
   updateHealthEventInputSchema,
@@ -206,18 +208,11 @@ export async function upsertPersonalReferenceRange(
   measurementCode: string,
   input: PersonalReferenceRangeInput
 ): Promise<PersonalReferenceRange> {
-  if (input.low === undefined && input.high === undefined) {
-    throw new RepositoryValidationError("Enter a lower bound, an upper bound, or both.");
+  const parsedInput = personalReferenceRangeInputSchema.safeParse(input);
+  if (!parsedInput.success) {
+    throw new RepositoryValidationError(parsedInput.error.issues[0]?.message ?? "Invalid reference range.");
   }
-  if ((input.low !== undefined && !Number.isFinite(input.low)) || (input.high !== undefined && !Number.isFinite(input.high))) {
-    throw new RepositoryValidationError("Reference-range bounds must be finite numbers.");
-  }
-  if (input.low !== undefined && input.high !== undefined && input.low > input.high) {
-    throw new RepositoryValidationError("Upper bound must be greater than or equal to lower bound.");
-  }
-  if (!input.unit.trim()) {
-    throw new RepositoryValidationError("Reference-range unit is required.");
-  }
+  input = parsedInput.data;
   const typeRows = await allWithParams(
     connection,
     `SELECT ${measurementTypeColumns} FROM measurement_types WHERE code = ?;`,
@@ -233,26 +228,55 @@ export async function upsertPersonalReferenceRange(
   const high = input.high === undefined
     ? undefined
     : convertMeasurementValue(input.high, type, input.unit, type.canonicalUnit);
-  if ((input.low !== undefined && low === undefined) || (input.high !== undefined && high === undefined)) {
+  const optimalLow = typeof input.optimalLow === "number"
+    ? convertMeasurementValue(input.optimalLow, type, input.unit, type.canonicalUnit)
+    : input.optimalLow;
+  const optimalHigh = typeof input.optimalHigh === "number"
+    ? convertMeasurementValue(input.optimalHigh, type, input.unit, type.canonicalUnit)
+    : input.optimalHigh;
+  if ((input.low !== undefined && low === undefined) || (input.high !== undefined && high === undefined) ||
+      (typeof input.optimalLow === "number" && optimalLow === undefined) ||
+      (typeof input.optimalHigh === "number" && optimalHigh === undefined)) {
     throw new RepositoryValidationError(`Unit "${input.unit}" is not supported for ${type.display}.`);
   }
+  const existingRows = input.optimalLow === undefined
+    ? await allWithParams(
+        connection,
+        "SELECT optimal_low, optimal_high FROM personal_reference_ranges WHERE measurement_code = ?;",
+        measurementCode
+      )
+    : [];
+  const persistedOptimalLow = input.optimalLow === undefined
+    ? existingRows[0]?.optimal_low === null || existingRows[0]?.optimal_low === undefined ? undefined : Number(existingRows[0].optimal_low)
+    : optimalLow === null ? undefined : optimalLow;
+  const persistedOptimalHigh = input.optimalHigh === undefined
+    ? existingRows[0]?.optimal_high === null || existingRows[0]?.optimal_high === undefined ? undefined : Number(existingRows[0].optimal_high)
+    : optimalHigh === null ? undefined : optimalHigh;
   const range = {
     measurementCode,
     ...(low === undefined ? {} : { normalLow: low }),
     ...(high === undefined ? {} : { normalHigh: high }),
+    ...(persistedOptimalLow === undefined ? {} : { optimalLow: persistedOptimalLow }),
+    ...(persistedOptimalHigh === undefined ? {} : { optimalHigh: persistedOptimalHigh }),
     unit: type.canonicalUnit,
     updatedAt: new Date().toISOString()
   };
+  const parsedRange = personalReferenceRangeSchema.safeParse(range);
+  if (!parsedRange.success) {
+    throw new RepositoryValidationError(parsedRange.error.issues[0]?.message ?? "Invalid reference range.");
+  }
   await run(connection, `
     INSERT INTO personal_reference_ranges
       (measurement_code, normal_low, normal_high, optimal_low, optimal_high, unit, updated_at)
-      VALUES (?, ?, ?, NULL, NULL, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT (measurement_code) DO UPDATE SET
       normal_low = EXCLUDED.normal_low, normal_high = EXCLUDED.normal_high,
+      optimal_low = EXCLUDED.optimal_low, optimal_high = EXCLUDED.optimal_high,
       unit = EXCLUDED.unit, updated_at = EXCLUDED.updated_at;
-  `, range.measurementCode, range.normalLow ?? null, range.normalHigh ?? null, range.unit, range.updatedAt);
+  `, parsedRange.data.measurementCode, parsedRange.data.normalLow ?? null, parsedRange.data.normalHigh ?? null,
+  parsedRange.data.optimalLow ?? null, parsedRange.data.optimalHigh ?? null, parsedRange.data.unit, parsedRange.data.updatedAt);
   await insertAudit(connection, "personal-reference-range-set", `Personal reference range set for ${measurementCode}.`);
-  return range;
+  return parsedRange.data;
 }
 
 export async function deletePersonalReferenceRange(

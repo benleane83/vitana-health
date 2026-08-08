@@ -340,7 +340,7 @@ function ManualImport() {
 }
 
 function ScanImport() {
-  const { bootstrap, connection, refreshAfterImport, transientRevision } = useMobileApi();
+  const { bootstrap, connection, refreshAfterImport } = useMobileApi();
   const measurements = bootstrap?.measurementTypes?.length ? bootstrap.measurementTypes : defaultMeasurementTypes;
   const [kind, setKind] = useState<ScanKind>("body-composition");
   const [draft, setDraft] = useState<BodyCompositionDraft | BloodTestDraft>();
@@ -358,7 +358,7 @@ function ScanImport() {
   useEffect(() => {
     resetReview();
     setStatus("");
-  }, [connection, transientRevision]);
+  }, [connection]);
 
   function resetReview() {
     setDraft(undefined);
@@ -386,9 +386,8 @@ function ScanImport() {
         [{ resize: { width: Math.min(asset.width || 1800, 1800) } }],
         { compress: 0.72, format: ImageManipulator.SaveFormat.JPEG }
       );
-      // Read straight off the resized file at request time. Asking the manipulator for `base64: true`
-      // meant the encoded copy was pinned by the result object for the whole handler, on top of the
-      // copy the request body makes. The API contract is still JSON, so one copy is unavoidable.
+      // Read the bounded JPEG at request time so the image-manipulator result does not retain an
+      // additional base64 copy while the local-network JSON request is in flight.
       const contentBase64 = await new File(resized.uri).base64();
       if (!contentBase64) throw new Error("Could not read the selected image.");
       const next = kind === "body-composition"
@@ -790,6 +789,11 @@ function ViewImportedDataButton() {
 
 function parseNumericInput(value: string): number {
   return value.trim() ? Number(value) : Number.NaN;
+}
+
+function base64ByteLength(value: string): number {
+  const padding = value.endsWith("==") ? 2 : value.endsWith("=") ? 1 : 0;
+  return Math.floor(value.length * 3 / 4) - padding;
 }
 
 function formatObservedDate(date: Date): string {

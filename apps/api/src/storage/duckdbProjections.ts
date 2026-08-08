@@ -565,7 +565,10 @@ export async function measurementDetail(
           personalRange,
           subjectKind
         )
-      : { source: "none" }
+      : { source: "none" },
+    optimalRangeForUnit: type
+      ? (unit) => resolveReferenceRange(type, unit, personalRange, subjectKind).optimal
+      : undefined
   });
 }
 
@@ -1024,8 +1027,8 @@ export async function bodyTrendTimeline(
   const allPoints = [...latestByDate.values()].sort((left, right) => left.date.localeCompare(right.date));
   const truncated = allPoints.length > maxBodyTrendPoints;
   const visible = truncated ? allPoints.slice(-maxBodyTrendPoints) : allPoints;
-  const massType = types.get("skeletal_muscle_mass");
-  if (!massType) throw new Error("Body Trend requires the skeletal muscle mass measurement type.");
+  const massType = types.get("muscle_mass") ?? types.get("skeletal_muscle_mass");
+  if (!massType) throw new Error("Body Trend requires a muscle mass measurement type.");
 
   return {
     generatedAt: new Date().toISOString(),
@@ -1038,7 +1041,7 @@ export async function bodyTrendTimeline(
       observedAt: group.observedAt,
       ...(group.sourceLabel ? { sourceLabel: group.sourceLabel } : {}),
       components: {
-        skeletalMuscleMass: requiredBodyTrendMetric(group, "skeletal_muscle_mass").value,
+        muscleMass: requiredBodyTrendMuscleMetric(group).value,
         fatMass: requiredBodyTrendMetric(group, "fat_mass").value,
         boneMineralContent: requiredBodyTrendMetric(group, "bone_mineral_content").value,
         ...(optionalBodyTrendMetric(group, "weight") ? { weight: optionalBodyTrendMetric(group, "weight")!.value } : {})
@@ -1183,8 +1186,19 @@ function requiredBodyTrendMetric(group: BodyTrendReadingGroup, code: string) {
   return metric;
 }
 
+function requiredBodyTrendMuscleMetric(group: BodyTrendReadingGroup) {
+  const metric = optionalBodyTrendMetric(group, "muscle_mass") ?? optionalBodyTrendMetric(group, "skeletal_muscle_mass");
+  if (!metric) throw new Error("Body Trend complete session missing muscle mass.");
+  return metric;
+}
+
 function isCompleteBodyTrendReading(group: BodyTrendReadingGroup) {
-  return ["skeletal_muscle_mass", "fat_mass", "bone_mineral_content"].every((code) => optionalBodyTrendMetric(group, code));
+  return Boolean(requiredBodyTrendMuscleMetricOrUndefined(group))
+    && ["fat_mass", "bone_mineral_content"].every((code) => optionalBodyTrendMetric(group, code));
+}
+
+function requiredBodyTrendMuscleMetricOrUndefined(group: BodyTrendReadingGroup) {
+  return optionalBodyTrendMetric(group, "muscle_mass") ?? optionalBodyTrendMetric(group, "skeletal_muscle_mass");
 }
 
 function publicBodyTrendReadingGroup({ date: _date, ...group }: BodyTrendReadingGroupInternal): BodyTrendReadingGroup {

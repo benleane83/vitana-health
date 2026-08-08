@@ -4,6 +4,7 @@ import {
 } from "../registry.js";
 import {
   classifyValue,
+  classifyValueWithRange,
   convertMeasurementValue,
   findMeasurementType,
   getPreferredUnit,
@@ -71,11 +72,16 @@ describe("classifyValue", () => {
       measurementCode: "glucose", normalLow: 4, normalHigh: 6, optimalLow: 4.5, optimalHigh: 5.5,
       unit: "mmol/L", updatedAt: "2026-01-01T00:00:00.000Z"
     };
-    expect(resolveReferenceRange(glucose, "mg/dL", personal, "adult")).toMatchObject({
+    const resolved = resolveReferenceRange(glucose, "mg/dL", personal, "adult");
+    expect(resolved).toMatchObject({
       source: "personal",
       effective: { low: expect.any(Number), high: expect.any(Number), unit: "mg/dL" },
+      optimal: { low: expect.any(Number), high: expect.any(Number), unit: "mg/dL" },
       catalog: expect.any(Object)
     });
+    expect(resolved.optimal?.low).toBeCloseTo(81.08, 1);
+    expect(resolved.optimal?.high).toBeCloseTo(99.1, 1);
+    expect(classifyValueWithRange(79, resolved.effective)).toBe("normal");
     expect(resolveReferenceRange(glucose, "mmol/L", undefined, "adult").source).toBe("catalog");
     expect(resolveReferenceRange(glucose, "mmol/L", undefined, "child")).toEqual({ source: "none" });
     expect(resolveReferenceRange(glucose, "mmol/L", personal, "pet").source).toBe("personal");
@@ -114,6 +120,32 @@ describe("findMeasurementType", () => {
 
   it("finds glucose by LOINC-style alias", () => {
     expect(findMeasurementType("blood glucose")?.code).toBe("glucose");
+  });
+
+  it("assigns the supplied laboratory LOINC codes to their registry measurements", () => {
+    const expectedCodes: Record<string, string> = {
+      "789-8": "red_blood_cell_count",
+      "6690-2": "white_blood_cell_count",
+      "10466-1": "anion_gap",
+      "751-8": "neutrophil_count",
+      "742-7": "monocyte_count",
+      "731-0": "lymphocyte_count",
+      "711-2": "eosinophil_count",
+      "26444-0": "basophil_count",
+      "5905-5": "monocyte_percentage",
+      "20570-8": "haematocrit_percentage",
+      "713-8": "eosinophil_percentage",
+      "706-2": "basophil_percentage",
+      "22753-8": "unsaturated_iron_binding_capacity",
+      "98996-2": "transferrin",
+      "8098-6": "thyroglobulin_antibodies",
+      "14629-0": "bilirubin_direct",
+      "70204-3": "non_hdl_cholesterol"
+    };
+
+    for (const [loincCode, measurementCode] of Object.entries(expectedCodes)) {
+      expect(defaultMeasurementTypes.find((type) => type.code === measurementCode)?.loincCode).toBe(loincCode);
+    }
   });
 
   it("finds Health Connect activity codes by their canonical codes", () => {

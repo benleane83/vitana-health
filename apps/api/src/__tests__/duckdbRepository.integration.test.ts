@@ -630,13 +630,15 @@ describe("DuckDbRepository fidelity", () => {
     const fixture = createDuckDbHealthStoreFixture();
     const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
     try {
-      expect((await repository.measurementDetail("weight")).referenceRange).toMatchObject({
+      const initialDetail = await repository.measurementDetail("weight");
+      expect(initialDetail.referenceRange).toMatchObject({
         source: "personal",
-        personal: { low: 60, high: 90, unit: "kg" }
+        personal: { low: 60, high: 90, unit: "kg" },
+        optimal: { low: 65, high: 85, unit: "kg" }
       });
+      expect(initialDetail.chartPoints[0]?.optimalRange).toEqual({ low: 65, high: 85, unit: "kg" });
       await repository.upsertPersonalReferenceRange("weight", { low: 130, high: 200, unit: "lb" });
-      const snapshot = await repository.snapshot();
-      expect(snapshot.personalReferenceRanges[0]).toMatchObject({
+      expect((await repository.snapshot()).personalReferenceRanges[0]).toMatchObject({
         measurementCode: "weight",
         normalLow: expect.closeTo(58.967, 3),
         normalHigh: expect.closeTo(90.718, 3),
@@ -644,7 +646,26 @@ describe("DuckDbRepository fidelity", () => {
         optimalHigh: 85,
         unit: "kg"
       });
-      expect((await repository.measurementDetail("weight")).entries[0]?.status).toBe("normal");
+      await repository.upsertPersonalReferenceRange("weight", {
+        low: 120, high: 210, optimalLow: 150, optimalHigh: 190, unit: "lb"
+      });
+      expect((await repository.snapshot()).personalReferenceRanges[0]).toMatchObject({
+        normalLow: expect.closeTo(54.431, 3),
+        normalHigh: expect.closeTo(95.254, 3),
+        optimalLow: expect.closeTo(68.039, 3),
+        optimalHigh: expect.closeTo(86.183, 3),
+        unit: "kg"
+      });
+      const detail = await repository.measurementDetail("weight");
+      const chart = await repository.measurementChartSeries("weight", { range: "all", mode: "raw" });
+      expect(detail.referenceRange.optimal).toMatchObject({ low: expect.closeTo(68.039, 3), high: expect.closeTo(86.183, 3) });
+      expect(detail.entries[0]?.status).toBe("normal");
+      expect(chart.points[0]?.optimalRange).toMatchObject({ low: expect.closeTo(68.039, 3), high: expect.closeTo(86.183, 3) });
+      await repository.upsertPersonalReferenceRange("weight", {
+        low: 120, high: 210, optimalLow: null, optimalHigh: null, unit: "lb"
+      });
+      expect((await repository.snapshot()).personalReferenceRanges[0]).not.toHaveProperty("optimalLow");
+      expect((await repository.measurementDetail("weight")).referenceRange).not.toHaveProperty("optimal");
       expect((await repository.deletePersonalReferenceRange("weight")).source).toBe("catalog");
       expect((await repository.snapshot()).personalReferenceRanges).toEqual([]);
     } finally {
@@ -1380,7 +1401,7 @@ describe("DuckDbRepository fidelity", () => {
   it.skipIf(!httpfsExtensionPath)("returns schema-compatible Body Trend date detail groups", async () => {
     const databasePath = join(root, "databases", "health-store-body-trend-detail.duckdb-poc");
     const fixture = createDuckDbHealthStoreFixture();
-    const bodyCompositionCodes = new Set(["skeletal_muscle_mass", "fat_mass", "bone_mineral_content"]);
+    const bodyCompositionCodes = new Set(["muscle_mass", "skeletal_muscle_mass", "fat_mass", "bone_mineral_content"]);
     fixture.measurementTypes.push(...defaultMeasurementTypes.filter((measurement) => bodyCompositionCodes.has(measurement.code)));
     fixture.observationGroups.push({
       id: "body-trend-group",
@@ -1390,7 +1411,8 @@ describe("DuckDbRepository fidelity", () => {
       collectedAt: "2026-08-01T09:00:00.000Z"
     });
     const bodyCompositionObservations: Array<[string, string, number]> = [
-      ["body-muscle", "skeletal_muscle_mass", 31.6],
+      ["body-muscle", "muscle_mass", 56.4],
+      ["body-skeletal-muscle", "skeletal_muscle_mass", 31.6],
       ["body-fat", "fat_mass", 17.8],
       ["body-bone", "bone_mineral_content", 3.1]
     ];
@@ -1405,11 +1427,17 @@ describe("DuckDbRepository fidelity", () => {
     })));
     const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
     try {
+      const timeline = await repository.bodyTrendTimeline({ range: "all", timezone: "UTC" });
       const detail = await repository.bodyTrendDateDetail("2026-08-01", { timezone: "UTC" });
 
+      expect(timeline.points).toEqual([expect.objectContaining({
+        sessionId: "body-trend-group",
+        components: expect.objectContaining({ muscleMass: 56.4, fatMass: 17.8, boneMineralContent: 3.1 })
+      })]);
       expect(detail.selectedSession).toMatchObject({
         sessionId: "body-trend-group",
         metrics: expect.arrayContaining([
+          expect.objectContaining({ measurementCode: "muscle_mass", observedAt: "2026-08-01T09:00:00.000Z" }),
           expect.objectContaining({ measurementCode: "skeletal_muscle_mass", observedAt: "2026-08-01T09:00:00.000Z" }),
           expect.objectContaining({ measurementCode: "fat_mass" }),
           expect.objectContaining({ measurementCode: "bone_mineral_content" })

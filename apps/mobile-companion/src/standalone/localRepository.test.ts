@@ -112,7 +112,7 @@ describe("local profile repository", () => {
     expect(result.points).toEqual([
       expect.objectContaining({
         date: "2026-07-18",
-        components: { skeletalMuscleMass: 31, fatMass: 20, boneMineralContent: 3.2, weight: 74.2 }
+        components: { muscleMass: 31, fatMass: 20, boneMineralContent: 3.2, weight: 74.2 }
       })
     ]);
   });
