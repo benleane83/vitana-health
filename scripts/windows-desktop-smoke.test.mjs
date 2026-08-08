@@ -9,6 +9,14 @@ test("Windows smoke validates the persisted DuckDB backend manifest field", () =
   assert.doesNotMatch(script, /\$storage\.storageBackend/);
 });
 
+test("Windows smoke derives the NSIS executable name from desktop package metadata", () => {
+  const script = readFileSync(new URL("./windows-desktop-smoke.ps1", import.meta.url), "utf8");
+
+  assert.match(script, /apps\/desktop\/package\.json/);
+  assert.match(script, /\$applicationName = "\$\(\$desktopPackage\.build\.executableName\)\.exe"/);
+  assert.doesNotMatch(script, /\$applicationName = "\$productName\.exe"/);
+});
+
 test("Windows smoke proves the native DuckDB binding loaded in both scopes", () => {
   const script = readFileSync(new URL("./windows-desktop-smoke.ps1", import.meta.url), "utf8");
 

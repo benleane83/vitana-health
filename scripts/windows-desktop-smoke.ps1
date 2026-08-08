@@ -11,7 +11,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 $productName = "Vitana Health"
-$applicationName = "$productName.exe"
+$desktopPackage = Get-Content (Join-Path $PSScriptRoot "../apps/desktop/package.json") -Raw | ConvertFrom-Json
+$applicationName = "$($desktopPackage.build.executableName).exe"
 $installRoot = Join-Path $env:RUNNER_TEMP "vitana-smoke"
 $evidenceRoot = New-Item -ItemType Directory -Force -Path $EvidenceDirectory
 $gracefulShutdownTimeoutMs = 30000
