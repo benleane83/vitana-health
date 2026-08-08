@@ -1,6 +1,8 @@
 import { createRequire } from "node:module";
 import { PDFParse } from "pdf-parse";
 import Tesseract from "tesseract.js";
+import { parseBodyCompositionText } from "@vitana/shared";
+import { createBodyCompositionDateImage } from "./bodyCompositionDocumentImage.js";
 
 const require = createRequire(import.meta.url);
 const englishData = require("@tesseract.js-data/eng") as { langPath: string; gzip: boolean };
@@ -19,15 +21,31 @@ export async function extractBodyCompositionText(buffer: Buffer, mimeType: strin
   }
   if (mimeType === "image/jpeg" || mimeType === "image/png") {
     const ocr = await runOcr(buffer);
+    const diagnostics = [`Image OCR confidence: ${Math.round(ocr.confidence)}%.`];
+    if (hasReportDate(ocr.text)) return { text: ocr.text, diagnostics };
+
+    const dateImage = await createBodyCompositionDateImage(buffer, mimeType);
+    if (!dateImage) return { text: ocr.text, diagnostics };
+
+    const dateOcr = await runOcr(dateImage);
+    diagnostics.push(`Isolated report-header OCR confidence: ${Math.round(dateOcr.confidence)}%.`);
+    if (hasReportDate(dateOcr.text)) {
+      diagnostics.push("Recovered the report date from an isolated document header.");
+      return { text: `${dateOcr.text}\n${ocr.text}`.trim(), diagnostics };
+    }
     return {
       text: ocr.text,
-      diagnostics: [`Image OCR confidence: ${Math.round(ocr.confidence)}%.`]
+      diagnostics
     };
   }
   return {
     text: "",
     diagnostics: [`Unsupported body-composition report MIME type: ${mimeType}.`]
   };
+}
+
+function hasReportDate(text: string): boolean {
+  return Boolean(parseBodyCompositionText("report.jpg", text).reportDate);
 }
 
 async function extractPdfText(buffer: Buffer): Promise<BodyCompositionExtractResult> {

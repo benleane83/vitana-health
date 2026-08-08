@@ -9,6 +9,40 @@ test("Windows smoke validates the persisted DuckDB backend manifest field", () =
   assert.doesNotMatch(script, /\$storage\.storageBackend/);
 });
 
+test("Windows smoke derives the NSIS executable name from desktop package metadata", () => {
+  const script = readFileSync(new URL("./windows-desktop-smoke.ps1", import.meta.url), "utf8");
+
+  assert.match(script, /apps\/desktop\/package\.json/);
+  assert.match(script, /\$applicationName = "\$\(\$desktopPackage\.build\.executableName\)\.exe"/);
+  assert.doesNotMatch(script, /\$applicationName = "\$productName\.exe"/);
+});
+
+test("Windows smoke discovers the NSIS uninstaller instead of assuming its filename", () => {
+  const script = readFileSync(new URL("./windows-desktop-smoke.ps1", import.meta.url), "utf8");
+
+  assert.match(script, /Get-ChildItem \$installRoot -Filter "Uninstall\*\.exe" -File/);
+  assert.match(script, /\$uninstallers\.Count -ne 1/);
+  assert.match(script, /\$uninstaller = \$uninstallers\[0\]\.FullName/);
+  assert.doesNotMatch(script, /Join-Path \$installRoot "Uninstall Vitana Health\.exe"/);
+});
+
+test("Windows smoke does not require elevated firewall configuration from the per-user NSIS installer", () => {
+  const script = readFileSync(new URL("./windows-desktop-smoke.ps1", import.meta.url), "utf8");
+
+  assert.doesNotMatch(script, /Get-NetFirewallRule/);
+  assert.doesNotMatch(script, /Get-NetFirewallApplicationFilter/);
+  assert.doesNotMatch(script, /firewallRuleRemoved/);
+});
+
+test("Windows smoke uses the installed owner credential instead of renderer-only nonce authentication", () => {
+  const script = readFileSync(new URL("./windows-desktop-smoke.ps1", import.meta.url), "utf8");
+
+  assert.match(script, /Join-Path \$manifest\.DirectoryName "security\.json"/);
+  assert.match(script, /\.ownerToken/);
+  assert.match(script, /Authorization = "Bearer \$OwnerToken"/);
+  assert.doesNotMatch(script, /\/api\/auth\/local/);
+});
+
 test("Windows smoke proves the native DuckDB binding loaded in both scopes", () => {
   const script = readFileSync(new URL("./windows-desktop-smoke.ps1", import.meta.url), "utf8");
 

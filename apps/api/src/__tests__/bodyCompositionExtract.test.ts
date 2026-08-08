@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => {
     })),
     destroy: vi.fn(),
     createWorker: vi.fn(async () => worker),
+    createBodyCompositionDateImage: vi.fn(async (image: Buffer) => image.toString() === "needs-date" ? Buffer.from("date-image") : undefined),
     worker
   };
 });
@@ -42,6 +43,10 @@ vi.mock("tesseract.js", () => ({
   }
 }));
 
+vi.mock("../bodyCompositionDocumentImage.js", () => ({
+  createBodyCompositionDateImage: mocks.createBodyCompositionDateImage
+}));
+
 import { extractBodyCompositionText } from "../bodyCompositionExtract.js";
 
 describe("extractBodyCompositionText", () => {
@@ -54,5 +59,25 @@ describe("extractBodyCompositionText", () => {
     expect(result.text).toContain("Page 1");
     expect(result.text).toContain("Page 20");
     expect(result.diagnostics.filter((item) => item.startsWith("PDF page"))).toHaveLength(20);
+  });
+
+  it("uses an isolated document header only when the initial image OCR has no report date", async () => {
+    mocks.worker.recognize.mockImplementationOnce(async () => ({ data: { text: "WEIGHT 73.6kg", confidence: 42 } }));
+    mocks.worker.recognize.mockImplementationOnce(async () => ({ data: { text: "25/JUL/2026 13:26", confidence: 71 } }));
+
+    const result = await extractBodyCompositionText(Buffer.from("needs-date"), "image/jpeg");
+
+    expect(mocks.createBodyCompositionDateImage).toHaveBeenCalledWith(Buffer.from("needs-date"), "image/jpeg");
+    expect(result.text).toContain("25/JUL/2026");
+    expect(result.text).toContain("WEIGHT 73.6kg");
+    expect(result.diagnostics).toContain("Recovered the report date from an isolated document header.");
+  });
+
+  it("does not generate a document header crop when initial image OCR already has a report date", async () => {
+    mocks.worker.recognize.mockImplementationOnce(async () => ({ data: { text: "25/JUL/2026 13:26", confidence: 90 } }));
+
+    await extractBodyCompositionText(Buffer.from("already-dated"), "image/jpeg");
+
+    expect(mocks.createBodyCompositionDateImage).not.toHaveBeenCalledWith(Buffer.from("already-dated"), "image/jpeg");
   });
 });
