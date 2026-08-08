@@ -567,6 +567,49 @@ describe("App — import tab", () => {
     });
   });
 
+  it("saves profile edits through the editor header action", async () => {
+    const store = makeEmptyStore();
+    global.fetch = mockFetch({
+      "/api/store": { ...store, measurementTypes: defaultMeasurementTypes },
+      "/api/analytics": makeEmptyAnalytics(),
+      "/api/profiles": { profiles: [], activeProfileId: "self" },
+      "/api/profile": store.profile
+    });
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: /^edit$/i }));
+    fireEvent.change(screen.getByLabelText(/^name$/i), { target: { value: "Updated user" } });
+    fireEvent.click(screen.getByRole("button", { name: /save and close/i }));
+
+    await waitFor(() => {
+      const request = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([url, init]) =>
+        url === "/api/profile" && init?.method === "PUT"
+      );
+      expect(JSON.parse(String(request?.[1]?.body)).displayName).toBe("Updated user");
+    });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /edit profile/i })).not.toBeInTheDocument());
+  });
+
+  it("discards profile edits through the editor cancel action", async () => {
+    const store = makeEmptyStore();
+    global.fetch = mockFetch({
+      "/api/store": { ...store, measurementTypes: defaultMeasurementTypes },
+      "/api/analytics": makeEmptyAnalytics(),
+      "/api/profiles": { profiles: [], activeProfileId: "self" },
+      "/api/profile": store.profile
+    });
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: /^edit$/i }));
+    fireEvent.change(screen.getByLabelText(/^name$/i), { target: { value: "Discarded user" } });
+    fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+
+    expect(screen.queryByRole("dialog", { name: /edit profile/i })).not.toBeInTheDocument();
+    expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls.some(([url, init]) =>
+      url === "/api/profile" && init?.method === "PUT"
+    )).toBe(false);
+  });
+
   it("presents profile management as contextual actions with progressive profile creation", async () => {
     const store = makeEmptyStore();
     const profiles = [

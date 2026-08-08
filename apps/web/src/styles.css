@@ -3470,8 +3470,15 @@ label {
 }
 
 .wide,
-.profile-form button {
+.profile-form-actions {
   grid-column: 1 / -1;
+}
+
+.profile-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
 }
 
 .segmented {

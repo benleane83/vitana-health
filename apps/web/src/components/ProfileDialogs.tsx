@@ -113,7 +113,7 @@ export function ProfileEditDialog({
         <div>
           <h2 id="profile-dialog-title">Edit profile</h2>
         </div>
-        <button type="button" onClick={onClose} aria-label="Close profile editor">Close</button>
+        <button type="submit" form="profile-edit-form" disabled={busy}>Save and close</button>
       </div>
       <div className="profile-photo-editor">
         <ProfileAvatar displayName={profile?.displayName ?? "Profile"} revision={profilePhotoRevision} />
@@ -149,7 +149,7 @@ export function ProfileEditDialog({
           {photoFeedback ? <p className="profile-photo-feedback" role="status">{photoFeedback}</p> : null}
         </div>
       </div>
-      <form onSubmit={onSubmit} className="profile-form">
+      <form id="profile-edit-form" onSubmit={onSubmit} className="profile-form">
         <label htmlFor="profile-displayName">Name</label>
         <input
           id="profile-displayName"
@@ -256,7 +256,10 @@ export function ProfileEditDialog({
           defaultValue={profile?.goalSummary ?? ""}
         />
 
-        <button disabled={busy}>Save profile</button>
+        <div className="profile-form-actions">
+          <button type="submit" disabled={busy}>Save profile</button>
+          <button type="button" disabled={busy} onClick={onClose}>Cancel</button>
+        </div>
       </form>
     </dialog>
   );
