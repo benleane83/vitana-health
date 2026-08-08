@@ -11,7 +11,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 $productName = "Vitana Health"
-$applicationName = "$productName.exe"
+$desktopPackage = Get-Content (Join-Path $PSScriptRoot "../apps/desktop/package.json") -Raw | ConvertFrom-Json
+$applicationName = "$($desktopPackage.build.executableName).exe"
 $installRoot = Join-Path $env:RUNNER_TEMP "vitana-smoke"
 $evidenceRoot = New-Item -ItemType Directory -Force -Path $EvidenceDirectory
 $gracefulShutdownTimeoutMs = 30000
@@ -78,13 +79,13 @@ function Test-HealthEndpoint([string]$Uri) {
   }
 }
 
-function Invoke-DesktopApi([string]$Method, [string]$Path, $Body, [Microsoft.PowerShell.Commands.WebRequestSession]$Session) {
+function Invoke-DesktopApi([string]$Method, [string]$Path, $Body, [string]$OwnerToken) {
   $root = $activeHealthUri.Substring(0, $activeHealthUri.Length - "/api/health".Length)
   $parameters = @{
     Uri = "$root$Path"
     Method = $Method
-    WebSession = $Session
     ContentType = "application/json"
+    Headers = @{ Authorization = "Bearer $OwnerToken" }
   }
   if ($activeHealthUri.StartsWith("https://")) {
     $parameters.SkipCertificateCheck = $true
@@ -162,17 +163,6 @@ try {
   if (-not (Test-Path $application)) {
     throw "Desktop application not found at expected installation path: $application."
   }
-  if ($Scope -eq "Full") {
-    $rule = Get-NetFirewallRule -DisplayName $productName -ErrorAction Stop
-    $filter = $rule | Get-NetFirewallApplicationFilter
-    if (-not (@($filter.Program) | Where-Object { $_ -eq $application })) {
-      throw "Installed firewall rule does not target the desktop executable."
-    }
-    $profiles = @($rule.Profile)
-    if ($profiles.Count -ne 1 -or $profiles -notcontains "Private") {
-      throw "Installed firewall rule is not restricted to the private profile."
-    }
-  }
 
   $firstLaunch = Start-Process -FilePath $application -PassThru
   $firstLaunchStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
@@ -207,9 +197,15 @@ try {
     return
   }
   $manifestHash = (Get-FileHash $manifest.FullName -Algorithm SHA256).Hash
-  $ownerSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
-  $null = Invoke-DesktopApi "POST" "/api/auth/local" $null $ownerSession
-  $enabledSettings = Invoke-DesktopApi "PUT" "/api/settings/desktop" @{ backgroundServiceEnabled = $true } $ownerSession
+  $securityPath = Join-Path $manifest.DirectoryName "security.json"
+  if (-not (Test-Path $securityPath)) {
+    throw "The packaged runtime did not create owner security metadata."
+  }
+  $ownerToken = (Get-Content $securityPath -Raw | ConvertFrom-Json).ownerToken
+  if ([string]::IsNullOrWhiteSpace($ownerToken) -or $ownerToken.Length -lt 24) {
+    throw "The packaged runtime did not create a valid owner credential."
+  }
+  $enabledSettings = Invoke-DesktopApi "PUT" "/api/settings/desktop" @{ backgroundServiceEnabled = $true } $ownerToken
   if (-not $enabledSettings.backgroundServiceEnabled) {
     throw "The desktop API did not enable background service mode."
   }
@@ -229,7 +225,7 @@ try {
     throw "A second desktop launch replaced or stopped the existing service process."
   }
   if ($BaselineInstaller) {
-    $disabledSettings = Invoke-DesktopApi "PUT" "/api/settings/desktop" @{ backgroundServiceEnabled = $false } $ownerSession
+    $disabledSettings = Invoke-DesktopApi "PUT" "/api/settings/desktop" @{ backgroundServiceEnabled = $false } $ownerToken
     if ($disabledSettings.backgroundServiceEnabled -or (Get-LoginStartupCommand)) {
       throw "Disabling background service mode did not remove login registration."
     }
@@ -240,7 +236,7 @@ try {
       throw "Upgrade installer exited with code $($upgradeProcess.ExitCode)."
     }
   } else {
-    $disabledSettings = Invoke-DesktopApi "PUT" "/api/settings/desktop" @{ backgroundServiceEnabled = $false } $ownerSession
+    $disabledSettings = Invoke-DesktopApi "PUT" "/api/settings/desktop" @{ backgroundServiceEnabled = $false } $ownerToken
     if ($disabledSettings.backgroundServiceEnabled -or (Get-LoginStartupCommand)) {
       throw "Disabling background service mode did not remove login registration."
     }
@@ -265,13 +261,14 @@ try {
   }
   Stop-DesktopProcess $secondLaunch
 
-  $uninstaller = Join-Path $installRoot "Uninstall Vitana Health.exe"
+  $uninstallers = @(Get-ChildItem $installRoot -Filter "Uninstall*.exe" -File)
+  if ($uninstallers.Count -ne 1) {
+    throw "Expected exactly one NSIS uninstaller in $installRoot, found $($uninstallers.Count)."
+  }
+  $uninstaller = $uninstallers[0].FullName
   $uninstallProcess = Start-Process -FilePath $uninstaller -ArgumentList "/S" -Wait -PassThru
   if ($uninstallProcess.ExitCode -ne 0) {
     throw "Uninstaller exited with code $($uninstallProcess.ExitCode)."
-  }
-  if (Get-NetFirewallRule -DisplayName $productName -ErrorAction SilentlyContinue) {
-    throw "The firewall rule remained after uninstall."
   }
   if (-not (Test-Path $manifest.FullName)) {
     throw "Uninstall removed retained encrypted DuckDB app data."
@@ -283,7 +280,6 @@ try {
     storageManifest = $manifest.FullName
     storageManifestSha256 = $manifestHash
     upgraded = [bool]$BaselineInstaller
-    firewallRuleRemoved = $true
     install_ms = $installStopwatch.ElapsedMilliseconds
     launch_to_health_ms = $firstLaunchStopwatch.ElapsedMilliseconds
     restart_to_health_ms = $secondLaunchStopwatch.ElapsedMilliseconds

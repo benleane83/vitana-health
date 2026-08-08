@@ -65,9 +65,11 @@ jobs:
       - name: Verify preview artifacts are unsigned
         shell: pwsh
         run: |
+          $desktopPackage = Get-Content apps/desktop/package.json | ConvertFrom-Json
+          $unpackedExecutable = Join-Path "apps/desktop/dist/win-unpacked" "$($desktopPackage.build.executableName).exe"
           $files = @(
             Get-ChildItem apps/desktop/dist/*.exe | Select-Object -First 1
-            Get-Item "apps/desktop/dist/win-unpacked/Vitana Health.exe"
+            Get-Item $unpackedExecutable
           )
           foreach ($file in $files) {
             $signature = Get-AuthenticodeSignature $file
