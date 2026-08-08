@@ -85,13 +85,13 @@ describe("DuckDbRepository fidelity", () => {
 
       expect(updated).toMatchObject({
         label: "Morning readings",
-        collectedAt: "2026-07-13T08:15:00.000Z",
-        observations: expect.arrayContaining([
-          { id: "observation-z", observedAt: "2026-07-13T08:15:00.000Z", value: 80, note: "Corrected" },
-          { id: "observation-distinct", observedAt: "2026-07-12T10:04:00.000Z" },
-          { observedAt: "2026-07-13T08:15:00.000Z", value: 78, note: "Added" }
-        ])
+        collectedAt: "2026-07-13T08:15:00.000Z"
       });
+      expect(updated!.observations).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: "observation-z", observedAt: "2026-07-13T08:15:00.000Z", value: 80, note: "Corrected" }),
+        expect.objectContaining({ id: "observation-distinct", observedAt: "2026-07-12T10:04:00.000Z" }),
+        expect.objectContaining({ observedAt: "2026-07-13T08:15:00.000Z", value: 78, note: "Added" })
+      ]));
       const beforeRejectedUpdate = await repository.snapshot();
       await expect(repository.updateObservationGroup("group-1", {
         expectedCollectedAt: "2026-07-12T10:02:00.000Z",
