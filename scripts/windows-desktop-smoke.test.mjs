@@ -17,6 +17,14 @@ test("Windows smoke derives the NSIS executable name from desktop package metada
   assert.doesNotMatch(script, /\$applicationName = "\$productName\.exe"/);
 });
 
+test("Windows smoke does not require elevated firewall configuration from the per-user NSIS installer", () => {
+  const script = readFileSync(new URL("./windows-desktop-smoke.ps1", import.meta.url), "utf8");
+
+  assert.doesNotMatch(script, /Get-NetFirewallRule/);
+  assert.doesNotMatch(script, /Get-NetFirewallApplicationFilter/);
+  assert.doesNotMatch(script, /firewallRuleRemoved/);
+});
+
 test("Windows smoke proves the native DuckDB binding loaded in both scopes", () => {
   const script = readFileSync(new URL("./windows-desktop-smoke.ps1", import.meta.url), "utf8");
 
