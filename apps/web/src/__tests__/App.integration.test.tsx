@@ -937,7 +937,10 @@ describe("App — measurement detail", () => {
       kind: "custom",
       label: "Morning vitals",
       collectedAt: "2026-08-07T08:15:00.000Z",
-      source: { kind: "manual-entry", label: "Manual observations" },
+      source: {
+        kind: "manual-entry", label: "Manual observations", importFileName: "import_0385e9b8d0.json",
+        importedAt: "2026-08-07T08:16:00.000Z"
+      },
       editable: true,
       observations: [{
         id: "glucose-group-1",
@@ -986,14 +989,22 @@ describe("App — measurement detail", () => {
     });
 
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "View group" }));
+    fireEvent.click(await screen.findByRole("button", { name: "View Morning vitals group" }));
 
     expect(globalThis.location.pathname).toBe("/track/groups/morning-vitals-1");
     expect(await screen.findByRole("heading", { name: "Morning vitals" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Glucose" })).toBeInTheDocument();
     expect(screen.getByText("Fasting")).toBeInTheDocument();
+    expect(screen.getByText("Record source")).toBeInTheDocument();
+    expect(screen.getByText("Imported")).toBeInTheDocument();
+    expect(screen.queryByText("import_0385e9b8d0.json")).not.toBeInTheDocument();
+
+    const historyBack = vi.spyOn(globalThis.history, "back").mockImplementation(() => undefined);
+    fireEvent.click(screen.getByRole("button", { name: /back to measurements/i }));
+    expect(historyBack).toHaveBeenCalledOnce();
 
     fireEvent.click(screen.getByRole("button", { name: "Edit group" }));
+    expect(screen.getByRole("button", { name: "Remove glucose observation" })).toHaveAttribute("title", "Remove observation");
     fireEvent.change(screen.getByLabelText("Group label"), { target: { value: "Discarded label" } });
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByRole("heading", { name: "Morning vitals" })).toBeInTheDocument();
@@ -1016,6 +1027,39 @@ describe("App — measurement detail", () => {
     });
   });
 
+  it("filters group editor measurement choices to the recorded group category", async () => {
+    globalThis.history.replaceState({}, "", "/track/groups/body-scan-1");
+    global.fetch = mockFetch({
+      "/api/store": { ...makeEmptyStore(), measurementTypes: defaultMeasurementTypes },
+      "/api/analytics": makeEmptyAnalytics(),
+      "/api/profiles": { profiles: [], activeProfileId: "self" },
+      "/api/observation-groups/body-scan-1": {
+        id: "body-scan-1",
+        kind: "body_composition_report",
+        label: "Body scan",
+        collectedAt: "2026-08-07T08:15:00.000Z",
+        source: { kind: "body-composition-report", label: "Body composition report" },
+        editable: true,
+        observations: [{
+          id: "body-fat-1",
+          measurementCode: "body_fat_pct",
+          displayName: "Body fat percentage",
+          observedAt: "2026-08-07T08:15:00.000Z",
+          value: 24.5,
+          unit: "%"
+        }]
+      }
+    });
+
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "Body scan" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit group" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open measurement choices" }));
+
+    expect(screen.getByRole("option", { name: /Weight/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Glucose/ })).not.toBeInTheDocument();
+  });
+
   it("explains why an imported recorded group is read-only", async () => {
     globalThis.history.replaceState({}, "", "/track/groups/imported-panel-1");
     global.fetch = mockFetch({
@@ -1029,14 +1073,14 @@ describe("App — measurement detail", () => {
         collectedAt: "2026-08-07T08:15:00.000Z",
         source: { kind: "blood-test-csv", label: "Lab CSV", importFileName: "panel.csv" },
         editable: false,
-        readOnlyReason: "Imported or synchronized groups are read-only to preserve their provenance.",
+        readOnlyReason: "This group is synchronized from another source and cannot be edited here.",
         observations: []
       }
     });
 
     render(<App />);
     expect(await screen.findByRole("heading", { name: "Imported panel" })).toBeInTheDocument();
-    expect(screen.getByText(/read-only to preserve their provenance/i)).toBeInTheDocument();
+    expect(screen.getByText(/cannot be edited here/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit group" })).not.toBeInTheDocument();
   });
 });

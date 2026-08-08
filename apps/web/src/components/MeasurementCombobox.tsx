@@ -22,6 +22,7 @@ export function MeasurementCombobox({
   ariaLabel,
   measurementTypes,
   selectedCode,
+  selectedLabel,
   onSelect,
   onSelectCustom,
   customLabel = "Use a custom measurement"
@@ -30,15 +31,17 @@ export function MeasurementCombobox({
   ariaLabel: string;
   measurementTypes: MeasurementType[];
   selectedCode: string;
+  selectedLabel?: string;
   onSelect: (measurement: MeasurementType) => void;
   onSelectCustom?: () => void;
   customLabel?: string;
 }) {
   const selectedMeasurement = measurementTypes.find((type) => type.code === selectedCode);
-  const [inputValue, setInputValue] = useState(selectedMeasurement?.display ?? "");
+  const selectedDisplay = selectedMeasurement?.display ?? selectedLabel ?? "";
+  const [inputValue, setInputValue] = useState(selectedDisplay);
   const measurementItems = useMemo(
-    () => findMeasurementMatches(measurementTypes, inputValue, selectedMeasurement?.display),
-    [inputValue, measurementTypes, selectedMeasurement?.display]
+    () => findMeasurementMatches(measurementTypes, inputValue, selectedDisplay),
+    [inputValue, measurementTypes, selectedDisplay]
   );
   const items = useMemo<ComboboxItem[]>(
     () => onSelectCustom ? [...measurementItems, customItem] : measurementItems,
@@ -49,8 +52,8 @@ export function MeasurementCombobox({
     : null, [selectedMeasurement]);
 
   useEffect(() => {
-    setInputValue(selectedMeasurement?.display ?? "");
-  }, [selectedMeasurement?.code, selectedMeasurement?.display]);
+    setInputValue(selectedDisplay);
+  }, [selectedCode, selectedDisplay]);
 
   const {
     getInputProps,
@@ -67,7 +70,7 @@ export function MeasurementCombobox({
     itemToString: (item) => item?.kind === "measurement" ? item.measurement.display : "",
     onInputValueChange: ({ inputValue: nextInputValue }) => setInputValue(nextInputValue ?? ""),
     onIsOpenChange: ({ isOpen: nextIsOpen }) => {
-      if (!nextIsOpen) setInputValue(selectedMeasurement?.display ?? "");
+      if (!nextIsOpen) setInputValue(selectedDisplay);
     },
     onSelectedItemChange: ({ selectedItem }) => {
       if (!selectedItem) return;

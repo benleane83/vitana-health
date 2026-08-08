@@ -15,6 +15,17 @@ describe("pairing payload", () => {
     });
   });
 
+  it("accepts a Vitana pairing deep link", () => {
+    expect(parsePairingPayload(
+      "vitana://pair?app=vitana&url=https%3A%2F%2F192.0.2.1%3A4317&pairingCode=pairing-code&publicKeyHash=fingerprint",
+      true
+    )).toEqual({
+      url: "https://192.0.2.1:4317",
+      pairingCode: "pairing-code",
+      publicKeyHash: "fingerprint"
+    });
+  });
+
   it("rejects the retired discriminator", () => {
     expect(() => parsePairingPayload(JSON.stringify({
       app: ["local", "fitness", "advisor"].join("-"),

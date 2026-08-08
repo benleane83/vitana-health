@@ -7,6 +7,7 @@ const configPath = require.resolve("../app.config.js");
 function loadConfig(env: Record<string, string | undefined>): {
   expo: {
     slug: string;
+    scheme: string;
     android: { usesCleartextTraffic: boolean };
     ios: {
       bundleIdentifier: string;
@@ -86,6 +87,7 @@ describe("iOS release configuration", () => {
 
   it("keeps the existing EAS project identity and explicit runtime", () => {
     expect(config.expo.slug).toBe("local-fitness-companion");
+    expect(config.expo.scheme).toBe("vitana");
     expect(config.expo.extra.eas.projectId).toBe("2cc5cf1b-57e8-4e6f-8709-662259497a57");
     expect(config.expo.updates.url).toBe("https://u.expo.dev/2cc5cf1b-57e8-4e6f-8709-662259497a57");
     expect(config.expo.ios.bundleIdentifier).toBe("app.vitanahealth");

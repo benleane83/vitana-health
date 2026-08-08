@@ -634,19 +634,24 @@ export function ObservationTypeDetailPage({
                           </td>
                           <td data-label="Source / note" className="summary-entry-context">
                             <span>{renderEntryContext(entry)}</span>
-                            {entry.observationGroup ? (
-                              <button
-                                type="button"
-                                className="summary-view-group"
-                                onClick={() => onViewObservationGroup(entry.observationGroup!.id)}
-                              >
-                                View group
-                              </button>
-                            ) : null}
                           </td>
                           <td data-label="Action" className="summary-entry-action">
-                            {entry.canDelete ? (
+                            {entry.canDelete || entry.observationGroup ? (
                               <div className="summary-row-actions">
+                                {entry.observationGroup ? (
+                                  <button
+                                    type="button"
+                                    className="summary-row-view-group"
+                                    onClick={() => onViewObservationGroup(entry.observationGroup!.id)}
+                                    aria-label={`View ${entry.observationGroup.label} group`}
+                                    title="View group"
+                                  >
+                                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                      <path d="M4 5h7v6H4V5Zm9 0h7v6h-7V5ZM4 13h7v6H4v-6Zm9 0h7v6h-7v-6Z" />
+                                    </svg>
+                                  </button>
+                                ) : null}
+                                {entry.canDelete ? <>
                                 <button
                                   type="button"
                                   className="summary-row-edit"
@@ -672,6 +677,7 @@ export function ObservationTypeDetailPage({
                                     <path d="M6 9h12l-1 12H7L6 9Zm4 2v8h2v-8h-2Zm4 0v8h2v-8h-2Z" />
                                   </svg>
                                 </button>
+                                </> : null}
                               </div>
                             ) : (
                               <span className="summary-readonly">Read-only</span>

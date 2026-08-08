@@ -105,10 +105,10 @@ export function App() {
     };
   }, [profileMenuOpen]);
 
-  function pushPath(nextPath: string) {
+  function pushPath(nextPath: string, state: Record<string, unknown> = {}) {
     if (window.location.pathname === nextPath) return;
     setMessage(undefined);
-    window.history.pushState({}, "", nextPath);
+    window.history.pushState(state, "", nextPath);
     pathnameRef.current = nextPath;
   }
 
@@ -193,11 +193,19 @@ export function App() {
   }
 
   function navigateObservationGroup(groupId: string) {
-    pushPath(`/track/groups/${encodeURIComponent(groupId)}`);
+    pushPath(`/track/groups/${encodeURIComponent(groupId)}`, { observationGroupReturnPath: window.location.pathname });
     setSummaryDetailCode(undefined);
     setObservationGroupId(groupId);
     setTrackView("measurements");
     setRoute("track");
+  }
+
+  function navigateBackFromObservationGroup() {
+    if (typeof window.history.state?.observationGroupReturnPath === "string") {
+      window.history.back();
+      return;
+    }
+    navigate("track");
   }
 
   function confirm(
@@ -473,7 +481,7 @@ export function App() {
               onViewChange={navigateTrackView}
               bodyTrendDate={bodyTrendDate}
               onSelectBodyTrendDate={navigateBodyTrendDate}
-              onBack={() => navigate("track")}
+              onBack={navigateBackFromObservationGroup}
               onSelectDetail={navigateSummaryDetail}
               onViewObservationGroup={navigateObservationGroup}
               onDataChanged={() => profileLifecycle.refresh({ profiles: false })}

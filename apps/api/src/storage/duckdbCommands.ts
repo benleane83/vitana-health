@@ -437,7 +437,7 @@ export async function updateObservationGroup(
   `, id);
   const group = groupRows[0];
   if (!group) return undefined;
-  if (group.source_kind !== "manual-entry" || !group.source_id) {
+  if (!group.source_id || !["manual-entry", "blood-test-report", "body-composition-report"].includes(String(group.source_kind))) {
     throw new ObservationGroupReadOnlyError();
   }
   const previousCollectedAt = optionalTimestamp(group.collected_at);

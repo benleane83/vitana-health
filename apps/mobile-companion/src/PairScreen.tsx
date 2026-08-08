@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Linking, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { companionDeviceName } from "./deviceName";
 import { getDeviceId, saveConnection } from "./endpointStore";
-import { parsePairingPayload } from "./pairingPayload";
+import { parsePairingPayload, type PairingPayload } from "./pairingPayload";
 import { pinnedFetch } from "./pinnedFetch";
 import { Button, Card, Message } from "./ui/components";
 import { colors, radii, spacing, type } from "./ui/theme";
@@ -19,10 +19,12 @@ export interface PairResult {
 
 export function PairScreen({
   onComplete,
-  onCancel
+  onCancel,
+  initialPayload
 }: {
   onComplete: (result: PairResult) => void;
   onCancel: () => void;
+  initialPayload?: PairingPayload;
 }) {
   const [status, setStatus] = useState<PairStatus>("idle");
   const [message, setMessage] = useState("");
@@ -56,6 +58,16 @@ export function PairScreen({
       setCameraReady(false);
     }
   }, [cameraPermission?.granted]);
+
+  useEffect(() => {
+    if (!initialPayload || status !== "idle") return;
+    scannedRef.current = true;
+    setDetectedUrl(initialPayload.url);
+    setPairingCode(initialPayload.pairingCode);
+    setPublicKeyHash(initialPayload.publicKeyHash);
+    setStatus("detected");
+    setMessage(`Found server: ${initialPayload.url}`);
+  }, [initialPayload, status]);
 
   async function handleCameraPermissionRequest() {
     const permission = await requestCameraPermission();

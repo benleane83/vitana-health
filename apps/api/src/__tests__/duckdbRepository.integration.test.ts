@@ -47,9 +47,13 @@ afterEach(() => {
 });
 
 describe("DuckDbRepository fidelity", () => {
-  it.skipIf(!httpfsExtensionPath)("retrieves and atomically edits a manual observation group without overwriting distinct timestamps", async () => {
+  it.skipIf(!httpfsExtensionPath)("retrieves and atomically edits a phone-scanned report group without overwriting distinct timestamps", async () => {
     const databasePath = join(root, "databases", "observation-group-edit.duckdb-poc");
     const fixture = createDuckDbHealthStoreFixture();
+    fixture.sourceImports[0]!.sourceKind = "blood-test-report";
+    fixture.sourceImports[0]!.fileName = "scan-2026-07-12.pdf";
+    fixture.dataSources[0]!.sourceKind = "blood-test-report";
+    fixture.dataSources[0]!.label = "Blood test report: scanned from phone";
     fixture.observations.push({
       id: "observation-distinct",
       measurementCode: "weight",
@@ -64,7 +68,7 @@ describe("DuckDbRepository fidelity", () => {
       expect(await repository.getObservationGroup("group-1")).toMatchObject({
         id: "group-1",
         editable: true,
-        source: { kind: "manual-entry", label: "Fixture source" },
+        source: { kind: "blood-test-report", label: "Blood test report: scanned from phone" },
         observations: [{ id: "observation-z" }, { id: "observation-distinct" }]
       });
 

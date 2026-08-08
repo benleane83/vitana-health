@@ -33,13 +33,14 @@ export function makePairingRoutes(
       const lanIp = getLanIp() ?? "127.0.0.1";
       const url = `${options.scheme}://${lanIp}:${options.port}`;
       const challenge = pairingStore.createChallenge();
-      const payload = JSON.stringify({
-        url,
+      const params = new URLSearchParams({
         app: PAIRING_APP,
+        url,
         pairingCode: challenge.code,
-        expiresAt: challenge.expiresAt,
-        publicKeyHash: options.publicKeyHash
+        expiresAt: challenge.expiresAt
       });
+      if (options.publicKeyHash) params.set("publicKeyHash", options.publicKeyHash);
+      const payload = `vitana://pair?${params.toString()}`;
       response.setHeader("cache-control", "no-store");
       const buffer = await QRCode.toBuffer(payload, { type: "png", width: 300, margin: 2 });
       response.setHeader("content-type", "image/png");

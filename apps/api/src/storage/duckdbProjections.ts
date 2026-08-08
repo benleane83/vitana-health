@@ -181,7 +181,7 @@ export async function observationGroupDetail(
   const units = String(profileRows[0]?.units ?? "metric") as Profile["units"];
   const subjectKind = String(profileRows[0]?.subject_kind ?? "adult") as NonNullable<Profile["subjectKind"]>;
   const sourceKind = String(group.source_kind ?? "derived") as ObservationGroupDetail["source"]["kind"];
-  const editable = sourceKind === "manual-entry";
+  const editable = sourceKind === "manual-entry" || sourceKind === "blood-test-report" || sourceKind === "body-composition-report";
 
   return {
     id: String(group.id),
@@ -195,7 +195,7 @@ export async function observationGroupDetail(
       importedAt: optionalTimestamp(group.imported_at)
     },
     editable,
-    readOnlyReason: editable ? undefined : "Imported or synchronized groups are read-only to preserve their provenance.",
+    readOnlyReason: editable ? undefined : "This group is synchronized from another source and cannot be edited here.",
     observations: observationRows.map((row) => {
       const observation = observationFromRow(row);
       const type = types.get(observation.measurementCode);

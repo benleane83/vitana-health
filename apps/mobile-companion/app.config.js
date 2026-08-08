@@ -24,6 +24,7 @@ module.exports = {
     name: "Vitana",
     slug: "local-fitness-companion",
     version: "0.1.2",
+    scheme: "vitana",
     orientation: "portrait",
     icon: "./assets/icon.png",
     userInterfaceStyle: "light",
