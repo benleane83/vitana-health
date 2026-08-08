@@ -1,7 +1,8 @@
-import cvModule from "@techstark/opencv-js";
+import { createRequire } from "node:module";
 import jpeg from "jpeg-js";
 
 const maxDetectionSide = 2_200;
+const require = createRequire(import.meta.url);
 
 export async function createBodyCompositionDateImage(image: Buffer, mimeType: string): Promise<Buffer | undefined> {
   if (mimeType !== "image/jpeg") return undefined;
@@ -78,6 +79,7 @@ export async function createBodyCompositionDateImage(image: Buffer, mimeType: st
 }
 
 async function getCv(): Promise<any> {
+  const cvModule = require("@techstark/opencv-js");
   if (cvModule instanceof Promise) return cvModule;
   if (cvModule.Mat) return cvModule;
   return new Promise((resolve) => {
