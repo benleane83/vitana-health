@@ -57,7 +57,7 @@ describe("demo data source", () => {
     expect(result.points.at(-1)).toMatchObject({
       sourceLabel: "Demo smart scale",
       components: {
-        skeletalMuscleMass: 31.3,
+        muscleMass: 31.3,
         fatMass: 19.6,
         boneMineralContent: 3.2,
         weight: 73.8

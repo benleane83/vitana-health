@@ -9,13 +9,13 @@ const points: BodyTrendPoint[] = [
     sessionId: "reading-1",
     date: "2026-07-01",
     observedAt: "2026-07-01T09:00:00.000Z",
-    components: { skeletalMuscleMass: 31.2, fatMass: 18.4, boneMineralContent: 3.1, weight: 69.8 }
+    components: { muscleMass: 31.2, fatMass: 18.4, boneMineralContent: 3.1, weight: 69.8 }
   },
   {
     sessionId: "reading-2",
     date: "2026-08-01",
     observedAt: "2026-08-01T09:00:00.000Z",
-    components: { skeletalMuscleMass: 31.6, fatMass: 17.8, boneMineralContent: 3.1 }
+    components: { muscleMass: 31.6, fatMass: 17.8, boneMineralContent: 3.1 }
   }
 ];
 
@@ -36,6 +36,6 @@ describe("BodyTrendChart", () => {
     fireEvent.keyDown(targets[1]!, { key: "Enter" });
 
     expect(onSelect).toHaveBeenCalledWith("2026-08-01");
-    expect(screen.getByText(/muscle, .*fat, .*bone mineral kg/i)).toBeInTheDocument();
+    expect(screen.getByText(/muscle mass, .*fat, .*bone mineral kg/i)).toBeInTheDocument();
   });
 });

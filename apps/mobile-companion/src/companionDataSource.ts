@@ -27,6 +27,8 @@ import type {
   HealthEventListQuery,
   HealthEventMutationResponse,
   PaginatedResult,
+  PersonalReferenceRangeInput,
+  ReferenceRangeState,
   UpdateObservationInput,
   UpdateObservationResponse
 } from "@vitana/shared";
@@ -54,6 +56,11 @@ export interface CompanionMutationService {
 export interface CompanionObservationMutationService {
   updateObservation(id: string, input: UpdateObservationInput): Promise<UpdateObservationResponse>;
   deleteObservation(id: string): Promise<DeleteObservationResponse>;
+}
+
+export interface CompanionReferenceRangeMutationService {
+  setPersonalReferenceRange(measurementCode: string, input: PersonalReferenceRangeInput): Promise<ReferenceRangeState>;
+  removePersonalReferenceRange(measurementCode: string): Promise<ReferenceRangeState>;
 }
 
 export interface CompanionMaintenanceService {

@@ -142,7 +142,7 @@ beforeEach(() => {
           date: "2026-08-01",
           observedAt: "2026-08-01T09:00:00.000Z",
           sourceLabel: "Body composition scale",
-          components: { skeletalMuscleMass: 31.6, fatMass: 17.8, boneMineralContent: 3.1, weight: 68.8 }
+          components: { muscleMass: 31.6, fatMass: 17.8, boneMineralContent: 3.1, weight: 68.8 }
         }],
         totalPoints: 1,
         truncated: false

@@ -32,7 +32,7 @@ describe("bodyTrendFromObservations", () => {
       sessionId: "complete",
       date: "2026-08-01",
       sourceLabel: "Body scale",
-      components: { skeletalMuscleMass: 30, fatMass: 20, boneMineralContent: 3, weight: 60 }
+      components: { muscleMass: 30, fatMass: 20, boneMineralContent: 3, weight: 60 }
     });
   });
 
@@ -63,7 +63,29 @@ describe("bodyTrendFromObservations", () => {
     );
 
     expect(result.unit).toBe("lb");
-    expect(result.points[0]?.components.skeletalMuscleMass).toBeCloseTo(66.1387, 3);
+    expect(result.points[0]?.components.muscleMass).toBeCloseTo(66.1387, 3);
     expect(result.points[0]?.components.weight).toBeCloseTo(132.277, 3);
+  });
+
+  it("prefers Muscle Mass over Skeletal Muscle Mass within a reading", () => {
+    const result = bodyTrendFromObservations(
+      { range: "all", timezone: "UTC" },
+      [
+        ...session("both", "2026-08-01T08:00:00.000Z"),
+        {
+          id: "both-muscle",
+          measurementCode: "muscle_mass",
+          observationGroupId: "both",
+          observedAt: "2026-08-01T08:00:00.000Z",
+          value: 56,
+          unit: "kg",
+          sourceLabel: "Body scale"
+        }
+      ],
+      units,
+      new Date("2026-08-06T12:00:00.000Z")
+    );
+
+    expect(result.points[0]?.components.muscleMass).toBe(56);
   });
 });

@@ -3,7 +3,7 @@ import type { BodyTrendPoint } from "@vitana/shared";
 import { formatDetailValue, formatShortTimestamp } from "../utils.js";
 
 const series = [
-  { key: "skeletalMuscleMass", label: "Muscle", className: "body-trend-muscle" },
+  { key: "muscleMass", label: "Muscle Mass", className: "body-trend-muscle" },
   { key: "fatMass", label: "Fat", className: "body-trend-fat" },
   { key: "boneMineralContent", label: "Bone mineral", className: "body-trend-bone" }
 ] as const;
@@ -21,12 +21,12 @@ export function BodyTrendChart({
 }) {
   const [hoveredDate, setHoveredDate] = useState<string>();
   const totals = points.map((point) => point.components.weight ?? (
-    point.components.skeletalMuscleMass + point.components.fatMass + point.components.boneMineralContent
+    point.components.muscleMass + point.components.fatMass + point.components.boneMineralContent
   ));
   const maximum = Math.max(
     1,
     ...points.map((point) => Math.max(
-      point.components.skeletalMuscleMass + point.components.fatMass + point.components.boneMineralContent,
+      point.components.muscleMass + point.components.fatMass + point.components.boneMineralContent,
       point.components.weight ?? 0
     ))
   );
@@ -114,7 +114,7 @@ export function BodyTrendChart({
                 height={bottom - top}
                 tabIndex={0}
                 role="button"
-                aria-label={`${formatShortTimestamp(point.observedAt)}: muscle ${formatDetailValue(point.components.skeletalMuscleMass)} ${unit}, fat ${formatDetailValue(point.components.fatMass)} ${unit}, bone mineral ${formatDetailValue(point.components.boneMineralContent)} ${unit}`}
+                aria-label={`${formatShortTimestamp(point.observedAt)}: Muscle Mass ${formatDetailValue(point.components.muscleMass)} ${unit}, fat ${formatDetailValue(point.components.fatMass)} ${unit}, bone mineral ${formatDetailValue(point.components.boneMineralContent)} ${unit}`}
                 onClick={() => onSelect(point.date)}
                 onFocus={() => setHoveredDate(point.date)}
                 onBlur={() => setHoveredDate(undefined)}
@@ -132,10 +132,10 @@ export function BodyTrendChart({
           })}
         </svg>
       </div>
-      {active ? <p className="body-trend-chart-tooltip" aria-live="polite">{formatShortTimestamp(active.observedAt)}: {formatDetailValue(active.components.skeletalMuscleMass)} muscle, {formatDetailValue(active.components.fatMass)} fat, {formatDetailValue(active.components.boneMineralContent)} bone mineral {unit}{active.components.weight === undefined ? "" : `; weight ${formatDetailValue(active.components.weight)} ${unit}`}</p> : null}
+      {active ? <p className="body-trend-chart-tooltip" aria-live="polite">{formatShortTimestamp(active.observedAt)}: {formatDetailValue(active.components.muscleMass)} Muscle Mass, {formatDetailValue(active.components.fatMass)} fat, {formatDetailValue(active.components.boneMineralContent)} bone mineral {unit}{active.components.weight === undefined ? "" : `; weight ${formatDetailValue(active.components.weight)} ${unit}`}</p> : null}
       <details className="sr-only">
         <summary>Body Trend data table</summary>
-        <ul>{points.map((point) => <li key={point.sessionId}>{formatShortTimestamp(point.observedAt)}: muscle {formatDetailValue(point.components.skeletalMuscleMass)} {unit}, fat {formatDetailValue(point.components.fatMass)} {unit}, bone mineral {formatDetailValue(point.components.boneMineralContent)} {unit}</li>)}</ul>
+        <ul>{points.map((point) => <li key={point.sessionId}>{formatShortTimestamp(point.observedAt)}: Muscle Mass {formatDetailValue(point.components.muscleMass)} {unit}, fat {formatDetailValue(point.components.fatMass)} {unit}, bone mineral {formatDetailValue(point.components.boneMineralContent)} {unit}</li>)}</ul>
       </details>
     </div>
   );

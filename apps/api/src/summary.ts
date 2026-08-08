@@ -248,16 +248,20 @@ export function summarizeMeasurementDetail(store: HealthStoreData, measurementCo
   const measurementTypes = new Map(store.measurementTypes.map((item) => [item.code, item]));
   const entries = listHealthDataDetailEntries(store, measurementCode);
   const type = measurementTypes.get(measurementCode);
+  const personalRange = store.personalReferenceRanges.find((range) => range.measurementCode === measurementCode);
   return summarizeMeasurementEntries(measurementCode, type, entries, {
     isPinned: store.pinnedMeasurements.some((pin) => pin.measurementCode === measurementCode),
     referenceRange: type
       ? resolveReferenceRange(
           type,
           getPreferredUnit(type, store.profile.units),
-          store.personalReferenceRanges.find((range) => range.measurementCode === measurementCode),
+          personalRange,
           store.profile.subjectKind
         )
-      : { source: "none" }
+      : { source: "none" },
+    optimalRangeForUnit: type
+      ? (unit) => resolveReferenceRange(type, unit, personalRange, store.profile.subjectKind).optimal
+      : undefined
   });
 }
 
@@ -270,6 +274,7 @@ export function summarizeMeasurementEntries(
     latestTimestamp?: string;
     pagination?: HealthDataDetail["pagination"];
     referenceRange?: HealthDataDetail["referenceRange"];
+    optimalRangeForUnit?: (unit: string) => HealthDataDetail["referenceRange"]["optimal"];
     isPinned?: boolean;
   } = {}
 ): HealthDataDetail {
@@ -300,7 +305,7 @@ export function summarizeMeasurementEntries(
     lastMeasuredAt: latestTimestamp
   };
 
-  const chartPoints = chartPointsForEntries(entries);
+  const chartPoints = chartPointsForEntries(entries, options.optimalRangeForUnit);
 
   return {
     generatedAt: new Date().toISOString(),
@@ -323,7 +328,10 @@ export function summarizeMeasurementEntries(
   };
 }
 
-export function chartPointsForEntries(entries: HealthDataDetailEntry[]): HealthDataDetail["chartPoints"] {
+export function chartPointsForEntries(
+  entries: HealthDataDetailEntry[],
+  optimalRangeForUnit?: (unit: string) => HealthDataDetail["referenceRange"]["optimal"]
+): HealthDataDetail["chartPoints"] {
   return [...entries]
     .filter((entry) => entry.timestamp)
     .sort((a, b) => a.timestamp.localeCompare(b.timestamp) || a.id.localeCompare(b.id))
@@ -332,7 +340,8 @@ export function chartPointsForEntries(entries: HealthDataDetailEntry[]): HealthD
       timestamp: entry.timestamp,
       value: entry.value,
       unit: entry.unit,
-      referenceRange: entry.referenceRange
+      referenceRange: entry.referenceRange,
+      optimalRange: optimalRangeForUnit?.(entry.unit)
     }));
 }
 

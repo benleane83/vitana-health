@@ -70,7 +70,7 @@ export function BodyTrendRoute({ activeProfileId, selectedDateFromPath, onSelect
     </header>
     {timeline.busy && !data ? <p className="empty" role="status">Loading Body Trend…</p> : null}
     {timeline.error && !data ? <p className="empty" role="alert">{timeline.error}</p> : null}
-    {data?.points.length === 0 ? <div className="body-trend-empty"><h2>Complete readings will appear here</h2><p>Body Trend needs skeletal muscle mass, fat mass, and bone mineral content recorded together in one body-composition reading.</p></div> : null}
+    {data?.points.length === 0 ? <div className="body-trend-empty"><h2>Complete readings will appear here</h2><p>Body Trend needs muscle mass or skeletal muscle mass, fat mass, and bone mineral content recorded together in one body-composition reading.</p></div> : null}
     {data?.points.length ? <>
       <BodyTrendChart points={data.points} unit={data.unit} selectedDate={selectedDate} onSelect={(date) => {
         setSelectedDate(date);

@@ -58,6 +58,15 @@ function compatibleReferenceRange(points: HealthDataChartSeriesPoint[]): Referen
   )?.referenceRange;
 }
 
+function compatibleOptimalRange(points: HealthDataChartSeriesPoint[]): ReferenceRange | undefined {
+  const unit = points[0]?.unit;
+  return points.find((point) =>
+    point.optimalRange?.unit === unit &&
+    point.optimalRange.low !== undefined &&
+    point.optimalRange.high !== undefined
+  )?.optimalRange;
+}
+
 // ─── Density bar (progress semantics) ────────────────────────────────────────
 
 export function DensityBar({ density }: { density: number }) {
@@ -209,9 +218,13 @@ export function DetailTrendChart({
   }
 
   const referenceRange = compatibleReferenceRange(points);
+  const optimalRange = compatibleOptimalRange(points);
   const unitLabel = [...new Set(points.map((point) => point.unit).filter(Boolean))].join(", ");
   const referenceLabel = referenceRange
     ? `Reference range: ${referenceRange.low ?? "—"}–${referenceRange.high ?? "—"} ${referenceRange.unit}`
+    : undefined;
+  const optimalLabel = optimalRange
+    ? `Optimal range: ${optimalRange.low}–${optimalRange.high} ${optimalRange.unit}`
     : undefined;
 
   const rangeControls = (
@@ -281,7 +294,9 @@ export function DetailTrendChart({
   const valueExtent = finiteExtent([
     ...points.map((p) => p.value),
     referenceRange?.low,
-    referenceRange?.high
+    referenceRange?.high,
+    optimalRange?.low,
+    optimalRange?.high
   ]);
   const xMin = timeExtent?.min ?? 0;
   const xMax = timeExtent?.max ?? 0;
@@ -335,6 +350,15 @@ export function DetailTrendChart({
             width={chartRight - chartLeft}
             height={pointY(referenceRange.low) - pointY(referenceRange.high)}
             className="summary-detail-reference-band"
+          />
+        ) : null}
+        {optimalRange?.low !== undefined && optimalRange?.high !== undefined ? (
+          <rect
+            x={chartLeft}
+            y={pointY(optimalRange.high)}
+            width={chartRight - chartLeft}
+            height={pointY(optimalRange.low) - pointY(optimalRange.high)}
+            className="summary-detail-optimal-band"
           />
         ) : null}
         {yTicks.map((tick) => (
@@ -396,8 +420,14 @@ export function DetailTrendChart({
           </text>
         ))}
       </svg>
+      {optimalRange ? (
+        <div className="summary-detail-range-legend" aria-label="Chart range legend">
+          <span><i className="normal" aria-hidden="true" />Normal range</span>
+          <span><i className="optimal" aria-hidden="true" />Optimal range</span>
+        </div>
+      ) : null}
       <div className="summary-detail-chart-meta">
-        <span className="sr-only">{unitLabel || "Value"}{referenceLabel ? ` • ${referenceLabel}` : ""}</span>
+        <span className="sr-only">{unitLabel || "Value"}{referenceLabel ? ` • ${referenceLabel}` : ""}{optimalLabel ? ` • ${optimalLabel}` : ""}</span>
         <span className="summary-detail-chart-tooltip" aria-live="polite">
           {activePoint
             ? `${series?.granularity === "raw" ? "Reading" : `${series?.granularity ?? "daily"} bucket`} · ${formatTimestamp(activePoint.timestamp)} · ${formatDetailValue(activePoint.value)} ${activePoint.unit}${activePoint.count > 1 ? ` · ${activePoint.count} readings` : ""}`
