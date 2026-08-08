@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import type { MeasurementType, ObservationGroupDetail, UpdateObservationGroupInput } from "@vitana/shared";
+import { fallbackMeasurementCode, getPreferredUnit, type MeasurementType, type ObservationGroupDetail, type UnitSystem, type UpdateObservationGroupInput } from "@vitana/shared";
 import { api } from "../../api.js";
 import { MeasurementCombobox } from "../../components/MeasurementCombobox.js";
 
@@ -7,6 +7,7 @@ type DraftRow = {
   id?: string;
   measurementCode: string;
   measurementLabel?: string;
+  customMeasurement?: boolean;
   value: string;
   unit: string;
   note: string;
@@ -44,6 +45,7 @@ export function ObservationGroupRoute({
   groupId,
   activeProfileId,
   measurementTypes,
+  units,
   onBack,
   onSelectMeasurement,
   onDataChanged,
@@ -52,6 +54,7 @@ export function ObservationGroupRoute({
   groupId: string;
   activeProfileId?: string;
   measurementTypes: MeasurementType[];
+  units: UnitSystem;
   onBack: () => void;
   onSelectMeasurement: (measurementCode: string) => void;
   onDataChanged: () => Promise<void>;
@@ -238,17 +241,39 @@ export function ObservationGroupRoute({
               <thead><tr><th>Measurement</th><th>Value</th><th>Unit</th><th>Note</th><th>Action</th></tr></thead>
               <tbody>{rows.map((row, index) => (
                 <tr key={row.id ?? `new-${index}`}>
-                  <td data-label="Measurement"><MeasurementCombobox
-                    id={`observation-group-measurement-${row.id ?? index}`}
-                    ariaLabel={`Measurement for row ${index + 1}`}
-                    measurementTypes={measurementTypesForRow(row)}
-                    selectedCode={row.measurementCode}
-                    selectedLabel={row.measurementLabel}
-                    onSelect={(measurement) => updateRow(index, {
-                      measurementCode: measurement.code,
-                      measurementLabel: measurement.display
-                    })}
-                  /></td>
+                  <td data-label="Measurement">
+                    <MeasurementCombobox
+                      id={`observation-group-measurement-${row.id ?? index}`}
+                      ariaLabel={`Measurement for row ${index + 1}`}
+                      measurementTypes={measurementTypesForRow(row)}
+                      selectedCode={row.customMeasurement ? "" : row.measurementCode}
+                      selectedLabel={row.measurementLabel}
+                      menuPlacement={index === rows.length - 1 ? "above" : "below"}
+                      onSelectCustom={() => updateRow(index, {
+                        customMeasurement: true,
+                        measurementCode: "",
+                        measurementLabel: ""
+                      })}
+                      onSelect={(measurement) => updateRow(index, {
+                        customMeasurement: false,
+                        measurementCode: measurement.code,
+                        measurementLabel: measurement.display,
+                        unit: getPreferredUnit(measurement, units)
+                      })}
+                    />
+                    {row.customMeasurement || (Boolean(row.measurementLabel) && !measurementTypes.some((type) => type.code === row.measurementCode)) ? (
+                      <input
+                        value={row.measurementLabel ?? ""}
+                        onChange={(event) => updateRow(index, {
+                          customMeasurement: true,
+                          measurementLabel: event.target.value,
+                          measurementCode: fallbackMeasurementCode(event.target.value)
+                        })}
+                        placeholder="Custom measurement name"
+                        aria-label={`Custom measurement name for row ${index + 1}`}
+                      />
+                    ) : null}
+                  </td>
                   <td data-label="Value"><input type="number" step="any" value={row.value} onChange={(event) => updateRow(index, { value: event.target.value })} required /></td>
                   <td data-label="Unit"><input value={row.unit} onChange={(event) => updateRow(index, { unit: event.target.value })} required /></td>
                   <td data-label="Note"><input value={row.note} onChange={(event) => updateRow(index, { note: event.target.value })} /></td>

@@ -477,6 +477,7 @@ export function App() {
               view={trackView}
               activeProfileId={activeProfileId}
               measurementTypes={recordedMeasurementTypes}
+              units={profile?.units ?? "metric"}
               latestMetrics={analytics?.latestMetrics ?? []}
               onViewChange={navigateTrackView}
               bodyTrendDate={bodyTrendDate}

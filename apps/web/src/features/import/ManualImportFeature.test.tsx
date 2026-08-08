@@ -121,15 +121,16 @@ describe("ManualImportFeature", () => {
     })));
   });
 
-  it("reveals custom measurement fields only after selecting the custom action", () => {
-    render(
-      <ManualImportFeature
-        activeProfileId="self"
-        units="metric"
-        onImported={vi.fn().mockResolvedValue(undefined)}
+  it("generates a standard code from a custom measurement name", async () => {
+      vi.spyOn(api, "importManualObservations").mockResolvedValue(undefined as never);
+      render(
+        <ManualImportFeature
+          activeProfileId="self"
+          units="metric"
+          onImported={vi.fn().mockResolvedValue(undefined)}
         onNotice={vi.fn()}
-      />
-    );
+        />
+      );
 
     fireEvent.change(screen.getByLabelText("Observation group"), { target: { value: "__custom__" } });
     expect(screen.queryByLabelText("Row 1 measurement name")).not.toBeInTheDocument();
@@ -139,7 +140,21 @@ describe("ManualImportFeature", () => {
     fireEvent.click(screen.getByRole("option", { name: "Use a custom measurement" }));
 
     expect(screen.getByLabelText("Row 1 measurement name")).toBeInTheDocument();
-    expect(screen.getByLabelText("Row 1 measurement code")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Row 1 measurement code")).not.toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText("Row 1 measurement name"), { target: { value: "Custom score" } });
+      fireEvent.change(screen.getByLabelText("Row 1 value"), { target: { value: "7" } });
+      fireEvent.change(screen.getByLabelText("Row 1 unit"), { target: { value: "points" } });
+      fireEvent.click(screen.getByRole("button", { name: "Import observations" }));
+      fireEvent.change(screen.getByLabelText("Custom group name"), { target: { value: "Custom readings" } });
+      fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Import observations" }));
+
+      await waitFor(() => expect(api.importManualObservations).toHaveBeenCalledWith(expect.objectContaining({
+        label: "Custom readings",
+        observations: [expect.objectContaining({
+          measurementName: "Custom score",
+          measurementCode: "manual_custom_score"
+        })]
+      })));
   });
 
   it("uses compact accessible controls to remove manual rows", () => {

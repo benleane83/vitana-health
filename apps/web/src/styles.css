@@ -2589,6 +2589,11 @@ h3 {
   display: block;
 }
 
+.measurement-combobox-menu.is-upward {
+  top: auto;
+  bottom: calc(100% + var(--space-1));
+}
+
 .measurement-combobox-option,
 .measurement-combobox-empty {
   padding: 0.65rem 0.75rem;

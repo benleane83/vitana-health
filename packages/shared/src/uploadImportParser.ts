@@ -3,6 +3,7 @@ import { findMeasurementType, getPreferredUnit } from "./measurementRegistry.js"
 import {
   checksum,
   fallbackMeasurementCode,
+  isAdministrativeMeasurementLabel,
   normalizeFieldKey,
   parseDelimitedWithHeaders,
   readDate,
@@ -154,6 +155,10 @@ function buildLongFormatRows(
     }
     if (!rawLabel && !rawCode) {
       diagnostics.push(`Row ${index + 2}: skipped — no measurement name or code found.`);
+      return;
+    }
+    if (isAdministrativeMeasurementLabel(rawLabel)) {
+      diagnostics.push(`Row ${index + 2}: skipped — administrative identifier "${rawLabel}".`);
       return;
     }
     const measurementType = (rawCode ? findMeasurementType(rawCode) : undefined) ?? (rawLabel ? findMeasurementType(rawLabel) : undefined);

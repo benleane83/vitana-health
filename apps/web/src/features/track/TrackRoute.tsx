@@ -11,6 +11,7 @@ import type {
   LatestMetric,
   PersonalReferenceRangeInput,
   SleepSessionPage,
+  UnitSystem,
   UpdateObservationInput
 } from "@vitana/shared";
 import { api } from "../../api.js";
@@ -42,6 +43,7 @@ export function TrackRoute({
   view,
   activeProfileId,
   measurementTypes,
+  units,
   latestMetrics,
   onViewChange,
   bodyTrendDate,
@@ -60,6 +62,7 @@ export function TrackRoute({
   view: TrackView;
   activeProfileId?: string;
   measurementTypes: MeasurementType[];
+  units: UnitSystem;
   latestMetrics: LatestMetric[];
   onViewChange: (view: TrackView) => void;
   bodyTrendDate?: string;
@@ -385,6 +388,7 @@ export function TrackRoute({
           groupId={observationGroupId}
           activeProfileId={activeProfileId}
           measurementTypes={measurementTypes}
+          units={units}
           onBack={onBack}
           onSelectMeasurement={onSelectDetail}
           onDataChanged={onDataChanged}

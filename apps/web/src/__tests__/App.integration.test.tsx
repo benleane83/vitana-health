@@ -385,10 +385,66 @@ describe("App — import tab", () => {
     expect(screen.getByRole("checkbox", { name: /row 2: save/i })).toBeChecked();
     const measurement = screen.getByRole("combobox", { name: /row 2 known measurement/i });
     expect(measurement).toHaveValue("");
+    expect(measurement).toHaveFocus();
+    expect(screen.queryByRole("textbox", { name: /row 2 display name/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: /row 2 measurement code/i })).not.toBeInTheDocument();
+    fireEvent.change(measurement, { target: { value: "custom" } });
+    fireEvent.click(screen.getByRole("option", { name: "Use a custom measurement" }));
+    expect(screen.getByRole("textbox", { name: /row 2 display name/i })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: /row 2 measurement code/i })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: /row 2 display name/i }), { target: { value: "Custom score" } });
     fireEvent.change(measurement, { target: { value: "iron" } });
     fireEvent.click(screen.getByRole("option", { name: /Iron Lab/i }));
     expect(screen.getByRole("combobox", { name: /row 2 known measurement/i })).toHaveValue("Iron");
     expect(screen.getByRole("textbox", { name: /row 2 unit/i })).toHaveValue("µmol/L");
+    expect(screen.queryByRole("textbox", { name: /row 2 display name/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: /row 2 measurement code/i })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: /row 2 value/i }), { target: { value: "12" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save approved rows" }));
+
+    await waitFor(() => {
+      const request = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([url, init]) =>
+        String(url).includes("/api/import/upload/commit") && init?.method === "POST"
+      );
+      const rows = JSON.parse(String(request?.[1]?.body)).rows;
+      expect(rows).toContainEqual(expect.objectContaining({
+        label: "Iron",
+        measurementCode: "iron",
+        displayName: "Iron",
+        value: 12,
+        unit: "µmol/L",
+        included: true
+      }));
+      expect(rows[1]).not.toHaveProperty("manuallyAdded");
+    });
+  });
+
+  it("generates a standard code from a custom manual measurement name", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("tab", { name: /^import$/i }));
+    fireEvent.change(screen.getByRole("combobox", { name: /observation group/i }), { target: { value: "__custom__" } });
+
+    const measurement = screen.getByRole("combobox", { name: /row 1: select known measurement/i });
+    fireEvent.change(measurement, { target: { value: "custom" } });
+    fireEvent.click(screen.getByRole("option", { name: "Use a custom measurement" }));
+    fireEvent.change(screen.getByRole("textbox", { name: /row 1 measurement name/i }), { target: { value: "Custom score" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /row 1 value/i }), { target: { value: "7" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /row 1 unit/i }), { target: { value: "points" } });
+    expect(screen.queryByRole("textbox", { name: /row 1 measurement code/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^import observations$/i }));
+    fireEvent.change(screen.getByRole("textbox", { name: /group name/i }), { target: { value: "Custom readings" } });
+    const confirmation = within(screen.getByRole("dialog")).getByRole("button", { name: /^import observations$/i });
+    await waitFor(() => expect(confirmation).toBeEnabled());
+    fireEvent.click(confirmation);
+
+    await waitFor(() => {
+      const request = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([url, init]) =>
+        String(url).includes("/api/import/observations/manual") && init?.method === "POST"
+      );
+      expect(JSON.parse(String(request?.[1]?.body))).toMatchObject({
+        observations: [{ measurementName: "Custom score", measurementCode: "manual_custom_score" }]
+      });
+    });
   });
 
   it("rejects oversized structured uploads before reading or uploading them", async () => {
@@ -638,7 +694,7 @@ describe("App — import tab", () => {
     expect(measurements.map((measurement) => (measurement as HTMLInputElement).value))
       .toEqual(["Body fat percentage", "", "Weight"]);
     expect(screen.getByRole("textbox", { name: /row 2 measurement name/i })).toHaveValue("custom_score");
-    expect(screen.getByRole("textbox", { name: /row 2 measurement code/i })).toHaveValue("custom_score");
+    expect(screen.queryByRole("textbox", { name: /row 2 measurement code/i })).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: /row 1 value/i })).toHaveValue("");
     expect(screen.getByRole("textbox", { name: /row 3 value/i })).toHaveValue("");
     expect(screen.getByRole("textbox", { name: /row 2 unit/i })).toHaveValue("points");
@@ -1056,8 +1112,15 @@ describe("App — measurement detail", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit group" }));
     fireEvent.click(screen.getByRole("button", { name: "Open measurement choices" }));
 
+    expect(screen.getByRole("listbox")).toHaveClass("is-upward");
     expect(screen.getByRole("option", { name: /Weight/ })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: /Glucose/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: /Weight/ }));
+    expect(screen.getByDisplayValue("kg")).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox", { name: "Measurement for row 1" }), { target: { value: "custom" } });
+    fireEvent.click(screen.getByRole("option", { name: "Use a custom measurement" }));
+    fireEvent.change(screen.getByRole("textbox", { name: /custom measurement name for row 1/i }), { target: { value: "Scan score" } });
+    expect(screen.queryByRole("textbox", { name: /measurement code/i })).not.toBeInTheDocument();
   });
 
   it("explains why an imported recorded group is read-only", async () => {

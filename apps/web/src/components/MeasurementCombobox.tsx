@@ -23,6 +23,8 @@ export function MeasurementCombobox({
   measurementTypes,
   selectedCode,
   selectedLabel,
+  autoFocus = false,
+  menuPlacement = "below",
   onSelect,
   onSelectCustom,
   customLabel = "Use a custom measurement"
@@ -32,6 +34,8 @@ export function MeasurementCombobox({
   measurementTypes: MeasurementType[];
   selectedCode: string;
   selectedLabel?: string;
+  autoFocus?: boolean;
+  menuPlacement?: "above" | "below";
   onSelect: (measurement: MeasurementType) => void;
   onSelectCustom?: () => void;
   customLabel?: string;
@@ -54,6 +58,10 @@ export function MeasurementCombobox({
   useEffect(() => {
     setInputValue(selectedDisplay);
   }, [selectedCode, selectedDisplay]);
+
+  useEffect(() => {
+    if (autoFocus) document.getElementById(id)?.focus();
+  }, [autoFocus, id]);
 
   const {
     getInputProps,
@@ -106,7 +114,7 @@ export function MeasurementCombobox({
           </svg>
         </button>
       </div>
-      <ul {...getMenuProps()} className={`measurement-combobox-menu${isOpen ? " is-open" : ""}`}>
+      <ul {...getMenuProps()} className={`measurement-combobox-menu${isOpen ? " is-open" : ""}${menuPlacement === "above" ? " is-upward" : ""}`}>
         {isOpen && measurementItems.length === 0 ? (
           <li className="measurement-combobox-empty">No known measurements match.</li>
         ) : null}

@@ -1,5 +1,5 @@
 import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { defaultMeasurementTypes, getPreferredUnit, type AppBootstrap, type MeasurementType, type ProfileListEntry, type UnitSystem } from "@vitana/shared";
+import { defaultMeasurementTypes, fallbackMeasurementCode, getPreferredUnit, type AppBootstrap, type MeasurementType, type ProfileListEntry, type UnitSystem } from "@vitana/shared";
 import { api } from "../api.js";
 import type { PairedDevice, PendingPairing } from "../api.js";
 import { MeasurementCombobox } from "../components/MeasurementCombobox.js";
@@ -301,7 +301,6 @@ function ManualMeasurementRow({
 }) {
   const measurementSelectId = `manual-measurement-select-${row.id}`;
   const markerInputId = `manual-measurement-input-${row.id}`;
-  const codeInputId = `manual-code-input-${row.id}`;
   const valueInputId = `lab-value-${row.id}`;
   const unitInputId = `lab-unit-${row.id}`;
   const selectedMeasurementCode = customMeasurement ? "" : resolveKnownMeasurementSelectionForManual(row, measurementTypes);
@@ -318,7 +317,10 @@ function ManualMeasurementRow({
           ariaLabel={`Row ${rowIndex}: select known measurement`}
           measurementTypes={measurementTypes}
           selectedCode={selectedMeasurementCode}
-          onSelectCustom={() => onSetCustomMeasurement(true)}
+          onSelectCustom={() => {
+            onSetCustomMeasurement(true);
+            onChange(row.id, { marker: "", measurementCode: "" });
+          }}
           onSelect={(selectedMeasurement) => {
             onSetCustomMeasurement(false);
             onChange(row.id, {
@@ -336,19 +338,12 @@ function ManualMeasurementRow({
             <input
               id={markerInputId}
               value={row.marker}
-              onChange={(event) => onChange(row.id, { marker: event.target.value, measurementCode: row.measurementCode })}
+              onChange={(event) => onChange(row.id, {
+                marker: event.target.value,
+                measurementCode: fallbackMeasurementCode(event.target.value)
+              })}
               placeholder="HDL cholesterol"
               aria-label={`Row ${rowIndex} measurement name`}
-            />
-            <label htmlFor={codeInputId} className="sr-only">
-              Row {rowIndex}: measurement code
-            </label>
-            <input
-              id={codeInputId}
-              value={row.measurementCode ?? ""}
-              onChange={(event) => onChange(row.id, { measurementCode: event.target.value })}
-              placeholder="hdl_cholesterol"
-              aria-label={`Row ${rowIndex} measurement code`}
             />
           </>
         ) : null}
