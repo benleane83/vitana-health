@@ -25,6 +25,15 @@ test("Windows smoke does not require elevated firewall configuration from the pe
   assert.doesNotMatch(script, /firewallRuleRemoved/);
 });
 
+test("Windows smoke uses the installed owner credential instead of renderer-only nonce authentication", () => {
+  const script = readFileSync(new URL("./windows-desktop-smoke.ps1", import.meta.url), "utf8");
+
+  assert.match(script, /Join-Path \$manifest\.DirectoryName "security\.json"/);
+  assert.match(script, /\.ownerToken/);
+  assert.match(script, /Authorization = "Bearer \$OwnerToken"/);
+  assert.doesNotMatch(script, /\/api\/auth\/local/);
+});
+
 test("Windows smoke proves the native DuckDB binding loaded in both scopes", () => {
   const script = readFileSync(new URL("./windows-desktop-smoke.ps1", import.meta.url), "utf8");
 

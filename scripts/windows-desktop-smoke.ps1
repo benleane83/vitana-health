@@ -79,13 +79,13 @@ function Test-HealthEndpoint([string]$Uri) {
   }
 }
 
-function Invoke-DesktopApi([string]$Method, [string]$Path, $Body, [Microsoft.PowerShell.Commands.WebRequestSession]$Session) {
+function Invoke-DesktopApi([string]$Method, [string]$Path, $Body, [string]$OwnerToken) {
   $root = $activeHealthUri.Substring(0, $activeHealthUri.Length - "/api/health".Length)
   $parameters = @{
     Uri = "$root$Path"
     Method = $Method
-    WebSession = $Session
     ContentType = "application/json"
+    Headers = @{ Authorization = "Bearer $OwnerToken" }
   }
   if ($activeHealthUri.StartsWith("https://")) {
     $parameters.SkipCertificateCheck = $true
@@ -197,9 +197,15 @@ try {
     return
   }
   $manifestHash = (Get-FileHash $manifest.FullName -Algorithm SHA256).Hash
-  $ownerSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
-  $null = Invoke-DesktopApi "POST" "/api/auth/local" $null $ownerSession
-  $enabledSettings = Invoke-DesktopApi "PUT" "/api/settings/desktop" @{ backgroundServiceEnabled = $true } $ownerSession
+  $securityPath = Join-Path $manifest.DirectoryName "security.json"
+  if (-not (Test-Path $securityPath)) {
+    throw "The packaged runtime did not create owner security metadata."
+  }
+  $ownerToken = (Get-Content $securityPath -Raw | ConvertFrom-Json).ownerToken
+  if ([string]::IsNullOrWhiteSpace($ownerToken) -or $ownerToken.Length -lt 24) {
+    throw "The packaged runtime did not create a valid owner credential."
+  }
+  $enabledSettings = Invoke-DesktopApi "PUT" "/api/settings/desktop" @{ backgroundServiceEnabled = $true } $ownerToken
   if (-not $enabledSettings.backgroundServiceEnabled) {
     throw "The desktop API did not enable background service mode."
   }
@@ -219,7 +225,7 @@ try {
     throw "A second desktop launch replaced or stopped the existing service process."
   }
   if ($BaselineInstaller) {
-    $disabledSettings = Invoke-DesktopApi "PUT" "/api/settings/desktop" @{ backgroundServiceEnabled = $false } $ownerSession
+    $disabledSettings = Invoke-DesktopApi "PUT" "/api/settings/desktop" @{ backgroundServiceEnabled = $false } $ownerToken
     if ($disabledSettings.backgroundServiceEnabled -or (Get-LoginStartupCommand)) {
       throw "Disabling background service mode did not remove login registration."
     }
@@ -230,7 +236,7 @@ try {
       throw "Upgrade installer exited with code $($upgradeProcess.ExitCode)."
     }
   } else {
-    $disabledSettings = Invoke-DesktopApi "PUT" "/api/settings/desktop" @{ backgroundServiceEnabled = $false } $ownerSession
+    $disabledSettings = Invoke-DesktopApi "PUT" "/api/settings/desktop" @{ backgroundServiceEnabled = $false } $ownerToken
     if ($disabledSettings.backgroundServiceEnabled -or (Get-LoginStartupCommand)) {
       throw "Disabling background service mode did not remove login registration."
     }
