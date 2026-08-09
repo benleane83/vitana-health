@@ -50,6 +50,7 @@ import type { CompanionObservationMutationService } from "./companionDataSource"
 import { createStandaloneDataSource } from "./standalone/standaloneDataSource";
 import { DEFAULT_MIGRATION_BATCH_SIZE } from "./standalone/localStore";
 import { cacheProfilePhoto } from "./profilePhotoCache";
+import { refreshConnectedProfilePhoto, type ConnectedProfilePhoto } from "./connectedProfilePhoto";
 import {
   createConnectedDataSource,
   retainConnectedStore,
@@ -125,7 +126,7 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
   const [bootstrap, setBootstrap] = useState<AppBootstrap>();
   const [analytics, setAnalytics] = useState<AnalyticsSummary>();
   const [summary, setSummary] = useState<HealthDataSummary>();
-  const [profilePhoto, setProfilePhoto] = useState<{ revision: string; uri: string }>();
+  const [profilePhoto, setProfilePhoto] = useState<ConnectedProfilePhoto>();
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [trackLoading, setTrackLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -133,6 +134,7 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
   const [transientRevision, setTransientRevision] = useState(0);
   const [migrationProgress, setMigrationProgress] = useState<{ uploaded: number; total: number }>();
   const generation = useRef(0);
+  const profilePhotoRef = useRef<ConnectedProfilePhoto>();
   const syncOperation = useRef<{ promise: Promise<boolean>; force: boolean } | undefined>(undefined);
   const storeKeepAlive = useRef<(() => Promise<void>) | undefined>(undefined);
   const demoSource = useMemo(() => createDemoDataSource(), []);
@@ -198,6 +200,7 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     setBootstrap(undefined);
     setAnalytics(undefined);
     setSummary(undefined);
+    profilePhotoRef.current = undefined;
     setProfilePhoto(undefined);
   }, []);
 
@@ -362,23 +365,25 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     setError(undefined);
     try {
       if (options.synchronize) await synchronizeConnectedData(true);
-      const [nextBootstrap, nextAnalytics] = await Promise.all([source.bootstrap(), source.analytics()]);
-      let nextProfilePhoto: { revision: string; uri: string } | undefined;
-      if (operatingMode === "connected" && connection?.token && nextBootstrap.profilePhoto?.revision) {
-        try {
-          const photo = await createCompanionApi(connection).profilePhoto.get();
-          if (photo.revision === nextBootstrap.profilePhoto.revision) {
-            // Cached to disk rather than held as a base64 data URI: the string used to sit in
-            // context state for the lifetime of the app.
-            nextProfilePhoto = { revision: photo.revision, uri: cacheProfilePhoto(photo) };
-          }
-        } catch {
-          // The avatar fallback remains available when photo bytes cannot be refreshed.
-        }
+      let [nextBootstrap, nextAnalytics] = await Promise.all([source.bootstrap(), source.analytics()]);
+      let nextProfilePhoto = profilePhotoRef.current;
+      if (operatingMode === "connected" && connection?.token) {
+        nextProfilePhoto = await refreshConnectedProfilePhoto(
+          () => createCompanionApi(connection).profilePhoto.get(),
+          cacheProfilePhoto,
+          profilePhotoRef.current
+        );
+        nextBootstrap = {
+          ...nextBootstrap,
+          profilePhoto: nextProfilePhoto
+            ? { revision: nextProfilePhoto.revision, updatedAt: nextProfilePhoto.updatedAt }
+            : undefined
+        };
       }
       if (generation.current !== requestGeneration) return;
       setBootstrap(nextBootstrap);
       setAnalytics(nextAnalytics);
+      profilePhotoRef.current = nextProfilePhoto;
       setProfilePhoto(nextProfilePhoto);
       updateConnectionState(source, nextBootstrap, nextAnalytics);
     } catch (caught) {
@@ -534,6 +539,7 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
 
   const clearTransientData = useCallback(() => {
     setTransientRevision((current) => current + 1);
+    profilePhotoRef.current = undefined;
     setProfilePhoto(undefined);
   }, []);
 
@@ -619,7 +625,8 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
       if (state === "active") {
         void retryPendingRevocation().catch(() => undefined);
         void synchronizeConnectedData(false).then((changed) => {
-          if (changed) void Promise.all([refreshDashboard(), refreshTrack()]);
+          void refreshDashboard();
+          if (changed) void refreshTrack();
         });
       } else {
         clearTransientData();

@@ -2256,6 +2256,10 @@ h3 {
   min-width: 8rem;
 }
 
+.observation-group-page table th {
+  text-align: left;
+}
+
 .observation-group-actions {
   display: flex;
   gap: var(--space-3);

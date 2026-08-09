@@ -97,11 +97,12 @@ export function ImportDraftReview({
             selectedCode={selectedMeasurementCode}
             autoFocus={row.manuallyAdded === true}
             customLabel="Use a custom measurement"
-            onSelectCustom={() => {
+            onSelectCustom={(typedName) => {
               setCustomMeasurementRows((current) => ({ ...current, [row.id]: true }));
               onRowChange(row.id, {
-                displayName: "",
-                measurementCode: "",
+                displayName: typedName,
+                measurementCode: fallbackMeasurementCode(typedName),
+                unit: "",
                 generatedCode: true
               });
             }}

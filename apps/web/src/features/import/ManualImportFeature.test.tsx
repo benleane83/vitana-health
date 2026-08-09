@@ -136,12 +136,14 @@ describe("ManualImportFeature", () => {
     expect(screen.queryByLabelText("Row 1 measurement name")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Row 1 measurement code")).not.toBeInTheDocument();
 
+    fireEvent.change(screen.getByLabelText("Row 1 unit"), { target: { value: "kcal" } });
     fireEvent.click(screen.getByRole("button", { name: "Open measurement choices" }));
+    fireEvent.change(screen.getByLabelText("Row 1: select known measurement"), { target: { value: "Custom score" } });
     fireEvent.click(screen.getByRole("option", { name: "Use a custom measurement" }));
 
-    expect(screen.getByLabelText("Row 1 measurement name")).toBeInTheDocument();
+    expect(screen.getByLabelText("Row 1 measurement name")).toHaveValue("Custom score");
+      expect(screen.getByLabelText("Row 1 unit")).toHaveValue("");
       expect(screen.queryByLabelText("Row 1 measurement code")).not.toBeInTheDocument();
-      fireEvent.change(screen.getByLabelText("Row 1 measurement name"), { target: { value: "Custom score" } });
       fireEvent.change(screen.getByLabelText("Row 1 value"), { target: { value: "7" } });
       fireEvent.change(screen.getByLabelText("Row 1 unit"), { target: { value: "points" } });
       fireEvent.click(screen.getByRole("button", { name: "Import observations" }));

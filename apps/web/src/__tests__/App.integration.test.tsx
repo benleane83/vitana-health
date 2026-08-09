@@ -1166,7 +1166,7 @@ describe("App — measurement detail", () => {
     expect(await screen.findByRole("heading", { name: "Morning vitals" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Glucose" })).toBeInTheDocument();
     expect(screen.getByText("Fasting")).toBeInTheDocument();
-    expect(screen.getByText("Record source")).toBeInTheDocument();
+    expect(screen.queryByText("Record source")).not.toBeInTheDocument();
     expect(screen.getByText("Imported")).toBeInTheDocument();
     expect(screen.queryByText("import_0385e9b8d0.json")).not.toBeInTheDocument();
 
@@ -1181,6 +1181,7 @@ describe("App — measurement detail", () => {
     expect(screen.getByRole("heading", { name: "Morning vitals" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Edit group" }));
+  expect(screen.getByLabelText("Recorded date")).toHaveAttribute("type", "date");
     fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "5.6" } });
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 

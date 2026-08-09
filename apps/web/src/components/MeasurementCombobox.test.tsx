@@ -46,9 +46,11 @@ describe("MeasurementCombobox", () => {
     fireEvent.click(screen.getByRole("option", { name: /Weight/ }));
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ code: "weight" }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Open measurement choices" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Measurement" }), {
+      target: { value: "My custom score" }
+    });
     fireEvent.click(screen.getByRole("option", { name: "Use a custom measurement" }));
-    expect(onSelectCustom).toHaveBeenCalledOnce();
+    expect(onSelectCustom).toHaveBeenCalledWith("My custom score");
   });
 });
 
@@ -57,7 +59,7 @@ function renderCombobox({
   onSelectCustom = vi.fn()
 }: {
   onSelect?: (measurement: MeasurementType) => void;
-  onSelectCustom?: () => void;
+  onSelectCustom?: (typedName: string) => void;
 } = {}) {
   render(
     <MeasurementCombobox

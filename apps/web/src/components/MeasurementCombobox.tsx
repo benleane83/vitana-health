@@ -37,7 +37,7 @@ export function MeasurementCombobox({
   autoFocus?: boolean;
   menuPlacement?: "above" | "below";
   onSelect: (measurement: MeasurementType) => void;
-  onSelectCustom?: () => void;
+  onSelectCustom?: (typedName: string) => void;
   customLabel?: string;
 }) {
   const selectedMeasurement = measurementTypes.find((type) => type.code === selectedCode);
@@ -83,7 +83,7 @@ export function MeasurementCombobox({
     onSelectedItemChange: ({ selectedItem }) => {
       if (!selectedItem) return;
       if (selectedItem.kind === "custom") {
-        onSelectCustom?.();
+        onSelectCustom?.(inputValue);
         return;
       }
       setInputValue(selectedItem.measurement.display);

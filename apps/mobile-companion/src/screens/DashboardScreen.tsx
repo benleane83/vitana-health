@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
-import { RefreshControl, ScrollView, StyleSheet, Text, View, Pressable } from "react-native";
+import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View, Pressable } from "react-native";
 import { CompositeNavigationProp, useIsFocused, useNavigation } from "@react-navigation/native";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { AlertTriangle, CalendarClock, CheckCircle2, ChevronRight, Database, MonitorSmartphone, Pin } from "lucide-react-native";
+import { AlertTriangle, CalendarClock, CheckCircle2, ChevronRight, Database, MonitorSmartphone, Pin, RefreshCw } from "lucide-react-native";
 import { careItemKindLabels, isUtcMidnightTimestamp, type CareItem } from "@vitana/shared";
 import { useMobileApi } from "../MobileApiProvider";
 import { connectionStateLabel } from "../connectionState";
+import { latestHealthSourceCursor } from "../healthSourceCursor";
+import { activeHealthSourceProvider } from "../healthSourceProvider";
 import type { RootStackParamList, TabParamList } from "../navigationTypes";
 import { Button, Card, Loading, Message, Screen } from "../ui/components";
 import { colors, radii, spacing, type } from "../ui/theme";
 import { ProfileAvatar } from "../ui/ProfileAvatar";
+import { useHealthSourceSync } from "../useHealthSourceSync";
 import { dashboardMetrics, formatDashboardMetricValue } from "./dashboardMetrics";
 
 type DashboardNavigation = CompositeNavigationProp<
@@ -24,6 +27,7 @@ export function DashboardScreen() {
   const {
     analytics,
     bootstrap,
+    connection,
     connectionState,
     dashboardLoading,
     demoMode,
@@ -34,6 +38,7 @@ export function DashboardScreen() {
     standaloneMode,
     syncing
   } = useMobileApi();
+  const healthSourceSync = useHealthSourceSync();
   const [upcomingCare, setUpcomingCare] = useState<{
     items: CareItem[];
     total: number;
@@ -91,6 +96,18 @@ export function DashboardScreen() {
 
   const counts = analytics.counts;
   const visibleMetrics = dashboardMetrics(analytics.latestMetrics);
+  const healthSourceProvider = activeHealthSourceProvider();
+  const healthSourceConfigured = Boolean(
+    !demoMode &&
+    !standaloneMode &&
+    connection?.token &&
+    connection.healthConnectDisclosureAcknowledged &&
+    connection.healthSourceCategories.length > 0 &&
+    healthSourceProvider
+  );
+  const lastHealthSourceSync = connection
+    ? latestHealthSourceCursor(connection.healthSourceCursors, connection.healthSourceCategories)
+    : null;
   const connectionLabel = demoMode
     ? "Sample data · edits reset on restart"
     : standaloneMode
@@ -123,6 +140,41 @@ export function DashboardScreen() {
               {connectionLabel}
             </Text>
           </View>
+          {healthSourceConfigured ? (
+            <View style={styles.healthSyncSection}>
+              <View style={styles.healthSyncRow}>
+                {healthSourceSync.syncing
+                  ? <ActivityIndicator color={colors.primary} size="small" />
+                  : <RefreshCw color={colors.muted} size={17} />}
+                <View style={styles.healthSyncCopy}>
+                  <Text style={styles.healthSyncProvider}>{healthSourceProvider?.label}</Text>
+                  <Text numberOfLines={1} style={styles.healthSyncStatus}>
+                    {healthSourceSync.syncing
+                      ? healthSourceSync.syncProgress || "Starting sync…"
+                      : formatLastHealthSourceSync(lastHealthSourceSync)}
+                  </Text>
+                </View>
+                <Pressable
+                  accessibilityHint="Imports new health data using your saved sync settings"
+                  accessibilityRole="button"
+                  accessibilityState={{ busy: healthSourceSync.syncing, disabled: healthSourceSync.syncing }}
+                  disabled={healthSourceSync.syncing}
+                  onPress={() => { void healthSourceSync.sync(); }}
+                  style={({ pressed }) => [styles.syncAction, pressed && styles.pressed]}
+                >
+                  <Text style={[styles.syncActionText, healthSourceSync.syncing && styles.syncActionDisabled]}>
+                    {healthSourceSync.syncing ? "Syncing…" : "Sync now"}
+                  </Text>
+                </Pressable>
+              </View>
+              {healthSourceSync.statusTone === "danger" && healthSourceSync.status ? (
+                <View accessibilityLiveRegion="polite" accessibilityRole="alert" style={styles.healthSyncError}>
+                  <AlertTriangle color={colors.danger} size={15} />
+                  <Text style={styles.healthSyncErrorText}>{healthSourceSync.status}</Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
         </View>
         <View style={styles.sectionHeader}>
           <View style={styles.sectionHeadingText}>
@@ -294,6 +346,19 @@ function formatCount(value: number): string {
   return new Intl.NumberFormat(undefined, { notation: value >= 100_000 ? "compact" : "standard" }).format(value);
 }
 
+function formatLastHealthSourceSync(value: string | null): string {
+  if (!value) return "Not synced yet";
+  const synced = new Date(value);
+  if (!Number.isFinite(synced.getTime())) return "Last sync unavailable";
+  const today = new Date();
+  const time = synced.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (synced.toDateString() === today.toDateString()) return `Last synced today at ${time}`;
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (synced.toDateString() === yesterday.toDateString()) return `Last synced yesterday at ${time}`;
+  return `Last synced ${synced.toLocaleDateString([], { day: "numeric", month: "short", year: synced.getFullYear() === today.getFullYear() ? undefined : "numeric" })}`;
+}
+
 function dueWithinThirtyDays(now = new Date()): string {
   const dueTo = new Date(now);
   dueTo.setDate(dueTo.getDate() + 30);
@@ -336,6 +401,16 @@ const styles = StyleSheet.create({
   connectionRow: { alignItems: "center", borderTopColor: colors.borderStrong, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: "row", gap: spacing.sm, paddingTop: spacing.sm },
   online: { color: colors.success, flex: 1, fontSize: type.body, fontWeight: "600" },
   offline: { color: colors.warning, flex: 1, fontSize: type.body, fontWeight: "600", textTransform: "capitalize" },
+  healthSyncSection: { borderTopColor: colors.borderStrong, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: spacing.xs },
+  healthSyncRow: { alignItems: "center", flexDirection: "row", gap: spacing.sm, minHeight: 44 },
+  healthSyncCopy: { flex: 1, minWidth: 0 },
+  healthSyncProvider: { color: colors.text, fontSize: type.label, fontWeight: "700" },
+  healthSyncStatus: { color: colors.muted, fontSize: 13, marginTop: 1 },
+  syncAction: { alignItems: "center", justifyContent: "center", minHeight: 44, paddingLeft: spacing.sm },
+  syncActionText: { color: colors.primary, fontSize: type.label, fontWeight: "800" },
+  syncActionDisabled: { color: colors.muted },
+  healthSyncError: { alignItems: "flex-start", flexDirection: "row", gap: spacing.sm, paddingBottom: spacing.sm },
+  healthSyncErrorText: { color: colors.danger, flex: 1, fontSize: 13, lineHeight: 18 },
   sectionHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
   sectionHeadingText: { flex: 1, minWidth: 0 },
   sectionTitle: { color: colors.textStrong, fontSize: type.heading, fontWeight: "800" },
