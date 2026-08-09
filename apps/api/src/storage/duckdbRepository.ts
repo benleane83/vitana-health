@@ -124,6 +124,7 @@ import {
 import {
   analyticsSummary as readAnalyticsSummary,
   appBootstrap as readAppBootstrap,
+  insightReviewContext as readInsightReviewContext,
   bodyTrendDateDetail as readBodyTrendDateDetail,
   bodyTrendTimeline as readBodyTrendTimeline,
   calendarMonth as readCalendarMonth,
@@ -305,6 +306,11 @@ export class DuckDbRepository implements ProfileRepository {
   async analyticsSummary(): Promise<AnalyticsSummary> {
     this.assertOpen();
     return readAnalyticsSummary(this.reader);
+  }
+
+  async insightReviewContext() {
+    this.assertOpen();
+    return readInsightReviewContext(this.reader);
   }
 
   async biologicalAgeSource(): Promise<BiologicalAgeSource> {

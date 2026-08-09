@@ -134,7 +134,7 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
   const [transientRevision, setTransientRevision] = useState(0);
   const [migrationProgress, setMigrationProgress] = useState<{ uploaded: number; total: number }>();
   const generation = useRef(0);
-  const profilePhotoRef = useRef<ConnectedProfilePhoto>();
+  const profilePhotoRef = useRef<ConnectedProfilePhoto | undefined>(undefined);
   const syncOperation = useRef<{ promise: Promise<boolean>; force: boolean } | undefined>(undefined);
   const storeKeepAlive = useRef<(() => Promise<void>) | undefined>(undefined);
   const demoSource = useMemo(() => createDemoDataSource(), []);

@@ -47,6 +47,7 @@ import {
   toPreferredMeasurementValue
 } from "@vitana/shared";
 import type { ClinicianReportSourceImport } from "../clinicianReport.js";
+import type { InsightReviewContext } from "./profileRepository.js";
 import {
   type MeasurementDetailPage,
   summarizeMeasurementEntries,
@@ -277,6 +278,102 @@ export async function analyticsSummary(connection: duckdb.Connection): Promise<A
       pinnedAt: isoTimestamp(row.pinned_at)
     }))
   });
+}
+
+const insightReviewMetricCodes = [
+  "steps",
+  "sleep_duration",
+  "resting_heart_rate",
+  "heart_rate",
+  "heart_rate_variability_rmssd",
+  "heart_rate_variability_sdnn",
+  "oxygen_saturation",
+  "active_energy_burned",
+  "exercise_duration"
+] as const;
+
+export async function insightReviewContext(connection: duckdb.Connection): Promise<InsightReviewContext> {
+  const windowDays = 30;
+  const metricPlaceholders = insightReviewMetricCodes.map(() => "?").join(", ");
+  const [coverageRows, metricRows, activityRows, eventRows, careRows] = await Promise.all([
+    allWithParams(connection, `
+      SELECT MIN(day) AS earliest_date, MAX(day) AS latest_date, COUNT(DISTINCT day) AS active_days
+      FROM v_daily_metrics
+      WHERE day >= CURRENT_DATE - INTERVAL '${windowDays - 1} days';
+    `),
+    allWithParams(connection, `
+      SELECT d.measurement_code, COALESCE(m.display, d.measurement_code) AS label,
+        MIN(d.unit) AS unit, AVG(d.avg_value) AS average_value,
+        MIN(d.min_value) AS minimum_value, MAX(d.max_value) AS maximum_value,
+        COUNT(DISTINCT d.day) AS days
+      FROM v_daily_metrics d
+      LEFT JOIN measurement_types m ON m.code = d.measurement_code
+      WHERE d.day >= CURRENT_DATE - INTERVAL '${windowDays - 1} days'
+        AND d.measurement_code IN (${metricPlaceholders})
+      GROUP BY d.measurement_code, m.display
+      HAVING COUNT(DISTINCT d.unit) = 1
+      ORDER BY days DESC, d.measurement_code;
+    `, ...insightReviewMetricCodes),
+    allWithParams(connection, `
+      SELECT activity_type, COUNT(*) AS sessions, SUM(duration_minutes) AS duration_minutes
+      FROM activities
+      WHERE start_at >= CURRENT_TIMESTAMP - INTERVAL '${windowDays} days'
+      GROUP BY activity_type
+      ORDER BY sessions DESC, activity_type
+      LIMIT 12;
+    `),
+    allWithParams(connection, `
+      SELECT kind, COUNT(*) AS count, MAX(CAST(occurred_at AS DATE)) AS latest_date
+      FROM health_events
+      WHERE occurred_at >= CURRENT_TIMESTAMP - INTERVAL '90 days'
+        AND status = 'completed'
+      GROUP BY kind
+      ORDER BY count DESC, kind
+      LIMIT 12;
+    `),
+    allWithParams(connection, `
+      SELECT COUNT(*) FILTER (WHERE status = 'open') AS open_count,
+        COUNT(*) FILTER (WHERE status = 'open' AND due_start < CURRENT_TIMESTAMP) AS overdue_count,
+        COUNT(*) FILTER (WHERE status = 'open' AND priority = 'high') AS high_priority_count
+      FROM care_items;
+    `)
+  ]);
+  const coverage = coverageRows[0] ?? {};
+  const care = careRows[0] ?? {};
+  return {
+    windowDays,
+    coverage: {
+      ...(coverage.earliest_date ? { earliestDate: dateOnly(coverage.earliest_date) } : {}),
+      ...(coverage.latest_date ? { latestDate: dateOnly(coverage.latest_date) } : {}),
+      activeDays: Number(coverage.active_days ?? 0)
+    },
+    trackedMetrics: metricRows.map((row) => ({
+      code: String(row.measurement_code),
+      label: String(row.label),
+      unit: String(row.unit),
+      average: Number(row.average_value),
+      minimum: Number(row.minimum_value),
+      maximum: Number(row.maximum_value),
+      days: Number(row.days)
+    })),
+    activities: activityRows.map((row) => ({
+      type: String(row.activity_type),
+      sessions: Number(row.sessions),
+      ...(row.duration_minutes === null || row.duration_minutes === undefined
+        ? {}
+        : { durationMinutes: Number(row.duration_minutes) })
+    })),
+    healthEvents: eventRows.map((row) => ({
+      kind: String(row.kind),
+      count: Number(row.count),
+      latestDate: dateOnly(row.latest_date)
+    })),
+    care: {
+      open: Number(care.open_count ?? 0),
+      overdue: Number(care.overdue_count ?? 0),
+      highPriority: Number(care.high_priority_count ?? 0)
+    }
+  };
 }
 
 export async function biologicalAgeSource(connection: duckdb.Connection): Promise<BiologicalAgeSource> {

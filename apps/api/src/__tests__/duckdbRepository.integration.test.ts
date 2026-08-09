@@ -967,6 +967,17 @@ describe("DuckDbRepository fidelity", () => {
       expect(bootstrap).not.toHaveProperty("sourceImports");
       const analytics = await repository.analyticsSummary();
       expect(analytics).toEqual(computeAnalytics({ ...fixture, counts: analyticsCountsFromStore(fixture) }));
+      const reviewContext = await repository.insightReviewContext();
+      expect(reviewContext.windowDays).toBe(30);
+      expect(reviewContext.coverage.activeDays).toBeGreaterThanOrEqual(0);
+      expect(reviewContext.trackedMetrics.length).toBeLessThanOrEqual(9);
+      expect(reviewContext.activities.length).toBeLessThanOrEqual(12);
+      expect(reviewContext.healthEvents.length).toBeLessThanOrEqual(12);
+      expect(reviewContext.care).toEqual({
+        open: expect.any(Number),
+        overdue: expect.any(Number),
+        highPriority: expect.any(Number)
+      });
       const generatedAt = "2026-07-15T00:00:00.000Z";
       const biologicalAgeSource = await repository.biologicalAgeSource();
       expect(calculateBiologicalAge(biologicalAgeSource, generatedAt)).toEqual(calculateBiologicalAge(fixture, generatedAt));

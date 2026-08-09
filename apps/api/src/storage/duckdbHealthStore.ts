@@ -107,6 +107,10 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
     return this.repository.analyticsSummary();
   }
 
+  insightReviewContext() {
+    return this.repository.insightReviewContext();
+  }
+
   biologicalAgeSource() {
     return this.repository.biologicalAgeSource();
   }
