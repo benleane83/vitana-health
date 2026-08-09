@@ -181,7 +181,7 @@ export class ProfileStoreManager {
     let store: DuckDbHealthStore | undefined;
 
     try {
-      store = await DuckDbHealthStore.hydrate(this.storeOptions(id, databasePath), createEmptyStore(id, name));
+      store = await DuckDbHealthStore.hydrate(this.storeOptions(id, databasePath), createEmptyStore(id, name, "complete"));
       const entry = profileListEntryFromProfile(await store.getProfile());
       const nextProfiles = [...this.profiles, entry];
       const nextManifest = { ...manifest, profiles: [...manifest.profiles, { profileId: id, databaseFile }] };
@@ -486,12 +486,17 @@ export class ProfileStoreManager {
   }
 }
 
-function createEmptyStore(profileId = "self", displayName = "Local user"): HealthStoreData {
+function createEmptyStore(
+  profileId = "self",
+  displayName = "Local user",
+  setupStatus: Profile["setupStatus"] = "pending"
+): HealthStoreData {
   return {
     schemaVersion: EXPORT_FORMAT_VERSION,
     profile: {
       id: normalizeProfileId(profileId),
       displayName,
+      setupStatus,
       subjectKind: "adult",
       units: "metric",
       updatedAt: new Date().toISOString()

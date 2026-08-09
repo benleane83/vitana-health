@@ -55,6 +55,7 @@ import {
   optionalJsonValue,
   optionalTimestamp,
   profileFromRow,
+  profileProperties,
   run
 } from "./duckdbRows.js";
 import {
@@ -115,7 +116,7 @@ export async function replaceProfile(
     id: current.id,
     updatedAt: new Date().toISOString()
   });
-  const profileProperties = nextProfile.cloudAiConsent ? json({ cloudAiConsent: nextProfile.cloudAiConsent }) : null;
+  const customProperties = json(profileProperties(nextProfile));
   await run(
     connection,
     `UPDATE profile SET display_name = ?, sex = ?, height_cm = ?, blood_type = ?,
@@ -128,7 +129,7 @@ export async function replaceProfile(
     nextProfile.goalSummary ?? null,
     nextProfile.units,
     nextProfile.updatedAt,
-    profileProperties,
+    customProperties,
     nextProfile.subjectKind,
     nextProfile.birthDate ?? null,
     nextProfile.pet?.species ?? null,

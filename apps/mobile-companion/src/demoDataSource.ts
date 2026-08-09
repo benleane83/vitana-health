@@ -279,6 +279,7 @@ function makeBootstrap(details: Map<string, HealthDataDetail>, now: Date): AppBo
     profile: {
       id: "demo-profile",
       displayName: "Demo Profile",
+      setupStatus: "complete",
       subjectKind: "adult",
       birthDate: "1988-04-12",
       sex: "not-specified",

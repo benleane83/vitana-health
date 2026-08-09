@@ -13,6 +13,7 @@ export function createStandaloneProfile() {
   return {
     id: `mobile-${id}`,
     displayName: "My profile",
+    setupStatus: "complete" as const,
     subjectKind: "adult" as const,
     units: "metric" as const,
     updatedAt: new Date().toISOString()

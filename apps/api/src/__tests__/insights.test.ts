@@ -10,6 +10,7 @@ import { buildInsightEvidence, generateInsight } from "../insights.js";
 const profile: Profile = {
   id: "self",
   displayName: "Test profile",
+  setupStatus: "complete",
   units: "metric",
   updatedAt: "2026-07-23T00:00:00.000Z"
 };

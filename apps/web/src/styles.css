@@ -3528,6 +3528,51 @@ label {
   box-shadow: 0 20px 42px oklch(35% 0.04 260 / 0.2);
 }
 
+.welcome-profile-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(760px, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow: hidden;
+  padding: 0;
+}
+
+.welcome-profile-dialog .panel-heading-row {
+  align-items: flex-start;
+  padding: var(--space-5) var(--space-5) var(--space-4);
+  border-bottom: 1px solid var(--line);
+}
+
+.welcome-profile-description {
+  max-width: 64ch;
+  margin: var(--space-2) 0 0;
+  color: var(--muted);
+}
+
+.welcome-profile-dialog .profile-photo-editor {
+  margin-inline: var(--space-5);
+}
+
+.welcome-profile-dialog .profile-form {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 var(--space-5) var(--space-5);
+}
+
+.welcome-profile-dialog .profile-form-actions {
+  position: sticky;
+  bottom: calc(-1 * var(--space-5));
+  margin: var(--space-2) calc(-1 * var(--space-5)) calc(-1 * var(--space-5));
+  padding: var(--space-4) var(--space-5) max(var(--space-4), env(safe-area-inset-bottom));
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+}
+
+.welcome-profile-later {
+  background: transparent;
+  color: var(--text);
+}
+
 .profile-dialog-active {
   margin: 0 0 var(--space-4);
   color: var(--muted);

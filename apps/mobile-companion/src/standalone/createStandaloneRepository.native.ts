@@ -11,6 +11,7 @@ export function createStandaloneProfile() {
   return {
     id: `mobile-${Crypto.randomUUID()}`,
     displayName: "My profile",
+    setupStatus: "complete" as const,
     subjectKind: "adult" as const,
     units: "metric" as const,
     updatedAt: new Date().toISOString()

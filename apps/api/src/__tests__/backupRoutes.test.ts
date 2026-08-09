@@ -16,7 +16,7 @@ import type { PairingStore } from "../pairing.js";
 function createTestStoreData(profileId = "test-user", displayName = "Test User"): HealthStoreData {
   return {
     schemaVersion: EXPORT_FORMAT_VERSION,
-    profile: { id: profileId, displayName, subjectKind: "adult", units: "metric", updatedAt: "2024-01-01T00:00:00.000Z" },
+    profile: { id: profileId, displayName, setupStatus: "complete", subjectKind: "adult", units: "metric", updatedAt: "2024-01-01T00:00:00.000Z" },
     sourceImports: [],
     dataSources: [],
     devices: [],

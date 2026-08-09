@@ -292,8 +292,13 @@ export const api = {
   deleteObservation: (id: string) => request(deleteObservationResponseSchema, `/api/observations/${encodeURIComponent(id)}`, { method: "DELETE" }),
   deleteObservationsByType: (measurementCode: string) =>
     request(deleteObservationsByTypeResponseSchema, `/api/observations/by-type/${encodeURIComponent(measurementCode)}`, { method: "DELETE" }),
-  saveProfile: (profile: Omit<Profile, "id" | "updatedAt">) =>
+  saveProfile: (profile: Omit<Profile, "id" | "updatedAt" | "setupStatus">) =>
     request(profileResponseSchema, "/api/profile", { method: "PUT", body: profile }),
+  profileSetup: {
+    complete: (profile: Omit<Profile, "id" | "updatedAt" | "setupStatus">) =>
+      request(profileResponseSchema, "/api/profile/setup", { method: "PUT", body: profile }),
+    dismiss: () => request(profileResponseSchema, "/api/profile/setup/dismiss", { method: "POST" })
+  },
   cloudAiConsent: {
     get: () => request(cloudAiConsentResponseSchema, "/api/profile/cloud-ai-consent"),
     set: (payload: { enabled: boolean; providerScopeAccepted: boolean; consentVersion?: string }) =>

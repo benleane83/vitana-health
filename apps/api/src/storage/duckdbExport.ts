@@ -24,6 +24,7 @@ import {
   optionalTimestamp,
   orderedRows,
   profileFromRow,
+    profileProperties,
   requiredJson,
   run,
   withStoredJson
@@ -232,13 +233,11 @@ export async function snapshot(
 }
 
 export async function insertStore(connection: duckdb.Connection, store: HealthStoreData): Promise<void> {
-  const profileProperties = store.profile.cloudAiConsent
-    ? json({ cloudAiConsent: store.profile.cloudAiConsent })
-    : null;
+  const customProperties = json(profileProperties(store.profile));
   await run(connection, `INSERT INTO profile (${selectColumns("profile")}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
     store.profile.id, store.profile.displayName, store.profile.sex ?? null,
     store.profile.heightCm ?? null, store.profile.bloodType ?? null, store.profile.goalSummary ?? null,
-    store.profile.units, store.profile.updatedAt, profileProperties, store.profile.subjectKind, store.profile.birthDate ?? null,
+    store.profile.units, store.profile.updatedAt, customProperties, store.profile.subjectKind, store.profile.birthDate ?? null,
     store.profile.pet?.species ?? null, store.profile.pet?.breed ?? null, store.profile.pet?.reproductiveStatus ?? null, store.profile.pet?.microchipId ?? null);
 
   await insertRows(connection, "imports",

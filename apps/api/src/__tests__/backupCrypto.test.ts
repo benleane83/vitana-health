@@ -26,6 +26,7 @@ function createTestStoreData(profileId = "test-user", displayName = "Test User")
     profile: {
       id: profileId,
       displayName,
+      setupStatus: "complete",
       subjectKind: "adult",
       units: "metric",
       updatedAt: new Date().toISOString()

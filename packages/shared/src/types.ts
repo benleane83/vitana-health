@@ -14,10 +14,12 @@ export type SourceKind =
 
 export type UnitSystem = "metric" | "imperial";
 export type SubjectKind = "adult" | "child" | "pet";
+export type ProfileSetupStatus = "pending" | "dismissed" | "complete";
 
 export interface Profile {
   id: string;
   displayName: string;
+  setupStatus: ProfileSetupStatus;
   subjectKind?: SubjectKind;
   birthDate?: string;
   sex?: "female" | "male" | "intersex" | "unknown" | "not-specified";
@@ -671,7 +673,7 @@ export interface HealthStoreData {
    * Always the current version. Older persisted stores are upgraded by `parsePersistedHealthStore`
    * before they ever become a `HealthStoreData`.
    */
-  schemaVersion: 11;
+  schemaVersion: 12;
   profile: Profile;
   sourceImports: SourceImport[];
   dataSources: DataSource[];

@@ -10,7 +10,7 @@ import { defaultMeasurementTypes, EXPORT_FORMAT_VERSION, type HealthStoreData } 
 function makeEmptyStore(): HealthStoreData {
   return {
     schemaVersion: EXPORT_FORMAT_VERSION,
-    profile: { id: "self", displayName: "Local user", units: "metric", updatedAt: "2026-01-01T00:00:00.000Z" },
+    profile: { id: "self", displayName: "Local user", setupStatus: "complete", units: "metric", updatedAt: "2026-01-01T00:00:00.000Z" },
     sourceImports: [],
     dataSources: [],
     devices: [],
@@ -99,6 +99,38 @@ function mockFetch(urlResponses: Record<string, unknown>) {
   });
 }
 
+function mockProfileSetupFetch(initialStore: ReturnType<typeof makeEmptyStore>) {
+  let store = initialStore;
+  return vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    if (url.includes("/api/profile/setup/dismiss")) {
+      store = { ...store, profile: { ...store.profile, setupStatus: "dismissed" } };
+      return response(store.profile);
+    }
+    if (url.includes("/api/profile/setup") && init?.method === "PUT") {
+      const payload = JSON.parse(String(init.body));
+      store = { ...store, profile: { ...store.profile, ...payload, setupStatus: "complete" } };
+      return response(store.profile);
+    }
+    if (url.includes("/api/bootstrap")) return response(makeBootstrap(store));
+    if (url.includes("/api/analytics")) return response(makeEmptyAnalytics());
+    if (url.includes("/api/profiles")) {
+      return response({ profiles: [{ id: "self", displayName: store.profile.displayName, updatedAt: store.profile.updatedAt }], activeProfileId: "self" });
+    }
+    if (url.includes("/api/entitlement")) return response({ tier: "free", source: null, overridden: false });
+    return response({});
+  });
+}
+
+function response(body: unknown): Response {
+  return {
+    ok: true,
+    json: () => Promise.resolve(body),
+    text: () => Promise.resolve(JSON.stringify(body)),
+    headers: new Headers()
+  } as Response;
+}
+
 beforeEach(() => {
   globalThis.history.replaceState({}, "", "/");
   window.localStorage.clear();
@@ -121,6 +153,44 @@ afterEach(() => {
 });
 
 describe("App feature flows", () => {
+  it("welcomes a fresh-install profile and completes setup through the dedicated endpoint", async () => {
+    const store = makeEmptyStore();
+    store.profile.setupStatus = "pending";
+    global.fetch = mockProfileSetupFetch(store);
+
+    render(<App />);
+    const dialog = await screen.findByRole("dialog", { name: /welcome to vitana health/i });
+    expect(within(dialog).getByText(/stays in this local vitana installation/i)).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: /save and close/i })).not.toBeInTheDocument();
+
+    fireEvent.change(within(dialog).getByLabelText(/^name$/i), { target: { value: "Alex" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: /save profile/i }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /welcome to vitana health/i })).not.toBeInTheDocument());
+    const request = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([url, init]) =>
+      url === "/api/profile/setup" && init?.method === "PUT"
+    );
+    expect(JSON.parse(String(request?.[1]?.body)).displayName).toBe("Alex");
+  });
+
+  it("dismisses fresh-install setup durably through Set up later", async () => {
+    const store = makeEmptyStore();
+    store.profile.setupStatus = "pending";
+    global.fetch = mockProfileSetupFetch(store);
+
+    const view = render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: /set up later/i }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /welcome to vitana health/i })).not.toBeInTheDocument());
+    expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls.some(([url, init]) =>
+      url === "/api/profile/setup/dismiss" && init?.method === "POST"
+    )).toBe(true);
+
+    view.unmount();
+    render(<App />);
+    await screen.findByRole("button", { name: /^edit$/i });
+    expect(screen.queryByRole("dialog", { name: /welcome to vitana health/i })).not.toBeInTheDocument();
+  });
+
   it("loads the Biological Age page", async () => {
     global.fetch = mockFetch({
       "/api/store": makeEmptyStore(),
@@ -654,6 +724,7 @@ describe("App — import tab", () => {
         profile: {
           id: "self",
           displayName: "Local user",
+          setupStatus: "complete",
           heightCm: 177.8,
           units: "imperial",
           updatedAt: "2026-01-01T00:00:00.000Z"
@@ -665,6 +736,7 @@ describe("App — import tab", () => {
       "/api/profile": {
         id: "self",
         displayName: "Local user",
+        setupStatus: "complete",
         heightCm: 177.8,
         units: "imperial",
         updatedAt: "2026-01-01T00:00:00.000Z"

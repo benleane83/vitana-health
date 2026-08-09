@@ -525,6 +525,53 @@ describe("GET /api/export/pdf", () => {
 });
 
 describe("profile lifecycle routes", () => {
+  it("persists first-profile setup transitions without onboarding later profiles", async () => {
+    const initial = await request(app).get("/api/profile").set("authorization", ownerAuthorization);
+    expect(initial.status).toBe(200);
+    expect(initial.body.setupStatus).toBe("pending");
+
+    const edited = await request(app)
+      .put("/api/profile")
+      .set("authorization", ownerAuthorization)
+      .send({ displayName: "Still pending", units: "metric" });
+    expect(edited.status).toBe(200);
+    expect(edited.body.setupStatus).toBe("pending");
+
+    const completed = await request(app)
+      .put("/api/profile/setup")
+      .set("authorization", ownerAuthorization)
+      .send({ displayName: "Set up user", subjectKind: "adult", units: "metric" });
+    expect(completed.status).toBe(200);
+    expect(completed.body).toMatchObject({ displayName: "Set up user", setupStatus: "complete" });
+
+    const completedDismissal = await request(app)
+      .post("/api/profile/setup/dismiss")
+      .set("authorization", ownerAuthorization);
+    expect(completedDismissal.status).toBe(200);
+    expect(completedDismissal.body.setupStatus).toBe("complete");
+
+    const created = await request(app)
+      .post("/api/profiles")
+      .set("authorization", ownerAuthorization)
+      .send({ displayName: "Family member" });
+    expect(created.status).toBe(201);
+    await request(app)
+      .put("/api/profiles/active")
+      .set("authorization", ownerAuthorization)
+      .send({ profileId: created.body.id });
+    const laterProfile = await request(app).get("/api/profile").set("authorization", ownerAuthorization);
+    expect(laterProfile.body.setupStatus).toBe("complete");
+  });
+
+  it("dismisses pending setup without changing profile details", async () => {
+    const dismissed = await request(app)
+      .post("/api/profile/setup/dismiss")
+      .set("authorization", ownerAuthorization);
+
+    expect(dismissed.status).toBe(200);
+    expect(dismissed.body).toMatchObject({ displayName: "Local user", setupStatus: "dismissed" });
+  });
+
   it("resets measurement metadata for the active profile", async () => {
     const response = await request(app)
       .post("/api/profile/measurement-types/reset")

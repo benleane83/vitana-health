@@ -12,7 +12,7 @@ import type { HealthStoreData, InsightModel } from "./types.js";
  * layout alone. Confusing them breaks backup/restore, which reads and writes this format and has
  * no knowledge of the storage engine that produced it.
  */
-export const EXPORT_FORMAT_VERSION = 11 as const;
+export const EXPORT_FORMAT_VERSION = 12 as const;
 
 export const sourceKindSchema = z.enum([
   "health-connect", "manual-entry", "blood-test-csv", "observation-csv", "structured-upload",
@@ -26,6 +26,7 @@ const stringRecord = z.record(z.unknown());
 
 export const profileObjectSchema = z.object({
   id: z.string(), displayName: z.string(), subjectKind: z.enum(["adult", "child", "pet"]).default("adult"),
+  setupStatus: z.enum(["pending", "dismissed", "complete"]),
   birthDate: z.string().date().optional(),
   sex: z.enum(["female", "male", "intersex", "unknown", "not-specified"]).optional(),
   bloodType: z.enum([
@@ -259,8 +260,22 @@ function migrateVersionTenHealthStore(data: unknown): unknown {
   const store = versionTenHealthStoreSchema.parse(data);
   return {
     ...store,
-    schemaVersion: EXPORT_FORMAT_VERSION,
+    schemaVersion: 11,
     careItems: store.careItems.map((item) => ({ ...item, kind: normalizedCareItemKind(item.kind) }))
+  };
+}
+
+const versionElevenHealthStoreSchema = z.object({
+  schemaVersion: z.literal(11),
+  profile: z.object({}).passthrough()
+}).passthrough();
+
+function migrateVersionElevenHealthStore(data: unknown): unknown {
+  const store = versionElevenHealthStoreSchema.parse(data);
+  return {
+    ...store,
+    schemaVersion: EXPORT_FORMAT_VERSION,
+    profile: { ...store.profile, setupStatus: "complete" }
   };
 }
 
@@ -271,8 +286,11 @@ function migrateVersionTenHealthStore(data: unknown): unknown {
 export function parsePersistedHealthStore(data: unknown): HealthStoreData {
   const version = z.object({ schemaVersion: z.number().int() }).passthrough().parse(data).schemaVersion;
   const versionTenData = version === 9 ? migrateVersionNineHealthStore(data) : data;
-  const currentData = version === 9 || version === 10 ? migrateVersionTenHealthStore(versionTenData) : data;
-  if (![9, 10, EXPORT_FORMAT_VERSION].includes(version)) {
+  const versionElevenData = version === 9 || version === 10 ? migrateVersionTenHealthStore(versionTenData) : data;
+  const currentData = version === 9 || version === 10 || version === 11
+    ? migrateVersionElevenHealthStore(versionElevenData)
+    : data;
+  if (![9, 10, 11, EXPORT_FORMAT_VERSION].includes(version)) {
     throw new Error(`Unsupported health store schema version ${version}.`);
   }
   return healthStoreDataSchema.parse(currentData) as HealthStoreData;
