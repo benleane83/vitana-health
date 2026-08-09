@@ -73,7 +73,12 @@ export function parseBackupMultipart(
       fileSeen = true;
       const chunks: Buffer[] = [];
       let size = 0;
-      stream.on("limit", () => { fileTooLarge = true; });
+      stream.on("limit", () => {
+        fileTooLarge = true;
+        failImmediately(new BackupMultipartError("Backup file exceeds maximum size.", "PAYLOAD_TOO_LARGE", 413));
+        stream.destroy();
+        request.destroy();
+      });
       stream.on("data", (chunk: Buffer) => {
         size += chunk.length;
         if (!fileTooLarge) chunks.push(chunk);

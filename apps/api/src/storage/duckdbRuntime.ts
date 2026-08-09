@@ -362,19 +362,24 @@ async function closeDatabase(
   database: DuckDbConnections,
   attached: boolean
 ): Promise<void> {
-  // The read connection has to let go of the attached database before it can be detached.
-  await new Promise<void>((resolvePromise, reject) => {
-    database.readConnection.close((error) => error ? reject(error) : resolvePromise());
+  const close = (connection: duckdb.Connection | duckdb.Database): Promise<void> => new Promise((resolvePromise, reject) => {
+    connection.close((error) => error ? reject(error) : resolvePromise());
   });
-  if (attached) {
-    await exec(database.connection, "USE memory; DETACH poc;");
-  }
-  await new Promise<void>((resolvePromise, reject) => {
-    database.connection.close((error) => error ? reject(error) : resolvePromise());
-  });
-  await new Promise<void>((resolvePromise, reject) => {
-    database.database.close((error) => error ? reject(error) : resolvePromise());
-  });
+  // Attempt every release even if an earlier native close fails. On Windows an attached encrypted
+  // file otherwise remains locked and cannot be recovered or reopened.
+  let failure: unknown;
+  const attempt = async (operation: () => Promise<void>): Promise<void> => {
+    try {
+      await operation();
+    } catch (error) {
+      failure ??= error;
+    }
+  };
+  await attempt(() => close(database.readConnection));
+  if (attached) await attempt(() => exec(database.connection, "USE memory; DETACH poc;"));
+  await attempt(() => close(database.connection));
+  await attempt(() => close(database.database));
+  if (failure) throw failure;
 }
 
 // Single forward-only baseline. The app is unreleased, so the historical v1-v14 migration

@@ -128,6 +128,22 @@ describe("compileQueryDSL — health_events", () => {
     expect(validateCompiledSql(result.sql).valid).toBe(true);
   });
 
+  it("treats provider LIKE wildcards as literal text", () => {
+    const result = compileQueryDSL({
+      ...baseDsl,
+      source: "health_events",
+      intent: "list",
+      metric: null,
+      aggregation: "count",
+      groupBy: null,
+      filters: { provider: "North_Clinic%\\" }
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.sql).toContain("ESCAPE '\\'");
+    expect(result.parameters).toContain("%North\\_Clinic\\%\\\\%");
+  });
+
   it("compiles weekly event count timeseries", () => {
     const result = compileQueryDSL({
       ...baseDsl,
@@ -316,7 +332,7 @@ describe("validateCompiledSql — injection payloads", () => {
     if (!compiled.ok) return;
     expect(compiled.sql).not.toContain("Clinic");
     expect(compiled.sql).not.toContain("DROP TABLE");
-    expect(compiled.parameters).toContain("%Clinic'; DROP TABLE health_events; --%");
+    expect(compiled.parameters).toContain("%Clinic'; DROP TABLE health\\_events; --%");
     expect(validateCompiledSql(compiled.sql)).toEqual({ valid: true, violations: [] });
   });
 });

@@ -29,6 +29,7 @@ import {
   BackupTooLargeError,
   createBackupV1Stream,
   decryptBackup,
+  estimateBackupV1PlaintextSize,
   UnsupportedBackupFormatError,
   verifyProfileDigest
 } from "../backupCrypto.js";
@@ -108,6 +109,7 @@ export function makeBackupRoutes(
       res.once("close", () => {
         if (!res.writableFinished) abortController.abort();
       });
+      await estimateBackupV1PlaintextSize(stores, { scope, createdAt, signal: abortController.signal });
       const encrypted = await createBackupV1Stream(stores, {
         passphrase,
         scope,
