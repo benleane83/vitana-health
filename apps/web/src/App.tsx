@@ -346,6 +346,7 @@ export function App() {
             <ProfileAvatar
               compact
               displayName={activeProfile?.displayName ?? "Profile"}
+              profileId={activeProfileId}
               revision={bootstrap?.profilePhoto?.revision}
             />
             <span className="profile-menu-label">{activeProfile?.displayName ?? "Profile"}</span>
@@ -371,7 +372,8 @@ export function App() {
                   <ProfileAvatar
                     compact
                     displayName={entry.displayName}
-                    revision={entry.id === activeProfileId ? entry.profilePhoto?.revision : undefined}
+                    profileId={entry.id}
+                    revision={entry.profilePhoto?.revision}
                   />
                   {entry.displayName}
                 </button>

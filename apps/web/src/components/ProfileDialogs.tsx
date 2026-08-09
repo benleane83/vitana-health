@@ -351,7 +351,8 @@ export function ProfileManagerDialog({
               <ProfileAvatar
                 compact
                 displayName={entry.displayName}
-                revision={isActive ? entry.profilePhoto?.revision : undefined}
+                profileId={entry.id}
+                revision={entry.profilePhoto?.revision}
               />
               <div>
                 <strong>{entry.displayName}</strong>

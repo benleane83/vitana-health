@@ -202,7 +202,10 @@ export const api = {
   bootstrap: sharedApi.bootstrap,
   sleepSessions: sharedApi.sleepSessions,
   profilePhoto: {
-    get: () => request(profilePhotoResponseSchema, "/api/profile/photo"),
+    get: (profileId?: string) => request(
+      profilePhotoResponseSchema,
+      profileId ? `/api/profiles/${encodeURIComponent(profileId)}/photo` : "/api/profile/photo"
+    ),
     replace: (payload: { contentType: "image/jpeg"; contentBase64: string }) =>
       request(profilePhotoResponseSchema, "/api/profile/photo", {
         method: "PUT",

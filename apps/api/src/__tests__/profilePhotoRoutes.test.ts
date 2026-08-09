@@ -130,4 +130,29 @@ describe("profile photo routes", () => {
     pairings.revoke(pairingId);
     expect((await request(app).get("/api/profile/photo").set(companion)).status).toBe(401);
   });
+
+  it("lets the owner read another profile photo without exposing it to companions", async () => {
+    const { active, assigned, manager, pairings, token } = fixture();
+    assigned.getProfilePhoto.mockResolvedValue({
+      contentType: "image/jpeg",
+      bytes: jpeg,
+      revision: createHash("sha256").update(jpeg).digest("hex"),
+      updatedAt: "2026-07-24T10:00:00.000Z"
+    });
+    const app = createApp(manager, pairings);
+
+    const fetched = await request(app)
+      .get("/api/profiles/assigned/photo")
+      .set({ authorization: "Bearer " + ownerToken });
+
+    expect(fetched.status).toBe(200);
+    expect(fetched.headers["cache-control"]).toBe("no-store");
+    expect(fetched.body.contentBase64).toBe(jpeg.toString("base64"));
+    expect(assigned.getProfilePhoto).toHaveBeenCalledOnce();
+    expect(active.getProfilePhoto).not.toHaveBeenCalled();
+
+    expect((await request(app)
+      .get("/api/profiles/active/photo")
+      .set({ "x-companion-token": token })).status).toBe(403);
+  });
 });
