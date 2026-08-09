@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { type MeasurementType } from "@vitana/shared";
 import { useCombobox } from "downshift";
 import { measurementCategoryLabels } from "../utils.js";
@@ -43,6 +43,7 @@ export function MeasurementCombobox({
   const selectedMeasurement = measurementTypes.find((type) => type.code === selectedCode);
   const selectedDisplay = selectedMeasurement?.display ?? selectedLabel ?? "";
   const [inputValue, setInputValue] = useState(selectedDisplay);
+  const typedNameRef = useRef(selectedDisplay);
   const measurementItems = useMemo(
     () => findMeasurementMatches(measurementTypes, inputValue, selectedDisplay),
     [inputValue, measurementTypes, selectedDisplay]
@@ -57,6 +58,7 @@ export function MeasurementCombobox({
 
   useEffect(() => {
     setInputValue(selectedDisplay);
+    typedNameRef.current = selectedDisplay;
   }, [selectedCode, selectedDisplay]);
 
   useEffect(() => {
@@ -83,7 +85,7 @@ export function MeasurementCombobox({
     onSelectedItemChange: ({ selectedItem }) => {
       if (!selectedItem) return;
       if (selectedItem.kind === "custom") {
-        onSelectCustom?.(inputValue);
+        onSelectCustom?.(typedNameRef.current);
         return;
       }
       setInputValue(selectedItem.measurement.display);
@@ -99,6 +101,9 @@ export function MeasurementCombobox({
             id,
             "aria-label": ariaLabel,
             placeholder: "Search measurements",
+            onChange: (event) => {
+              typedNameRef.current = event.currentTarget.value;
+            },
             onFocus: (event) => event.currentTarget.select()
           })}
         />
