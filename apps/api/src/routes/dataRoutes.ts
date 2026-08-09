@@ -520,8 +520,12 @@ export function makeDataRoutes(
   router.post("/insights/generate", async (_request, response, next) => {
     try {
       const store = activeStore();
-      const [profile, analytics] = await Promise.all([store.getProfile(), store.analyticsSummary()]);
-      const insight = await generateInsight({ profile, analytics });
+      const [profile, analytics, reviewContext] = await Promise.all([
+        store.getProfile(),
+        store.analyticsSummary(),
+        store.insightReviewContext()
+      ]);
+      const insight = await generateInsight({ profile, analytics, reviewContext });
       sendJson(response.status(201), insightResponseSchema, await store.addInsight(insight));
     } catch (error) {
       next(error);

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type duckdb from "duckdb";
 import { defaultMeasurementTypes } from "@vitana/shared";
 import { mergeDefaultMeasurementType } from "../measurementRegistry.js";
@@ -14,6 +15,18 @@ import { selectColumns } from "./duckdbColumns.js";
 // Named column lists, not `SELECT * EXCLUDE (...)`: that syntax is DuckDB-only, and `*` silently
 // widens every DTO the moment the schema gains a column.
 const measurementTypeColumns = selectColumns("measurement_types", { excludeOrdinal: true });
+const measurementRegistryFingerprint = createHash("sha256")
+  .update(JSON.stringify(defaultMeasurementTypes))
+  .digest("hex");
+
+export function recordCurrentMeasurementRegistry(connection: duckdb.Connection): Promise<void> {
+  return run(
+    connection,
+    `INSERT INTO schema_objects (name, fingerprint) VALUES ('measurement_registry', ?)
+     ON CONFLICT (name) DO UPDATE SET fingerprint = EXCLUDED.fingerprint;`,
+    measurementRegistryFingerprint
+  );
+}
 
 export async function schemaVersions(connection: duckdb.Connection): Promise<number[]> {
   const rows = await all(connection, "SELECT schema_version FROM poc_metadata ORDER BY schema_version;");
@@ -29,6 +42,14 @@ export async function reconcileDefaultMeasurementTypes(
 ): Promise<void> {
   const profileRows = await all(connection, "SELECT COUNT(*) AS count FROM profile;");
   if (Number(profileRows[0]?.count ?? 0) === 0) {
+    return;
+  }
+  const fingerprintRows = await all(
+    connection,
+    "SELECT fingerprint FROM schema_objects WHERE name = 'measurement_registry';"
+  );
+  if (String(fingerprintRows[0]?.fingerprint ?? "") !== measurementRegistryFingerprint) {
+    await resetMeasurementTypeMetadataFromRegistry(connection, runInTransaction);
     return;
   }
   const [existingRows, referencedRows] = await Promise.all([
@@ -177,6 +198,8 @@ export async function resetMeasurementTypeMetadataFromRegistry(
     const replicated = rows
       .map((row) => measurementTypeFromRow(row))
       .filter((type) => touchedCodes.has(type.code));
+
+    await recordCurrentMeasurementRegistry(connection);
 
     return { refreshed, inserted, replicated };
   }, (operationResult) => operationResult.replicated.map(

@@ -64,6 +64,7 @@ import { pruneRetention } from "./duckdbRetention.js";
 import type { BackupExportCollection, ImportMutationResult, MeasurementRegistryResetResult, ProfileImport, ProfileRepository } from "./profileRepository.js";
 import {
   reconcileDefaultMeasurementTypes,
+  recordCurrentMeasurementRegistry,
   resetMeasurementTypeMetadataFromRegistry,
   schemaVersions as readSchemaVersions
 } from "./duckdbSchema.js";
@@ -124,6 +125,7 @@ import {
 import {
   analyticsSummary as readAnalyticsSummary,
   appBootstrap as readAppBootstrap,
+  insightReviewContext as readInsightReviewContext,
   bodyTrendDateDetail as readBodyTrendDateDetail,
   bodyTrendTimeline as readBodyTrendTimeline,
   calendarMonth as readCalendarMonth,
@@ -213,6 +215,7 @@ export class DuckDbRepository implements ProfileRepository {
       await exec(repository.connection, "BEGIN TRANSACTION;");
       transactionStarted = true;
       await insertStore(repository.connection, validated);
+      await recordCurrentMeasurementRegistry(repository.connection);
       await exec(repository.connection, "COMMIT;");
       transactionStarted = false;
       await repository.checkpoint();
@@ -305,6 +308,11 @@ export class DuckDbRepository implements ProfileRepository {
   async analyticsSummary(): Promise<AnalyticsSummary> {
     this.assertOpen();
     return readAnalyticsSummary(this.reader);
+  }
+
+  async insightReviewContext() {
+    this.assertOpen();
+    return readInsightReviewContext(this.reader);
   }
 
   async biologicalAgeSource(): Promise<BiologicalAgeSource> {

@@ -4,7 +4,7 @@ import { EXPORT_FORMAT_VERSION, parsePersistedHealthStore } from "../storeSchema
 function store(overrides: Record<string, unknown> = {}) {
   return {
     schemaVersion: EXPORT_FORMAT_VERSION,
-    profile: { id: "self", displayName: "Test", units: "metric", updatedAt: "2026-01-01T00:00:00.000Z" },
+    profile: { id: "self", displayName: "Test", setupStatus: "complete", units: "metric", updatedAt: "2026-01-01T00:00:00.000Z" },
     sourceImports: [], dataSources: [], devices: [], measurementTypes: [], observations: [], observationGroups: [],
     timeSeriesSamples: [], measurementAggregates: [], activitySessions: [], personalReferenceRanges: [], pinnedMeasurements: [], insights: [], auditEvents: [],
     ...overrides
@@ -67,6 +67,7 @@ describe("persisted health store schema", () => {
       profile: {
         id: "self",
         displayName: "Test",
+        setupStatus: "complete",
         bloodType: "unknown",
         units: "metric",
         updatedAt: "2026-01-01T00:00:00.000Z"
@@ -148,6 +149,20 @@ describe("persisted health store schema", () => {
       { id: "therapy", kind: "procedure" },
       { id: "monitoring", kind: "monitoring" }
     ]);
+  });
+
+  it("migrates version 11 profiles as already set up", () => {
+    const legacy = store({
+      schemaVersion: 11,
+      profile: {
+        id: "self",
+        displayName: "Existing user",
+        units: "metric",
+        updatedAt: "2026-01-01T00:00:00.000Z"
+      }
+    });
+
+    expect(parsePersistedHealthStore(legacy).profile.setupStatus).toBe("complete");
   });
 
   it("accepts base-only health event kinds without specialist payloads", () => {

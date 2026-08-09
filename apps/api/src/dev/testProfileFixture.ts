@@ -140,6 +140,7 @@ export function createTestProfileFixture(options: TestProfileFixtureOptions = {}
     profile: {
       id: TEST_PROFILE_ID,
       displayName: TEST_PROFILE_NAME,
+      setupStatus: "complete",
       subjectKind: "adult",
       birthDate: "1986-04-18",
       sex: "not-specified",

@@ -600,7 +600,7 @@ describe("DuckDbRepository fidelity", () => {
     }
   }, 30_000);
 
-  it.skipIf(!httpfsExtensionPath)("resets registry measurement metadata without changing observations", async () => {
+  it.skipIf(!httpfsExtensionPath)("refreshes changed registry metadata on launch without changing user-owned data", async () => {
     const databasePath = join(root, "databases", "health-store-registry-reset.duckdb-poc");
     const fixture = createDuckDbHealthStoreFixture();
     const weight = fixture.measurementTypes.find((type) => type.code === "weight");
@@ -608,22 +608,43 @@ describe("DuckDbRepository fidelity", () => {
     weight.display = "Legacy weight";
     weight.description = "Legacy description";
     weight.aliases = ["legacy weight"];
-    const existingMeasurementTypeCount = fixture.measurementTypes.length;
+    fixture.measurementTypes.push({
+      code: "custom_grip_score",
+      display: "Custom grip score",
+      description: "A user-defined grip score.",
+      category: "derived",
+      kind: "point",
+      canonicalUnit: "score",
+      aliases: [],
+      aggregation: "latest"
+    });
     const observations = structuredClone(fixture.observations);
-    const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
+    const personalReferenceRanges = structuredClone(fixture.personalReferenceRanges);
+    const hydrated = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
+    await hydrated.close();
+    const legacyDatabase = await openEncryptedDuckDbDatabase(root, databasePath, key, { httpfsExtensionPath });
+    try {
+      await execSql(legacyDatabase.connection, "DELETE FROM schema_objects WHERE name = 'measurement_registry';");
+    } finally {
+      await closeEncryptedDuckDbDatabase(legacyDatabase);
+    }
+    const repository = await DuckDbRepository.open(root, databasePath, key, { httpfsExtensionPath });
 
     try {
-      const result = await repository.resetMeasurementTypeMetadataFromRegistry();
       const expectedWeight = defaultMeasurementTypes.find((type) => type.code === "weight");
       if (!expectedWeight) throw new Error("Weight is missing from the default registry.");
-      const refreshedWeight = (await repository.appBootstrap()).measurementTypes.find((type) => type.code === "weight");
+      const measurementTypes = (await repository.appBootstrap()).measurementTypes;
+      const refreshedWeight = measurementTypes.find((type) => type.code === "weight");
 
-      expect(result).toEqual({
-        refreshed: existingMeasurementTypeCount,
-        inserted: defaultMeasurementTypes.length - existingMeasurementTypeCount
-      });
       expect(refreshedWeight).toEqual(expectedWeight);
-      expect((await repository.snapshot()).observations).toEqual(observations);
+      expect(measurementTypes).toEqual(expect.arrayContaining([
+        expect.objectContaining({ code: "custom_grip_score", display: "Custom grip score" })
+      ]));
+      expect(measurementTypes.filter((type) => defaultMeasurementTypes.some((entry) => entry.code === type.code)))
+        .toHaveLength(defaultMeasurementTypes.length);
+      const snapshot = await repository.snapshot();
+      expect(snapshot.observations).toEqual(observations);
+      expect(snapshot.personalReferenceRanges).toEqual(personalReferenceRanges);
     } finally {
       await repository.close();
     }
@@ -967,6 +988,17 @@ describe("DuckDbRepository fidelity", () => {
       expect(bootstrap).not.toHaveProperty("sourceImports");
       const analytics = await repository.analyticsSummary();
       expect(analytics).toEqual(computeAnalytics({ ...fixture, counts: analyticsCountsFromStore(fixture) }));
+      const reviewContext = await repository.insightReviewContext();
+      expect(reviewContext.windowDays).toBe(30);
+      expect(reviewContext.coverage.activeDays).toBeGreaterThanOrEqual(0);
+      expect(reviewContext.trackedMetrics.length).toBeLessThanOrEqual(9);
+      expect(reviewContext.activities.length).toBeLessThanOrEqual(12);
+      expect(reviewContext.healthEvents.length).toBeLessThanOrEqual(12);
+      expect(reviewContext.care).toEqual({
+        open: expect.any(Number),
+        overdue: expect.any(Number),
+        highPriority: expect.any(Number)
+      });
       const generatedAt = "2026-07-15T00:00:00.000Z";
       const biologicalAgeSource = await repository.biologicalAgeSource();
       expect(calculateBiologicalAge(biologicalAgeSource, generatedAt)).toEqual(calculateBiologicalAge(fixture, generatedAt));

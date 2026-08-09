@@ -20,6 +20,8 @@ type ProfileUiState = {
   busy: boolean;
 };
 
+type EditableProfile = Omit<Profile, "id" | "updatedAt" | "setupStatus">;
+
 type ConfirmAction = (
   title: string,
   description: string,
@@ -83,27 +85,25 @@ export function useProfileLifecycle(onNotice: (message: string) => void, confirm
 
   async function saveProfile(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const units = String(form.get("units") || "metric") as Profile["units"];
-    const height = numberOrUndefined(form.get("height"));
     await run("Profile saved locally.", async () => {
-      await api.saveProfile({
-        displayName: String(form.get("displayName") || "Local user"),
-        subjectKind: String(form.get("subjectKind") || "adult") as NonNullable<Profile["subjectKind"]>,
-        birthDate: String(form.get("birthDate") || "") || undefined,
-        sex: String(form.get("sex") || "not-specified") as Profile["sex"],
-        heightCm: height === undefined ? undefined : units === "imperial" ? height * 2.54 : height,
-        bloodType: String(form.get("bloodType") || "unknown") as Profile["bloodType"],
-        goalSummary: String(form.get("goalSummary") || ""),
-        pet: String(form.get("subjectKind")) === "pet" ? {
-          species: String(form.get("petSpecies") || ""),
-          breed: String(form.get("petBreed") || "") || undefined,
-          microchipId: String(form.get("petMicrochipId") || "") || undefined
-        } : undefined,
-        units
-      });
+      await api.saveProfile(profileInput(new FormData(event.currentTarget)));
       await refresh();
       setUi((current) => ({ ...current, editorOpen: false }));
+    });
+  }
+
+  async function completeInitialSetup(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await run("Profile set up locally.", async () => {
+      await api.profileSetup.complete(profileInput(new FormData(event.currentTarget)));
+      await refresh();
+    });
+  }
+
+  async function dismissInitialSetup() {
+    await run("You can finish setting up your profile from Edit Profile.", async () => {
+      await api.profileSetup.dismiss();
+      await refresh();
     });
   }
 
@@ -210,7 +210,9 @@ export function useProfileLifecycle(onNotice: (message: string) => void, confirm
     createProfile,
     deleteProfile,
     replaceProfilePhoto,
-    removeProfilePhoto
+    removeProfilePhoto,
+    completeInitialSetup,
+    dismissInitialSetup
   };
 }
 
@@ -219,7 +221,18 @@ export type ProfileLifecycle = ReturnType<typeof useProfileLifecycle>;
 export function ProfileLifecycleDialogs({ lifecycle, allowProfileCreation }: { lifecycle: ProfileLifecycle; allowProfileCreation: boolean }) {
   return (
     <>
-      {lifecycle.ui.editorOpen ? (
+      {lifecycle.profile?.setupStatus === "pending" ? (
+        <ProfileEditDialog
+          busy={lifecycle.ui.busy}
+          profile={lifecycle.profile}
+          profilePhotoRevision={lifecycle.bootstrap?.profilePhoto?.revision}
+          presentation="welcome"
+          onClose={() => { void lifecycle.dismissInitialSetup(); }}
+          onPhotoChange={lifecycle.replaceProfilePhoto}
+          onPhotoRemove={() => { void lifecycle.removeProfilePhoto(); }}
+          onSubmit={lifecycle.completeInitialSetup}
+        />
+      ) : lifecycle.ui.editorOpen ? (
         <ProfileEditDialog
           busy={lifecycle.ui.busy}
           profile={lifecycle.profile}
@@ -264,5 +277,26 @@ async function loadSnapshot(signal: AbortSignal | undefined, includeProfiles: bo
     analytics,
     entitlement,
     ...(profileList ? { profiles: profileList.profiles, activeProfileId: profileList.activeProfileId } : {})
+  };
+}
+
+function profileInput(form: FormData): EditableProfile {
+  const units = String(form.get("units") || "metric") as Profile["units"];
+  const height = numberOrUndefined(form.get("height"));
+  const subjectKind = String(form.get("subjectKind") || "adult") as NonNullable<Profile["subjectKind"]>;
+  return {
+    displayName: String(form.get("displayName") || "Local user"),
+    subjectKind,
+    birthDate: String(form.get("birthDate") || "") || undefined,
+    sex: String(form.get("sex") || "not-specified") as Profile["sex"],
+    heightCm: height === undefined ? undefined : units === "imperial" ? height * 2.54 : height,
+    bloodType: String(form.get("bloodType") || "unknown") as Profile["bloodType"],
+    goalSummary: String(form.get("goalSummary") || ""),
+    pet: subjectKind === "pet" ? {
+      species: String(form.get("petSpecies") || ""),
+      breed: String(form.get("petBreed") || "") || undefined,
+      microchipId: String(form.get("petMicrochipId") || "") || undefined
+    } : undefined,
+    units
   };
 }

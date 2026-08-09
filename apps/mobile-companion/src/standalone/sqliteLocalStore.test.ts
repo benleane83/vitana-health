@@ -34,6 +34,7 @@ function profile(id: string, updatedAt: string): Profile {
   return {
     id,
     displayName: "My profile",
+    setupStatus: "complete",
     subjectKind: "adult",
     units: "metric",
     updatedAt

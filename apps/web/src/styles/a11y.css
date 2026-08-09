@@ -107,6 +107,12 @@ dialog::backdrop {
 
 .profile-dialog {
   width: min(640px, calc(100vw - 2rem));
-  max-height: calc(100vh - 4rem);
+  max-height: calc(100dvh - 4rem);
   overflow-y: auto;
+}
+
+.welcome-profile-dialog {
+  width: min(760px, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow: hidden;
 }

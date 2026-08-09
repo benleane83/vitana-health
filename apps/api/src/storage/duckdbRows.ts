@@ -371,6 +371,7 @@ export function profileFromRow(row: DuckDbRow): Profile {
   return compact({
     id: row.id,
     displayName: row.display_name,
+    setupStatus: profileProperties.setupStatus ?? "complete",
     subjectKind: row.subject_kind ?? "adult",
     birthDate: optionalDate(row.birth_date),
     sex: row.sex,
@@ -378,10 +379,16 @@ export function profileFromRow(row: DuckDbRow): Profile {
     bloodType: row.blood_type,
     goalSummary: row.goal_summary,
     pet: row.pet_species ? compact({ species: row.pet_species, breed: row.pet_breed, reproductiveStatus: row.pet_reproductive_status, microchipId: row.pet_microchip_id }) : undefined,
-    ...profileProperties,
+    cloudAiConsent: profileProperties.cloudAiConsent,
     units: row.units,
     updatedAt: isoTimestamp(row.updated_at)
   }) as unknown as Profile;
+}
+export function profileProperties(profile: Profile): Record<string, unknown> {
+  return compact({
+    cloudAiConsent: profile.cloudAiConsent,
+    setupStatus: profile.setupStatus
+  });
 }
 
 export function observationFromRow(row: DuckDbRow): Observation {

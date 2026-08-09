@@ -317,9 +317,13 @@ function ManualMeasurementRow({
           ariaLabel={`Row ${rowIndex}: select known measurement`}
           measurementTypes={measurementTypes}
           selectedCode={selectedMeasurementCode}
-          onSelectCustom={() => {
+          onSelectCustom={(typedName) => {
             onSetCustomMeasurement(true);
-            onChange(row.id, { marker: "", measurementCode: "" });
+            onChange(row.id, {
+              marker: typedName,
+              measurementCode: fallbackMeasurementCode(typedName),
+              unit: ""
+            });
           }}
           onSelect={(selectedMeasurement) => {
             onSetCustomMeasurement(false);

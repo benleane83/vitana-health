@@ -17,6 +17,7 @@ vi.mock("../../api.js", () => ({
 const profile: Profile = {
   id: "self",
   displayName: "Local user",
+  setupStatus: "complete",
   units: "metric",
   updatedAt: "2026-01-01T00:00:00.000Z"
 };

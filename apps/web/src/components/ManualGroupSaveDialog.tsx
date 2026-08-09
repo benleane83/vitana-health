@@ -67,7 +67,7 @@ export function ManualGroupSaveDialog({
         </h2>
         <p>{namingRequired
           ? "Enter a name for this group before importing its measurements."
-          : `You added ${rowCount - 1} row${rowCount === 2 ? "" : "s"} to ${defaultGroup}. Save it as a custom group to preload these measurements next time.`}
+          : `You are adding ${rowCount} ${defaultGroup} row${rowCount === 1 ? "" : "s"}. Save it as a custom group to preload these measurements next time.`}
         </p>
         <div className="manual-group-save-field">
           <label htmlFor="manual-group-save-name">Custom group name</label>

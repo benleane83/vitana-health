@@ -25,7 +25,7 @@ function dateOffset(days: number): string {
 function renderDashboard(onNavigateCare = vi.fn()) {
   render(
     <DashboardRoute
-      profile={{ id: "self", displayName: "Local user", units: "metric", updatedAt: dateOffset(0) }}
+      profile={{ id: "self", displayName: "Local user", setupStatus: "complete", units: "metric", updatedAt: dateOffset(0) }}
       onEditProfile={vi.fn()}
       onNavigateSummary={vi.fn()}
       onNavigateMeasurement={vi.fn()}
@@ -68,7 +68,7 @@ describe("DashboardRoute upcoming care", () => {
     render(
       <DashboardRoute
         analytics={analyticsWithTrend}
-        profile={{ id: "self", displayName: "Local user", units: "metric", updatedAt: dateOffset(0) }}
+        profile={{ id: "self", displayName: "Local user", setupStatus: "complete", units: "metric", updatedAt: dateOffset(0) }}
         onEditProfile={vi.fn()}
         onNavigateSummary={vi.fn()}
         onNavigateMeasurement={onNavigateMeasurement}
@@ -91,7 +91,7 @@ describe("DashboardRoute upcoming care", () => {
     render(
       <DashboardRoute
         analytics={analyticsWithTrend}
-        profile={{ id: "self", displayName: "Local user", units: "metric", updatedAt: dateOffset(0) }}
+        profile={{ id: "self", displayName: "Local user", setupStatus: "complete", units: "metric", updatedAt: dateOffset(0) }}
         onEditProfile={vi.fn()}
         onNavigateSummary={vi.fn()}
         onNavigateMeasurement={vi.fn()}

@@ -19,7 +19,7 @@ beforeEach(() => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     if (url.includes("/api/bootstrap")) {
       return Promise.resolve(mockResponse({
-        profile: { id: "self", displayName: "Local user", units: "metric", updatedAt: "2026-01-01T00:00:00.000Z" },
+        profile: { id: "self", displayName: "Local user", setupStatus: "complete", units: "metric", updatedAt: "2026-01-01T00:00:00.000Z" },
         measurementTypes: defaultMeasurementTypes,
         manualObservationGroupTemplates: [],
         counts: { imports: 0, observations: 0, samples: 0, activities: 0, healthEvents: 0, careItems: 0 }

@@ -6,6 +6,7 @@ export function createDuckDbHealthStoreFixture(): HealthStoreData {
     profile: {
       id: "profile-a",
       displayName: "Profile A",
+      setupStatus: "complete",
       subjectKind: "adult",
       birthDate: "1985-04-12",
       sex: "not-specified",

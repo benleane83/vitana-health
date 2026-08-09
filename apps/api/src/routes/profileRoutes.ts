@@ -185,6 +185,41 @@ export function makeProfileRoutes(storeManager: ProfileStoreManager): express.Ro
     }
   });
 
+  router.put("/setup", async (request, response, next) => {
+    try {
+      requireOwner(response);
+      const parsed = profileSchema.parse(request.body);
+      const store = storeManager.getActiveStore();
+      const existing = await store.getProfile();
+      const saved = await store.replaceProfile({
+        ...existing,
+        ...parsed,
+        id: store.profileId,
+        setupStatus: "complete",
+        updatedAt: new Date().toISOString()
+      });
+      await storeManager.syncProfileEntry(saved);
+      sendJson(response, profileResponseSchema, saved);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/setup/dismiss", async (_request, response, next) => {
+    try {
+      requireOwner(response);
+      const store = storeManager.getActiveStore();
+      const existing = await store.getProfile();
+      const saved = existing.setupStatus === "pending"
+        ? await store.replaceProfile({ ...existing, setupStatus: "dismissed" })
+        : existing;
+      if (saved !== existing) await storeManager.syncProfileEntry(saved);
+      sendJson(response, profileResponseSchema, saved);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.post("/measurement-types/reset", async (_request, response, next) => {
     try {
       const store = storeManager.getActiveStore();

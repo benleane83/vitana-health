@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, AppState, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
@@ -17,10 +17,8 @@ import {
   findKnownMeasurement,
   getPreferredUnit,
   hasFeature,
-  healthConnectSyncWindowForTier,
   manualGroupDefaults,
   normalizeGroupLabel,
-  type HealthSourceSyncProgress,
   type BloodTestDraft,
   type BodyCompositionDraft,
   type ManualObservationPayload
@@ -30,17 +28,15 @@ import { useEntitlement } from "../EntitlementProvider";
 import {
   HEALTH_CONNECT_SYNC_WINDOW_OPTIONS,
   saveConnection,
-  updateHealthSourceCursors,
-  updateHealthSourceSessionKey,
   type HealthConnectCategory
 } from "../endpointStore";
 import { earliestHealthSourceCursor } from "../healthSourceCursor";
-import { healthSourceSyncCoordinator, shouldCancelHealthSourceSync } from "../healthSourceSyncCoordinator";
 import { activeHealthSourceProvider } from "../healthSourceProvider";
 import { useMobileApi } from "../MobileApiProvider";
 import type { RootStackParamList, TabParamList } from "../navigationTypes";
 import { LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS } from "../pinnedFetch";
 import { userFacingError } from "../userFacingError";
+import { useHealthSourceSync } from "../useHealthSourceSync";
 import { Button, Card, Message, Screen } from "../ui/components";
 import { colors, radii, spacing, type } from "../ui/theme";
 import {
@@ -576,28 +572,16 @@ function ScanImport() {
 }
 
 function HealthConnectImport() {
-  const { bootstrap, connection, refreshAfterImport, reloadConnection } = useMobileApi();
+  const { connection, reloadConnection } = useMobileApi();
   const entitlement = useEntitlement();
   const extendedHistoryAllowed = hasFeature(entitlement.state.tier, "extended-health-connect-history");
-  const [status, setStatus] = useState("");
-  const [statusTone, setStatusTone] = useState<"success" | "danger">("success");
-  const [syncing, setSyncing] = useState(false);
-  const [syncProgress, setSyncProgress] = useState("");
+  const healthSourceSync = useHealthSourceSync();
+  const { status, statusTone, syncing, syncProgress } = healthSourceSync;
   const [updating, setUpdating] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const syncStage = useRef<HealthSourceSyncProgress["stage"] | undefined>(undefined);
   // Rendered from the provider rather than a constant, so a device with no health source shows an
   // empty picker instead of offering categories nothing can read.
   const providerCategories = activeHealthSourceProvider()?.categories ?? [];
-  useKeepAwake(syncing ? "health-connect-sync" : undefined);
-  // Leaving the app abandons active reads rather than letting the OS kill one mid-batch. The
-  // Health Connect permission activity is exempt because Android backgrounds this app while it is open.
-  useEffect(() => {
-    const subscription = AppState.addEventListener("change", (state) => {
-      if (shouldCancelHealthSourceSync(state, syncStage.current)) healthSourceSyncCoordinator.cancel();
-    });
-    return () => subscription.remove();
-  }, []);
   if (!connection) return <Message title="Pair with your PC before syncing." />;
   const currentConnection = connection;
   const earliestCursor = earliestHealthSourceCursor(
@@ -613,8 +597,7 @@ function HealthConnectImport() {
       await reloadConnection({ preserveSession: true });
       return true;
     } catch (caught) {
-      setStatusTone("danger");
-      setStatus(userFacingError(caught, "Could not save Sync settings. Try again."));
+      healthSourceSync.reportStatus("danger", userFacingError(caught, "Could not save Sync settings. Try again."));
       return false;
     } finally {
       setUpdating(false);
@@ -634,55 +617,7 @@ function HealthConnectImport() {
 
   async function resetSyncCursor() {
     if (await update({ healthSourceCursors: {}, healthSourceSessionKey: null })) {
-      setStatusTone("success");
-      setStatus(`Sync start date reset. Your next sync will include the full ${currentConnection.healthConnectSyncWindowDays}-day window.`);
-    }
-  }
-
-  async function sync() {
-    if (syncing || updating || healthSourceSyncCoordinator.busy) return;
-    const provider = activeHealthSourceProvider();
-    if (!provider) {
-      setStatusTone("danger");
-      setStatus("This device has no supported health data source.");
-      return;
-    }
-    setSyncing(true);
-    syncStage.current = undefined;
-    setSyncProgress(`Checking ${provider.label} on this phone…`);
-    try {
-      const result = await healthSourceSyncCoordinator.run((signal) => provider.sync(
-        currentConnection.url,
-        currentConnection.token,
-        bootstrap?.profile.id ?? null,
-        currentConnection.publicKeyHash,
-        {
-          deviceId: currentConnection.deviceId,
-          syncCursors: currentConnection.healthSourceCursors,
-          sessionKey: currentConnection.healthSourceSessionKey,
-          syncWindowDays: healthConnectSyncWindowForTier(entitlement.state.tier, currentConnection.healthConnectSyncWindowDays),
-          categories: currentConnection.healthSourceCategories,
-          onProgress: ({ detail, stage }) => {
-            syncStage.current = stage;
-            setSyncProgress(detail);
-          },
-          onSessionKey: (sessionKey) => updateHealthSourceSessionKey(currentConnection.url, sessionKey),
-          signal
-        }
-      ));
-      await updateHealthSourceCursors(currentConnection.url, result.syncCursors);
-      setStatusTone("success");
-      setStatus(`${result.status} ${result.details}`);
-      setSyncProgress("Refreshing your imported readings…");
-      await reloadConnection();
-      await refreshAfterImport();
-    } catch (caught) {
-      setStatusTone("danger");
-      setStatus(userFacingError(caught, "Sync failed. Check the connection to your paired PC and try again."));
-    } finally {
-      syncStage.current = undefined;
-      setSyncing(false);
-      setSyncProgress("");
+      healthSourceSync.reportStatus("success", `Sync start date reset. Your next sync will include the full ${currentConnection.healthConnectSyncWindowDays}-day window.`);
     }
   }
 
@@ -690,8 +625,7 @@ function HealthConnectImport() {
     try {
       await Linking.openURL(privacyUrl);
     } catch {
-      setStatusTone("danger");
-      setStatus("Could not open the privacy policy on this device.");
+      healthSourceSync.reportStatus("danger", "Could not open the privacy policy on this device.");
     }
   }
 
@@ -736,7 +670,7 @@ function HealthConnectImport() {
           <Button disabled={updating || syncing} onPress={() => { void update({ healthConnectDisclosureAcknowledged: true }); }}>{updating ? "Saving…" : "I understand and continue"}</Button>
         </Card>
       ) : <Button disabled={updating || syncing} secondary onPress={() => { void openPrivacyPolicy(); }}>Privacy policy</Button>}
-      <Button disabled={syncing || updating || !currentConnection.healthConnectDisclosureAcknowledged} onPress={() => { void sync(); }}>{syncing ? "Syncing…" : updating ? "Saving settings…" : "Sync now"}</Button>
+      <Button disabled={syncing || updating || !currentConnection.healthConnectDisclosureAcknowledged} onPress={() => { void healthSourceSync.sync(); }}>{syncing ? "Syncing…" : updating ? "Saving settings…" : "Sync now"}</Button>
       {syncing ? (
         <View accessibilityLiveRegion="polite" accessibilityRole="progressbar" style={styles.syncProgress}>
           <ActivityIndicator color={colors.primary} />

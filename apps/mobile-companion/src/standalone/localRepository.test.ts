@@ -21,6 +21,7 @@ function profile(id: string): Profile {
   return {
     id,
     displayName: id === "profile-a" ? "Alex" : "Bailey",
+    setupStatus: "complete",
     subjectKind: "adult",
     units: "metric",
     updatedAt: "2026-07-18T05:00:00.000Z"

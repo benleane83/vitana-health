@@ -40,7 +40,13 @@ const profileChange = {
   entityType: "profile",
   entityId: "profile-1",
   operation: "upsert",
-  payload: { id: "profile-1", displayName: "Cached", units: "metric", updatedAt: "2026-07-25T13:00:00.000Z" }
+  payload: {
+    id: "profile-1",
+    displayName: "Cached",
+    setupStatus: "complete",
+    units: "metric",
+    updatedAt: "2026-07-25T13:00:00.000Z"
+  }
 } satisfies ReplicaPage["changes"][number];
 
 const observationChange = {
@@ -78,6 +84,7 @@ describe("connected replica sync coordinator", () => {
           payload: {
             id: "profile-1",
             displayName: "Cached profile",
+            setupStatus: "complete",
             units: "metric",
             updatedAt: "2026-07-25T13:00:00.000Z"
           }
@@ -132,7 +139,13 @@ describe("connected replica sync coordinator", () => {
       entityType: "profile",
       entityId: "profile-1",
       operation: "upsert",
-      payload: { id: "profile-1", displayName: "Cached", units: "metric", updatedAt: "2026-07-25T13:00:00.000Z" }
+      payload: {
+        id: "profile-1",
+        displayName: "Cached",
+        setupStatus: "complete",
+        units: "metric",
+        updatedAt: "2026-07-25T13:00:00.000Z"
+      }
     }]));
     const coordinator = new ReplicaSyncCoordinator(
       new ReplicaClient({

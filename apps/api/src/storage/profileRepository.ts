@@ -65,6 +65,39 @@ import type { MeasurementDetailPage } from "../summary.js";
 import type { ClinicianReportSourceImport } from "../clinicianReport.js";
 import type { CompiledQuery } from "../queryCompiler.js";
 
+export interface InsightReviewContext {
+  windowDays: number;
+  coverage: {
+    earliestDate?: string;
+    latestDate?: string;
+    activeDays: number;
+  };
+  trackedMetrics: Array<{
+    code: string;
+    label: string;
+    unit: string;
+    average: number;
+    minimum: number;
+    maximum: number;
+    days: number;
+  }>;
+  activities: Array<{
+    type: string;
+    sessions: number;
+    durationMinutes?: number;
+  }>;
+  healthEvents: Array<{
+    kind: string;
+    count: number;
+    latestDate: string;
+  }>;
+  care: {
+    open: number;
+    overdue: number;
+    highPriority: number;
+  };
+}
+
 export interface ProfileImport {
   sourceImport: SourceImport;
   dataSource: DataSource;
@@ -179,6 +212,7 @@ export interface BackupExportPage {
 export interface ProfileRepository {
   appBootstrap(): Promise<AppBootstrap>;
   analyticsSummary(): Promise<AnalyticsSummary>;
+  insightReviewContext(): Promise<InsightReviewContext>;
   biologicalAgeSource(): Promise<BiologicalAgeSource>;
   clinicianReportLatestMeasurements(): Promise<ClinicianReportLatestMeasurement[]>;
   clinicianReportSourceImports(): Promise<ClinicianReportSourceImport[]>;

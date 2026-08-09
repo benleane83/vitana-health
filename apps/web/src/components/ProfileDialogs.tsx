@@ -44,6 +44,7 @@ export function ProfileEditDialog({
   busy,
   profile,
   profilePhotoRevision,
+  presentation = "edit",
   onClose,
   onPhotoChange,
   onPhotoRemove,
@@ -52,12 +53,14 @@ export function ProfileEditDialog({
   busy: boolean;
   profile?: Profile;
   profilePhotoRevision?: string;
+  presentation?: "edit" | "welcome";
   onClose: () => void;
   onPhotoChange: (file: File) => Promise<string | undefined>;
   onPhotoRemove: () => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const firstFocusRef = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const onCloseRef = useRef(onClose);
@@ -96,7 +99,8 @@ export function ProfileEditDialog({
     const dialog = dialogRef.current;
     if (!dialog) return;
     if (!dialog.open) dialog.showModal();
-    firstFocusRef.current?.focus();
+    if (presentation === "welcome") headingRef.current?.focus();
+    else firstFocusRef.current?.focus();
     const handleCancel = (e: Event) => { e.preventDefault(); onCloseRef.current(); };
     dialog.addEventListener("cancel", handleCancel);
     return () => dialog.removeEventListener("cancel", handleCancel);
@@ -105,15 +109,23 @@ export function ProfileEditDialog({
   return (
     <dialog
       ref={dialogRef}
-      className="profile-dialog"
+      className={presentation === "welcome" ? "profile-dialog welcome-profile-dialog" : "profile-dialog"}
       aria-labelledby="profile-dialog-title"
+      aria-describedby={presentation === "welcome" ? "profile-dialog-description" : undefined}
       onKeyDown={(e) => trapFocus(e, dialogRef.current)}
     >
       <div className="panel-heading-row">
         <div>
-          <h2 id="profile-dialog-title">Edit profile</h2>
+          <h2 id="profile-dialog-title" ref={headingRef} tabIndex={presentation === "welcome" ? -1 : undefined}>
+            {presentation === "welcome" ? "Welcome to Vitana Health!" : "Edit profile"}
+          </h2>
+          {presentation === "welcome" ? (
+            <p id="profile-dialog-description" className="welcome-profile-description">
+              Tell Vitana about yourself to help us tailor your experience. Everything stays in this local Vitana installation.
+            </p>
+          ) : null}
         </div>
-        <button type="button" onClick={onClose} aria-label="Close profile editor">Close</button>
+        {presentation === "edit" ? <button type="submit" form="profile-edit-form" disabled={busy}>Save and close</button> : null}
       </div>
       <div className="profile-photo-editor">
         <ProfileAvatar displayName={profile?.displayName ?? "Profile"} revision={profilePhotoRevision} />
@@ -149,7 +161,7 @@ export function ProfileEditDialog({
           {photoFeedback ? <p className="profile-photo-feedback" role="status">{photoFeedback}</p> : null}
         </div>
       </div>
-      <form onSubmit={onSubmit} className="profile-form">
+      <form id="profile-edit-form" onSubmit={onSubmit} className="profile-form">
         <label htmlFor="profile-displayName">Name</label>
         <input
           id="profile-displayName"
@@ -256,7 +268,12 @@ export function ProfileEditDialog({
           defaultValue={profile?.goalSummary ?? ""}
         />
 
-        <button disabled={busy}>Save profile</button>
+        <div className="profile-form-actions">
+          <button type="submit" disabled={busy}>Save profile</button>
+          <button type="button" className={presentation === "welcome" ? "welcome-profile-later" : undefined} disabled={busy} onClick={onClose}>
+            {presentation === "welcome" ? "Set up later" : "Cancel"}
+          </button>
+        </div>
       </form>
     </dialog>
   );

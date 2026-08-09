@@ -13,10 +13,10 @@ type DraftRow = {
   note: string;
 };
 
-function localDateTime(value: string | undefined): string {
+function localDate(value: string | undefined): string {
   if (!value) return "";
   const date = new Date(value);
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
 }
 
 function groupKindLabel(kind: ObservationGroupDetail["kind"]): string {
@@ -97,7 +97,7 @@ export function ObservationGroupRoute({
 
   const dirty = useMemo(() => editing && group !== undefined && (
     label !== group.label
-    || collectedAt !== localDateTime(group.collectedAt)
+    || collectedAt !== localDate(group.collectedAt)
     || removedIds.length > 0
     || rows.length !== group.observations.length
     || rows.some((row) => {
@@ -118,7 +118,7 @@ export function ObservationGroupRoute({
   function beginEditing() {
     if (!group?.editable) return;
     setLabel(group.label);
-    setCollectedAt(localDateTime(group.collectedAt));
+    setCollectedAt(localDate(group.collectedAt));
     setRows(group.observations.map((entry) => ({
       id: entry.id,
       measurementCode: entry.measurementCode,
@@ -162,7 +162,7 @@ export function ObservationGroupRoute({
     }
     const timestamp = new Date(collectedAt);
     if (!label.trim() || !collectedAt || Number.isNaN(timestamp.getTime())) {
-      setSaveError("Enter a group label and valid recorded date and time.");
+      setSaveError("Enter a group label and valid recorded date.");
       return;
     }
     const normalizedRows = rows.map((row) => ({
@@ -224,7 +224,6 @@ export function ObservationGroupRoute({
       </header>
       <dl className="observation-group-metadata">
         <div><dt>Recorded</dt><dd>{group.collectedAt ? new Date(group.collectedAt).toLocaleString() : "Not recorded"}</dd></div>
-        <div><dt>Record source</dt><dd>{group.source.label}</dd></div>
         {group.source.importedAt ? <div><dt>Imported</dt><dd>{new Date(group.source.importedAt).toLocaleString()}</dd></div> : null}
       </dl>
       {!group.editable ? <p className="summary-detail-hint" role="status">{group.readOnlyReason}</p> : null}
@@ -233,7 +232,7 @@ export function ObservationGroupRoute({
         <form className="observation-group-editor" onSubmit={(event) => void save(event)}>
           <div className="observation-group-fields">
             <label>Group label<input value={label} onChange={(event) => setLabel(event.target.value)} required /></label>
-            <label>Recorded date and time<input type="datetime-local" value={collectedAt} onChange={(event) => setCollectedAt(event.target.value)} required /></label>
+            <label>Recorded date<input type="date" value={collectedAt} onChange={(event) => setCollectedAt(event.target.value)} required /></label>
           </div>
           <div className="query-table-scroll">
             <table>
@@ -249,10 +248,11 @@ export function ObservationGroupRoute({
                       selectedCode={row.customMeasurement ? "" : row.measurementCode}
                       selectedLabel={row.measurementLabel}
                       menuPlacement={index === rows.length - 1 ? "above" : "below"}
-                      onSelectCustom={() => updateRow(index, {
+                      onSelectCustom={(typedName) => updateRow(index, {
                         customMeasurement: true,
-                        measurementCode: "",
-                        measurementLabel: ""
+                        measurementCode: fallbackMeasurementCode(typedName),
+                        measurementLabel: typedName,
+                        unit: ""
                       })}
                       onSelect={(measurement) => updateRow(index, {
                         customMeasurement: false,
