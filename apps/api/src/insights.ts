@@ -70,6 +70,7 @@ export function buildInsightEvidence(
   const alertCodes = new Set(analytics.labAlerts.map((alert) => alert.code));
   const trendCodes = new Set(analytics.trendCards.map((trend) => trend.code));
   const evidence: string[] = [subjectEvidence(profile)];
+  if (profile.goalSummary) evidence.push(`Current focus: ${boundedText(profile.goalSummary, 500).replace(/[.!?]+$/, "")}.`);
 
   if (reviewContext) {
     const { coverage } = reviewContext;
