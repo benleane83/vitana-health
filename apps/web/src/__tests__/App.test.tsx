@@ -270,6 +270,8 @@ describe("App smoke", () => {
     expect(await screen.findByText("Explore trends and lab ranges")).toBeInTheDocument();
     expect(screen.getByText("31.13 mmol/L")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /ldl cholesterol, 31\.13 mmol\/l/i })).toBeInTheDocument();
+    expect(screen.getByText("high / ref 3")).toBeInTheDocument();
+    expect(screen.queryByText("high / ref --3")).not.toBeInTheDocument();
     expect(screen.queryByText(/31\.13248797551377/)).not.toBeInTheDocument();
   });
 
