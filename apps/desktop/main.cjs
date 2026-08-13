@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, Menu, Notification, safeStorage, session, Tray } = require("electron");
+const { app, BrowserWindow, dialog, Menu, Notification, safeStorage, session, shell, Tray } = require("electron");
 const path = require("node:path");
 const { randomBytes } = require("node:crypto");
 const { pathToFileURL } = require("node:url");
@@ -100,6 +100,26 @@ async function createOrFocusWindow() {
   });
   mainWindow.once("closed", () => {
     mainWindow = undefined;
+  });
+  const appOrigin = `https://127.0.0.1:${process.env.PORT}`;
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      const target = new URL(url);
+      if (target.protocol === "http:" || target.protocol === "https:") void shell.openExternal(url);
+    } catch {
+      // Ignore malformed popup URLs.
+    }
+    return { action: "deny" };
+  });
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    let targetOrigin;
+    try {
+      targetOrigin = new URL(url).origin;
+    } catch {
+      event.preventDefault();
+      return;
+    }
+    if (targetOrigin !== appOrigin) event.preventDefault();
   });
   /**
    * The fragment never leaves the browser, so the nonce reaches the renderer without appearing in

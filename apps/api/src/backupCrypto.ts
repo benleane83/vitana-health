@@ -6,8 +6,9 @@
  * Key derivation: scrypt(passphrase, salt, N=2^17, r=8, p=1, keyLen=32)
  */
 import { createHash, randomBytes, scrypt, createCipheriv, createDecipheriv } from "node:crypto";
+import { promisify } from "node:util";
 import { Readable } from "node:stream";
-import { gzipSync, gunzipSync, createGzip } from "node:zlib";
+import { gzipSync, gunzip, createGzip } from "node:zlib";
 import {
   VITANA_BACKUP_MAGIC,
   VITANA_BACKUP_VERSION,
@@ -34,6 +35,7 @@ import {
 } from "./storage/profileRepository.js";
 
 const BACKUP_EXPORT_PAGE_SIZE = 250;
+const gunzipAsync = promisify(gunzip);
 
 export class BackupTooLargeError extends Error {
   constructor() {
@@ -120,6 +122,22 @@ export async function createBackupV1Stream(
       cipher.destroy();
     }
   })(), { objectMode: false });
+}
+
+/**
+ * Counts the exact plaintext bytes without retaining them. Running this before response headers
+ * are committed means a size rejection can still be communicated as a proper API response.
+ */
+export async function estimateBackupV1PlaintextSize(
+  stores: readonly ProfileRepository[],
+  options: { scope: BackupPayload["scope"]; createdAt: string; signal?: AbortSignal }
+): Promise<number> {
+  let total = 0;
+  for await (const chunk of serializeBackupPayload(stores, options)) {
+    total += chunk.length;
+    if (total > BACKUP_MAX_SIZE_BYTES) throw new BackupTooLargeError();
+  }
+  return total;
 }
 
 async function* limitPlaintextSize(source: AsyncIterable<Buffer>): AsyncGenerator<Buffer> {
@@ -275,7 +293,7 @@ export async function decryptBackup(buffer: Buffer, passphrase: string): Promise
     decipher.setAAD(header);
     decipher.setAuthTag(Buffer.from(tag));
     const decrypted = Buffer.concat([decipher.update(Buffer.from(ciphertext)), decipher.final()]);
-    json = gunzipSync(decrypted, { maxOutputLength: BACKUP_MAX_SIZE_BYTES }).toString("utf8");
+    json = (await gunzipAsync(decrypted, { maxOutputLength: BACKUP_MAX_SIZE_BYTES })).toString("utf8");
   } catch {
     // Everything up to here fails identically for a wrong passphrase and a corrupted file, so this
     // is the one place that must stay a generic message.

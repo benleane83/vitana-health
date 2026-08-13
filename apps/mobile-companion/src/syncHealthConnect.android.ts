@@ -1003,6 +1003,8 @@ function completedLocalDayRange(
   startTime: string,
   endTime: string
 ): { operator: "between"; startTime: string; endTime: string } | undefined {
+  // Health Connect day aggregates are defined by the companion device's local calendar day.
+  // Preserve that boundary through travel and daylight-saving changes rather than rebucketing in UTC.
   const start = new Date(startTime);
   const end = new Date(endTime);
   start.setHours(0, 0, 0, 0);

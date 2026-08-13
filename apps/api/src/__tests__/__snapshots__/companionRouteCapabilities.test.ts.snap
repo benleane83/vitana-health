@@ -44,6 +44,7 @@ exports[`companion route capabilities > records a deliberate decision for every 
   "GET /profile/photo": "assigned-profile:read",
   "GET /profiles": "profiles:list-minimal",
   "GET /profiles/active": null,
+  "GET /profiles/sample/photo": null,
   "GET /settings/ai": null,
   "GET /settings/ai/openrouter/callback": null,
   "GET /settings/ai/openrouter/connect": null,

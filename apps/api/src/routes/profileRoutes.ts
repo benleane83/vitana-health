@@ -289,7 +289,7 @@ export function makeProfileRoutes(storeManager: ProfileStoreManager): express.Ro
 function requireOwner(response: express.Response): void {
   const principal = response.locals.principal as AuthorizationPrincipal;
   if (principal.kind !== "owner") {
-    throw Object.assign(new Error("Only the profile owner can change profile photos."), { status: 403 });
+    throw Object.assign(new Error("Only the desktop owner can access this profile operation."), { status: 403 });
   }
 }
 
@@ -339,6 +339,27 @@ export function makeProfilesRoutes(
       profiles: storeManager.listProfiles(),
       activeProfileId: storeManager.getActiveProfileId()
     });
+  });
+
+  router.get("/:id/photo", async (request, response, next) => {
+    try {
+      requireOwner(response);
+      response.setHeader("cache-control", "no-store");
+      const profileId = profileIdSchema.parse(request.params.id);
+      const photo = await storeManager.getStore(profileId).getProfilePhoto();
+      if (!photo) {
+        response.status(404).json({ error: "Profile photo not found.", code: "PROFILE_PHOTO_NOT_FOUND" });
+        return;
+      }
+      sendJson(response, profilePhotoResponseSchema, {
+        contentType: photo.contentType,
+        contentBase64: photo.bytes.toString("base64"),
+        revision: photo.revision,
+        updatedAt: photo.updatedAt
+      });
+    } catch (error) {
+      next(error);
+    }
   });
 
   router.post("/", async (request, response, next) => {

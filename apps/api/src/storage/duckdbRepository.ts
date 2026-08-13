@@ -71,6 +71,7 @@ import {
 import {
   backupExportMetadata as readBackupExportMetadata,
   backupExportPage as readBackupExportPage,
+  digestBackupExportData,
   digestHealthStoreData,
   recordExportAudit,
   firstDifferencePath,
@@ -219,9 +220,10 @@ export class DuckDbRepository implements ProfileRepository {
       await exec(repository.connection, "COMMIT;");
       transactionStarted = false;
       await repository.checkpoint();
-      const exported = await repository.snapshot();
-      if (digestHealthStoreData(exported) !== digestHealthStoreData(validated)) {
-        throw new Error(`DuckDB hydration validation failed before atomic promotion at ${firstDifferencePath(validated, exported)}.`);
+      const expectedDigest = digestHealthStoreData(validated);
+      const actualDigest = await digestBackupExportData(repository.reader);
+      if (actualDigest !== expectedDigest) {
+        throw new Error("DuckDB hydration validation failed before atomic promotion.");
       }
       await repository.close();
       await options.testHooks?.beforeHydrationPromotion?.();

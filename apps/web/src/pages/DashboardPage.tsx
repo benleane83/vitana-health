@@ -208,7 +208,7 @@ export function DashboardPage({
                       >
                         <span>{alert.marker}</span>
                         <strong>{formatDetailValue(alert.value)} {alert.unit}</strong>
-                        <em>{alert.flag}{alert.reference ? ` / ref ${alert.reference}` : ""}</em>
+                        <em>{alert.flag}{alert.reference ? ` / ref ${formatReferenceNumber(alert.reference)}` : ""}</em>
                       </button>
                     ))}
                   </div>
@@ -229,6 +229,10 @@ function formatCareSummary(total: number): string {
 function formatTrendSummary(label: string, summary: string): string {
   const labelPrefix = `${label} `;
   return summary.startsWith(labelPrefix) ? summary.slice(labelPrefix.length) : summary;
+}
+
+function formatReferenceNumber(reference: string): string {
+  return reference.replace(/^-+/, "");
 }
 
 function isOverdue(item: CareItem): boolean {

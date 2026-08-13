@@ -90,7 +90,8 @@ describe("generateInsight", () => {
       ...profile,
       subjectKind: "child",
       birthDate: "2016-01-01",
-      sex: "female"
+      sex: "female",
+      goalSummary: "Build a sustainable sleep and activity routine."
     }, analytics(), {
       windowDays: 30,
       coverage: { earliestDate: "2026-07-10", latestDate: "2026-08-08", activeDays: 24 },
@@ -110,6 +111,7 @@ describe("generateInsight", () => {
 
     expect(evidence[0]).toContain("child profile");
     expect(evidence[0]).toContain("sex female");
+    expect(evidence).toContain("Current focus: Build a sustainable sleep and activity routine.");
     expect(evidence).toContain("Recent data coverage: 24 active day(s) from 2026-07-10 to 2026-08-08 in the last 30 days.");
     expect(evidence).toContain("Steps, last 30 days: average 8123.46 count, minimum 2100, maximum 14002 across 24 day(s).");
     expect(evidence).toContain("Activities, last 30 days: walking 12 session(s)/420 minutes.");

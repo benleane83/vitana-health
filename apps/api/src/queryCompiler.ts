@@ -83,6 +83,7 @@ const ALLOWED_SQL_TOKENS = new Set([
   "is",
   "between",
   "like",
+  "escape",
   "trim",
   "lower",
   "upper",
@@ -463,10 +464,14 @@ function healthEventWhere(dsl: QueryDSL, time: { start: string; end: string }): 
   if (filters?.status) { clauses.push("status = ?"); parameters.push(filters.status); }
   if (filters?.source) { clauses.push("source = ?"); parameters.push(filters.source); }
   if (filters?.provider) {
-    clauses.push("LOWER(COALESCE(provider, '')) LIKE LOWER(?)");
-    parameters.push(`%${filters.provider}%`);
+    clauses.push("LOWER(COALESCE(provider, '')) LIKE LOWER(?) ESCAPE '\\'");
+    parameters.push(`%${escapeLikePattern(filters.provider)}%`);
   }
   return { clauses, parameters };
+}
+
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, "\\$&");
 }
 
 interface SqlWhere {

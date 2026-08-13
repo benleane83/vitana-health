@@ -36,6 +36,7 @@ import type {
   BackupExportMetadata,
   BackupExportPage
 } from "./profileRepository.js";
+import { backupExportCollections } from "./profileRepository.js";
 
 /**
  * Recording the export is the only write an export performs. It is kept separate from the snapshot
@@ -276,6 +277,47 @@ export async function insertStore(connection: duckdb.Connection, store: HealthSt
       json(entry.evidence), entry.confidence, entry.model, entry.safetyNotice]));
   await insertRows(connection, "audit_events",
     store.auditEvents.map((entry, ordinal) => [ordinal, entry.id, entry.createdAt, entry.eventType, entry.detail]));
+}
+
+/**
+ * Computes the canonical store digest through bounded export pages. This keeps staged hydration
+ * verification from allocating a second whole-profile object just to read it back.
+ */
+export async function digestBackupExportData(connection: duckdb.Connection): Promise<string> {
+  const digest = createHash("sha256");
+  const dataKeys = [...backupExportCollections, "profile", "schemaVersion"].sort();
+  const metadata = await backupExportMetadata(connection);
+  digest.update("{");
+  for (let keyIndex = 0; keyIndex < dataKeys.length; keyIndex += 1) {
+    const key = dataKeys[keyIndex];
+    if (keyIndex > 0) digest.update(",");
+    digest.update(`${JSON.stringify(key)}:`);
+    if (key === "profile") {
+      digest.update(canonicalJson(metadata.profile));
+      continue;
+    }
+    if (key === "schemaVersion") {
+      digest.update(JSON.stringify(metadata.schemaVersion));
+      continue;
+    }
+
+    digest.update("[");
+    let offset = 0;
+    let itemIndex = 0;
+    while (true) {
+      const page = await backupExportPage(connection, key as BackupExportCollection, offset, 250);
+      for (const item of page.items) {
+        if (itemIndex++ > 0) digest.update(",");
+        digest.update(canonicalJson(item));
+      }
+      offset += page.items.length;
+      if (page.done) break;
+      if (page.items.length === 0) throw new Error(`Backup export page for ${key} made no progress.`);
+    }
+    digest.update("]");
+  }
+  digest.update("}");
+  return digest.digest("hex");
 }
 
 export function digestHealthStoreData(store: HealthStoreData): string {
