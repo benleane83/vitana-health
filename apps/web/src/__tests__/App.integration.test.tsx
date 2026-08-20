@@ -717,6 +717,29 @@ describe("App — import tab", () => {
     expect(screen.getByRole("dialog", { name: /edit profile/i })).toBeInTheDocument();
   });
 
+  it("returns to the Dashboard after switching profiles from Manage Profiles", async () => {
+    globalThis.history.replaceState({}, "", "/care/items");
+    const store = makeEmptyStore();
+    const profiles = [
+      { id: "self", displayName: "Local user", updatedAt: "2026-01-01T00:00:00.000Z" },
+      { id: "family", displayName: "Family member", updatedAt: "2026-01-02T00:00:00.000Z" }
+    ];
+    global.fetch = mockFetch({
+      "/api/profiles/active": { profileId: "family" },
+      "/api/store": store,
+      "/api/analytics": makeEmptyAnalytics(),
+      "/api/profiles": { profiles, activeProfileId: "self" }
+    });
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: /local user/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /manage profiles/i }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: /manage profiles/i })).getByRole("button", { name: "Switch" }));
+
+    await waitFor(() => expect(window.location.pathname).toBe("/"));
+    expect(screen.getByRole("tab", { name: "Dashboard" })).toHaveAttribute("aria-selected", "true");
+  });
+
   it("uses imperial units when editing a profile and changing manual measurements", async () => {
     global.fetch = mockFetch({
       "/api/store": {
@@ -968,6 +991,61 @@ describe("App — measurement detail", () => {
     expect(screen.queryByRole("columnheader", { name: "Unit" })).not.toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "Kind" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /delete 1 observation record/i })).toBeInTheDocument();
+  });
+
+  it("retains range controls when a selected chart range has no points", async () => {
+    globalThis.history.replaceState({}, "", "/track/glucose");
+    const chartPoint = { timestamp: "2026-07-14T00:00:00.000Z", value: 5.2, unit: "mmol/L", count: 1 };
+    const detail = {
+      generatedAt: "2026-07-14T00:00:00.000Z",
+      measurement: {
+        code: "glucose", displayName: "Glucose", category: "lab",
+        counts: { observations: 1, samples: 0, activities: 0, total: 1 },
+        lastMeasuredAt: "2026-07-14T00:00:00.000Z"
+      },
+      entries: [{
+        kind: "observation", id: "glucose-1", measurementCode: "glucose", displayName: "Glucose",
+        timestamp: "2026-07-14T00:00:00.000Z", value: 5.2, unit: "mmol/L", canDelete: true
+      }],
+      chartPoints: [{ kind: "observation", timestamp: chartPoint.timestamp, value: chartPoint.value, unit: chartPoint.unit }],
+      isPinned: false,
+      referenceRange: { source: "none" },
+      counts: { observations: 1, samples: 0, activities: 0, total: 1 },
+      deletion: { observationEntries: 1, deletableEntries: 1 },
+      pagination: { limit: 50, loaded: 1, total: 1, hasMore: false }
+    };
+    const fallbackFetch = mockFetch({
+      "/api/store": { ...makeEmptyStore(), measurementTypes: defaultMeasurementTypes },
+      "/api/analytics": makeEmptyAnalytics(),
+      "/api/profiles": { profiles: [], activeProfileId: "self" },
+      "/api/summary/glucose": detail
+    });
+    global.fetch = vi.fn((input: string | URL | Request) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes("/api/summary/glucose/chart")) {
+        const emptyRange = url.includes("range=1m");
+        return Promise.resolve(response({
+          generatedAt: "2026-07-14T00:00:00.000Z",
+          measurementCode: "glucose",
+          range: emptyRange ? "1m" : "all",
+          requestedMode: "auto",
+          granularity: "raw",
+          aggregation: "average",
+          totalPoints: emptyRange ? 0 : 1,
+          truncated: false,
+          points: emptyRange ? [] : [chartPoint]
+        }));
+      }
+      return fallbackFetch(input);
+    });
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "1M" }));
+    expect(await screen.findByText(/no numeric points are available for charting/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "All" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    await waitFor(() => expect(screen.getByRole("img", { name: /glucose trend: 1 reading/i })).toBeInTheDocument());
   });
 
   it("adds a manual measurement with the selected date, unit, and note", async () => {

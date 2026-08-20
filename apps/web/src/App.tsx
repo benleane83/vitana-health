@@ -545,6 +545,7 @@ export function App() {
       <ProfileLifecycleDialogs
         lifecycle={profileLifecycle}
         allowProfileCreation={profiles.length === 0 || hasFeature(tier, "additional-profile-creation")}
+        onManagerProfileSwitched={() => navigate("dashboard")}
       />
 
       {/* Accessible confirmation dialog — replaces window.confirm */}

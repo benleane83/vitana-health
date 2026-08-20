@@ -552,20 +552,18 @@ export function ObservationTypeDetailPage({
             <p className="empty" role="status">No entries are currently stored for this measurement type.</p>
           ) : (
             <>
-              {chartBusy || chartError || chartSeries?.points?.length ? (
-                <div className="summary-detail-chart-panel">
-                  <DetailTrendChart
-                    detail={detail}
-                    series={chartSeries}
-                    range={chartRange}
-                    mode={chartMode}
-                    busy={chartBusy}
-                    error={chartError}
-                    onRangeChange={onChartRangeChange}
-                    onModeChange={onChartModeChange}
-                  />
-                </div>
-              ) : null}
+              <div className="summary-detail-chart-panel">
+                <DetailTrendChart
+                  detail={detail}
+                  series={chartSeries}
+                  range={chartRange}
+                  mode={chartMode}
+                  busy={chartBusy}
+                  error={chartError}
+                  onRangeChange={onChartRangeChange}
+                  onModeChange={onChartModeChange}
+                />
+              </div>
 
               {detail.measurement.code === "sleep_duration" ? (
                 <HypnogramPanel

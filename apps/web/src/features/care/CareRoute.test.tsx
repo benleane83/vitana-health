@@ -70,8 +70,10 @@ describe("CareRoute", () => {
 
     expect(screen.getByRole("heading", { name: "Annual check-up" })).toBeInTheDocument();
     expect(screen.getByRole("tabpanel", { name: "Care items" })).toHaveClass("has-editor");
+    expect(screen.getByRole("button", { name: "Add care item" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Back to care items" }));
     expect(screen.getByRole("tabpanel", { name: "Care items" })).not.toHaveClass("has-editor");
+    expect(screen.getByRole("button", { name: "Add care item" })).toBeEnabled();
   });
 
   it("guides an empty Care view into the real creation workflow", async () => {
