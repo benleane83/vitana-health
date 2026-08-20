@@ -124,7 +124,7 @@ describe("DetailTrendChart", () => {
 
     render(<DetailTrendChart detail={detail} series={emptyRangeSeries} range="1m" mode="auto" busy={false} onRangeChange={onRangeChange} onModeChange={vi.fn()} />);
 
-    expect(screen.getByText(/no numeric points are available for charting/i)).toBeInTheDocument();
+    expect(screen.getByText(/no data available for the selected time period/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "1M" })).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(screen.getByRole("button", { name: "All" }));
     expect(onRangeChange).toHaveBeenCalledWith("all");
