@@ -207,26 +207,6 @@ export function DetailTrendChart({
   const points = series?.points ?? [];
   const [activePoint, setActivePoint] = useState<HealthDataChartSeriesPoint | undefined>();
 
-  if (busy && !series) {
-    return <p className="empty" role="status">Loading trend…</p>;
-  }
-  if (error && !series) {
-    return <p className="empty" role="alert">{error}</p>;
-  }
-  if (points.length === 0) {
-    return <p className="empty">No numeric points are available for charting.</p>;
-  }
-
-  const referenceRange = compatibleReferenceRange(points);
-  const optimalRange = compatibleOptimalRange(points);
-  const unitLabel = [...new Set(points.map((point) => point.unit).filter(Boolean))].join(", ");
-  const referenceLabel = referenceRange
-    ? `Reference range: ${referenceRange.low ?? "—"}–${referenceRange.high ?? "—"} ${referenceRange.unit}`
-    : undefined;
-  const optimalLabel = optimalRange
-    ? `Optimal range: ${optimalRange.low}–${optimalRange.high} ${optimalRange.unit}`
-    : undefined;
-
   const rangeControls = (
     <div className="summary-detail-chart-toolbar" role="group" aria-label="Trend chart controls">
       {trendRanges.map((rangeOption) => (
@@ -265,6 +245,36 @@ export function DetailTrendChart({
       ) : null}
     </div>
   );
+
+  const emptyState = busy && !series
+    ? <p className="empty" role="status">Loading trend…</p>
+    : error && !series
+      ? <p className="empty" role="alert">{error}</p>
+      : points.length === 0
+        ? <p className="empty">No data available for the selected time period.</p>
+        : undefined;
+
+  if (emptyState) {
+    return (
+      <div className="summary-detail-chart">
+        <div className="summary-detail-section-heading summary-detail-chart-heading">
+          <h3>Trend</h3>
+          {rangeControls}
+        </div>
+        {emptyState}
+      </div>
+    );
+  }
+
+  const referenceRange = compatibleReferenceRange(points);
+  const optimalRange = compatibleOptimalRange(points);
+  const unitLabel = [...new Set(points.map((point) => point.unit).filter(Boolean))].join(", ");
+  const referenceLabel = referenceRange
+    ? `Reference range: ${referenceRange.low ?? "—"}–${referenceRange.high ?? "—"} ${referenceRange.unit}`
+    : undefined;
+  const optimalLabel = optimalRange
+    ? `Optimal range: ${optimalRange.low}–${optimalRange.high} ${optimalRange.unit}`
+    : undefined;
 
   if (points.length === 1) {
     const point = points[0];

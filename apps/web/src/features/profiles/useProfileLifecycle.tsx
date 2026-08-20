@@ -110,9 +110,9 @@ export function useProfileLifecycle(onNotice: (message: string) => void, confirm
   async function switchProfile(profileId: string) {
     if (profileId === snapshot.activeProfileId) {
       setUi((current) => ({ ...current, managerOpen: false }));
-      return;
+      return false;
     }
-    await run("Profile switched.", async () => {
+    return run("Profile switched.", async () => {
       await api.profiles.setActive(profileId);
       await refresh();
       setUi((current) => ({ ...current, managerOpen: false }));
@@ -218,7 +218,15 @@ export function useProfileLifecycle(onNotice: (message: string) => void, confirm
 
 export type ProfileLifecycle = ReturnType<typeof useProfileLifecycle>;
 
-export function ProfileLifecycleDialogs({ lifecycle, allowProfileCreation }: { lifecycle: ProfileLifecycle; allowProfileCreation: boolean }) {
+export function ProfileLifecycleDialogs({
+  lifecycle,
+  allowProfileCreation,
+  onManagerProfileSwitched
+}: {
+  lifecycle: ProfileLifecycle;
+  allowProfileCreation: boolean;
+  onManagerProfileSwitched?: () => void;
+}) {
   return (
     <>
       {lifecycle.profile?.setupStatus === "pending" ? (
@@ -253,7 +261,9 @@ export function ProfileLifecycleDialogs({ lifecycle, allowProfileCreation }: { l
           allowProfileCreation={allowProfileCreation}
           onNewProfileNameChange={lifecycle.setNewProfileName}
           onClose={lifecycle.closeManager}
-          onSwitchProfile={(profileId) => { void lifecycle.switchProfile(profileId); }}
+          onSwitchProfile={async (profileId) => {
+            if (await lifecycle.switchProfile(profileId)) onManagerProfileSwitched?.();
+          }}
           onEditProfile={(profileId) => { void lifecycle.editProfile(profileId); }}
           onCreateProfile={() => { void lifecycle.createProfile(); }}
           onDeleteActive={() => {

@@ -118,6 +118,18 @@ describe("DetailTrendChart", () => {
     expect(screen.queryByRole("button", { name: "Readings" })).not.toBeInTheDocument();
   });
 
+  it("keeps time controls available when the selected range has no points", () => {
+    const onRangeChange = vi.fn();
+    const emptyRangeSeries = { ...series, range: "1m" as const, totalPoints: 0, points: [] };
+
+    render(<DetailTrendChart detail={detail} series={emptyRangeSeries} range="1m" mode="auto" busy={false} onRangeChange={onRangeChange} onModeChange={vi.fn()} />);
+
+    expect(screen.getByText(/no data available for the selected time period/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "1M" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    expect(onRangeChange).toHaveBeenCalledWith("all");
+  });
+
   it("renders duplicate readings as separate selectable points", () => {
     const duplicateSeries = { ...series, points: [series.points[2]!, series.points[2]!] };
 

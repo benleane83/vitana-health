@@ -348,7 +348,7 @@ export function CareRoute({
                 : "Record care, symptoms, tests, treatments, and other health moments that have already happened."}
             </p>
           </div>
-          {!showEmptyState ? <button type="button" onClick={beginCreate}>{view === "health-events" ? "Add health event" : "Add care item"}</button> : null}
+          {!showEmptyState ? <button type="button" onClick={beginCreate} disabled={editorActive}>{view === "health-events" ? "Add health event" : "Add care item"}</button> : null}
         </div>
         <div id="care-view-panel" className={`care-layout${editorActive ? " has-editor" : ""}${showEmptyState ? " is-empty" : ""}`} role="tabpanel" aria-labelledby={`care-tab-${view}`}>
         <div className="care-list-panel" ref={listPanelRef}>
