@@ -15,7 +15,8 @@ import {
 import { api } from "../../api.js";
 import { ManualGroupSaveDialog } from "../../components/ManualGroupSaveDialog.js";
 import { ManualEntryForm } from "../../pages/ImportPage.js";
-import type { ManualMarkerRow } from "../../types.js";
+import type { ManualMarkerRow, ProfileDataCategory } from "../../types.js";
+import { profileDataCategories } from "../../types.js";
 import { todayIsoDate } from "../../utils.js";
 
 const customObservationGroupValue = "__custom__";
@@ -23,12 +24,14 @@ const customObservationGroupValue = "__custom__";
 export function ManualImportFeature({
   activeProfileId,
   bootstrap,
+  category,
   units,
   onImported,
   onNotice
 }: {
   activeProfileId?: string;
   bootstrap?: AppBootstrap;
+  category?: ProfileDataCategory;
   units: UnitSystem;
   onImported: () => Promise<void>;
   onNotice: (message: string) => void;
@@ -37,9 +40,10 @@ export function ManualImportFeature({
   const requestedMeasurement = requestedMarker
     ? findKnownMeasurement(requestedMarker, defaultMeasurementTypes)
     : undefined;
+  const categoryGroup = profileDataCategories.find((item) => item.key === category)?.manualGroup;
   const initialObservationGroup = requestedMeasurement
     ? "Lab"
-    : readStoredObservationGroup(activeProfileId) ?? "Activity";
+    : categoryGroup ?? readStoredObservationGroup(activeProfileId) ?? "Activity";
   const [busy, setBusy] = useState(false);
   const [collectedAt, setCollectedAt] = useState(todayIsoDate());
   const [observationGroup, setObservationGroup] = useState(initialObservationGroup);

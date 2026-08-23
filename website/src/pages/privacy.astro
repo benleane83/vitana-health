@@ -9,24 +9,19 @@ import SiteLayout from "../layouts/SiteLayout.astro";
   <article class="legal-page shell">
     <header class="legal-page__header">
       <span class="legal-page__meta">Effective July 20, 2026</span>
-      <h1>Privacy that follows from how Vitana works.</h1>
-      <p>Vitana Health is a local-first wellness application. This policy applies to the Vitana Android app and its paired Vitana Health desktop API.</p>
+      <h1>Understand how Vitana keeps your health data private.</h1>
+      <p>Vitana Health is a local-first wellness application. This policy applies to the Vitana Android and desktop apps.</p>
     </header>
     <div class="legal-content">
       <section>
-        <h2>Website launch updates</h2>
-        <p>If you choose to join the Vitana launch list, the website collects your email address only. We process this information to manage the list and send launch updates. No health information is requested or collected through this form.</p>
-        <p>You can unsubscribe from launch updates at any time using the link in an email. Joining the launch list is optional and separate from using the Vitana desktop or Android apps.</p>
-      </section>
-      <section>
         <h2>Information Vitana processes</h2>
-        <p>The companion reads only the Health Connect categories you choose: steps, heart rate, oxygen saturation, heart-rate variability, basal metabolic rate, height, VO2 max, weight, exercise sessions, distance, active calories, total calories, sleep sessions, and body fat.</p>
+        <p>The Vitana mobile app reads only the Health Connect categories you choose: steps, heart rate, oxygen saturation, heart-rate variability, basal metabolic rate, height, VO2 max, weight, exercise sessions, distance, active calories, total calories, sleep sessions, and body fat.</p>
         <p>No category is selected by default. The first import defaults to 30 days, and you can choose a window from 30 to 365 days.</p>
-        <p>The companion also processes a random device identifier, local pairing and connection details, sync selections and cursors, and camera or gallery access when you pair by QR code or capture a health report. It does not retain report images, OCR text, or review drafts after that workflow ends.</p>
+        <p>The mobile app also processes data relating to your mobile device, such as local pairing and connection details, sync selections and cursors, and camera or gallery access when you pair by QR code or capture a health report. It does not retain report images, OCR text, or review drafts after that workflow ends.</p>
       </section>
       <section>
         <h2>How information is used and transferred</h2>
-        <p>In Standalone mode, selected Health Connect records and manual entries stay in an encrypted local database on your phone and support local wellness analytics.</p>
+        <p>In Standalone mode, your data stays in an encrypted local database on your phone and support local wellness analytics.</p>
         <p>In Connected mode, selected records travel only to the profile assigned during pairing, over your local network. Report images are sent to the paired PC for OCR and parsing, and you review rows before committing them.</p>
         <p>Vitana does not use health data for advertising, sell it, or use it for eligibility decisions. It does not back up personal health records to a Vitana cloud service. The Android app contacts Expo's EAS Update service for app updates; ordinary update-request metadata may be sent, but personal health records are not.</p>
       </section>
@@ -44,6 +39,11 @@ import SiteLayout from "../layouts/SiteLayout.astro";
         <h2>Security</h2>
         <p>Companion transfers use HTTPS, certificate pinning, pairing approval, and revocable tokens. Desktop profile databases use AES-256-GCM encryption; Standalone mode uses SQLCipher, with keys protected by platform secure storage.</p>
         <p>No security control can guarantee protection from every risk, especially on an unlocked or compromised device. See the <a href="/security">security overview</a> for the current threat model and reporting process.</p>
+      </section>
+      <section>
+        <h2>Website launch updates</h2>
+        <p>If you choose to join the Vitana launch list, the website collects your email address only. We process this information to manage the list and send launch updates. No health information is requested or collected through this form.</p>
+        <p>You can unsubscribe from launch updates at any time using the link in an email. Joining the launch list is optional and separate from using the Vitana desktop or Android apps.</p>
       </section>
       <section>
         <h2>Contact and changes</h2>

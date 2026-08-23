@@ -3,7 +3,7 @@ import { defaultMeasurementTypes, fallbackMeasurementCode, getPreferredUnit, typ
 import { api } from "../api.js";
 import type { PairedDevice, PendingPairing } from "../api.js";
 import { MeasurementCombobox } from "../components/MeasurementCombobox.js";
-import type { ImportMode, ManualMarkerRow } from "../types.js";
+import type { ImportMode, ManualMarkerRow, ProfileDataCategory } from "../types.js";
 import { ManualImportFeature } from "../features/import/ManualImportFeature.js";
 import { UploadImportFeature } from "../features/import/UploadImportFeature.js";
 import { useResponsiveTabOrientation } from "../hooks/useResponsiveTabOrientation.js";
@@ -12,6 +12,7 @@ import { useResponsiveTabOrientation } from "../hooks/useResponsiveTabOrientatio
 
 export function ImportPage({
   mode,
+  category,
   onModeChange,
   bootstrap,
   onDataChanged,
@@ -21,6 +22,7 @@ export function ImportPage({
   units
 }: {
   mode: ImportMode;
+  category?: ProfileDataCategory;
   onModeChange: (mode: ImportMode) => void;
   bootstrap?: AppBootstrap;
   onDataChanged: () => Promise<void>;
@@ -111,8 +113,10 @@ export function ImportPage({
         {mode === "manual" ? (
           <div id={manualPanelId} role="tabpanel" aria-labelledby={manualTabId}>
             <ManualImportFeature
+              key={category ?? "default"}
               activeProfileId={activeProfileId}
               bootstrap={bootstrap}
+              category={category}
               units={units}
               onImported={onDataChanged}
               onNotice={onNotice}
@@ -121,10 +125,12 @@ export function ImportPage({
         ) : mode === "upload" ? (
           <div id={uploadPanelId} role="tabpanel" aria-labelledby={uploadTabId}>
             <UploadImportFeature
+              key={category ?? "default"}
               measurementTypes={bootstrap?.measurementTypes?.length ? bootstrap.measurementTypes : defaultMeasurementTypes}
               units={units}
               onImported={onDataChanged}
               onNotice={onNotice}
+              category={category}
             />
           </div>
         ) : (

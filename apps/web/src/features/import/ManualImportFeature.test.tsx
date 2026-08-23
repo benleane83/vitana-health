@@ -28,6 +28,23 @@ describe("ManualImportFeature", () => {
     expect(screen.getByLabelText("Row 1: select known measurement")).toHaveValue("Weight");
   });
 
+  it("uses the requested category's manual form preset", () => {
+    window.localStorage.setItem("vitana.manualImport.lastObservationGroup.v1.self", "Lab");
+
+    render(
+      <ManualImportFeature
+        activeProfileId="self"
+        category="body"
+        units="metric"
+        onImported={vi.fn().mockResolvedValue(undefined)}
+        onNotice={vi.fn()}
+      />
+    );
+
+    expect(screen.getByLabelText("Observation group")).toHaveValue("Body");
+    expect(screen.getByLabelText("Row 1: select known measurement")).toHaveValue("Weight");
+  });
+
   it("prefills a lab marker from a Biological Age add-result link", () => {
     window.localStorage.setItem("vitana.manualImport.lastObservationGroup.v1.self", "Body");
     window.history.replaceState({}, "", "/import/manual?group=Lab&marker=albumin");

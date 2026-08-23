@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { defaultMeasurementTypes, hasFeature } from "@vitana/shared";
-import type { AppRoute, ImportMode, InsightsTab, SettingsView, TrackView } from "./types.js";
+import { isProfileDataCategory, type AppRoute, type ImportMode, type InsightsTab, type ProfileDataCategory, type SettingsView, type TrackView } from "./types.js";
 import { ProfileLifecycleDialogs, useProfileLifecycle } from "./features/profiles/useProfileLifecycle.js";
 import { ConfirmDialog } from "./components/ConfirmDialog.js";
 import { setOwnerTokenPrompt } from "./api.js";
@@ -12,10 +12,12 @@ import { ExportRoute } from "./features/export/ExportRoute.js";
 import { TrackRoute } from "./features/track/TrackRoute.js";
 import { DashboardRoute } from "./features/dashboard/DashboardRoute.js";
 import { CareRoute } from "./features/care/CareRoute.js";
+import { AboutPage } from "./pages/AboutPage.js";
 import { ProfileAvatar } from "./components/ProfileAvatar.js";
 import { VitanaBrand } from "./components/VitanaBrand.js";
 
-const mainRoutes: AppRoute[] = ["dashboard", "import", "track", "care", "insights", "export"];
+const routeTabs: AppRoute[] = ["dashboard", "import", "track", "care", "insights", "export", "about"];
+const mainRoutes = routeTabs.slice(1);
 
 export function App() {
   const dashboardHeaderVariant = new URLSearchParams(window.location.search).get("header") === "rail" ? "rail" : "nav";
@@ -35,11 +37,14 @@ export function App() {
     () => observationGroupIdFromPathname(window.location.pathname)
   );
   const [trackView, setTrackView] = useState<TrackView>(() => trackViewFromPathname(window.location.pathname));
+  const [trackCategory, setTrackCategory] = useState<ProfileDataCategory | undefined>(
+    () => trackCategoryFromSearch(window.location.search)
+  );
   const [bodyTrendDate, setBodyTrendDate] = useState<string | undefined>(
     () => bodyTrendDateFromPathname(window.location.pathname)
   );
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
-  const pathnameRef = useRef(window.location.pathname);
+  const pathnameRef = useRef(locationPath());
 
   // Accessible confirmation dialog state (replaces window.confirm)
   const [confirmState, setConfirmState] = useState<{
@@ -68,9 +73,9 @@ export function App() {
   // Popstate (browser back/forward)
   useEffect(() => {
     const onPopState = () => {
-      if (pathnameRef.current !== window.location.pathname) {
+      if (pathnameRef.current !== locationPath()) {
         setMessage(undefined);
-        pathnameRef.current = window.location.pathname;
+        pathnameRef.current = locationPath();
       }
       setRoute(routeFromPathname(window.location.pathname));
       setInsightsTab(insightsTabFromPathname(window.location.pathname));
@@ -81,6 +86,7 @@ export function App() {
       setSummaryDetailCode(summaryDetailCodeFromPathname(window.location.pathname));
       setObservationGroupId(observationGroupIdFromPathname(window.location.pathname));
       setTrackView(trackViewFromPathname(window.location.pathname));
+      setTrackCategory(trackCategoryFromSearch(window.location.search));
       setBodyTrendDate(bodyTrendDateFromPathname(window.location.pathname));
     };
     window.addEventListener("popstate", onPopState);
@@ -106,7 +112,7 @@ export function App() {
   }, [profileMenuOpen]);
 
   function pushPath(nextPath: string, state: Record<string, unknown> = {}) {
-    if (window.location.pathname === nextPath) return;
+    if (locationPath() === nextPath) return;
     setMessage(undefined);
     window.history.pushState(state, "", nextPath);
     pathnameRef.current = nextPath;
@@ -120,6 +126,7 @@ export function App() {
       care: carePath(careView),
       insights: insightsPath(insightsTab),
       export: "/export",
+      about: "/about",
       settings: settingsPath(settingsView)
     };
     const nextPath = routePaths[nextRoute] ?? "/";
@@ -129,6 +136,7 @@ export function App() {
       setSummaryDetailCode(undefined);
       setObservationGroupId(undefined);
       setTrackView("measurements");
+      setTrackCategory(undefined);
     }
     setRoute(nextRoute);
   }
@@ -170,6 +178,7 @@ export function App() {
     setSummaryDetailCode(measurementCode);
     setObservationGroupId(undefined);
     setTrackView("measurements");
+    setTrackCategory(undefined);
   }
 
   function navigateTrackView(nextView: TrackView) {
@@ -180,6 +189,7 @@ export function App() {
     setSummaryDetailCode(undefined);
     setObservationGroupId(undefined);
     setTrackView(nextView);
+    setTrackCategory(undefined);
     setBodyTrendDate(undefined);
     setRoute("track");
   }
@@ -197,7 +207,23 @@ export function App() {
     setSummaryDetailCode(undefined);
     setObservationGroupId(groupId);
     setTrackView("measurements");
+    setTrackCategory(undefined);
     setRoute("track");
+  }
+
+  function navigateTrackCategory(category?: ProfileDataCategory) {
+    pushPath(trackPath(undefined, category));
+    setSummaryDetailCode(undefined);
+    setObservationGroupId(undefined);
+    setTrackView("measurements");
+    setTrackCategory(category);
+    setRoute("track");
+  }
+
+  function navigateCategoryImport(category: ProfileDataCategory, mode: Extract<ImportMode, "manual" | "upload">) {
+    pushPath(importModePath(mode, category));
+    setImportMode(mode);
+    setRoute("import");
   }
 
   function navigateBackFromObservationGroup() {
@@ -265,19 +291,20 @@ export function App() {
     care: "nav-tab-care",
     insights: "nav-tab-insights",
     export: "nav-tab-export",
+    about: "nav-tab-about",
     settings: "nav-tab-settings"
   };
 
   function handleRouteTabKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, currentRoute: AppRoute) {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
-    const currentIndex = mainRoutes.indexOf(currentRoute);
+    const currentIndex = routeTabs.indexOf(currentRoute);
     const nextIndex = event.key === "Home"
       ? 0
       : event.key === "End"
-        ? mainRoutes.length - 1
-        : (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + mainRoutes.length) % mainRoutes.length;
-    const nextRoute = mainRoutes[nextIndex];
+        ? routeTabs.length - 1
+        : (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + routeTabs.length) % routeTabs.length;
+    const nextRoute = routeTabs[nextIndex];
     setProfileMenuOpen(false);
     navigate(nextRoute);
     document.getElementById(navTabIds[nextRoute])?.focus();
@@ -288,8 +315,17 @@ export function App() {
       {dashboardHeaderVariant === "rail" ? <VitanaBrand variant="rail" /> : null}
       {/* Navigation tablist */}
       <nav className={`route-nav route-nav-${dashboardHeaderVariant}`} aria-label="Page navigation">
-        {dashboardHeaderVariant === "nav" ? <VitanaBrand variant="nav" /> : null}
         <div className="route-nav-main" role="tablist" aria-label="App sections">
+          <VitanaBrand
+            variant="nav"
+            id={navTabIds.dashboard}
+            active={route === "dashboard"}
+            onClick={() => {
+              setProfileMenuOpen(false);
+              navigate("dashboard");
+            }}
+            onKeyDown={(event) => handleRouteTabKeyDown(event, "dashboard")}
+          />
           {mainRoutes.map((r) => {
             const labels: Record<AppRoute, string> = {
               dashboard: "Dashboard",
@@ -298,6 +334,7 @@ export function App() {
               care: "Care",
               insights: "Insights",
               export: "Export",
+              about: "About",
               settings: "Settings"
             };
             const panelId = `route-panel-${r}`;
@@ -429,6 +466,7 @@ export function App() {
               onEditProfile={profileLifecycle.openEditor}
               onNavigateSummary={() => navigate("track")}
               onNavigateMeasurement={navigateSummaryDetail}
+              onNavigateCategory={navigateTrackCategory}
               onNavigateCare={navigateUpcomingCare}
             />
           </ErrorBoundary>
@@ -453,6 +491,7 @@ export function App() {
           <ErrorBoundary label="Import">
             <ImportPage
               mode={importMode}
+              category={importCategoryFromSearch(window.location.search)}
               onModeChange={(mode) => navigate("import", mode)}
               bootstrap={bootstrap}
               onDataChanged={() => profileLifecycle.refresh({ profiles: false })}
@@ -492,6 +531,9 @@ export function App() {
               confirm={confirm}
               calendarAllowed={hasFeature(tier, "track-calendar")}
               bodyTrendAllowed={hasFeature(tier, "track-body-trend")}
+              categoryFilter={trackCategory}
+              onClearCategoryFilter={() => navigateTrackCategory()}
+              onAddCategory={navigateCategoryImport}
             />
           </ErrorBoundary>
         ) : null}
@@ -541,6 +583,14 @@ export function App() {
         ) : null}
       </div>
 
+      <div id="route-panel-about" role="tabpanel" aria-labelledby={navTabIds.about} hidden={route !== "about"}>
+        {route === "about" ? (
+          <ErrorBoundary label="About">
+            <AboutPage />
+          </ErrorBoundary>
+        ) : null}
+      </div>
+
 
       <ProfileLifecycleDialogs
         lifecycle={profileLifecycle}
@@ -575,6 +625,7 @@ function routeFromPathname(pathname: string): AppRoute {
   if (pathname === "/care" || pathname.startsWith("/care/")) return "care";
   if (pathname === "/import" || pathname.startsWith("/import/") || pathname === "/labs") return "import";
   if (pathname === "/export") return "export";
+  if (pathname === "/about") return "about";
   if (pathname === "/settings" || pathname.startsWith("/settings/")) return "settings";
   return "dashboard";
 }
@@ -643,16 +694,32 @@ function importModeFromPathname(pathname: string): ImportMode {
   return "manual";
 }
 
-function importModePath(mode: ImportMode): string {
-  return `/import/${mode}`;
+function importModePath(mode: ImportMode, category?: ProfileDataCategory): string {
+  const path = `/import/${mode}`;
+  return category ? `${path}?category=${encodeURIComponent(category)}` : path;
 }
 
 function insightsPath(tab: InsightsTab): string {
   return `/insights/${tab}`;
 }
 
-function trackPath(measurementCode?: string): string {
-  return measurementCode ? `/track/${encodeURIComponent(measurementCode)}` : "/track";
+function trackPath(measurementCode?: string, category?: ProfileDataCategory): string {
+  const path = measurementCode ? `/track/${encodeURIComponent(measurementCode)}` : "/track";
+  return category ? `${path}?category=${encodeURIComponent(category)}` : path;
+}
+
+function trackCategoryFromSearch(search: string): ProfileDataCategory | undefined {
+  const category = new URLSearchParams(search).get("category");
+  return isProfileDataCategory(category) ? category : undefined;
+}
+
+function importCategoryFromSearch(search: string): ProfileDataCategory | undefined {
+  const category = new URLSearchParams(search).get("category");
+  return isProfileDataCategory(category) ? category : undefined;
+}
+
+function locationPath(): string {
+  return window.location.pathname + window.location.search;
 }
 
 function carePath(view: "items" | "health-events", careItemId?: string): string {

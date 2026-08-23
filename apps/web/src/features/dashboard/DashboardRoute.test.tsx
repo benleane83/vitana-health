@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { api } from "../../api.js";
 import { DashboardRoute } from "./DashboardRoute.js";
@@ -29,6 +29,7 @@ function renderDashboard(onNavigateCare = vi.fn()) {
       onEditProfile={vi.fn()}
       onNavigateSummary={vi.fn()}
       onNavigateMeasurement={vi.fn()}
+      onNavigateCategory={vi.fn()}
       onNavigateCare={onNavigateCare}
     />
   );
@@ -58,7 +59,59 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+beforeEach(() => {
+  vi.spyOn(api, "summary").mockResolvedValue({
+    generatedAt: "2026-01-01T00:00:00.000Z",
+    totals: { observations: 0, samples: 0, activities: 0, total: 0, types: 0 },
+    categories: []
+  });
+});
+
 describe("DashboardRoute upcoming care", () => {
+  it("shows the requested category totals and routes a category row to Track", async () => {
+    vi.spyOn(api.care, "listCareItems").mockResolvedValue({
+      items: [], total: 0, offset: 0, limit: 3, hasMore: false
+    });
+    vi.spyOn(api, "summary").mockResolvedValue({
+      generatedAt: "2026-01-01T00:00:00.000Z",
+      totals: { observations: 5, samples: 0, activities: 2, total: 7, types: 4 },
+      categories: [
+        { key: "activity", label: "Activity", counts: { observations: 0, samples: 0, activities: 2, total: 2, types: 1 }, rows: [] },
+        { key: "body", label: "Body", counts: { observations: 2, samples: 0, activities: 0, total: 2, types: 1 }, rows: [] },
+        { key: "lab", label: "Lab", counts: { observations: 3, samples: 0, activities: 0, total: 3, types: 1 }, rows: [] },
+        { key: "sleep", label: "Sleep", counts: { observations: 0, samples: 0, activities: 0, total: 0, types: 0 }, rows: [] }
+      ]
+    });
+    const onNavigateCategory = vi.fn();
+
+    render(
+      <DashboardRoute
+        profile={{ id: "self", displayName: "Local user", setupStatus: "complete", units: "metric", updatedAt: dateOffset(0) }}
+        onEditProfile={vi.fn()}
+        onNavigateSummary={vi.fn()}
+        onNavigateMeasurement={vi.fn()}
+        onNavigateCategory={onNavigateCategory}
+        onNavigateCare={vi.fn()}
+      />
+    );
+
+    expect(await screen.findByRole("button", { name: "View Body: 2 entries in Track" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "View Lab Results: 3 entries in Track" })).toBeInTheDocument();
+    expect(screen.queryByText("Observations")).not.toBeInTheDocument();
+    expect(screen.queryByText("Samples")).not.toBeInTheDocument();
+    for (const iconPath of [
+      "/images/profile-navigation/activity.png",
+      "/images/profile-navigation/body-composition.png",
+      "/images/profile-navigation/lab-results.png",
+      "/images/profile-navigation/sleep.png"
+    ]) {
+      expect(document.querySelector(`img[src="${iconPath}"]`)).toBeInTheDocument();
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: "View Activities: 2 entries in Track" }));
+    expect(onNavigateCategory).toHaveBeenCalledWith("activity");
+  });
+
   it("opens measurement detail when a trend trace is selected", async () => {
     vi.spyOn(api.care, "listCareItems").mockResolvedValue({
       items: [], total: 0, offset: 0, limit: 3, hasMore: false
@@ -72,6 +125,7 @@ describe("DashboardRoute upcoming care", () => {
         onEditProfile={vi.fn()}
         onNavigateSummary={vi.fn()}
         onNavigateMeasurement={onNavigateMeasurement}
+        onNavigateCategory={vi.fn()}
         onNavigateCare={vi.fn()}
       />
     );
@@ -95,6 +149,7 @@ describe("DashboardRoute upcoming care", () => {
         onEditProfile={vi.fn()}
         onNavigateSummary={vi.fn()}
         onNavigateMeasurement={vi.fn()}
+        onNavigateCategory={vi.fn()}
         onNavigateCare={vi.fn()}
       />
     );

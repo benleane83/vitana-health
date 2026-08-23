@@ -1,34 +1,39 @@
 import { careItemKindLabels } from "@vitana/shared";
-import type { AnalyticsSummary, CareItem, Profile } from "@vitana/shared";
+import type { AnalyticsSummary, CareItem, HealthDataSummary, Profile } from "@vitana/shared";
 import { AlertTriangle, CalendarClock, CheckCircle2, ChevronRight, Pin } from "lucide-react";
 import { MiniChart } from "../components/Charts.js";
 import { formatBloodType, formatDetailValue, formatProfileSex, formatProfileType, formatShortTimestamp } from "../utils.js";
+import { profileDataCategories, type ProfileDataCategory } from "../types.js";
 
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="stat">
-      <strong aria-label={`${label}: ${value}`}>{value}</strong>
-      <span>{label}</span>
-    </div>
-  );
-}
+const categoryIconPaths: Record<ProfileDataCategory, string> = {
+  activity: "/images/profile-navigation/activity.png",
+  body: "/images/profile-navigation/body-composition.png",
+  lab: "/images/profile-navigation/lab-results.png",
+  sleep: "/images/profile-navigation/sleep.png"
+};
 
 export function DashboardPage({
   analytics,
+  summary,
+  summaryError,
   profile,
   upcomingCare,
   onEditProfile,
   onNavigateSummary,
   onNavigateMeasurement,
+  onNavigateCategory,
   onNavigateCare,
   onRetryUpcomingCare
 }: {
   analytics?: AnalyticsSummary;
+  summary?: HealthDataSummary;
+  summaryError?: string;
   profile?: Profile;
   upcomingCare: { items: CareItem[]; total: number; busy: boolean; error?: string };
   onEditProfile: () => void;
   onNavigateSummary: () => void;
   onNavigateMeasurement: (measurementCode: string) => void;
+  onNavigateCategory: (category: ProfileDataCategory) => void;
   onNavigateCare: (careItemId?: string) => void;
   onRetryUpcomingCare: () => void;
 }) {
@@ -60,10 +65,28 @@ export function DashboardPage({
 
         <article className="dashboard-profile-summary">
           <h2>Profile summary</h2>
+          {summaryError ? <p className="dashboard-summary-error" role="alert">Profile summary could not be loaded.</p> : null}
           <div className="dashboard-counts" aria-label="Stored health data totals">
-            <Stat label="Observations" value={analytics?.counts.observations ?? 0} />
-            <Stat label="Samples" value={analytics?.counts.samples ?? 0} />
-            <Stat label="Activities" value={analytics?.counts.activities ?? 0} />
+            {profileDataCategories.map((category) => {
+              const iconPath = categoryIconPaths[category.key];
+              const count = summary?.categories.find((item) => item.key === category.key)?.counts.total ?? 0;
+              return (
+                <button
+                  className={`dashboard-category-count dashboard-category-count--${category.key}`}
+                  type="button"
+                  key={category.key}
+                  onClick={() => onNavigateCategory(category.key)}
+                  aria-label={`View ${category.label}: ${count} entries in Track`}
+                >
+                  <span className="dashboard-category-count__icon" aria-hidden="true">
+                    <img src={iconPath} alt="" />
+                  </span>
+                  <span className="dashboard-category-count__label">{category.label}</span>
+                  <strong>{count}</strong>
+                  <ChevronRight aria-hidden="true" size={18} />
+                </button>
+              );
+            })}
           </div>
         </article>
 

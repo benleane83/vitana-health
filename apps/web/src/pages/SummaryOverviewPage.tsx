@@ -1,8 +1,8 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { compareSummaryRows } from "@vitana/shared";
 import type { HealthDataSummary } from "@vitana/shared";
 import { formatTimestamp } from "../utils.js";
-import type { SummarySort } from "../types.js";
+import { profileDataCategories, type ProfileDataCategory, type SummarySort } from "../types.js";
 
 function Stat({ label, value, onClick }: { label: string; value: number; onClick?: () => void }) {
   if (onClick) {
@@ -29,7 +29,10 @@ export function SummaryPage({
   onSortChange,
   expandedCategories,
   onToggleCategory,
-  onSelectRow
+  onSelectRow,
+  categoryFilter,
+  onClearCategoryFilter,
+  onAddCategory
 }: {
   summary?: HealthDataSummary;
   loading: boolean;
@@ -39,20 +42,50 @@ export function SummaryPage({
   expandedCategories: Set<string>;
   onToggleCategory: (key: string) => void;
   onSelectRow: (measurementCode: string) => void;
+  categoryFilter?: ProfileDataCategory;
+  onClearCategoryFilter: () => void;
+  onAddCategory: (category: ProfileDataCategory, mode: "manual" | "upload") => void;
 }) {
+  const [openAddMenu, setOpenAddMenu] = useState<ProfileDataCategory>();
+  const addMenuRef = useRef<HTMLDivElement>(null);
+  const filterLabel = profileDataCategories.find((category) => category.key === categoryFilter)?.label;
   const sortedCategories = useMemo(
-    () => (summary?.categories ?? []).map((category) => ({
-      ...category,
-      rows: [...category.rows].sort((a, b) => compareSummaryRows(a, b, sort))
-    })),
-    [summary, sort]
+    () => (summary?.categories ?? [])
+      .filter((category) => !categoryFilter || category.key === categoryFilter)
+      .map((category) => ({
+        ...category,
+        rows: [...category.rows].sort((a, b) => compareSummaryRows(a, b, sort))
+      })),
+    [categoryFilter, summary, sort]
   );
+
+  useEffect(() => {
+    if (!openAddMenu) return;
+    const closeOnPointerDown = (event: MouseEvent) => {
+      if (!addMenuRef.current?.contains(event.target as Node)) setOpenAddMenu(undefined);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpenAddMenu(undefined);
+    };
+    window.addEventListener("mousedown", closeOnPointerDown);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("mousedown", closeOnPointerDown);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [openAddMenu]);
 
   return (
     <section className="panel summary-panel">
       <div className="summary-header">
         <div>
           <h2>Measurements</h2>
+          {filterLabel ? (
+            <div className="summary-category-filter" role="status">
+              <span>Showing {filterLabel}</span>
+              <button type="button" onClick={onClearCategoryFilter}>Clear filter</button>
+            </div>
+          ) : null}
         </div>
         <div className="summary-controls" role="group" aria-label="Sort summary rows">
           <button
@@ -93,25 +126,51 @@ export function SummaryPage({
           </div>
 
           <div className="summary-categories">
-            {summary.categories.length === 0 ? (
-              <p className="empty" role="status">No measurements have been imported yet.</p>
+            {sortedCategories.length === 0 ? (
+              <p className="empty" role="status">
+                {filterLabel ? `No ${filterLabel.toLowerCase()} measurements have been imported yet.` : "No measurements have been imported yet."}
+              </p>
             ) : null}
             {sortedCategories.map((category) => {
               const expanded = expandedCategories.has(category.key);
               const panelId = `summary-panel-${category.key}`;
               const toggleId = `summary-toggle-${category.key}`;
+              const categoryConfig = profileDataCategories.find((item) => item.key === category.key);
+              const canImport = categoryConfig?.manualGroup && categoryConfig.uploadKind;
               return (
                 <section className="summary-category" key={category.key}>
-                  <button
-                    id={toggleId}
-                    className="summary-category-toggle"
-                    aria-expanded={expanded}
-                    aria-controls={panelId}
-                    onClick={() => onToggleCategory(category.key)}
-                  >
-                    <strong>{category.label}</strong>
-                    <span>{category.counts.types} types / {category.counts.total} entries</span>
-                  </button>
+                  <div className="summary-category-heading">
+                    <button
+                      id={toggleId}
+                      className="summary-category-toggle"
+                      aria-expanded={expanded}
+                      aria-controls={panelId}
+                      onClick={() => onToggleCategory(category.key)}
+                    >
+                      <strong>{category.label}</strong>
+                      <span>{category.counts.types} types / {category.counts.total} entries</span>
+                    </button>
+                    {canImport && categoryConfig ? (
+                      <div className="summary-category-add" ref={openAddMenu === categoryConfig.key ? addMenuRef : undefined}>
+                        <button
+                          type="button"
+                          className="summary-category-add-trigger"
+                          aria-label={`Add ${categoryConfig.label} data`}
+                          aria-haspopup="menu"
+                          aria-expanded={openAddMenu === categoryConfig.key}
+                          onClick={() => setOpenAddMenu((current) => current === categoryConfig.key ? undefined : categoryConfig.key)}
+                        >
+                          <span aria-hidden="true">+</span>
+                        </button>
+                        {openAddMenu === categoryConfig.key ? (
+                          <div className="summary-category-add-menu" role="menu" aria-label={`Add ${categoryConfig.label} data`}>
+                            <button type="button" role="menuitem" onClick={() => { setOpenAddMenu(undefined); onAddCategory(categoryConfig.key, "manual"); }}>Manual</button>
+                            <button type="button" role="menuitem" onClick={() => { setOpenAddMenu(undefined); onAddCategory(categoryConfig.key, "upload"); }}>Upload</button>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
                   {expanded ? (
                     <div
                       id={panelId}

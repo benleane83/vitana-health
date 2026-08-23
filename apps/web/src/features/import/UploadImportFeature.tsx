@@ -11,7 +11,8 @@ import type {
 } from "@vitana/shared";
 import { api } from "../../api.js";
 import { ImportDraftReview } from "../../components/ImportDraftReview.js";
-import type { UploadEditableRow } from "../../types.js";
+import type { ProfileDataCategory, UploadEditableRow } from "../../types.js";
+import { profileDataCategories } from "../../types.js";
 import {
   isSupportedBodyCompMimeType,
   readFileAsBase64,
@@ -28,8 +29,10 @@ export function UploadImportFeature(props: {
   units: UnitSystem;
   onImported: () => Promise<void>;
   onNotice: (message: string) => void;
+  category?: ProfileDataCategory;
 }) {
-  const [uploadKind, setUploadKind] = useState<UploadKind>("body-composition");
+  const requestedUploadKind = profileDataCategories.find((item) => item.key === props.category)?.uploadKind;
+  const [uploadKind, setUploadKind] = useState<UploadKind>(requestedUploadKind ?? "body-composition");
 
   return (
     <>

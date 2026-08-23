@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { AnalyticsSummary, CareItem, Profile } from "@vitana/shared";
+import type { AnalyticsSummary, CareItem, HealthDataSummary, Profile } from "@vitana/shared";
 import { api } from "../../api.js";
 import { DashboardPage } from "../../pages/DashboardPage.js";
 
@@ -22,6 +22,7 @@ export function DashboardRoute({
   onEditProfile,
   onNavigateSummary,
   onNavigateMeasurement,
+  onNavigateCategory,
   onNavigateCare
 }: {
   analytics?: AnalyticsSummary;
@@ -29,9 +30,12 @@ export function DashboardRoute({
   onEditProfile: () => void;
   onNavigateSummary: () => void;
   onNavigateMeasurement: (measurementCode: string) => void;
+  onNavigateCategory: (category: import("../../types.js").ProfileDataCategory) => void;
   onNavigateCare: (careItemId?: string) => void;
 }) {
   const [upcomingCare, setUpcomingCare] = useState<UpcomingCareState>({ items: [], total: 0, busy: true });
+  const [summary, setSummary] = useState<HealthDataSummary>();
+  const [summaryError, setSummaryError] = useState<string>();
 
   async function loadUpcomingCare() {
     setUpcomingCare((current) => ({ ...current, busy: true, error: undefined }));
@@ -56,14 +60,31 @@ export function DashboardRoute({
     void loadUpcomingCare();
   }, [profile?.id]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    setSummaryError(undefined);
+    void api.summary(controller.signal).then((data) => {
+      if (!controller.signal.aborted) setSummary(data);
+    }).catch((error: unknown) => {
+      if (!controller.signal.aborted) {
+        setSummary(undefined);
+        setSummaryError(error instanceof Error ? error.message : "Unable to load profile summary.");
+      }
+    });
+    return () => controller.abort();
+  }, [profile?.id]);
+
   return (
     <DashboardPage
       analytics={analytics}
+      summary={summary}
+      summaryError={summaryError}
       profile={profile}
       upcomingCare={upcomingCare}
       onEditProfile={onEditProfile}
       onNavigateSummary={onNavigateSummary}
       onNavigateMeasurement={onNavigateMeasurement}
+      onNavigateCategory={onNavigateCategory}
       onNavigateCare={onNavigateCare}
       onRetryUpcomingCare={() => { void loadUpcomingCare(); }}
     />

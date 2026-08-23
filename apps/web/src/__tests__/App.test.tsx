@@ -56,6 +56,38 @@ beforeEach(() => {
         evidenceDigest: []
       }));
     }
+    if (url.endsWith("/api/summary")) {
+      return Promise.resolve(mockResponse({
+        generatedAt: "2026-01-01T00:00:00.000Z",
+        totals: { observations: 2, samples: 0, activities: 1, total: 3, types: 3 },
+        categories: [
+          {
+            key: "activity",
+            label: "Activity",
+            counts: { observations: 0, samples: 0, activities: 1, total: 1, types: 1 },
+            rows: []
+          },
+          {
+            key: "body",
+            label: "Body",
+            counts: { observations: 1, samples: 0, activities: 0, total: 1, types: 1 },
+            rows: []
+          },
+          {
+            key: "lab",
+            label: "Lab",
+            counts: { observations: 1, samples: 0, activities: 0, total: 1, types: 1 },
+            rows: []
+          },
+          {
+            key: "sleep",
+            label: "Sleep",
+            counts: { observations: 0, samples: 0, activities: 0, total: 0, types: 0 },
+            rows: []
+          }
+        ]
+      }));
+    }
     if (url.includes("/api/summary/bmi")) {
       return Promise.resolve(mockResponse({
         generatedAt: "2026-01-01T00:00:00.000Z",
@@ -176,6 +208,20 @@ afterEach(() => {
 });
 
 describe("App smoke", () => {
+  it("opens a clearable Track category filter from a dashboard profile summary row", async () => {
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "View Body: 1 entries in Track" }));
+
+    expect(window.location.pathname).toBe("/track");
+    expect(window.location.search).toBe("?category=body");
+    expect(await screen.findByText("Showing Body")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear filter" }));
+    expect(window.location.pathname).toBe("/track");
+    expect(window.location.search).toBe("");
+  });
+
   it("orders Track tabs with Journal after Measurements and follows that order by keyboard", async () => {
     globalThis.history.replaceState({}, "", "/track");
     render(<App />);
@@ -292,8 +338,9 @@ describe("App smoke", () => {
     expect(screen.getByRole("main")).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: /page navigation/i })).toBeInTheDocument();
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
-      "Dashboard", "Import", "Track", "Care", "Insights", "Export"
+      "Vitana", "Import", "Track", "Care", "Insights", "Export", "About"
     ]);
+    expect(screen.getByRole("tab", { name: "Dashboard" })).toHaveClass("active");
     expect(screen.getByRole("button", { name: /settings/i })).toBeInTheDocument();
   });
 
@@ -327,13 +374,28 @@ describe("App smoke", () => {
     expect(screen.getByRole("tab", { name: "Import" })).toHaveAttribute("aria-selected", "true");
 
     fireEvent.keyDown(screen.getByRole("tab", { name: "Import" }), { key: "End" });
-    expect(screen.getByRole("tab", { name: "Export" })).toHaveFocus();
+    expect(screen.getByRole("tab", { name: "About" })).toHaveFocus();
 
-    fireEvent.keyDown(screen.getByRole("tab", { name: "Export" }), { key: "Home" });
+    fireEvent.keyDown(screen.getByRole("tab", { name: "About" }), { key: "Home" });
     expect(screen.getByRole("tab", { name: "Dashboard" })).toHaveFocus();
 
     fireEvent.keyDown(screen.getByRole("tab", { name: "Dashboard" }), { key: "ArrowLeft" });
-    expect(screen.getByRole("tab", { name: "Export" })).toHaveFocus();
+    expect(screen.getByRole("tab", { name: "About" })).toHaveFocus();
+  });
+
+  it("opens the About page from the top navigation", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "About" }));
+
+    expect(globalThis.location.pathname).toBe("/about");
+    expect(screen.getByRole("tab", { name: "About" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("heading", { level: 1, name: "Your Health. Connected." })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Dashboard" }));
+
+    expect(globalThis.location.pathname).toBe("/");
+    expect(screen.getByRole("tab", { name: "Dashboard" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("starts from the bounded bootstrap contract without requesting the full store", async () => {
