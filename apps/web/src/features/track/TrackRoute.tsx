@@ -17,7 +17,7 @@ import type {
 import { api } from "../../api.js";
 import { ObservationEditDialog } from "../../components/ObservationEditDialog.js";
 import { ObservationTypeDetailPage, SummaryPage } from "../../pages/SummaryPage.js";
-import type { TrackView } from "../../types.js";
+import type { ProfileDataCategory, TrackView } from "../../types.js";
 import { BodyTrendRoute } from "./BodyTrendRoute.js";
 import { CalendarRoute } from "./CalendarRoute.js";
 import { JournalRoute } from "./JournalRoute.js";
@@ -55,7 +55,10 @@ export function TrackRoute({
   onNotice,
   confirm,
   calendarAllowed,
-  bodyTrendAllowed
+  bodyTrendAllowed,
+  categoryFilter,
+  onClearCategoryFilter,
+  onAddCategory
 }: {
   detailCode?: string;
   observationGroupId?: string;
@@ -75,6 +78,9 @@ export function TrackRoute({
   confirm: ConfirmAction;
   calendarAllowed: boolean;
   bodyTrendAllowed: boolean;
+  categoryFilter?: ProfileDataCategory;
+  onClearCategoryFilter: () => void;
+  onAddCategory: (category: ProfileDataCategory, mode: "manual" | "upload") => void;
 }) {
   const [summary, setSummary] = useState<RemoteState<HealthDataSummary>>({ busy: true });
   const [detail, setDetail] = useState<RemoteState<HealthDataDetail>>({ busy: false });
@@ -435,6 +441,9 @@ export function TrackRoute({
           expandedCategories={expandedCategories}
           onToggleCategory={toggleCategory}
           onSelectRow={onSelectDetail}
+          categoryFilter={categoryFilter}
+          onClearCategoryFilter={onClearCategoryFilter}
+          onAddCategory={onAddCategory}
         />
       )}
       </div>

@@ -1,0 +1,156 @@
+---
+import SiteLayout from "../layouts/SiteLayout.astro";
+
+const faqGroups = [
+  {
+    id: "about-vitana",
+    title: "About Vitana",
+    description: "What Vitana is designed to help with, and where its limits are.",
+    items: [
+      {
+        question: "What is Vitana Health?",
+        answer: "Vitana is a local-first wellness application for bringing together personal health data you choose to keep. It helps you review measurements, activity, sleep, imported reports, and longer-term patterns in one private workspace."
+      },
+      {
+        question: "Is Vitana medical advice or a replacement for my clinician?",
+        answer: "No. Vitana provides wellness-oriented summaries, deterministic analytics, and AI-assisted explanations. It does not diagnose conditions, prescribe treatment, recommend medication changes, or handle urgent medical concerns. Use it to prepare clearer questions and share relevant records with a qualified healthcare professional."
+      },
+      {
+        question: "Can my household use one Vitana installation?",
+        answer: "Yes. Vitana Pro is built for separate family-member profiles, including profiles for children and pets. Each profile has its own encrypted local record, settings, consent choices, and connected devices."
+      }
+    ]
+  },
+  {
+    id: "privacy-data",
+    title: "Privacy and your data",
+    description: "How the local-first model works in practice.",
+    items: [
+      {
+        question: "Does Vitana upload my health data to the cloud?",
+        answer: "No. Vitana does not provide health-data cloud sync, advertising, or product analytics. Your records stay in encrypted local storage on devices you control, and pairing the Android companion with your desktop app transfers data directly over your local network."
+      },
+      {
+        question: "How is my data protected on my PC and phone?",
+        answer: "Each desktop profile uses its own AES-256-GCM encrypted database. The Android companion uses a SQLite database with its key protected by Android secure storage. See the Security page for the current technical overview."
+      },
+      {
+        question: "What happens if I enable a cloud AI provider?",
+        answer: "Cloud AI is optional and off by default. If you explicitly opt-in to use an AI provider, Vitana will send a minimized, redacted question and bounded structured query results to the AI model you configure. To keep AI processing locally on your device, use a supported ollama model."
+      },
+      {
+        question: "How long does Vitana keep my records?",
+        answer: "Vitana does not automatically expire or evict health records. Your data remains until you delete individual observations, reset local data, or delete a desktop profile. Deleting a desktop profile removes its encrypted local database."
+      }
+    ]
+  },
+  {
+    id: "mobile-pairing",
+    title: "Mobile companion and pairing",
+    description: "Using the Android companion with your private desktop record.",
+    items: [
+      {
+        question: "What are the differences between the Vitana desktop and mobile apps?",
+        answer: "Vitana's desktop app acts as the local home for your health data, and has the most features to let you manage and explore it. The mobile companion app can be used independently, but it works best when paired with your desktop so that everything is synced and stored centrally. Vitana doesn't use any cloud services to sync or store your health data, to preserve your privacy."
+      },
+      {
+        question: "How do I pair the Android companion with my desktop app?",
+        answer: "Open Import > Sync in Vitana on your PC, then use the Android companion to scan the QR code and approve the connection on your PC screen. The QR code establishes the secure local connection between the two devices."
+      },
+      {
+        question: "Do my phone and PC need to be on the same WiFi network?",
+        answer: "Yes. Fitness data sync is designed for your local network and sends selected records only to your paired desktop profile. Vitana will never expose your health records over the public internet."
+      },
+      {
+        question: "What is Health Connect, and what can I use it to sync?",
+        answer: "Health Connect is Android's health data platform that lives on your mobile phone. Many fitness trackers and apps automatically write data to Health Connect, and you choose the Health Connect categories you wish to sync into Vitana. Categories can include activity, heart-rate and oxygen measurements, body measurements, calories, exercise, sleep, and more. The initial import window can be set from 30 (for Free tier) to 365 days (Pro tier)."
+      },
+      {
+        question: "Can I use the companion while I am offline?",
+        answer: "Yes. The companion keeps an encrypted, read-only replica of your data for offline viewing while it is paired. Your app will receive updates from your paired PC when it is available."
+      },
+      {
+        question: "What happens when I unpair my phone?",
+        answer: "Unpairing removes the phone's downloaded data from your profile. It does not delete the original copies stored on your desktop profile. You can also revoke a companion from the desktop app to stop it from syncing."
+      },
+      {
+        question: "Does my desktop app need to stay running for companion sync?",
+        answer: "The mobile app needs the paired desktop app to be available before it can refresh or sync. On Windows, you can opt in under Settings > App to keep the service running in the background for companion access; this will minimize it to your system tray."
+      }
+    ]
+  },
+  {
+    id: "plans-availability",
+    title: "Plans and availability",
+    description: "What is included in Free and Pro, and what is planned next.",
+    items: [
+      {
+        question: "What is included with Vitana Free?",
+        answer: "Vitana Free includes one encrypted local profile, 30 days of fitness data sync via Health Connect, the core dashboard and tracking workspace, manual entry and imports, Biological Age, and AI Review on PC."
+      },
+      {
+        question: "What does Vitana Pro add?",
+        answer: "Vitana Pro adds additional profiles, 365 days of fitness data sync via Health Connect, Calendar and Body Trend views, and AI Query on PC. Pro tier is a once-off purchase and not an ongoing subscription."
+      },
+      {
+        question: "Do I need to buy Vitana Pro for every member of my family?",
+        answer: "No - Vitana Pro is available as a single unlock for all devices connected to your desktop. Once a mobile device is paired, all desktop and mobile features will be unlocked."
+      },
+      {
+        question: "Can I buy or download Vitana today?",
+        answer: "Not yet. Vitana is still in development for its first public release. The open PC app and Android companion are planned first; public download and store links will be published when they are ready."
+      },
+      {
+        question: "Which platforms will Vitana support?",
+        answer: "The first public release is planned for PC with an Android companion. MacOS and iOS support are planned for a later release."
+      }
+    ]
+  }
+];
+---
+
+<SiteLayout
+  title="Frequently asked questions | Vitana Health"
+  description="Answers to common questions about Vitana Health, including local privacy, Android companion pairing, Health Connect sync, and Free versus Pro."
+>
+  <article class="faq-page shell">
+    <header class="faq-page__header">
+      <span class="legal-page__meta">Frequently asked questions</span>
+      <h1>Answers to your top questions about Vitana.</h1>
+      <p>Learn how Vitana keeps your health record local, how the Android companion connects to your PC, and differences between Free and Pro tiers.</p>
+      <nav class="faq-page__jump-links" aria-label="FAQ topics">
+        {faqGroups.map((group) => <a href={`#${group.id}`}>{group.title}</a>)}
+      </nav>
+    </header>
+
+    <div class="faq-groups">
+      {faqGroups.map((group) => (
+        <section class="faq-group" id={group.id} aria-labelledby={`${group.id}-heading`}>
+          <div class="faq-group__heading">
+            <h2 id={`${group.id}-heading`}>{group.title}</h2>
+            <p>{group.description}</p>
+          </div>
+          <div class="faq-list">
+            {group.items.map((item) => (
+              <details>
+                <summary>{item.question}</summary>
+                <div class="faq-list__answer">
+                  <p>{item.answer}</p>
+                </div>
+              </details>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+
+    <aside class="faq-callout" aria-labelledby="faq-help-heading">
+      <h2 id="faq-help-heading">Need the full policy or security detail?</h2>
+      <p>Read the complete privacy policy for data categories, retention, and transfers, or review the security overview for encryption, pairing, backups, and vulnerability reporting.</p>
+      <div class="faq-callout__actions">
+        <a class="button" href="/privacy">Read privacy policy</a>
+        <a class="button button--secondary" href="/security">Review security</a>
+      </div>
+    </aside>
+  </article>
+</SiteLayout>

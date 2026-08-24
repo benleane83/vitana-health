@@ -9,14 +9,14 @@ import SiteLayout from "../layouts/SiteLayout.astro";
   <article class="legal-page shell">
     <header class="legal-page__header">
       <span class="legal-page__meta">Security overview</span>
-      <h1>Local-first is the boundary, not the whole answer.</h1>
+      <h1>Understand how Vitana secures your local health data.</h1>
       <p>Vitana combines encrypted per-profile storage, OS-backed key protection, local-network pairing controls, and narrow data access to reduce where sensitive health data can travel.</p>
     </header>
     <div class="legal-content">
       <section>
         <h2>Encrypted profile storage</h2>
         <p>Each desktop profile has a separate AES-256-GCM encrypted DuckDB database. The packaged desktop app generates a random data key, wraps it with the operating system's secure storage, and keeps only the wrapped form on disk.</p>
-        <p>The Android companion's Standalone mode uses a SQLCipher-encrypted SQLite database and protects its key with Android secure storage.</p>
+        <p>The mobile companion app uses a SQLCipher-encrypted SQLite database and protects its key with Android secure storage.</p>
       </section>
       <section>
         <h2>Paired local connections</h2>
