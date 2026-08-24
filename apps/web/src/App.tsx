@@ -312,9 +312,10 @@ export function App() {
 
   return (
     <main className="shell">
-      {dashboardHeaderVariant === "rail" ? <VitanaBrand variant="rail" /> : null}
-      {/* Navigation tablist */}
-      <nav className={`route-nav route-nav-${dashboardHeaderVariant}`} aria-label="Page navigation">
+      <header className="shell-navigation">
+        {dashboardHeaderVariant === "rail" ? <VitanaBrand variant="rail" /> : null}
+        {/* Navigation tablist */}
+        <nav className={`route-nav route-nav-${dashboardHeaderVariant}`} aria-label="Page navigation">
         <div className="route-nav-main" role="tablist" aria-label="App sections">
           <VitanaBrand
             variant="nav"
@@ -431,25 +432,27 @@ export function App() {
           ) : null}
           </div>
         </div>
-      </nav>
+        </nav>
+      </header>
 
-      {/* Global status/notice — live region */}
-      {message ? (
-        <div className="notice">
-          <span className="notice-message" role="status" aria-live="polite" aria-atomic="true">
-            {message}
-          </span>
-          <button
-            className="notice-dismiss"
-            type="button"
-            aria-label="Dismiss notification"
-            title="Dismiss notification"
-            onClick={() => setMessage(undefined)}
-          >
-            <span aria-hidden="true">×</span>
-          </button>
-        </div>
-      ) : null}
+      <div className="shell-content">
+        {/* Global status/notice — live region */}
+        {message ? (
+          <div className="notice">
+            <span className="notice-message" role="status" aria-live="polite" aria-atomic="true">
+              {message}
+            </span>
+            <button
+              className="notice-dismiss"
+              type="button"
+              aria-label="Dismiss notification"
+              title="Dismiss notification"
+              onClick={() => setMessage(undefined)}
+            >
+              <span aria-hidden="true">×</span>
+            </button>
+          </div>
+        ) : null}
 
       {/* Route panels */}
       <div
@@ -583,12 +586,13 @@ export function App() {
         ) : null}
       </div>
 
-      <div id="route-panel-about" role="tabpanel" aria-labelledby={navTabIds.about} hidden={route !== "about"}>
-        {route === "about" ? (
-          <ErrorBoundary label="About">
-            <AboutPage />
-          </ErrorBoundary>
-        ) : null}
+        <div id="route-panel-about" role="tabpanel" aria-labelledby={navTabIds.about} hidden={route !== "about"}>
+          {route === "about" ? (
+            <ErrorBoundary label="About">
+              <AboutPage />
+            </ErrorBoundary>
+          ) : null}
+        </div>
       </div>
 
 

@@ -101,7 +101,9 @@ export function CareRoute({
     void loadCareItems(true);
   }, [view, activeProfileId, selectedCareItemId]);
 
-  const editorActive = Boolean(editingHealthEventId || editingCareItemId || completingCareItem);
+  const editorActive = view === "health-events"
+    ? Boolean(editingHealthEventId)
+    : Boolean(editingCareItemId || completingCareItem);
 
   useEffect(() => {
     if (!editorActive || typeof window.matchMedia !== "function" || !window.matchMedia("(max-width: 900px)").matches) return;
@@ -112,7 +114,10 @@ export function CareRoute({
   }, [editorActive]);
 
   function closeEditor() {
-    setEditingHealthEventId(undefined);
+    if (view === "health-events") {
+      setEditingHealthEventId(undefined);
+      return;
+    }
     setEditingCareItemId(undefined);
     setCompletingCareItem(undefined);
     requestAnimationFrame(() => listPanelRef.current?.scrollIntoView({ block: "start", behavior: "smooth" }));
@@ -166,12 +171,12 @@ export function CareRoute({
   }
 
   function beginCreate() {
-    setCompletingCareItem(undefined);
     if (view === "health-events") {
       setEditingHealthEventId("new");
       setHealthEventDraft(defaultHealthEventDraft);
       return;
     }
+    setCompletingCareItem(undefined);
     setEditingCareItemId("new");
     setCareItemDraft(defaultCareItemDraft);
   }
@@ -376,7 +381,7 @@ export function CareRoute({
                   >
                     <strong>{healthEventKindLabels[entry.kind]}</strong>
                     <span>{formatWhen(entry.occurredAt)}{entry.provider ? ` • ${entry.provider}` : ""}</span>
-                    <span>{entry.status}{entry.notes ? ` • ${entry.notes.slice(0, 120)}` : ""}</span>
+                    {entry.notes ? <span>{entry.notes.slice(0, 120)}</span> : null}
                   </button>
                   <CareRowActions
                     label={healthEventKindLabels[entry.kind]}
@@ -475,7 +480,7 @@ function CareEmptyState({
         <span className="care-empty-state-icon" aria-hidden="true"><SearchX size={24} /></span>
         <div>
           <h2 id="care-empty-title">No matches found</h2>
-          <p>Try a different search, kind, or status, or return to the default view.</p>
+          <p>Try a different search, type, or status, or return to the default view.</p>
         </div>
         <button type="button" className="care-empty-secondary" onClick={onClearFilters}>Clear filters</button>
       </section>
@@ -560,15 +565,15 @@ function CareRowActions({
 }
 
 function HealthEventFilters({ filters, onChange, onApply }: { filters: HealthEventListQuery; onChange: (next: Partial<HealthEventListQuery>) => void; onApply: () => void; }) {
-  return <div className="care-filters"><input aria-label="Search health events" placeholder="Search health events" value={filters.search ?? ""} onChange={(event) => onChange({ search: event.target.value })} /><select aria-label="Filter health event kind" value={filters.kind ?? ""} onChange={(event) => onChange({ kind: (event.target.value || undefined) as HealthEventListQuery["kind"] })}><option value="">All kinds</option>{healthEventKindCodes.map((kind) => <option key={kind} value={kind}>{healthEventKindLabels[kind]}</option>)}</select><select aria-label="Filter health event status" value={filters.status ?? ""} onChange={(event) => onChange({ status: (event.target.value || undefined) as HealthEventListQuery["status"] })}><option value="">All statuses</option><option value="completed">Completed</option><option value="entered-in-error">Entered in error</option></select><button type="button" onClick={onApply}>Apply</button></div>;
+  return <div className="care-filters"><input aria-label="Search health events" placeholder="Search health events" value={filters.search ?? ""} onChange={(event) => onChange({ search: event.target.value })} /><select aria-label="Filter health event type" value={filters.kind ?? ""} onChange={(event) => onChange({ kind: (event.target.value || undefined) as HealthEventListQuery["kind"] })}><option value="">All types</option>{healthEventKindCodes.map((kind) => <option key={kind} value={kind}>{healthEventKindLabels[kind]}</option>)}</select><button type="button" onClick={onApply}>Apply</button></div>;
 }
 
 function CareItemFilters({ filters, onChange, onApply }: { filters: CareItemListQuery; onChange: (next: Partial<CareItemListQuery>) => void; onApply: () => void; }) {
-  return <div className="care-filters"><input aria-label="Search care items" placeholder="Search care items" value={filters.search ?? ""} onChange={(event) => onChange({ search: event.target.value })} /><select aria-label="Filter care item kind" value={filters.kind ?? ""} onChange={(event) => onChange({ kind: (event.target.value || undefined) as CareItemListQuery["kind"] })}><option value="">All kinds</option>{careItemKindCodes.map((kind) => <option key={kind} value={kind}>{careItemKindLabels[kind]}</option>)}</select><select aria-label="Filter care item status" value={filters.status ?? ""} onChange={(event) => onChange({ status: (event.target.value || undefined) as CareItemListQuery["status"] })}><option value="">All statuses</option><option value="open">Open</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option><option value="skipped">Skipped</option></select><button type="button" onClick={onApply}>Apply</button></div>;
+  return <div className="care-filters"><input aria-label="Search care items" placeholder="Search care items" value={filters.search ?? ""} onChange={(event) => onChange({ search: event.target.value })} /><select aria-label="Filter care item type" value={filters.kind ?? ""} onChange={(event) => onChange({ kind: (event.target.value || undefined) as CareItemListQuery["kind"] })}><option value="">All types</option>{careItemKindCodes.map((kind) => <option key={kind} value={kind}>{careItemKindLabels[kind]}</option>)}</select><select aria-label="Filter care item status" value={filters.status ?? ""} onChange={(event) => onChange({ status: (event.target.value || undefined) as CareItemListQuery["status"] })}><option value="">All statuses</option><option value="open">Open</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select><button type="button" onClick={onApply}>Apply</button></div>;
 }
 
 function HealthEventEditor({ draft, busy, onChange, onCancel, onSave }: { draft: HealthEventDraft; busy: boolean; onChange: (next: HealthEventDraft) => void; onCancel: () => void; onSave: () => void; }) {
-  return <form className="care-editor" onSubmit={(event) => { event.preventDefault(); onSave(); }}><h2 tabIndex={-1}>{healthEventKindLabels[draft.kind]}</h2><label>Kind<select value={draft.kind} onChange={(event) => onChange({ ...draft, kind: event.target.value as HealthEventDraft["kind"] })}>{healthEventKindCodes.map((kind) => <option key={kind} value={kind}>{healthEventKindLabels[kind]}</option>)}</select></label><label>Status<select value={draft.status} onChange={(event) => onChange({ ...draft, status: event.target.value as HealthEventDraft["status"] })}><option value="completed">Completed</option><option value="entered-in-error">Entered in error</option></select></label><label>Date<input type="date" value={toDateOnly(draft.occurredAt)} onChange={(event) => onChange({ ...draft, occurredAt: fromDateOnly(event.target.value) || draft.occurredAt })} /></label><label>Provider<input value={draft.provider ?? ""} maxLength={160} onChange={(event) => onChange({ ...draft, provider: event.target.value })} /></label><label>Notes<textarea value={draft.notes ?? ""} maxLength={4000} onChange={(event) => onChange({ ...draft, notes: event.target.value })} /></label><div className="care-editor-actions"><button type="submit" disabled={busy}>{busy ? "Saving…" : "Save"}</button><button type="button" onClick={onCancel}>Cancel</button></div></form>;
+  return <form className="care-editor" onSubmit={(event) => { event.preventDefault(); onSave(); }}><h2 tabIndex={-1}>{healthEventKindLabels[draft.kind]}</h2><label>Type<select value={draft.kind} onChange={(event) => onChange({ ...draft, kind: event.target.value as HealthEventDraft["kind"] })}>{healthEventKindCodes.map((kind) => <option key={kind} value={kind}>{healthEventKindLabels[kind]}</option>)}</select></label><label>Date<input type="date" value={toDateOnly(draft.occurredAt)} onChange={(event) => onChange({ ...draft, occurredAt: fromDateOnly(event.target.value) || draft.occurredAt })} /></label><label>Provider<input value={draft.provider ?? ""} maxLength={160} onChange={(event) => onChange({ ...draft, provider: event.target.value })} /></label><label>Notes<textarea value={draft.notes ?? ""} maxLength={4000} onChange={(event) => onChange({ ...draft, notes: event.target.value })} /></label><div className="care-editor-actions"><button type="submit" disabled={busy}>{busy ? "Saving…" : "Save"}</button><button type="button" onClick={onCancel}>Cancel</button></div></form>;
 }
 
 function CareItemEditor({ draft, busy, onChange, onCancel, onSave }: { draft: CareItemDraft; busy: boolean; onChange: (next: CareItemDraft) => void; onCancel: () => void; onSave: () => void; }) {
@@ -576,8 +581,8 @@ function CareItemEditor({ draft, busy, onChange, onCancel, onSave }: { draft: Ca
     <form className="care-editor" onSubmit={(event) => { event.preventDefault(); onSave(); }}>
       <h2 tabIndex={-1}>{draft.title || "Care item"}</h2>
       <label>Title<input value={draft.title} maxLength={160} onChange={(event) => onChange({ ...draft, title: event.target.value })} /></label>
-      <label>Kind<select value={draft.kind} onChange={(event) => onChange({ ...draft, kind: event.target.value as CareItemDraft["kind"] })}>{careItemKindCodes.map((kind) => <option key={kind} value={kind}>{careItemKindLabels[kind]}</option>)}</select></label>
-      {draft.status === "completed" ? <div className="care-fixed-field"><span>Status</span><strong>Completed</strong></div> : <label>Status<select value={draft.status} onChange={(event) => onChange({ ...draft, status: event.target.value as CareItemDraft["status"] })}><option value="open">Open</option><option value="cancelled">Cancelled</option><option value="skipped">Skipped</option></select></label>}
+      <label>Type<select value={draft.kind} onChange={(event) => onChange({ ...draft, kind: event.target.value as CareItemDraft["kind"] })}>{careItemKindCodes.map((kind) => <option key={kind} value={kind}>{careItemKindLabels[kind]}</option>)}</select></label>
+      {draft.status === "completed" ? <div className="care-fixed-field"><span>Status</span><strong>Completed</strong></div> : <label>Status<select value={draft.status} onChange={(event) => onChange({ ...draft, status: event.target.value as CareItemDraft["status"] })}><option value="open">Open</option><option value="cancelled">Cancelled</option></select></label>}
       <label>Due date<input type="date" value={toDateOnly(draft.dueStart)} onChange={(event) => onChange({ ...draft, dueStart: fromDateOnly(event.target.value) || undefined })} /></label>
       <div className="care-reminder-field">
         <label>Reminder date<input type="date" value={toDateOnly(draft.reminderAt)} onChange={(event) => onChange({ ...draft, reminderAt: fromDateOnly(event.target.value) || undefined })} /></label>
@@ -597,7 +602,7 @@ function CareItemCompletionEditor({ item, draft, busy, onChange, onCancel, onCom
     <form className="care-editor care-completion-editor" onSubmit={(event) => { event.preventDefault(); onComplete(); }}>
       <div><h2 tabIndex={-1}>Complete {item.title}</h2><p>{createsHealthEvent ? "Review the health event that will be created." : "Record when this monitoring item was completed."}</p></div>
       <label>Date<input type="date" value={toDateOnly(draft.occurredAt)} onChange={(event) => onChange({ ...draft, occurredAt: fromDateOnly(event.target.value) || draft.occurredAt })} /></label>
-      {createsHealthEvent ? <label>Kind<select value={draft.kind} onChange={(event) => onChange({ ...draft, kind: event.target.value as CompletionDraft["kind"] })}>{healthEventKindCodes.map((kind) => <option key={kind} value={kind}>{healthEventKindLabels[kind]}</option>)}</select></label> : null}
+      {createsHealthEvent ? <label>Type<select value={draft.kind} onChange={(event) => onChange({ ...draft, kind: event.target.value as CompletionDraft["kind"] })}>{healthEventKindCodes.map((kind) => <option key={kind} value={kind}>{healthEventKindLabels[kind]}</option>)}</select></label> : null}
       <div className="care-editor-actions"><button type="submit" disabled={busy}>{busy ? "Completing…" : "Complete care item"}</button><button type="button" onClick={onCancel} disabled={busy}>Cancel</button></div>
     </form>
   );

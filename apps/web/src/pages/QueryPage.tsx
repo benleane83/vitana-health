@@ -285,7 +285,6 @@ function QueryTechnicalBody({ result }: { result: AiQueryResult }) {
       {result.plan ? <pre>{JSON.stringify(result.plan, null, 2)}</pre> : null}
       {result.sql ? <pre>{result.sql}</pre> : null}
       {result.modelError ? <p>Summary fallback: {result.modelError}</p> : null}
-      {result.debug ? <pre>{JSON.stringify(result.debug, null, 2)}</pre> : null}
     </div>
   );
 }

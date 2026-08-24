@@ -105,7 +105,7 @@ export interface GeneralHealthEvent extends HealthEventBase { kind: GeneralHealt
 export type OtherHealthEvent = GeneralHealthEvent & { kind: "other" };
 export type HealthEvent = ImmunizationEvent | MedicationEvent | GeneralHealthEvent;
 
-export type CareItemStatus = "open" | "completed" | "cancelled" | "skipped";
+export type CareItemStatus = "open" | "completed" | "cancelled";
 export type CareItemPriority = "low" | "normal" | "high";
 export const careItemKindCodes = [
   "visit",
@@ -673,7 +673,7 @@ export interface HealthStoreData {
    * Always the current version. Older persisted stores are upgraded by `parsePersistedHealthStore`
    * before they ever become a `HealthStoreData`.
    */
-  schemaVersion: 12;
+  schemaVersion: 13;
   profile: Profile;
   sourceImports: SourceImport[];
   dataSources: DataSource[];

@@ -1,4 +1,5 @@
 import type { BiologicalAgeInput, BiologicalAgeReport } from "@vitana/shared";
+import { CheckCircle2, X } from "lucide-react";
 
 const inputCategories: Record<string, string> = {
   albumin: "Liver function / metabolic panel",
@@ -101,31 +102,33 @@ export function BiologicalAgePage({
                   <thead>
                     <tr>
                       <th scope="col">Marker</th>
-                      <th scope="col">Status</th>
                       <th scope="col">Latest value</th>
                       <th scope="col">Required unit</th>
                       <th scope="col">Blood test category</th>
-                      <th scope="col">Action</th>
+                      <th scope="col">Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     {model.inputs.map((input) => (
                       <tr key={input.code}>
                         <td data-label="Marker">{input.label}</td>
-                        <td data-label="Status">
-                          <span className={`biological-age-input-status is-${input.status}`}>
-                            {inputStatus(input)}
-                          </span>
-                        </td>
                         <td data-label="Current / selected value">{savedValue(input)}</td>
                         <td data-label="Required unit">{input.normalizedUnit}</td>
                         <td data-label="Blood test category">{inputCategories[input.code] ?? "Lab results"}</td>
-                        <td data-label="Action">
-                          {input.status === "used" ? "—" : (
+                        <td data-label="Status" className="biological-age-input-state">
+                          <span
+                            aria-label={inputStatus(input)}
+                            className={`biological-age-input-status is-${input.status}`}
+                          >
+                            {input.status === "used"
+                              ? <CheckCircle2 aria-hidden="true" size={18} />
+                              : <X aria-hidden="true" size={18} />}
+                          </span>
+                          {input.status !== "used" ? (
                             <a className="biological-age-add-result" href={addResultHref(input)}>
                               Add result
                             </a>
-                          )}
+                          ) : null}
                         </td>
                       </tr>
                     ))}

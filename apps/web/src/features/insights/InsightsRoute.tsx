@@ -98,7 +98,7 @@ export function InsightsRoute({
         });
       });
     return () => { cancelled = true; };
-  }, [tab, bootstrap?.profile.id]);
+  }, [tab, bootstrap?.profile.id, bootstrap?.profile.updatedAt]);
 
   async function submitQuery(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();

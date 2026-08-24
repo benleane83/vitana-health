@@ -30,6 +30,14 @@ describe("QueryPage", () => {
     expect(details).not.toHaveAttribute("open");
   });
 
+  it("shows the query plan and SQL without execution diagnostics", () => {
+    renderPage({ turns: [{ id: "turn-1", question: result.question, status: "answered", result }] });
+
+    expect(screen.getByText(/"intent": "aggregation"/)).toBeInTheDocument();
+    expect(screen.getByText("SELECT AVG(value) FROM observations")).toBeInTheDocument();
+    expect(screen.queryByText(/"attempts": 1/)).not.toBeInTheDocument();
+  });
+
   it("turns typed recovery suggestions into composer actions", () => {
     const onQuestionChange = vi.fn();
     renderPage({

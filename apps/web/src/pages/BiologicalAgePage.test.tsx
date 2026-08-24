@@ -48,14 +48,29 @@ describe("BiologicalAgePage", () => {
     expect(within(inputsHeading.parentElement!).getByText("Needs more data")).toBeInTheDocument();
     expect(screen.getByText("Missing or unusable (2): Albumin, White blood cell count.")).toBeInTheDocument();
 
+    const table = screen.getByRole("table");
+    expect(within(table).getAllByRole("columnheader").map((header) => header.textContent)).toEqual([
+      "Marker",
+      "Latest value",
+      "Required unit",
+      "Blood test category",
+      "Status"
+    ]);
+
     const albuminRow = screen.getByText("Albumin").closest("tr")!;
-    expect(within(albuminRow).getByText("Missing")).toBeInTheDocument();
+    expect(within(albuminRow).getByLabelText("Missing")).toBeInTheDocument();
+    expect(within(albuminRow).queryByText(/^Missing$/)).not.toBeInTheDocument();
     expect(within(albuminRow).getByText("No saved result found.")).toBeInTheDocument();
     expect(within(albuminRow).getByText("Liver function / metabolic panel")).toBeInTheDocument();
     expect(within(albuminRow).getByRole("link", { name: "Add result" })).toHaveAttribute(
       "href",
       "/import/manual?group=Lab&marker=albumin"
     );
+
+    const glucoseRow = screen.getByText("Glucose").closest("tr")!;
+    expect(within(glucoseRow).getByLabelText("Used")).toBeInTheDocument();
+    expect(within(glucoseRow).queryByText(/^Used$/)).not.toBeInTheDocument();
+    expect(within(glucoseRow).queryByRole("link", { name: "Add result" })).not.toBeInTheDocument();
 
     expect(screen.queryByText("Evidence readiness")).not.toBeInTheDocument();
     expect(screen.queryByText("Method reference")).not.toBeInTheDocument();

@@ -166,6 +166,7 @@ export function ManualEntryForm({
   onAddRow,
   onRemoveRow,
   onSubmit,
+  importConfirmation,
   units
 }: {
   busy: boolean;
@@ -182,6 +183,7 @@ export function ManualEntryForm({
   onAddRow: () => void;
   onRemoveRow: (id: string) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  importConfirmation?: string;
   units: UnitSystem;
 }) {
   const [customMeasurementRows, setCustomMeasurementRows] = useState<Record<string, true>>({});
@@ -280,7 +282,12 @@ export function ManualEntryForm({
 
       <div className="labs-actions">
         <button type="button" onClick={onAddRow}>Add row</button>
-        <button disabled={busy} type="submit">Import observations</button>
+        <div className="labs-submit-action">
+          <button disabled={busy} type="submit">Import observations</button>
+          {importConfirmation ? (
+            <p className="manual-import-confirmation" role="status" aria-atomic="true">{importConfirmation}</p>
+          ) : null}
+        </div>
       </div>
     </form>
   );

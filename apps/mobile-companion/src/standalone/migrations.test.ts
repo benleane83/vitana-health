@@ -80,6 +80,9 @@ describe("standalone schema migrations", () => {
     expect(careSql).toContain("CREATE TABLE health_events");
     expect(careSql).toContain("CREATE TABLE care_items");
     expect(careSql).toContain("care_items_filter_idx");
+    const statusSql = migrationSql(6);
+    expect(statusSql).toContain("SET status = 'cancelled'");
+    expect(statusSql).toContain("json_set(payload_json, '$.status', 'cancelled')");
   });
 
   it("evicts the replica cache from the durable database and never rebuilds it there", () => {

@@ -387,7 +387,7 @@ function createCareItems(asOf: Date): CareItem[] {
       dueStart: dueStart.toISOString(),
       reminderAt: new Date(dueStart.getTime() - reminderDays * DAY_MS).toISOString(),
       priority: index % 4 === 0 ? "high" : index % 3 === 0 ? "low" : "normal",
-      status: index === 8 ? "cancelled" : index === 9 ? "skipped" : "open",
+      status: index === 8 || index === 9 ? "cancelled" : "open",
       scheduleProvenance: "synthetic-test-profile",
       scheduleVersion: "1",
       notes: `Future synthetic care item generated as of ${asOf.toISOString().slice(0, 10)}.`

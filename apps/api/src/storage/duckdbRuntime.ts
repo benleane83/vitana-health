@@ -21,7 +21,7 @@ const markerName = ".vitana-duckdb-poc";
  * bumps the export format and may leave this alone. Backup/restore correctness depends on the
  * distinction — a restore validates the export format and is indifferent to the engine version.
  */
-const DB_SCHEMA_VERSION = 6;
+const DB_SCHEMA_VERSION = 7;
 
 export interface DuckDbOptions {
   httpfsExtensionPath?: string;
@@ -649,13 +649,21 @@ const careItemKindConsolidationSchemaSql = `
     (6, CURRENT_TIMESTAMP, 'Consolidated care item kinds');
 `;
 
+const careItemStatusConsolidationSchemaSql = `
+  UPDATE care_items SET status = 'cancelled' WHERE status = 'skipped';
+
+  INSERT OR IGNORE INTO poc_metadata VALUES
+    (7, CURRENT_TIMESTAMP, 'Consolidated skipped care item status');
+`;
+
 const schemaMigrations = [
   { version: 1, sql: baselineSchemaSql },
   { version: 2, sql: healthConnectSyncSchemaSql },
   { version: 3, sql: measurementAggregatesSchemaSql },
   { version: 4, sql: unlinkObsoleteHealthEventsSchemaSql },
   { version: 5, sql: healthEventKindConceptsSchemaSql },
-  { version: 6, sql: careItemKindConsolidationSchemaSql }
+  { version: 6, sql: careItemKindConsolidationSchemaSql },
+  { version: 7, sql: careItemStatusConsolidationSchemaSql }
 ] as const;
 
 const analyticalViewStatements = [
