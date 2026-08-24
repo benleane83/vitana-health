@@ -502,7 +502,7 @@ function buildCareItemsSql(
   if (!allowedIntents.includes(dsl.intent)) {
     return { error: `Source "care_items" supports list, count, and overdue intents.` };
   }
-  if (dsl.filters?.status && !["open", "completed", "cancelled", "skipped"].includes(dsl.filters.status)) {
+  if (dsl.filters?.status && !["open", "completed", "cancelled"].includes(dsl.filters.status)) {
     return { error: `Care item status "${dsl.filters.status}" is unsupported.` };
   }
   if (dsl.filters?.source || dsl.filters?.provider) {

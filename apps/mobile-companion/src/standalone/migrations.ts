@@ -253,6 +253,15 @@ export const migrations: readonly Migration[] = [
     CREATE INDEX care_items_filter_idx
       ON care_items(profile_id, status, kind, priority, due_start);
   `
+  },
+  {
+    version: 7,
+    sql: `
+    UPDATE care_items
+      SET status = 'cancelled',
+          payload_json = json_set(payload_json, '$.status', 'cancelled')
+      WHERE status = 'skipped';
+  `
   }
 ];
 
@@ -295,4 +304,3 @@ export const replicaResetSql = `
   DROP TABLE IF EXISTS connected_replica_entities;
   DROP TABLE IF EXISTS connected_replicas;
 `;
-

@@ -162,7 +162,26 @@ describe("persisted health store schema", () => {
       }
     });
 
-    expect(parsePersistedHealthStore(legacy).profile.setupStatus).toBe("complete");
+    const migrated = parsePersistedHealthStore(legacy);
+    expect(migrated.profile.setupStatus).toBe("complete");
+  });
+
+  it("migrates version 12 skipped care items to cancelled", () => {
+    const legacy = store({
+      schemaVersion: 12,
+      careItems: [{
+        id: "skipped-care-item",
+        kind: "visit",
+        title: "Legacy appointment",
+        priority: "normal",
+        status: "skipped"
+      }]
+    });
+
+    const migrated = parsePersistedHealthStore(legacy);
+    expect(migrated.careItems).toEqual([
+      expect.objectContaining({ id: "skipped-care-item", status: "cancelled" })
+    ]);
   });
 
   it("accepts base-only health event kinds without specialist payloads", () => {

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AiQueryResponse, AiQueryTurnContext, AppBootstrap, Profile } from "@vitana/shared";
+import type { AiQueryResponse, AiQueryTurnContext, AppBootstrap, BiologicalAgeReport, Profile } from "@vitana/shared";
 import { api } from "../../api.js";
 import { InsightsRoute } from "./InsightsRoute.js";
 
@@ -9,7 +9,8 @@ vi.mock("../../api.js", () => ({
     llm: { config: vi.fn() },
     query: { ai: vi.fn() },
     cloudAiConsent: { set: vi.fn() },
-    generateInsight: vi.fn()
+    generateInsight: vi.fn(),
+    biologicalAge: vi.fn()
   },
   ApiError: class ApiError extends Error {}
 }));
@@ -115,6 +116,45 @@ describe("InsightsRoute AI review", () => {
     await waitFor(() => expect(api.generateInsight).toHaveBeenCalledOnce());
     expect(screen.queryByRole("dialog", { name: /allow cloud ai insights/i })).not.toBeInTheDocument();
     expect(api.cloudAiConsent.set).not.toHaveBeenCalled();
+  });
+});
+
+describe("InsightsRoute Biological Age", () => {
+  it("recalculates when the saved profile revision changes", async () => {
+    vi.mocked(api.biologicalAge).mockResolvedValue({
+      generatedAt: "2026-08-24T13:14:33.369Z",
+      models: [],
+      disclaimer: "For wellbeing information only."
+    } as BiologicalAgeReport);
+    const { rerender } = render(
+      <InsightsRoute
+        tab="biological-age"
+        bootstrap={{ profile } as AppBootstrap}
+        onTabChange={vi.fn()}
+        onDataChanged={vi.fn().mockResolvedValue(undefined)}
+        onNotice={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(api.biologicalAge).toHaveBeenCalledOnce());
+
+    rerender(
+      <InsightsRoute
+        tab="biological-age"
+        bootstrap={{
+          profile: {
+            ...profile,
+            birthDate: "1990-01-01",
+            updatedAt: "2026-08-24T13:14:33.369Z"
+          }
+        } as AppBootstrap}
+        onTabChange={vi.fn()}
+        onDataChanged={vi.fn().mockResolvedValue(undefined)}
+        onNotice={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(api.biologicalAge).toHaveBeenCalledTimes(2));
   });
 });
 

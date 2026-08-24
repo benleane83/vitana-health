@@ -343,7 +343,7 @@ export const careItemSchema: z.ZodType<CareItem> = z.object({
   dueStart: isoTimestampSchema.optional(),
   reminderAt: isoTimestampSchema.optional(),
   priority: z.enum(["low", "normal", "high"]),
-  status: z.enum(["open", "completed", "cancelled", "skipped"]),
+  status: z.enum(["open", "completed", "cancelled"]),
   scheduleProvenance: z.string().optional(),
   scheduleVersion: z.string().optional(),
   notes: z.string().optional(),
@@ -493,7 +493,7 @@ export const careItemListQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
   search: optionalTrimmedString(120),
   kind: z.enum(careItemKindCodes).optional(),
-  status: z.enum(["open", "completed", "cancelled", "skipped"]).optional(),
+  status: z.enum(["open", "completed", "cancelled"]).optional(),
   priority: z.enum(["low", "normal", "high"]).optional(),
   dueFrom: isoTimestampSchema.optional(),
   dueTo: isoTimestampSchema.optional(),
@@ -595,7 +595,7 @@ export const createCareItemInputSchema = z.object({
   dueStart: isoTimestampSchema.optional(),
   reminderAt: isoTimestampSchema.optional(),
   priority: z.enum(["low", "normal", "high"]),
-  status: z.enum(["open", "completed", "cancelled", "skipped"]),
+  status: z.enum(["open", "completed", "cancelled"]),
   notes: optionalTrimmedString(4000)
 }).strict();
 export const updateCareItemInputSchema = createCareItemInputSchema;

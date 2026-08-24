@@ -269,7 +269,7 @@ export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamL
     <Card>
       <Text style={styles.title}>{healthEventKindLabels[entry.kind]}</Text>
       <Text style={styles.meta}>{formatDate(entry.occurredAt)}{entry.provider ? ` • ${entry.provider}` : ""}</Text>
-      <Text style={styles.meta}>{entry.status}{entry.notes ? ` • ${entry.notes}` : ""}</Text>
+      {entry.notes ? <Text style={styles.meta}>{entry.notes}</Text> : null}
       {canWrite ? <View style={styles.actions}><Button disabled={busy} secondary onPress={() => startEditHealthEvent(entry)}>Edit</Button><Button disabled={busy} secondary onPress={() => { void remove(entry.id); }}>Delete</Button></View> : null}
     </Card>
   ) : (
@@ -314,29 +314,29 @@ export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamL
             {feedback ? <Message title={feedback.tone === "success" ? "Care updated" : "Care error"} detail={feedback.detail} tone={feedback.tone} /> : null}
             {editorMode === "closed" ? (
               view === "items" ? (
-                <FormField label="Kind filter">
+                <FormField label="Type filter">
                   <View style={styles.pickerField}>
                     <Picker
-                      accessibilityLabel="Care item kind filter"
+                      accessibilityLabel="Care item type filter"
                       selectedValue={careItemKindFilter}
                       style={styles.picker}
                       onValueChange={(value) => setCareItemKindFilter(value as "" | CareItemKind)}
                     >
-                      <Picker.Item label="All kinds" value="" />
+                      <Picker.Item label="All types" value="" />
                       {careItemKindCodes.map((kind) => <Picker.Item key={kind} label={careItemKindLabels[kind]} value={kind} />)}
                     </Picker>
                   </View>
                 </FormField>
               ) : (
-                <FormField label="Kind filter">
+                <FormField label="Type filter">
                   <View style={styles.pickerField}>
                     <Picker
-                      accessibilityLabel="Health event kind filter"
+                      accessibilityLabel="Health event type filter"
                       selectedValue={healthEventKindFilter}
                       style={styles.picker}
                       onValueChange={(value) => setHealthEventKindFilter(value as "" | HealthEventKind)}
                     >
-                      <Picker.Item label="All kinds" value="" />
+                      <Picker.Item label="All types" value="" />
                       {healthEventKindCodes.map((kind) => <Picker.Item key={kind} label={healthEventKindLabels[kind]} value={kind} />)}
                     </Picker>
                   </View>
@@ -371,9 +371,9 @@ export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamL
                     value={completionDraft.occurredAt}
                   />
                 </FormField>
-                {items.find((entry) => entry.id === editingId)?.kind !== "monitoring" ? <FormField label="Kind">
+                {items.find((entry) => entry.id === editingId)?.kind !== "monitoring" ? <FormField label="Type">
                   <View style={styles.pickerField}>
-                    <Picker accessibilityLabel="Completion health event kind" enabled={!busy} selectedValue={completionDraft.kind} style={styles.picker} onValueChange={(value) => setCompletionDraft((current) => ({ ...current, kind: value as HealthEventKind }))}>
+                    <Picker accessibilityLabel="Completion health event type" enabled={!busy} selectedValue={completionDraft.kind} style={styles.picker} onValueChange={(value) => setCompletionDraft((current) => ({ ...current, kind: value as HealthEventKind }))}>
                       {healthEventKindCodes.map((kind) => <Picker.Item key={kind} label={healthEventKindLabels[kind]} value={kind} />)}
                     </Picker>
                   </View>
@@ -385,18 +385,10 @@ export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamL
               </>
             ) : view === "health-events" ? (
               <>
-                <FormField label="Kind">
+                <FormField label="Type">
                   <View style={styles.pickerField}>
-                    <Picker accessibilityLabel="Kind" selectedValue={healthEventDraft.kind} style={styles.picker} onValueChange={(value) => setHealthEventDraft((current) => ({ ...current, kind: value as CreateHealthEventInput["kind"] }))}>
+                    <Picker accessibilityLabel="Type" selectedValue={healthEventDraft.kind} style={styles.picker} onValueChange={(value) => setHealthEventDraft((current) => ({ ...current, kind: value as CreateHealthEventInput["kind"] }))}>
                       {healthEventKindCodes.map((kind) => <Picker.Item key={kind} label={healthEventKindLabels[kind]} value={kind} />)}
-                    </Picker>
-                  </View>
-                </FormField>
-                <FormField label="Status">
-                  <View style={styles.pickerField}>
-                    <Picker accessibilityLabel="Status" selectedValue={healthEventDraft.status} style={styles.picker} onValueChange={(value) => setHealthEventDraft((current) => ({ ...current, status: value as CreateHealthEventInput["status"] }))}>
-                      <Picker.Item label="Completed" value="completed" />
-                      <Picker.Item label="Entered in error" value="entered-in-error" />
                     </Picker>
                   </View>
                 </FormField>
@@ -420,9 +412,9 @@ export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamL
                 <FormField label="Title">
                   <TextInput accessibilityLabel="Title" placeholder="What needs care?" placeholderTextColor={colors.muted} style={styles.input} value={careItemDraft.title} onChangeText={(value) => setCareItemDraft((current) => ({ ...current, title: value }))} />
                 </FormField>
-                <FormField label="Kind">
+                <FormField label="Type">
                   <View style={styles.pickerField}>
-                    <Picker accessibilityLabel="Kind" selectedValue={careItemDraft.kind} style={styles.picker} onValueChange={(value) => setCareItemDraft((current) => ({ ...current, kind: value as CreateCareItemInput["kind"] }))}>
+                    <Picker accessibilityLabel="Type" selectedValue={careItemDraft.kind} style={styles.picker} onValueChange={(value) => setCareItemDraft((current) => ({ ...current, kind: value as CreateCareItemInput["kind"] }))}>
                       {careItemKindCodes.map((kind) => <Picker.Item key={kind} label={careItemKindLabels[kind]} value={kind} />)}
                     </Picker>
                   </View>
@@ -437,7 +429,6 @@ export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamL
                       <Picker accessibilityLabel="Status" selectedValue={careItemDraft.status} style={styles.picker} onValueChange={(value) => setCareItemDraft((current) => ({ ...current, status: value as CreateCareItemInput["status"] }))}>
                         <Picker.Item label="Open" value="open" />
                         <Picker.Item label="Cancelled" value="cancelled" />
-                        <Picker.Item label="Skipped" value="skipped" />
                       </Picker>
                     </View>
                   )}

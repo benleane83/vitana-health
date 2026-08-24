@@ -65,6 +65,7 @@ export function ManualImportFeature({
     );
   });
   const [saveDialog, setSaveDialog] = useState<{ groupName: string } | null>(null);
+  const [importConfirmation, setImportConfirmation] = useState<string>();
   const previousProfileId = useRef(activeProfileId);
   const pendingStoredGroup = useRef(bootstrap ? undefined : initialObservationGroup);
 
@@ -98,6 +99,7 @@ export function ManualImportFeature({
     if (previousProfileId.current !== activeProfileId) {
       previousProfileId.current = activeProfileId;
       pendingStoredGroup.current = undefined;
+      setImportConfirmation(undefined);
       if (requestedMeasurement) return;
       const restoredGroup = readStoredObservationGroup(activeProfileId) ?? "Activity";
       setObservationGroup(restoredGroup);
@@ -113,6 +115,7 @@ export function ManualImportFeature({
   }, [activeProfileId, bootstrap, groupTemplates, measurementTypes, observationGroup, requestedMeasurement, units]);
 
   function selectObservationGroup(label: string) {
+    setImportConfirmation(undefined);
     pendingStoredGroup.current = undefined;
     setObservationGroup(label);
     if (label !== customObservationGroupValue) {
@@ -122,6 +125,7 @@ export function ManualImportFeature({
   }
 
   function updateRow(id: string, patch: Partial<ManualMarkerRow>) {
+    setImportConfirmation(undefined);
     setRows((current) => current.map((row) => {
       if (row.id !== id) return row;
       const next = { ...row, ...patch };
@@ -151,6 +155,10 @@ export function ManualImportFeature({
       await api.importManualObservations(payload);
       await onImported();
       resetForm(groupName);
+      const observationCount = payload.observations.length;
+      setImportConfirmation(
+        `${observationCount} observation${observationCount === 1 ? "" : "s"} imported successfully.`
+      );
       onNotice("Manual observations imported.");
     } catch (error) {
       onNotice(error instanceof Error ? error.message : "Unexpected local error.");
@@ -179,16 +187,29 @@ export function ManualImportFeature({
         rows={rows}
         measurementTypes={allowedMeasurementTypes}
         onObservationGroupChange={selectObservationGroup}
-        onLabNameChange={setLabName}
-        onCollectedAtChange={setCollectedAt}
+        onLabNameChange={(value) => {
+          setImportConfirmation(undefined);
+          setLabName(value);
+        }}
+        onCollectedAtChange={(value) => {
+          setImportConfirmation(undefined);
+          setCollectedAt(value);
+        }}
         onRowChange={updateRow}
-        onAddRow={() => setRows((current) => [
-          ...current,
-          createNextMeasurementRow(current, allowedMeasurementTypes, units)
-        ])}
-        onRemoveRow={(id) => setRows((current) => current.length <= 1 ? current : current.filter((row) => row.id !== id))}
+        onAddRow={() => {
+          setImportConfirmation(undefined);
+          setRows((current) => [
+            ...current,
+            createNextMeasurementRow(current, allowedMeasurementTypes, units)
+          ]);
+        }}
+        onRemoveRow={(id) => {
+          setImportConfirmation(undefined);
+          setRows((current) => current.length <= 1 ? current : current.filter((row) => row.id !== id));
+        }}
         units={units}
         onSubmit={submit}
+        importConfirmation={importConfirmation}
       />
       {saveDialog ? (
         <ManualGroupSaveDialog

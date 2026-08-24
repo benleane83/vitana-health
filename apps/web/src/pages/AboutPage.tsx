@@ -9,7 +9,7 @@ export function AboutPage() {
             Health information has never been more available than it is today. Yet for most people, their health story is scattered across emails, printed reports, hospital portals, fitness apps, wearable devices, and handwritten notes.
           </p>
           <p>
-            A blood test result from three years ago sits in a PDF on a laptop. Body composition reports are tucked away in a folder. Fitness and sleep data live inside separate apps. Important health events are forgotten over time. Preventive care appointments and check-ups are recorded in calendars that rarely tell the full story.
+            A lab test result from three years ago sits in a PDF on a laptop. Body composition reports are tucked away in a physical folder. Fitness and sleep data live inside separate apps. Important health events are forgotten over time. Preventive care appointments and check-ups are recorded in calendars that rarely tell the full story.
           </p>
           <p>Vitana was created to change that.</p>
         </div>
@@ -33,8 +33,16 @@ export function AboutPage() {
           <p>Vitana is designed to centralize the most important aspects of your health and wellbeing.</p>
 
           <div className="about-page__capabilities">
-            <section className="about-page__capability" aria-labelledby="blood-test-results">
-              <h3 id="blood-test-results">Blood Test Results</h3>
+            <section className="about-page__capability" aria-labelledby="lab-test-results">
+              <img
+                className="about-page__capability-image"
+                src="/images/about/lab-results.png"
+                alt="Illustration of a laboratory test report and blood sample"
+                width={512}
+                height={512}
+                loading="lazy"
+              />
+              <h3 id="lab-test-results">Lab Test Results</h3>
               <p>Import laboratory results from healthcare providers or enter them manually.</p>
               <p>
                 Track health markers over time, compare results across years, identify trends, and build a long-term record of your health. If a specific metric isn't already available, you can create and track your own custom measurements.
@@ -43,22 +51,38 @@ export function AboutPage() {
             </section>
 
             <section className="about-page__capability" aria-labelledby="activity-sleep-fitness">
-              <h3 id="activity-sleep-fitness">Activity, Sleep and Fitness Data</h3>
+              <img
+                className="about-page__capability-image"
+                src="/images/about/activity-fitness-sleep.png"
+                alt="Illustration of a person running"
+                width={512}
+                height={512}
+                loading="lazy"
+              />
+              <h3 id="activity-sleep-fitness">Activity, Fitness and Sleep Data</h3>
               <p>
-                Vitana connects with Health Connect and integrates data from many popular health devices and platforms, including smart watches, fitness trackers, and wearable health technology.
+                Vitana connects with your mobile phone via Health Connect and integrates data from many popular health devices and platforms, including smart watches, fitness trackers, and wearable health technology.
               </p>
               <p>Monitor:</p>
               <ul>
                 <li>Activity levels</li>
-                <li>Sleep patterns</li>
                 <li>Exercise trends</li>
                 <li>Heart and wellness metrics</li>
+                <li>Sleep patterns</li>
                 <li>Other connected health data</li>
               </ul>
               <p>Rather than viewing this information in separate applications, Vitana unifies it within your personal health profile.</p>
             </section>
 
             <section className="about-page__capability" aria-labelledby="body-composition-tracking">
+              <img
+                className="about-page__capability-image"
+                src="/images/about/body-composition.png"
+                alt="Illustration of body composition measurements"
+                width={512}
+                height={512}
+                loading="lazy"
+              />
               <h3 id="body-composition-tracking">Body Composition Tracking</h3>
               <p>
                 Whether your data comes from a digital smart scale at home or professional body composition assessments at a gym or clinic, Vitana helps you maintain a complete history.

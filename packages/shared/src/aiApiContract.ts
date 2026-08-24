@@ -15,7 +15,7 @@ export type HealthResponse = z.infer<typeof healthResponseSchema>;
 
 export const aiQueryContextFiltersSchema = z.object({
   kind: z.string().trim().min(1).max(80).optional(),
-  status: z.enum(["completed", "entered-in-error", "open", "cancelled", "skipped"]).optional(),
+  status: z.enum(["completed", "entered-in-error", "open", "cancelled"]).optional(),
   source: z.enum([
     "health-connect",
     "manual-entry",

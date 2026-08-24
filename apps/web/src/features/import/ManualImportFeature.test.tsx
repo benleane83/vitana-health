@@ -227,6 +227,11 @@ describe("ManualImportFeature", () => {
     expect(screen.getByLabelText("Observation group")).toHaveValue("Body");
     expect(screen.getByLabelText("Row 1 value")).toHaveValue("");
     expect(screen.getByLabelText("Row 1: select known measurement")).toHaveValue("Weight");
+    expect(screen.getByRole("status")).toHaveTextContent("1 observation imported successfully.");
+
+    fireEvent.change(screen.getByLabelText("Row 1 value"), { target: { value: "81" } });
+
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
   it("falls back cleanly when localStorage is unavailable", () => {

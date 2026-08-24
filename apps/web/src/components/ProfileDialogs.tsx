@@ -260,7 +260,7 @@ export function ProfileEditDialog({
           </>
         ) : null}
 
-        <label htmlFor="profile-goalSummary" className="wide">Goals</label>
+        <label htmlFor="profile-goalSummary" className="wide">Current goals</label>
         <textarea
           id="profile-goalSummary"
           name="goalSummary"

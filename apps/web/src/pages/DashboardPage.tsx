@@ -58,7 +58,7 @@ export function DashboardPage({
             <div><dt>Blood type</dt><dd>{formatBloodType(profile?.bloodType)}</dd></div>
           </dl>
           <div className="profile-goals">
-            <span>Current focus</span>
+            <span>Current goals</span>
             <p>{profile?.goalSummary || "No focus set"}</p>
           </div>
         </article>

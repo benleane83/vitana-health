@@ -13,6 +13,14 @@ const openCareItem = {
   dueStart: "2026-08-18T14:00:00.000Z"
 };
 
+const healthEvent = {
+  id: "event-1",
+  kind: "visit" as const,
+  status: "completed" as const,
+  occurredAt: "2026-08-18T14:00:00.000Z",
+  source: "manual-entry" as const
+};
+
 beforeEach(() => {
   vi.spyOn(api.care, "listCareItems").mockResolvedValue({
     items: [openCareItem],
@@ -76,6 +84,31 @@ describe("CareRoute", () => {
     expect(screen.getByRole("button", { name: "Add care item" })).toBeEnabled();
   });
 
+  it("keeps Care Item creation available while editing a Health Event", async () => {
+    vi.mocked(api.care.listHealthEvents).mockResolvedValue({ items: [healthEvent], total: 1, offset: 0, limit: 20, hasMore: false });
+    const props = { activeProfileId: "self", onViewChange: vi.fn(), onDataChanged: vi.fn().mockResolvedValue(undefined), onNotice: vi.fn(), confirm: vi.fn() };
+    const { rerender } = render(<CareRoute {...props} view="health-events" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Edit Visit or consultation recorded/ }));
+    expect(screen.getByRole("button", { name: "Add health event" })).toBeDisabled();
+
+    rerender(<CareRoute {...props} view="items" />);
+
+    expect(await screen.findByRole("button", { name: "Add care item" })).toBeEnabled();
+  });
+
+  it("keeps Health Event creation available while editing a Care Item", async () => {
+    const props = { activeProfileId: "self", onViewChange: vi.fn(), onDataChanged: vi.fn().mockResolvedValue(undefined), onNotice: vi.fn(), confirm: vi.fn() };
+    const { rerender } = render(<CareRoute {...props} view="items" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Edit Annual check-up" }));
+    expect(screen.getByRole("button", { name: "Add care item" })).toBeDisabled();
+
+    rerender(<CareRoute {...props} view="health-events" />);
+
+    expect(await screen.findByRole("button", { name: "Add health event" })).toBeEnabled();
+  });
+
   it("guides an empty Care view into the real creation workflow", async () => {
     vi.mocked(api.care.listCareItems).mockResolvedValue({ items: [], total: 0, offset: 0, limit: 20, hasMore: false });
 
@@ -102,13 +135,13 @@ describe("CareRoute", () => {
 
     render(<CareRoute view="items" activeProfileId="self" onViewChange={vi.fn()} onDataChanged={vi.fn().mockResolvedValue(undefined)} onNotice={vi.fn()} confirm={vi.fn()} />);
     await screen.findByText("Annual check-up");
-    fireEvent.change(screen.getByLabelText("Filter care item kind"), { target: { value: "visit" } });
+    fireEvent.change(screen.getByLabelText("Filter care item type"), { target: { value: "visit" } });
     fireEvent.click(screen.getByRole("button", { name: "Apply" }));
 
     expect(await screen.findByRole("heading", { name: "No matches found" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
     expect(await screen.findByText("Annual check-up")).toBeInTheDocument();
-    expect(screen.getByLabelText("Filter care item kind")).toHaveValue("");
+    expect(screen.getByLabelText("Filter care item type")).toHaveValue("");
   });
 
   it("filters by care kind and completes an open item through the review panel", async () => {
@@ -123,13 +156,13 @@ describe("CareRoute", () => {
     render(<CareRoute view="items" activeProfileId="self" onViewChange={vi.fn()} onDataChanged={onDataChanged} onNotice={onNotice} confirm={vi.fn()} />);
 
     expect(await screen.findByText("Plan and track appointments, follow-ups, and other care that still needs attention.")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Filter care item kind"), { target: { value: "visit" } });
+    fireEvent.change(screen.getByLabelText("Filter care item type"), { target: { value: "visit" } });
     fireEvent.click(screen.getByRole("button", { name: "Apply" }));
     await waitFor(() => expect(api.care.listCareItems).toHaveBeenLastCalledWith(expect.objectContaining({ kind: "visit" })));
 
     fireEvent.click(screen.getByRole("button", { name: "Complete" }));
     expect(screen.getByRole("heading", { name: "Complete Annual check-up" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Kind")).toHaveValue("visit");
+    expect(screen.getByLabelText("Type")).toHaveValue("visit");
     expect(screen.getByLabelText("Date")).toHaveAttribute("type", "date");
     expect((screen.getByLabelText("Date") as HTMLInputElement).value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -153,7 +186,7 @@ describe("CareRoute", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Complete" }));
     expect(screen.getByText("Record when this monitoring item was completed.")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Kind")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Type")).not.toBeInTheDocument();
 
     fireEvent.submit(screen.getByRole("button", { name: "Complete care item" }).closest("form")!);
     await waitFor(() => expect(complete).toHaveBeenCalledWith("care-monitoring", expect.objectContaining({ kind: undefined })));
@@ -175,6 +208,7 @@ describe("CareRoute", () => {
     expect(screen.queryByLabelText(/originating event/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/completion event/i)).not.toBeInTheDocument();
     expect(within(screen.getByLabelText("Status")).queryByRole("option", { name: "Completed" })).not.toBeInTheDocument();
+    expect(within(screen.getByLabelText("Status")).queryByRole("option", { name: "Skipped" })).not.toBeInTheDocument();
 
     const oneDay = screen.getByRole("button", { name: "1 day before" });
     expect(oneDay).toBeDisabled();
@@ -196,6 +230,9 @@ describe("CareRoute", () => {
     await screen.findByText("Record care, symptoms, tests, treatments, and other health moments that have already happened.");
     fireEvent.click(screen.getByRole("button", { name: "Add health event" }));
 
+    expect(screen.getByLabelText("Type")).toHaveValue("other");
+    expect(screen.queryByLabelText("Status")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Filter health event status")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Date")).toHaveAttribute("type", "date");
     expect((screen.getByLabelText("Date") as HTMLInputElement).value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });

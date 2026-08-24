@@ -166,6 +166,33 @@ textarea {
   backdrop-filter: blur(8px);
 }
 
+@media (min-width: 681px) {
+  .shell {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    min-height: 0;
+    padding-bottom: 0;
+  }
+
+  .shell-navigation {
+    flex: 0 0 auto;
+  }
+
+  .route-nav {
+    position: static;
+    background: var(--surface);
+  }
+
+  .shell-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    padding-bottom: var(--space-12);
+  }
+}
+
 .vitana-brand {
   display: flex;
   align-items: center;
@@ -383,8 +410,16 @@ textarea {
   background: var(--surface);
 }
 
+.about-page__capability-image {
+  display: block;
+  width: min(100%, 220px);
+  height: auto;
+  justify-self: center;
+  border-radius: 50%;
+}
+
 .about-page__vision {
-  padding: var(--space-6);
+  padding: var(--space-6) 0;
   border-radius: var(--radius-lg);
   background: color-mix(in srgb, var(--primary) 8%, var(--surface));
 }
@@ -404,7 +439,7 @@ textarea {
 @media (max-width: 620px) {
   .about-page__hero,
   .about-page__vision {
-    padding: var(--space-5);
+    padding: var(--space-5) 0;
   }
 }
 
@@ -1409,10 +1444,14 @@ h3 {
   color: var(--muted);
 }
 
-.biological-age-research-link,
-.biological-age-add-result {
+.biological-age-research-link {
   width: fit-content;
   font-weight: 800;
+}
+
+.biological-age-add-result {
+  color: color-mix(in srgb, var(--primary) 62%, var(--muted));
+  font-weight: 600;
 }
 
 .biological-age-readiness {
@@ -1515,21 +1554,24 @@ h3 {
 
 .biological-age-input-status {
   display: inline-flex;
-  border-radius: var(--radius-pill);
-  padding: var(--space-1) var(--space-2);
-  font-size: 0.82rem;
-  font-weight: 800;
+  align-items: center;
+  justify-content: center;
 }
 
 .biological-age-input-status.is-used {
-  background: var(--success-soft);
   color: var(--success-strong);
 }
 
 .biological-age-input-status.is-missing,
 .biological-age-input-status.is-invalid {
-  background: color-mix(in srgb, var(--danger) 14%, transparent);
   color: color-mix(in srgb, var(--danger) 72%, black);
+}
+
+.biological-age-input-state {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
 }
 
 .summary-detail-header {
@@ -2771,6 +2813,20 @@ h3 {
   display: flex;
   justify-content: space-between;
   gap: var(--space-3);
+}
+
+.labs-submit-action {
+  display: grid;
+  justify-items: end;
+  gap: var(--space-1);
+}
+
+.manual-import-confirmation {
+  margin: 0;
+  color: var(--success-strong);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-align: right;
 }
 
 .bodycomp-import,

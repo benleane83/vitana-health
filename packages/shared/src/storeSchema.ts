@@ -12,7 +12,7 @@ import type { HealthStoreData, InsightModel } from "./types.js";
  * layout alone. Confusing them breaks backup/restore, which reads and writes this format and has
  * no knowledge of the storage engine that produced it.
  */
-export const EXPORT_FORMAT_VERSION = 12 as const;
+export const EXPORT_FORMAT_VERSION = 13 as const;
 
 export const sourceKindSchema = z.enum([
   "health-connect", "manual-entry", "blood-test-csv", "observation-csv", "structured-upload",
@@ -188,7 +188,7 @@ export const persistedHealthEventSchema = healthEventObjectSchema.superRefine((v
 export const persistedCareItemSchema = z.object({
   id: z.string(), kind: z.string().transform(normalizedCareItemKind), code: z.string().optional(), title: z.string(), dueStart: z.string().optional(),
   reminderAt: z.string().optional(), priority: z.enum(["low", "normal", "high"]),
-  status: z.enum(["open", "completed", "cancelled", "skipped"]), scheduleProvenance: z.string().optional(),
+  status: z.enum(["open", "completed", "cancelled"]), scheduleProvenance: z.string().optional(),
   scheduleVersion: z.string().optional(), notes: z.string().optional(),
   completedHealthEventId: z.string().optional(), completedAt: z.string().optional(),
   completedHealthEvent: z.object({
@@ -274,23 +274,44 @@ function migrateVersionElevenHealthStore(data: unknown): unknown {
   const store = versionElevenHealthStoreSchema.parse(data);
   return {
     ...store,
-    schemaVersion: EXPORT_FORMAT_VERSION,
+    schemaVersion: 12,
     profile: { ...store.profile, setupStatus: "complete" }
   };
 }
 
+const versionTwelveHealthStoreSchema = z.object({
+  schemaVersion: z.literal(12),
+  careItems: z.array(z.object({ status: z.string().optional() }).passthrough()).default([])
+}).passthrough();
+
+function migrateVersionTwelveHealthStore(data: unknown): unknown {
+  const store = versionTwelveHealthStoreSchema.parse(data);
+  return {
+    ...store,
+    schemaVersion: EXPORT_FORMAT_VERSION,
+    careItems: store.careItems.map((item) => ({
+      ...item,
+      status: item.status === "skipped" ? "cancelled" : item.status
+    }))
+  };
+}
+
 /**
- * Reads the current persisted shape plus the two preceding development formats needed by local
- * profiles. Version 9 first migrates Health Events, then version 10 migrates Care Item kinds.
+ * Reads the current persisted shape plus the three preceding development formats needed by local
+ * profiles. Version 9 first migrates Health Events, version 10 migrates Care Item kinds, version
+ * 11 adds profile setup state, and version 12 consolidates skipped Care Item statuses.
  */
 export function parsePersistedHealthStore(data: unknown): HealthStoreData {
   const version = z.object({ schemaVersion: z.number().int() }).passthrough().parse(data).schemaVersion;
   const versionTenData = version === 9 ? migrateVersionNineHealthStore(data) : data;
   const versionElevenData = version === 9 || version === 10 ? migrateVersionTenHealthStore(versionTenData) : data;
-  const currentData = version === 9 || version === 10 || version === 11
+  const versionTwelveData = version === 9 || version === 10 || version === 11
     ? migrateVersionElevenHealthStore(versionElevenData)
     : data;
-  if (![9, 10, 11, EXPORT_FORMAT_VERSION].includes(version)) {
+  const currentData = version === 9 || version === 10 || version === 11 || version === 12
+    ? migrateVersionTwelveHealthStore(versionTwelveData)
+    : data;
+  if (![9, 10, 11, 12, EXPORT_FORMAT_VERSION].includes(version)) {
     throw new Error(`Unsupported health store schema version ${version}.`);
   }
   return healthStoreDataSchema.parse(currentData) as HealthStoreData;
