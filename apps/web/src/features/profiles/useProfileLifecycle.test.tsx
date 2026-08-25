@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useProfileLifecycle } from "./useProfileLifecycle.js";
 import { api } from "../../api.js";
@@ -67,5 +67,26 @@ describe("useProfileLifecycle", () => {
     expect(signals).toHaveLength(2);
     expect(signals[0]?.aborted).toBe(true);
     expect(signals[1]?.aborted).toBe(false);
+  });
+
+  it("switches profiles without showing a success notification", async () => {
+    vi.spyOn(api, "bootstrap").mockResolvedValue(bootstrapFor("profile-b"));
+    vi.spyOn(api, "analytics").mockResolvedValue({} as never);
+    vi.spyOn(api.profiles, "list")
+      .mockResolvedValueOnce({ profiles: [], activeProfileId: "profile-a" } as never)
+      .mockResolvedValue({ profiles: [], activeProfileId: "profile-b" } as never);
+    const setActive = vi.spyOn(api.profiles, "setActive").mockResolvedValue(undefined as never);
+    vi.spyOn(api.entitlement, "get").mockResolvedValue({ tier: "free", source: null, overridden: false });
+    const onNotice = vi.fn();
+
+    const { result } = renderHook(() => useProfileLifecycle(onNotice, async () => true));
+    await waitFor(() => expect(result.current.activeProfileId).toBe("profile-a"));
+
+    await act(async () => {
+      expect(await result.current.switchProfile("profile-b")).toBe(true);
+    });
+
+    expect(setActive).toHaveBeenCalledWith("profile-b");
+    expect(onNotice).not.toHaveBeenCalled();
   });
 });

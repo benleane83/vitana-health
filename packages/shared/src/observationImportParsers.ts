@@ -178,7 +178,8 @@ export function buildManualObservationImport(
   payload: ManualObservationPayload,
   importedAt = new Date().toISOString(),
   groupKind: ObservationGroup["kind"] = manualObservationGroupKind(payload.label),
-  units: UnitSystem = "metric"
+  units: UnitSystem = "metric",
+  options: { persistDefaultNote?: boolean } = {}
 ): ParsedImport {
   const diagnostics: ImportDiagnostic[] = [];
   const panelName = payload.label.trim() || "Manual observations";
@@ -219,16 +220,17 @@ export function buildManualObservationImport(
     const displayName = markerName || measurementType?.display || markerCode || "Manual marker";
     const measurementCode = measurementType?.code || markerCode || fallbackMeasurementCode(displayName);
     const unit = row.unit?.trim() || (measurementType ? getPreferredUnit(measurementType, units) : "unknown");
-    const note = row.note?.trim() || "Manual import";
+    const note = row.note?.trim() || (options.persistDefaultNote === false ? undefined : "Manual import");
+    const noteIdentity = note ?? "Manual import";
     observations.push({
-      id: stableId("obs", ["manual-entry", sourceChecksum, measurementCode, String(value), unit, note]),
+      id: stableId("obs", ["manual-entry", sourceChecksum, measurementCode, String(value), unit, noteIdentity]),
       measurementCode,
       observedAt: collectedAt,
       value,
       unit,
       sourceId,
       observationGroupId: groupId,
-      note,
+      ...(note ? { note } : {}),
       sourceJson: {
         ...(row.measurementName !== undefined ? { measurementName: row.measurementName } : {}),
         ...(row.measurementCode !== undefined ? { measurementCode: row.measurementCode } : {}),

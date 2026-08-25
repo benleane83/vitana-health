@@ -224,7 +224,7 @@ export function DashboardScreen() {
         <View style={styles.recordsSection}>
           <View style={styles.recordsTitleRow}>
             <Database color={colors.muted} size={17} />
-            <Text style={styles.recordsTitle}>Profile summary</Text>
+            <Text style={styles.recordsTitle}>Summary</Text>
           </View>
           <View accessibilityLabel="Stored health data totals" style={styles.countRow}>
             {[

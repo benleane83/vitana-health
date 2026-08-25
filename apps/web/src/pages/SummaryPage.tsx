@@ -88,6 +88,7 @@ function renderEntryContext(entry: HealthDataDetailEntry): string {
   }
   const importFileName = entry.importFileName?.trim();
   const note = entry.note?.trim();
+  const isGenericManualImportNote = note === "Manual import" && entry.sourceKind !== "manual-entry";
   const parts: string[] = [];
 
   if (sourceLabel) {
@@ -104,7 +105,7 @@ function renderEntryContext(entry: HealthDataDetailEntry): string {
     }
   }
 
-  if (note && !(entry.sourceKind === "health-connect" && isTransferWindow(note))) {
+  if (note && !isGenericManualImportNote && !(entry.sourceKind === "health-connect" && isTransferWindow(note))) {
     const normalizedNote = normalizeContextToken(note);
     const duplicatesExisting = parts.some((part) => normalizeContextToken(part) === normalizedNote);
     if (!duplicatesExisting) {

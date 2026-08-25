@@ -215,7 +215,7 @@ describe("DashboardRoute upcoming care", () => {
     renderDashboard();
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Upcoming care could not be loaded.");
-    expect(screen.getByRole("heading", { name: "Profile context" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Profile" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
 
     await waitFor(() => expect(listCareItems).toHaveBeenCalledTimes(2));

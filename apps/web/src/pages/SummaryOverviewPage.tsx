@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { compareSummaryRows } from "@vitana/shared";
 import type { HealthDataSummary } from "@vitana/shared";
 import { formatTimestamp } from "../utils.js";
-import { profileDataCategories, type ProfileDataCategory, type SummarySort } from "../types.js";
+import { isProfileDataCategory, profileDataCategories, profileDataCategoryIconPaths, type ProfileDataCategory, type SummarySort } from "../types.js";
 
 function Stat({ label, value, onClick }: { label: string; value: number; onClick?: () => void }) {
   if (onClick) {
@@ -136,6 +136,7 @@ export function SummaryPage({
               const panelId = `summary-panel-${category.key}`;
               const toggleId = `summary-toggle-${category.key}`;
               const categoryConfig = profileDataCategories.find((item) => item.key === category.key);
+              const iconPath = isProfileDataCategory(category.key) ? profileDataCategoryIconPaths[category.key] : undefined;
               const canImport = categoryConfig?.manualGroup && categoryConfig.uploadKind;
               return (
                 <section className="summary-category" key={category.key}>
@@ -147,8 +148,11 @@ export function SummaryPage({
                       aria-controls={panelId}
                       onClick={() => onToggleCategory(category.key)}
                     >
-                      <strong>{category.label}</strong>
-                      <span>{category.counts.types} types / {category.counts.total} entries</span>
+                      <span className="summary-category-title">
+                        {iconPath ? <img src={iconPath} alt="" aria-hidden="true" /> : null}
+                        <strong>{category.label}</strong>
+                      </span>
+                      <span className="summary-category-counts">{category.counts.types} types / {category.counts.total} entries</span>
                     </button>
                     {canImport && categoryConfig ? (
                       <div className="summary-category-add" ref={openAddMenu === categoryConfig.key ? addMenuRef : undefined}>
