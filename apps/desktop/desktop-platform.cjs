@@ -31,11 +31,12 @@ function createDesktopPlatformCapabilities({
   homeDirectory = undefined,
   fileSystem = undefined
 }) {
+  const platformPath = platform === "win32" ? path.win32 : path;
   if (platform === "win32") {
     return {
       backgroundSupported: true,
       startupRegistration: electronLoginRegistration(app, executablePath),
-      trayIconPath: resolveTrayIconPath(app, resourcesPath, "ico")
+      trayIconPath: resolveTrayIconPath(app, resourcesPath, "ico", platformPath)
     };
   }
   if (platform === "linux") {
@@ -47,19 +48,19 @@ function createDesktopPlatformCapabilities({
         homeDirectory,
         fileSystem
       }),
-      trayIconPath: resolveTrayIconPath(app, resourcesPath, "png")
+      trayIconPath: resolveTrayIconPath(app, resourcesPath, "png", platformPath)
     };
   }
   return {
     backgroundSupported: false,
     startupRegistration: { setEnabled() {} },
-    trayIconPath: resolveTrayIconPath(app, resourcesPath, "png")
+    trayIconPath: resolveTrayIconPath(app, resourcesPath, "png", platformPath)
   };
 }
 
-function resolveTrayIconPath(app, resourcesPath, extension) {
-  if (app.isPackaged && resourcesPath) return path.join(resourcesPath, `tray-icon.${extension}`);
-  return path.join(__dirname, "build", `tray-icon.${extension}`);
+function resolveTrayIconPath(app, resourcesPath, extension, pathImplementation = path) {
+  if (app.isPackaged && resourcesPath) return pathImplementation.join(resourcesPath, `tray-icon.${extension}`);
+  return pathImplementation.join(__dirname, "build", `tray-icon.${extension}`);
 }
 
 module.exports = { createDesktopPlatformCapabilities, electronLoginRegistration, isSupportedGnomeSession };
