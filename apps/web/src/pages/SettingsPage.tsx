@@ -192,7 +192,7 @@ function AppSettingsPanel({ confirm }: { confirm: ConfirmAction }) {
           <label className="settings-switch">
             <span>
               <strong id="background-service-heading">Keep the service running in the background</strong>
-              <small>Keep mobile sync available after closing the window and start the service at login.</small>
+              <span className="empty">Keep mobile sync available after closing the window and start the service at login.</span>
             </span>
             <input
               type="checkbox"

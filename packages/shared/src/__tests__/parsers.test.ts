@@ -413,8 +413,25 @@ describe("buildBloodTestImportFromDraft", () => {
     expect(result.observationGroups).toEqual([expect.objectContaining({ kind: "lab_panel", label: "Lab" })]);
     expect(result.observations[0].observationGroupId).toBe(result.observationGroups[0].id);
     expect(result.observations[0].observedAt).toBe("2026-06-15T00:00:00.000Z");
+    expect(result.observations[0]).not.toHaveProperty("note");
     expect(result.dataSource.label).toBe("Blood test report: scanned from phone");
     expect(result.sourceImport.fileName).toBe("results.pdf");
+  });
+
+  it("preserves the fallback-based observation identity without persisting its note", () => {
+    const importedAt = "2026-06-15T12:00:00.000Z";
+    const bloodTestImport = buildBloodTestImportFromDraft({
+      fileName: "results.pdf", reportDate: "2026-06-15", sourceChecksum: "results",
+      rows: [{ id: "iron", label: "Iron", measurementCode: "iron", displayName: "Iron", value: 13.7, unit: "µmol/L", confidence: "high", included: true }]
+    }, importedAt);
+    const manualImport = buildManualObservationImport({
+      observedAt: "2026-06-15",
+      label: "Lab",
+      observations: [{ measurementName: "Iron", measurementCode: "iron", value: 13.7, unit: "µmol/L" }]
+    }, importedAt, "lab_panel");
+
+    expect(bloodTestImport.observations[0]).not.toHaveProperty("note");
+    expect(bloodTestImport.observations[0].id).toBe(manualImport.observations[0].id);
   });
 
   it("includes legacy rows unless they were explicitly excluded", () => {

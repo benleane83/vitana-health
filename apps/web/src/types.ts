@@ -27,6 +27,13 @@ export const profileDataCategories: readonly ProfileDataCategoryConfig[] = [
   { key: "sleep", label: "Sleep" }
 ];
 
+export const profileDataCategoryIconPaths: Record<ProfileDataCategory, string> = {
+  activity: "/images/profile-navigation/activity.png",
+  body: "/images/profile-navigation/body-composition.png",
+  lab: "/images/profile-navigation/lab-results.png",
+  sleep: "/images/profile-navigation/sleep.png"
+};
+
 export function isProfileDataCategory(value: string | null): value is ProfileDataCategory {
   return profileDataCategories.some((category) => category.key === value);
 }

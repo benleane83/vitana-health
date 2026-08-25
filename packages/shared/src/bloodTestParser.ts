@@ -112,7 +112,7 @@ export function buildBloodTestImportFromDraft(payload: BloodTestDraftCommitPaylo
       value: Number(row.value),
       unit: row.unit
     }))
-  }, importedAt, "lab_panel");
+  }, importedAt, "lab_panel", "metric", { persistDefaultNote: false });
   imported.sourceImport.sourceKind = "blood-test-report";
   imported.sourceImport.fileName = payload.fileName;
   imported.sourceImport.parserVersion = "blood-test-report-v1";

@@ -114,4 +114,10 @@ describe("desktop update settings", () => {
     );
     expect(await screen.findByText("Reset 108 measurement types.")).toBeInTheDocument();
   });
+
+  it("uses the shared muted paragraph treatment for the background service description", async () => {
+    render(<SettingsPage view="app" onViewChange={() => {}} confirm={vi.fn()} />);
+
+    expect(await screen.findByText(/Keep mobile sync available after closing the window/i)).toHaveClass("empty");
+  });
 });

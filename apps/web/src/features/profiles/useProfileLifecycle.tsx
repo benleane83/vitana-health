@@ -69,11 +69,11 @@ export function useProfileLifecycle(onNotice: (message: string) => void, confirm
     }
   }
 
-  async function run(success: string, task: () => Promise<void>): Promise<boolean> {
+  async function run(success: string | undefined, task: () => Promise<void>): Promise<boolean> {
     setUi((current) => ({ ...current, busy: true }));
     try {
       await task();
-      onNotice(success);
+      if (success) onNotice(success);
       return true;
     } catch (error) {
       onNotice(error instanceof Error ? error.message : "Unexpected local error.");
@@ -112,7 +112,7 @@ export function useProfileLifecycle(onNotice: (message: string) => void, confirm
       setUi((current) => ({ ...current, managerOpen: false }));
       return false;
     }
-    return run("Profile switched.", async () => {
+    return run(undefined, async () => {
       await api.profiles.setActive(profileId);
       await refresh();
       setUi((current) => ({ ...current, managerOpen: false }));
@@ -121,7 +121,7 @@ export function useProfileLifecycle(onNotice: (message: string) => void, confirm
 
   async function editProfile(profileId: string) {
     if (profileId !== snapshot.activeProfileId) {
-      const switched = await run("Profile switched.", async () => {
+      const switched = await run(undefined, async () => {
         await api.profiles.setActive(profileId);
         await refresh();
       });

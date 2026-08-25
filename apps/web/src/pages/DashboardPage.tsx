@@ -3,14 +3,7 @@ import type { AnalyticsSummary, CareItem, HealthDataSummary, Profile } from "@vi
 import { AlertTriangle, CalendarClock, CheckCircle2, ChevronRight, Pin } from "lucide-react";
 import { MiniChart } from "../components/Charts.js";
 import { formatBloodType, formatDetailValue, formatProfileSex, formatProfileType, formatShortTimestamp } from "../utils.js";
-import { profileDataCategories, type ProfileDataCategory } from "../types.js";
-
-const categoryIconPaths: Record<ProfileDataCategory, string> = {
-  activity: "/images/profile-navigation/activity.png",
-  body: "/images/profile-navigation/body-composition.png",
-  lab: "/images/profile-navigation/lab-results.png",
-  sleep: "/images/profile-navigation/sleep.png"
-};
+import { profileDataCategories, profileDataCategoryIconPaths, type ProfileDataCategory } from "../types.js";
 
 export function DashboardPage({
   analytics,
@@ -46,7 +39,7 @@ export function DashboardPage({
       <section className="dashboard-workspace">
         <article className="dashboard-profile">
           <div className="panel-heading-row">
-            <h2>Profile context</h2>
+            <h2>Profile</h2>
             <div className="profile-toolbar">
               <button className="profile-edit-button" type="button" onClick={onEditProfile}>Edit</button>
             </div>
@@ -58,17 +51,17 @@ export function DashboardPage({
             <div><dt>Blood type</dt><dd>{formatBloodType(profile?.bloodType)}</dd></div>
           </dl>
           <div className="profile-goals">
-            <span>Current goals</span>
+            <span>Goals</span>
             <p>{profile?.goalSummary || "No focus set"}</p>
           </div>
         </article>
 
         <article className="dashboard-profile-summary">
-          <h2>Profile summary</h2>
+          <h2>Summary</h2>
           {summaryError ? <p className="dashboard-summary-error" role="alert">Profile summary could not be loaded.</p> : null}
           <div className="dashboard-counts" aria-label="Stored health data totals">
             {profileDataCategories.map((category) => {
-              const iconPath = categoryIconPaths[category.key];
+              const iconPath = profileDataCategoryIconPaths[category.key];
               const count = summary?.categories.find((item) => item.key === category.key)?.counts.total ?? 0;
               return (
                 <button

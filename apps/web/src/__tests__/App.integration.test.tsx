@@ -993,6 +993,45 @@ describe("App — measurement detail", () => {
     expect(screen.getByRole("button", { name: /delete 1 observation record/i })).toBeInTheDocument();
   });
 
+  it("omits a scanned report's inherited manual-import note while retaining its provenance", async () => {
+    globalThis.history.replaceState({}, "", "/track/glucose");
+    global.fetch = mockFetch({
+      "/api/store": { ...makeEmptyStore(), measurementTypes: defaultMeasurementTypes },
+      "/api/analytics": makeEmptyAnalytics(),
+      "/api/profiles": { profiles: [], activeProfileId: "self" },
+      "/api/summary/glucose/chart": {
+        generatedAt: "2026-07-14T00:00:00.000Z", measurementCode: "glucose", range: "all", requestedMode: "auto",
+        granularity: "raw", aggregation: "average", totalPoints: 1, truncated: false,
+        points: [{ timestamp: "2026-07-14T00:00:00.000Z", value: 5.2, unit: "mmol/L", count: 1 }]
+      },
+      "/api/summary/glucose": {
+        generatedAt: "2026-07-14T00:00:00.000Z",
+        measurement: {
+          code: "glucose", displayName: "Glucose", category: "lab",
+          counts: { observations: 1, samples: 0, activities: 0, total: 1 },
+          lastMeasuredAt: "2026-07-14T00:00:00.000Z"
+        },
+        entries: [{
+          kind: "observation", id: "glucose-scan-1", measurementCode: "glucose", displayName: "Glucose",
+          timestamp: "2026-07-14T00:00:00.000Z", value: 5.2, unit: "mmol/L",
+          sourceLabel: "Blood test report: scanned from phone", sourceKind: "blood-test-report",
+          importFileName: "blood-test-report.pdf", note: "Manual import", canDelete: true
+        }],
+        chartPoints: [{ kind: "observation", timestamp: "2026-07-14T00:00:00.000Z", value: 5.2, unit: "mmol/L" }],
+        isPinned: false,
+        referenceRange: { source: "none" },
+        counts: { observations: 1, samples: 0, activities: 0, total: 1 },
+        deletion: { observationEntries: 1, deletableEntries: 1 },
+        pagination: { limit: 50, loaded: 1, total: 1, hasMore: false }
+      }
+    });
+
+    render(<App />);
+    expect(await screen.findByText(/blood test report: scanned from phone/i)).toBeInTheDocument();
+    expect(screen.getByText(/blood-test-report\.pdf/i)).toBeInTheDocument();
+    expect(screen.queryByText("Manual import")).not.toBeInTheDocument();
+  });
+
   it("retains range controls when a selected chart range has no points", async () => {
     globalThis.history.replaceState({}, "", "/track/glucose");
     const chartPoint = { timestamp: "2026-07-14T00:00:00.000Z", value: 5.2, unit: "mmol/L", count: 1 };

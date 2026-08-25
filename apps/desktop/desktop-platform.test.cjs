@@ -51,3 +51,16 @@ test("preserves Electron login registration on Windows", () => {
   }]);
   assert.match(capabilities.trayIconPath, /tray-icon\.ico$/);
 });
+
+test("loads the Windows tray icon from the unpacked packaged resources", () => {
+  const capabilities = createDesktopPlatformCapabilities({
+    app: { isPackaged: true },
+    platform: "win32",
+    resourcesPath: "C:\\Users\\vitana\\AppData\\Local\\Programs\\Vitana Health\\resources"
+  });
+
+  assert.equal(
+    capabilities.trayIconPath,
+    "C:\\Users\\vitana\\AppData\\Local\\Programs\\Vitana Health\\resources\\tray-icon.ico"
+  );
+});

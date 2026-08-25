@@ -75,6 +75,14 @@
       {
         "from": "build/duckdb-extensions",
         "to": "duckdb-extensions"
+      },
+      {
+        "from": "build/tray-icon.ico",
+        "to": "tray-icon.ico"
+      },
+      {
+        "from": "build/tray-icon.png",
+        "to": "tray-icon.png"
       }
     ],
     "win": {

@@ -26,6 +26,7 @@ function createDesktopPlatformCapabilities({
   app,
   executablePath = process.execPath,
   platform = process.platform,
+  resourcesPath = process.resourcesPath,
   environment = process.env,
   homeDirectory = undefined,
   fileSystem = undefined
@@ -34,7 +35,7 @@ function createDesktopPlatformCapabilities({
     return {
       backgroundSupported: true,
       startupRegistration: electronLoginRegistration(app, executablePath),
-      trayIconPath: path.join(__dirname, "build", "tray-icon.ico")
+      trayIconPath: resolveTrayIconPath(app, resourcesPath, "ico")
     };
   }
   if (platform === "linux") {
@@ -46,14 +47,19 @@ function createDesktopPlatformCapabilities({
         homeDirectory,
         fileSystem
       }),
-      trayIconPath: path.join(__dirname, "build", "tray-icon.png")
+      trayIconPath: resolveTrayIconPath(app, resourcesPath, "png")
     };
   }
   return {
     backgroundSupported: false,
     startupRegistration: { setEnabled() {} },
-    trayIconPath: path.join(__dirname, "build", "tray-icon.png")
+    trayIconPath: resolveTrayIconPath(app, resourcesPath, "png")
   };
+}
+
+function resolveTrayIconPath(app, resourcesPath, extension) {
+  if (app.isPackaged && resourcesPath) return path.join(resourcesPath, `tray-icon.${extension}`);
+  return path.join(__dirname, "build", `tray-icon.${extension}`);
 }
 
 module.exports = { createDesktopPlatformCapabilities, electronLoginRegistration, isSupportedGnomeSession };
