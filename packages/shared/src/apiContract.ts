@@ -83,7 +83,7 @@ export const measurementRegistryResetResponseSchema = z.object({
 export type MeasurementRegistryResetResponse = z.infer<typeof measurementRegistryResetResponseSchema>;
 
 export const desktopUpdateStateSchema = z.object({
-  status: z.enum(["unsupported", "managed", "idle", "checking", "available", "downloading", "downloaded", "up-to-date", "error"]),
+  status: z.enum(["unsupported", "managed", "idle", "checking", "available", "downloading", "downloaded", "installing", "up-to-date", "error"]),
   currentVersion: z.string(),
   channel: z.literal("production").nullable(),
   distributionChannel: z.enum(["github", "store"]),

@@ -125,6 +125,7 @@ function createDesktopUpdaterController({
   function restartToInstall() {
     if (state.status !== "downloaded" || installStarted) return Promise.resolve(snapshot());
     installStarted = true;
+    update({ status: "installing", error: undefined });
     diagnostics.info("Preparing to restart for desktop update installation");
     schedule(async () => {
       try {
