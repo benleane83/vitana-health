@@ -3,7 +3,7 @@ import { defaultMeasurementTypes, hasFeature } from "@vitana/shared";
 import { isProfileDataCategory, type AppRoute, type ImportMode, type InsightsTab, type ProfileDataCategory, type SettingsView, type TrackView } from "./types.js";
 import { ProfileLifecycleDialogs, useProfileLifecycle } from "./features/profiles/useProfileLifecycle.js";
 import { ConfirmDialog } from "./components/ConfirmDialog.js";
-import { setOwnerTokenPrompt } from "./api.js";
+import { api, setOwnerTokenPrompt } from "./api.js";
 import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import { ImportPage } from "./pages/ImportPage.js";
 import { SettingsPage } from "./pages/SettingsPage.js";
@@ -21,7 +21,7 @@ const mainRoutes = routeTabs.slice(1);
 
 export function App() {
   const dashboardHeaderVariant = new URLSearchParams(window.location.search).get("header") === "rail" ? "rail" : "nav";
-  const [message, setMessage] = useState<string>();
+  const [notice, setNotice] = useState<{ message: string; action?: "desktop-update" }>();
   const [route, setRoute] = useState<AppRoute>(() => routeFromPathname(window.location.pathname));
   const [insightsTab, setInsightsTab] = useState<InsightsTab>(() => insightsTabFromPathname(window.location.pathname));
   const [careView, setCareView] = useState(() => careViewFromPathname(window.location.pathname));
@@ -45,6 +45,8 @@ export function App() {
   );
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const pathnameRef = useRef(locationPath());
+  const startupUpdateNoticeChecked = useRef(false);
+  const setMessage = (message: string | undefined) => setNotice(message ? { message } : undefined);
 
   // Accessible confirmation dialog state (replaces window.confirm)
   const [confirmState, setConfirmState] = useState<{
@@ -110,6 +112,45 @@ export function App() {
       window.removeEventListener("keydown", onEscape);
     };
   }, [profileMenuOpen]);
+
+  useEffect(() => {
+    if (route !== "dashboard" || startupUpdateNoticeChecked.current) return;
+    let cancelled = false;
+    let attempts = 0;
+    let retryTimer: number | undefined;
+
+    const checkForStartupUpdate = async () => {
+      try {
+        const update = await api.settings.updates.get();
+        if (cancelled) return;
+        if (update.status === "available") {
+          startupUpdateNoticeChecked.current = true;
+          setNotice({
+            message: update.availableVersion
+              ? `Version ${update.availableVersion} is available for Vitana Health.`
+              : "A new version of Vitana Health is available.",
+            action: "desktop-update"
+          });
+          return;
+        }
+        if (update.status !== "idle" && update.status !== "checking") {
+          startupUpdateNoticeChecked.current = true;
+          return;
+        }
+      } catch {
+        if (cancelled) return;
+      }
+
+      attempts += 1;
+      if (attempts < 20) retryTimer = window.setTimeout(() => { void checkForStartupUpdate(); }, 1_000);
+    };
+
+    void checkForStartupUpdate();
+    return () => {
+      cancelled = true;
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
+    };
+  }, [route]);
 
   function pushPath(nextPath: string, state: Record<string, unknown> = {}) {
     if (locationPath() === nextPath) return;
@@ -437,17 +478,30 @@ export function App() {
 
       <div className="shell-content">
         {/* Global status/notice — live region */}
-        {message ? (
+        {notice ? (
           <div className="notice">
             <span className="notice-message" role="status" aria-live="polite" aria-atomic="true">
-              {message}
+              {notice.message}
             </span>
+            {notice.action === "desktop-update" ? (
+              <a
+                className="notice-action"
+                href="/settings/app"
+                onClick={(event) => {
+                  event.preventDefault();
+                  setNotice(undefined);
+                  navigateSettings("app");
+                }}
+              >
+                Open App Settings
+              </a>
+            ) : null}
             <button
               className="notice-dismiss"
               type="button"
               aria-label="Dismiss notification"
               title="Dismiss notification"
-              onClick={() => setMessage(undefined)}
+              onClick={() => setNotice(undefined)}
             >
               <span aria-hidden="true">×</span>
             </button>

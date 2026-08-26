@@ -42,8 +42,8 @@ function createMockStoreManager(): ProfileStoreManager {
   const mockStore = {
     profileId: "test-user",
     exportData: vi.fn().mockResolvedValue(testData),
-    backupExportMetadata: vi.fn().mockResolvedValue({ schemaVersion: testData.schemaVersion, profile: testData.profile }),
-    backupExportPage: vi.fn().mockImplementation(async (collection: keyof HealthStoreData, offset: number, limit: number) => {
+    profileExportMetadata: vi.fn().mockResolvedValue({ schemaVersion: testData.schemaVersion, profile: testData.profile }),
+    profileExportPage: vi.fn().mockImplementation(async (collection: keyof HealthStoreData, offset: number, limit: number) => {
       const values = testData[collection] as unknown[];
       const items = values.slice(offset, offset + limit);
       return { items, done: items.length < limit };
@@ -232,7 +232,7 @@ describe("backupRoutes", () => {
       let pageStarted!: () => void;
       const blocked = new Promise<void>((resolve) => { releasePage = resolve; });
       const started = new Promise<void>((resolve) => { pageStarted = resolve; });
-      vi.mocked(store.backupExportPage).mockImplementationOnce(async () => {
+      vi.mocked(store.profileExportPage).mockImplementationOnce(async () => {
         pageStarted();
         await blocked;
         return { items: [], done: true };

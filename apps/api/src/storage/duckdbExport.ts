@@ -32,11 +32,11 @@ import {
 import { selectColumns, tableColumns } from "./duckdbColumns.js";
 import { insertAudit } from "./duckdbCommands.js";
 import type {
-  BackupExportCollection,
-  BackupExportMetadata,
-  BackupExportPage
+  ProfileExportCollection,
+  ProfileExportMetadata,
+  ProfileExportPage
 } from "./profileRepository.js";
-import { backupExportCollections } from "./profileRepository.js";
+import { profileExportCollections } from "./profileRepository.js";
 
 /**
  * Recording the export is the only write an export performs. It is kept separate from the snapshot
@@ -285,8 +285,8 @@ export async function insertStore(connection: duckdb.Connection, store: HealthSt
  */
 export async function digestBackupExportData(connection: duckdb.Connection): Promise<string> {
   const digest = createHash("sha256");
-  const dataKeys = [...backupExportCollections, "profile", "schemaVersion"].sort();
-  const metadata = await backupExportMetadata(connection);
+  const dataKeys = [...profileExportCollections, "profile", "schemaVersion"].sort();
+  const metadata = await profileExportMetadata(connection);
   digest.update("{");
   for (let keyIndex = 0; keyIndex < dataKeys.length; keyIndex += 1) {
     const key = dataKeys[keyIndex];
@@ -305,7 +305,7 @@ export async function digestBackupExportData(connection: duckdb.Connection): Pro
     let offset = 0;
     let itemIndex = 0;
     while (true) {
-      const page = await backupExportPage(connection, key as BackupExportCollection, offset, 250);
+      const page = await profileExportPage(connection, key as ProfileExportCollection, offset, 250);
       for (const item of page.items) {
         if (itemIndex++ > 0) digest.update(",");
         digest.update(canonicalJson(item));
@@ -390,7 +390,7 @@ function canonicalJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
-export async function backupExportMetadata(connection: duckdb.Connection): Promise<BackupExportMetadata> {
+export async function profileExportMetadata(connection: duckdb.Connection): Promise<ProfileExportMetadata> {
   const rows = await all(connection, `SELECT ${selectColumns("profile")} FROM profile;`);
   if (rows.length !== 1) {
     throw new Error(`DuckDB expected exactly one profile row, found ${rows.length}.`);
@@ -398,12 +398,12 @@ export async function backupExportMetadata(connection: duckdb.Connection): Promi
   return { schemaVersion: EXPORT_FORMAT_VERSION, profile: profileFromRow(rows[0]) };
 }
 
-export async function backupExportPage(
+export async function profileExportPage(
   connection: duckdb.Connection,
-  collection: BackupExportCollection,
+  collection: ProfileExportCollection,
   offset: number,
   limit: number
-): Promise<BackupExportPage> {
+): Promise<ProfileExportPage> {
   if (!Number.isInteger(offset) || offset < 0 || !Number.isInteger(limit) || limit < 1 || limit > 1_000) {
     throw new Error("Backup export page bounds are invalid.");
   }
@@ -412,7 +412,7 @@ export async function backupExportPage(
   return { items: rows.map(map), done: rows.length < limit };
 }
 
-function exportCollectionQuery(collection: BackupExportCollection): {
+function exportCollectionQuery(collection: ProfileExportCollection): {
   sql: string;
   map: (row: Record<string, unknown>) => unknown;
 } {

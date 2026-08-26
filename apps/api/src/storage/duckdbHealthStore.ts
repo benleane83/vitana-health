@@ -293,12 +293,12 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
     return this.enqueueMutation(() => this.repository.recordExportAudit());
   }
 
-  backupExportMetadata() {
-    return this.repository.backupExportMetadata();
+  profileExportMetadata() {
+    return this.repository.profileExportMetadata();
   }
 
-  backupExportPage(collection: Parameters<ProfileRepository["backupExportPage"]>[0], offset: number, limit: number) {
-    return this.repository.backupExportPage(collection, offset, limit);
+  profileExportPage(collection: Parameters<ProfileRepository["profileExportPage"]>[0], offset: number, limit: number) {
+    return this.repository.profileExportPage(collection, offset, limit);
   }
 
   async exportData(): Promise<HealthStoreData> {

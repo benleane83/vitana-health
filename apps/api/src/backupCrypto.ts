@@ -29,8 +29,8 @@ import {
   type HealthStoreData
 } from "@vitana/shared";
 import {
-  backupExportCollections,
-  type BackupExportCollection,
+  profileExportCollections,
+  type ProfileExportCollection,
   type ProfileRepository
 } from "./storage/profileRepository.js";
 
@@ -157,7 +157,7 @@ async function* serializeBackupPayload(
   for (let profileIndex = 0; profileIndex < stores.length; profileIndex += 1) {
     if (options.signal?.aborted) return;
     const store = stores[profileIndex];
-    const metadata = await store.backupExportMetadata();
+    const metadata = await store.profileExportMetadata();
     if (profileIndex > 0) yield Buffer.from(",");
     yield Buffer.from(`{"profileId":${JSON.stringify(metadata.profile.id)},"displayName":${JSON.stringify(metadata.profile.displayName)},"data":`);
 
@@ -174,20 +174,20 @@ async function* serializeBackupPayload(
       return dataChunk(`${separator}${JSON.stringify(name)}:${valuePrefix}`);
     };
 
-    const dataKeys = [...backupExportCollections, "profile", "schemaVersion"].sort();
+    const dataKeys = [...profileExportCollections, "profile", "schemaVersion"].sort();
     for (const key of dataKeys) {
       if (key === "profile") {
         yield property(key, canonicalStringify(metadata.profile));
       } else if (key === "schemaVersion") {
         yield property(key, JSON.stringify(metadata.schemaVersion));
       } else {
-        const collection = key as BackupExportCollection;
+        const collection = key as ProfileExportCollection;
         yield property(key, "[");
         let offset = 0;
         let itemIndex = 0;
         while (true) {
           if (options.signal?.aborted) return;
-          const page = await store.backupExportPage(collection, offset, BACKUP_EXPORT_PAGE_SIZE);
+          const page = await store.profileExportPage(collection, offset, BACKUP_EXPORT_PAGE_SIZE);
           for (const item of page.items) {
             yield dataChunk(`${itemIndex++ === 0 ? "" : ","}${canonicalStringify(item)}`);
           }

@@ -30,6 +30,10 @@ export function parseBodyCompositionText(fileName: string, sourceText: string, i
   const rows = new Map<string, BodyCompositionDraftRow>();
 
   const lines = normalizedText.split("\n").map((item) => item.trim()).filter(Boolean);
+  const eufyCandidates = parseEufyTileCandidates(lines);
+  const isEufyTileLayout = eufyCandidates.length >= 4;
+  addBodyCompositionCandidates(rows, eufyCandidates, sourceChecksum, reportDate, diagnostics);
+
   let skippingHistory = false;
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
@@ -43,37 +47,10 @@ export function parseBodyCompositionText(fileName: string, sourceText: string, i
       if (!isBodyCompositionHistoryEndHeading(line)) continue;
       skippingHistory = false;
     }
+    if (isEufyTileLayout) continue;
     const parseLine = /\bbmr\b/i.test(line) && lines[index + 1] ? `${line} ${lines[index + 1]}` : line;
     const candidates = parseBodyCompositionLine(parseLine);
-    for (const candidate of candidates) {
-      if (isAdministrativeMeasurementLabel(candidate.label)) {
-        diagnostics.push(`Skipped administrative identifier: "${candidate.label}".`);
-        continue;
-      }
-      const measurementType = findMeasurementType(candidate.label);
-      const measurementCode = measurementType?.code ?? fallbackBodyCompositionCode(candidate.label);
-      const displayName = measurementType?.display ?? toDisplayName(candidate.label);
-      const unit = normalizeBodyCompositionUnit(candidate.unit || measurementType?.canonicalUnit || "unknown");
-      const key = `${measurementCode}:${candidate.value}:${unit}`;
-      if (rows.has(key)) continue;
-      const generatedCode = !measurementType;
-      if (generatedCode) diagnostics.push(`Unknown measurement found: "${candidate.label}".`);
-      const included = !generatedCode && isPlausibleBodyCompositionValue(measurementCode, candidate.value, unit);
-      if (!included && !generatedCode) diagnostics.push(`Review unusual measurement value for "${displayName}": ${candidate.value} ${unit}.`);
-      rows.set(key, {
-        id: stableId("draft", [sourceChecksum, measurementCode, String(candidate.value), unit]),
-        label: candidate.label,
-        measurementCode,
-        displayName,
-        value: candidate.value,
-        unit,
-        observedAt: reportDate,
-        confidence: candidate.confidence,
-        sourceText: line,
-        included,
-        generatedCode
-      });
-    }
+    addBodyCompositionCandidates(rows, candidates.map((candidate) => ({ ...candidate, sourceText: line })), sourceChecksum, reportDate, diagnostics);
   }
 
   if (!normalizedText) diagnostics.push("No text was extracted from the report.");
@@ -172,6 +149,133 @@ interface BodyCompositionLineCandidate {
   value: number;
   unit?: string;
   confidence: BodyCompositionDraftConfidence;
+  sourceText?: string;
+}
+
+function addBodyCompositionCandidates(
+  rows: Map<string, BodyCompositionDraftRow>,
+  candidates: BodyCompositionLineCandidate[],
+  sourceChecksum: string,
+  reportDate: string | undefined,
+  diagnostics: string[]
+): void {
+  for (const candidate of candidates) {
+    if (isAdministrativeMeasurementLabel(candidate.label)) {
+      diagnostics.push(`Skipped administrative identifier: "${candidate.label}".`);
+      continue;
+    }
+    const measurementType = findMeasurementType(candidate.label);
+    const measurementCode = measurementType?.code ?? fallbackBodyCompositionCode(candidate.label);
+    const displayName = measurementType?.display ?? toDisplayName(candidate.label);
+    const unit = normalizeBodyCompositionUnit(candidate.unit || measurementType?.canonicalUnit || "unknown");
+    const key = `${measurementCode}:${candidate.value}:${unit}`;
+    if (rows.has(key)) continue;
+    const generatedCode = !measurementType;
+    if (generatedCode) diagnostics.push(`Unknown measurement found: "${candidate.label}".`);
+    const included = !generatedCode && isPlausibleBodyCompositionValue(measurementCode, candidate.value, unit);
+    if (!included && !generatedCode) diagnostics.push(`Review unusual measurement value for "${displayName}": ${candidate.value} ${unit}.`);
+    rows.set(key, {
+      id: stableId("draft", [sourceChecksum, measurementCode, String(candidate.value), unit]),
+      label: candidate.label,
+      measurementCode,
+      displayName,
+      value: candidate.value,
+      unit,
+      observedAt: reportDate,
+      confidence: candidate.confidence,
+      sourceText: candidate.sourceText ?? candidate.label,
+      included,
+      generatedCode
+    });
+  }
+}
+
+function parseEufyTileCandidates(lines: string[]): BodyCompositionLineCandidate[] {
+  const eufySignalCount = lines.filter((line) => /body\s*fat\s*%.*\bwater\b|(?:\bbmr\b|\bemr\b).*\bvisceral\b|bone\s*mass.*\bmuscle\b/i.test(line)).length;
+  if (eufySignalCount < 2) return [];
+
+  const candidates: BodyCompositionLineCandidate[] = [];
+  const addPair = (
+    labelPattern: RegExp,
+    labels: readonly [string, string],
+    units: readonly [string, string],
+    valuePattern?: (values: Array<{ value: number; unit?: string }>) => boolean
+  ) => {
+    const index = lines.findIndex((line) => labelPattern.test(line));
+    if (index === -1) return;
+    const valueLine = lines.slice(index + 1, index + 5).find((line) => {
+      const values = readEufyTileValues(line);
+      return values.length >= 2 && (!valuePattern || valuePattern(values));
+    });
+    if (!valueLine) return;
+    const values = readEufyTileValues(valueLine);
+    candidates.push(
+      { label: labels[0], value: values[0].value, unit: units[0], confidence: "medium", sourceText: `${lines[index]} ${valueLine}` },
+      { label: labels[1], value: values[1].value, unit: units[1], confidence: "medium", sourceText: `${lines[index]} ${valueLine}` }
+    );
+  };
+
+  addPair(/(?:wei[^\s]*ht|weic?ht).*(?:\bbmi\b|\bmi\b)/i, ["weight", "bmi"], ["kg", "kg/m2"]);
+  addPair(/body\s*fat\s*%.*\bwater\b/i, ["body fat percentage", "body water percentage"], ["%", "%"]);
+  addPair(/(?:\bbmr\b|\bemr\b).*\bvisceral\b/i, ["bmr", "visceral fat level"], ["kcal/day", "level"]);
+  addPair(/bone\s*mass.*\bmuscle\b/i, ["bone mass", "muscle mass"], ["kg", "kg"], (values) => values.slice(0, 2).every((value) => normalizeBodyCompositionUnit(value.unit ?? "") === "kg"));
+  addEufyTopRowCandidates(candidates, lines);
+  repairEufyBodyWaterValue(candidates);
+  addEufyMassCandidates(candidates, lines);
+
+  return candidates;
+}
+
+function readEufyTileValues(line: string): Array<{ value: number; unit?: string }> {
+  // Tesseract occasionally separates the two leading digits of a decimal tile value, e.g. "3 8 . 8 kg".
+  const normalizedLine = line
+    .replace(/(\d)\s+(\d)(?=\s*[.,]\s*\d)/g, "$1$2")
+    .replace(/(\b\d)\s+(\d{3})(?=\s*(?:kcal|cal)\b)/gi, "$1$2")
+    .replace(/\s*([.,])\s*/g, "$1");
+  return readMeasurementValues(normalizedLine);
+}
+
+function addEufyTopRowCandidates(candidates: BodyCompositionLineCandidate[], lines: string[]): void {
+  if (candidates.some((candidate) => candidate.label === "weight")) return;
+  const bodyFatIndex = lines.findIndex((line) => /body\s*fat\s*%.*\bwater\b/i.test(line));
+  const topValues = lines.slice(0, Math.max(0, bodyFatIndex)).find((line) => {
+    const values = readEufyTileValues(line);
+    return values.length >= 2 && values[0].value >= 10 && values[0].value <= 500 && values[1].value >= 5 && values[1].value <= 90;
+  });
+  if (!topValues) return;
+  const values = readEufyTileValues(topValues);
+  candidates.push(
+    { label: "weight", value: values[0].value, unit: "kg", confidence: "medium", sourceText: topValues },
+    { label: "bmi", value: values[1].value, unit: "kg/m2", confidence: "medium", sourceText: topValues }
+  );
+}
+
+function repairEufyBodyWaterValue(candidates: BodyCompositionLineCandidate[]): void {
+  const bodyWater = candidates.find((candidate) => candidate.label === "body water percentage");
+  // Eufy's green "5" is commonly read as "9"; values above 80% are not physiologically plausible.
+  if (bodyWater && bodyWater.value > 80 && bodyWater.value < 100) {
+    bodyWater.value = Math.round((bodyWater.value - 40) * 10) / 10;
+  }
+}
+
+function addEufyMassCandidates(candidates: BodyCompositionLineCandidate[], lines: string[]): void {
+  const weight = candidates.find((candidate) => candidate.label === "weight")?.value;
+  const boneMassIndex = lines.findIndex((line) => /bone\s*mass.*\bmuscle\b/i.test(line));
+  if (!weight || boneMassIndex === -1) return;
+  const massLine = lines.slice(Math.max(0, boneMassIndex - 5), boneMassIndex).reverse().find((line) => {
+    const values = readEufyTileValues(line);
+    return values.some((value) => normalizeBodyCompositionUnit(value.unit ?? "") === "kg" && value.value > 0 && value.value < weight);
+  });
+  if (!massLine) return;
+  const fatMass = readEufyTileValues(massLine)
+    .filter((value) => normalizeBodyCompositionUnit(value.unit ?? "") === "kg" && value.value > 0 && value.value < weight)
+    .at(-1);
+  if (!fatMass) return;
+  const leanBodyMass = Math.round((weight - fatMass.value) * 10) / 10;
+  candidates.push(
+    { label: "body fat mass", value: fatMass.value, unit: "kg", confidence: "medium", sourceText: massLine },
+    { label: "lean body mass", value: leanBodyMass, unit: "kg", confidence: "low", sourceText: massLine }
+  );
 }
 
 function isBodyCompositionHistoryHeading(line: string): boolean {

@@ -1303,6 +1303,14 @@ h3 {
   min-width: 0;
 }
 
+.notice-action {
+  flex: 0 0 auto;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+}
+
 .notice-dismiss {
   display: inline-grid;
   place-items: center;
@@ -3333,8 +3341,8 @@ h3 {
 }
 
 .dashboard-profile .profile-goals {
-  border-color: oklch(86% 0.055 344);
-  background: var(--blush-soft);
+  border-color: #c8dff6;
+  background: #DFEDFD;
 }
 
 .dashboard-profile .profile-summary dt,
@@ -3368,8 +3376,12 @@ h3 {
 
 .dashboard-profile-summary {
   grid-area: summary;
-  border-top: 1px solid var(--line);
-  padding-right: var(--space-6);
+  align-self: start;
+  border: 1px solid #dcd8f5;
+  border-radius: var(--radius-lg);
+  background: #F0EEFF;
+  margin: var(--space-4) var(--space-6) var(--space-4) 0;
+  padding: var(--space-5) var(--space-6);
 }
 
 .dashboard-review {
@@ -5036,6 +5048,11 @@ button.stat {
   .dashboard-profile,
   .dashboard-profile-summary {
     padding-right: 0;
+  }
+
+  .dashboard-profile-summary {
+    margin-right: 0;
+    padding-right: var(--space-6);
   }
 
   .dashboard-review {

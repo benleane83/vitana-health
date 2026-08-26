@@ -9,11 +9,21 @@ type RestoreSelection = {
   acknowledgeReplacement?: string;
 };
 
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 export function ExportRoute({ bootstrap, onProfilesChanged }: {
   bootstrap?: AppBootstrap;
   onProfilesChanged: () => Promise<void>;
 }) {
   const [status, setStatus] = useState<{ busy: boolean; error?: string }>({ busy: false });
+  const [xlsxStatus, setXlsxStatus] = useState<{ busy: boolean; error?: string }>({ busy: false });
   const [backupPassphrase, setBackupPassphrase] = useState("");
   const [backupPassphraseConfirmation, setBackupPassphraseConfirmation] = useState("");
   const [backupScope, setBackupScope] = useState<"active" | "all">("all");
@@ -28,12 +38,7 @@ export function ExportRoute({ bootstrap, onProfilesChanged }: {
     setStatus({ busy: true });
     try {
       const { blob, filename } = await api.exportPdf();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      link.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, filename);
       setStatus({ busy: false });
     } catch (error) {
       setStatus({
@@ -43,16 +48,25 @@ export function ExportRoute({ bootstrap, onProfilesChanged }: {
     }
   }
 
+  async function downloadXlsx() {
+    setXlsxStatus({ busy: true });
+    try {
+      const { blob, filename } = await api.exportXlsx();
+      downloadBlob(blob, filename);
+      setXlsxStatus({ busy: false });
+    } catch (error) {
+      setXlsxStatus({
+        busy: false,
+        error: error instanceof Error ? error.message : "Unable to create the health data workbook."
+      });
+    }
+  }
+
   async function createBackup() {
     setBackupStatus({ busy: true });
     try {
       const { blob, filename } = await api.backups.create({ passphrase: backupPassphrase, scope: backupScope });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      link.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, filename);
       setBackupPassphrase("");
       setBackupPassphraseConfirmation("");
       setBackupStatus({ busy: false, success: "Encrypted backup downloaded." });
@@ -115,6 +129,8 @@ export function ExportRoute({ bootstrap, onProfilesChanged }: {
         bootstrap && (bootstrap.counts.observations || bootstrap.counts.samples || bootstrap.counts.activities)
       )}
       onDownload={() => { void download(); }}
+      xlsxStatus={xlsxStatus}
+      onDownloadXlsx={() => { void downloadXlsx(); }}
       backupPassphrase={backupPassphrase}
       backupPassphraseConfirmation={backupPassphraseConfirmation}
       backupScope={backupScope}

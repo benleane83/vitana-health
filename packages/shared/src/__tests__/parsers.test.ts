@@ -376,6 +376,40 @@ describe("parseBodyCompositionText", () => {
     expect(result.diagnostics).not.toContain("Skipped measurements in a body composition history section.");
   });
 
+  it("parses the reliable metric tiles from a Eufy body-composition image OCR layout", () => {
+    const result = parseBodyCompositionText(
+      "EufyBodyComp.jpg",
+      [
+        "© weicHT             EA mi",
+        "54.0.     18.0",
+        "BODY FAT %         Ey WATER",
+        "23.74                 92.4,",
+        "EMR                 dy VISCERAL",
+        "1 062 kcal             2.0",
+        "BOE MRE",
+        "4] , kg                   12.8 kg",
+        "77. BONE MASS         fo MUSCLE",
+        "2.4 kg                         3 8 . 8 kg"
+      ].join("\n")
+    );
+
+    expect(result.rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ measurementCode: "weight", value: 54, unit: "kg", included: true }),
+      expect.objectContaining({ measurementCode: "bmi", value: 18, unit: "kg/m2", included: true }),
+      expect.objectContaining({ measurementCode: "body_fat_pct", value: 23.74, unit: "%", included: true }),
+      expect.objectContaining({ measurementCode: "body_water_pct", value: 52.4, unit: "%", included: true }),
+      expect.objectContaining({ measurementCode: "basal_metabolic_rate", value: 1062, unit: "kcal/day", included: true }),
+      expect.objectContaining({ measurementCode: "visceral_fat_level", value: 2, unit: "level", included: true }),
+      expect.objectContaining({ measurementCode: "lean_body_mass", value: 41.2, unit: "kg", included: true }),
+      expect.objectContaining({ measurementCode: "fat_mass", value: 12.8, unit: "kg", included: true }),
+      expect.objectContaining({ measurementCode: "bone_mineral_content", value: 2.4, unit: "kg", included: true }),
+      expect.objectContaining({ measurementCode: "muscle_mass", value: 38.8, unit: "kg", included: true })
+    ]));
+    expect(result.rows).toHaveLength(10);
+    expect(result.rows.some((row) => row.generatedCode)).toBe(false);
+    expect(result.diagnostics).toContain("No report date was detected; confirm the date before saving.");
+  });
+
   it("skips administrative identifier lines instead of drafting them as unknown measurements", () => {
     const result = parseBodyCompositionText(
       "body.pdf",

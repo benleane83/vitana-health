@@ -18,7 +18,7 @@ import {
   EXPORT_FORMAT_VERSION,
   defaultMeasurementTypes
 } from "@vitana/shared";
-import { backupExportCollections, type ProfileRepository } from "../storage/profileRepository.js";
+import { profileExportCollections, type ProfileRepository } from "../storage/profileRepository.js";
 
 function createTestStoreData(profileId = "test-user", displayName = "Test User"): HealthStoreData {
   return {
@@ -88,8 +88,8 @@ describe("backupCrypto", () => {
       }));
       const pageCalls: Array<{ collection: string; offset: number; limit: number }> = [];
       const store = {
-        backupExportMetadata: async () => ({ schemaVersion: data.schemaVersion, profile: data.profile }),
-        backupExportPage: async (collection: typeof backupExportCollections[number], offset: number, limit: number) => {
+        profileExportMetadata: async () => ({ schemaVersion: data.schemaVersion, profile: data.profile }),
+        profileExportPage: async (collection: typeof profileExportCollections[number], offset: number, limit: number) => {
           pageCalls.push({ collection, offset, limit });
           const values = data[collection] as unknown[];
           const items = values.slice(offset, offset + limit);

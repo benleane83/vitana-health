@@ -524,6 +524,50 @@ describe("GET /api/export/pdf", () => {
   });
 });
 
+describe("GET /api/export/xlsx", () => {
+  it("requires authentication and returns a workbook for an empty profile", async () => {
+    expect((await request(app).get("/api/export/xlsx")).status).toBe(401);
+
+    const workbook = await request(app)
+      .get("/api/export/xlsx")
+      .set("authorization", ownerAuthorization)
+      .buffer(true)
+      .parse((response, callback) => {
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk: Buffer) => chunks.push(chunk));
+        response.on("end", () => callback(null, Buffer.concat(chunks)));
+      });
+    expect(workbook.status).toBe(200);
+    expect(workbook.headers["content-type"]).toMatch(
+      /^application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet/
+    );
+    expect(workbook.headers["content-disposition"]).toMatch(
+      /attachment; filename="local-user-health-data-\d{4}-\d{2}-\d{2}\.xlsx"/
+    );
+    expect(Buffer.isBuffer(workbook.body)).toBe(true);
+    expect(workbook.body.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+  });
+
+  it("uses the active profile's safe display name in the filename", async () => {
+    await request(app)
+      .post("/api/profiles")
+      .set("authorization", ownerAuthorization)
+      .send({ displayName: "Second Profile" });
+    await request(app)
+      .put("/api/profiles/active")
+      .set("authorization", ownerAuthorization)
+      .send({ profileId: "second-profile" });
+    await request(app)
+      .put("/api/profile")
+      .set("authorization", ownerAuthorization)
+      .send({ displayName: "Doctor / Test", units: "metric" });
+
+    const workbook = await request(app).get("/api/export/xlsx").set("authorization", ownerAuthorization);
+    expect(workbook.status).toBe(200);
+    expect(workbook.headers["content-disposition"]).toMatch(/doctor-test-health-data-\d{4}-\d{2}-\d{2}\.xlsx/);
+  });
+});
+
 describe("profile lifecycle routes", () => {
   it("persists first-profile setup transitions without onboarding later profiles", async () => {
     const initial = await request(app).get("/api/profile").set("authorization", ownerAuthorization);

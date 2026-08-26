@@ -32,7 +32,7 @@ import { all } from "../storage/duckdbRows.js";
 import { buildClinicianReport } from "../clinicianReport.js";
 import { healthConnectImportRequestSchema, parseHealthConnectImport } from "../healthConnectImport.js";
 import { findPreparedExtension } from "./support/duckdbExtension.js";
-import { backupExportCollections } from "../storage/profileRepository.js";
+import { profileExportCollections } from "../storage/profileRepository.js";
 
 const httpfsExtensionPath = findPreparedExtension();
 const key = Buffer.alloc(32, 7).toString("base64");
@@ -117,14 +117,14 @@ describe("DuckDbRepository fidelity", () => {
     const fixture = createDuckDbHealthStoreFixture();
     const repository = await DuckDbRepository.hydrate(root, databasePath, key, fixture, { httpfsExtensionPath });
     try {
-      const metadata = await repository.backupExportMetadata();
+      const metadata = await repository.profileExportMetadata();
       expect(metadata).toEqual({ schemaVersion: fixture.schemaVersion, profile: fixture.profile });
 
-      for (const collection of backupExportCollections) {
+      for (const collection of profileExportCollections) {
         const exported: unknown[] = [];
         let offset = 0;
         while (true) {
-          const page = await repository.backupExportPage(collection, offset, 2);
+          const page = await repository.profileExportPage(collection, offset, 2);
           expect(page.items.length).toBeLessThanOrEqual(2);
           exported.push(...page.items);
           offset += page.items.length;

@@ -36,6 +36,7 @@ import {
 import { RestoreJournal } from "../storage/restoreJournal.js";
 import { BackupMultipartError, parseBackupMultipart } from "../backupMultipart.js";
 import { apiRateLimitOptions } from "../rateLimit.js";
+import { sanitizeFilenameSegment } from "./exportFilenames.js";
 
 /**
  * A format failure is only reachable once the passphrase has already authenticated the file, so
@@ -52,17 +53,6 @@ function respondToDecryptFailure(res: express.Response, error: unknown): void {
 let activeRestoreId: string | undefined;
 export function isInMaintenanceMode(): boolean {
   return activeRestoreId !== undefined;
-}
-
-function sanitizeFilenameSegment(value: string): string {
-  const normalized = value
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^A-Za-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .toLowerCase()
-    .slice(0, 60);
-  return normalized || "profile";
 }
 
 export function makeBackupRoutes(

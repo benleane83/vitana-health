@@ -179,7 +179,7 @@ export class CareItemCompletionConflictError extends Error {
   }
 }
 
-export const backupExportCollections = [
+export const profileExportCollections = [
   "activitySessions",
   "auditEvents",
   "careItems",
@@ -197,14 +197,14 @@ export const backupExportCollections = [
   "timeSeriesSamples"
 ] as const satisfies readonly Exclude<keyof HealthStoreData, "profile" | "schemaVersion">[];
 
-export type BackupExportCollection = typeof backupExportCollections[number];
+export type ProfileExportCollection = typeof profileExportCollections[number];
 
-export interface BackupExportMetadata {
+export interface ProfileExportMetadata {
   schemaVersion: number;
   profile: HealthStoreData["profile"];
 }
 
-export interface BackupExportPage {
+export interface ProfileExportPage {
   items: unknown[];
   done: boolean;
 }
@@ -248,8 +248,8 @@ export interface ProfileRepository {
    * short write and the long read are not forced to share a single serialized slot.
    */
   recordExportAudit(): Promise<void>;
-  backupExportMetadata(): Promise<BackupExportMetadata>;
-  backupExportPage(collection: BackupExportCollection, offset: number, limit: number): Promise<BackupExportPage>;
+  profileExportMetadata(): Promise<ProfileExportMetadata>;
+  profileExportPage(collection: ProfileExportCollection, offset: number, limit: number): Promise<ProfileExportPage>;
   exportData(): Promise<HealthStoreData>;
   listHealthEvents(query: HealthEventListQuery): Promise<PaginatedResult<HealthEvent>>;
   createHealthEvent(input: CreateHealthEventInput): Promise<HealthEventMutationResponse>;
