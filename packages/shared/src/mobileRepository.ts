@@ -4,6 +4,7 @@ import type {
   DeleteObservationResponse,
   HealthDataDetail,
   HealthDataSummary,
+  ObservationGroupDetail,
   UpdateObservationResponse
 } from "./types.js";
 import type { ImportCategoryOutcome, UpdateObservationInput } from "./apiContract.js";
@@ -34,6 +35,7 @@ export interface MobileProfileRepository {
   analytics(): Promise<AnalyticsSummary>;
   summary(): Promise<HealthDataSummary>;
   healthDataDetail(measurementCode: string, page?: MobileDetailPage): Promise<HealthDataDetail>;
+  observationGroup(id: string): Promise<ObservationGroupDetail | undefined>;
   updateObservation(id: string, input: UpdateObservationInput): Promise<UpdateObservationResponse | undefined>;
   deleteObservation(id: string): Promise<DeleteObservationResponse | undefined>;
   mergeImport(imported: ParsedImport): Promise<MobileImportResult>;

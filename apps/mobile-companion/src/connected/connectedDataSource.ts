@@ -144,6 +144,11 @@ export function createConnectedDataSource(
     bodyTrendTimeline: (query) => cachedRead((current) => current.bodyTrendTimeline(query)),
     healthDataDetail: (measurementCode: string, page?: DetailPage) =>
       cachedRead((current) => current.healthDataDetail(measurementCode, page)),
+    observationGroup: async (id) => {
+      const detail = await cachedRead((current) => current.observationGroup(id));
+      if (!detail) throw new Error("Observation group not found.");
+      return detail;
+    },
     healthDataChartSeries: (measurementCode, options) =>
       cachedRead((current) => current.healthDataChartSeries(
         measurementCode,

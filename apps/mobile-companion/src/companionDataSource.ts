@@ -23,6 +23,7 @@ import type {
   JournalQueryInput,
   ManualObservationPayload,
   MobileImportResult,
+  ObservationGroupDetail,
   HealthEvent,
   HealthEventListQuery,
   HealthEventMutationResponse,
@@ -46,6 +47,7 @@ export interface CompanionDataSource {
   calendarMonth(query: CalendarMonthQuery, signal?: AbortSignal): Promise<CalendarMonthData>;
   journal(query: JournalQueryInput, signal?: AbortSignal): Promise<JournalPage>;
   healthDataDetail(measurementCode: string, page?: DetailPage): Promise<HealthDataDetail>;
+  observationGroup(id: string): Promise<ObservationGroupDetail>;
   healthDataChartSeries(measurementCode: string, options: HealthDataChartSeriesOptions): Promise<HealthDataChartSeries>;
 }
 

@@ -8,6 +8,7 @@ export type RootStackParamList = {
   TrackCalendar: undefined;
   TrackBodyTrend: undefined;
   TrackDetail: { measurementCode: string; displayName: string };
+  ObservationGroup: { groupId: string; label: string };
 };
 
 export type TabParamList = {

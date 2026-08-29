@@ -79,6 +79,12 @@ describe("local profile repository", () => {
       value: 72.5,
       sourceKind: "manual-entry"
     });
+    const groupId = [...state.observationGroups.values()][0]!.id;
+    await expect(first.observationGroup(groupId)).resolves.toMatchObject({
+      label: "Body",
+      source: { kind: "manual-entry" },
+      observations: [expect.objectContaining({ measurementCode: "weight", value: 72.5 })]
+    });
     expect(await first.calendarMonth({ month: "2026-07", timezone: "UTC", measurementCodes: ["weight"] }))
       .toMatchObject({
         month: "2026-07",
@@ -94,6 +100,18 @@ describe("local profile repository", () => {
     await reopened.reset();
     const afterReset = new LocalProfileRepository(new MemoryLocalStore(state), profile("profile-a"));
     expect((await afterReset.bootstrap()).counts.observations).toBe(0);
+  });
+
+  it("does not expose a measurement group from another standalone profile", async () => {
+    const state = createMemoryLocalStoreState();
+    const first = new LocalProfileRepository(new MemoryLocalStore(state), profile("profile-a"));
+    await first.importManualObservations(reading);
+    const groupId = [...state.observationGroups.values()][0]!.id;
+
+    const second = new LocalProfileRepository(new MemoryLocalStore(state), profile("profile-b"));
+    await second.bootstrap();
+
+    await expect(second.observationGroup(groupId)).resolves.toBeUndefined();
   });
 
   it("projects a grouped standalone body-composition import into Body Trend", async () => {

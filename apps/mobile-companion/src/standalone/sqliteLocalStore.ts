@@ -52,6 +52,7 @@ import {
   type LocalObservationAggregate,
   type LocalCalendarObservation,
   type LocalObservationPage,
+  type LocalObservationGroupRecord,
   type LocalDatasetSummary,
   type LocalDatasetMetadata,
   type LocalStore,
@@ -835,6 +836,114 @@ export class SqliteLocalStore implements LocalStore {
           label: row.groupLabel,
           collectedAt: row.groupCollectedAt ?? undefined
         } : undefined
+      }))
+    };
+  }
+
+  async observationGroup(id: string): Promise<LocalObservationGroupRecord | undefined> {
+    const profileId = this.requireProfileId();
+    const row = await this.database.getFirstAsync<{
+      id: string;
+      kind: LocalObservationGroupRecord["group"]["kind"];
+      label: string;
+      sourceId: string | null;
+      importId: string | null;
+      startAt: string | null;
+      endAt: string | null;
+      collectedAt: string | null;
+      metadataJson: string | null;
+      sourceKind: NonNullable<LocalObservationGroupRecord["source"]>["sourceKind"] | null;
+      sourceLabel: string | null;
+      sourceImportId: string | null;
+      sourceCreatedAt: string | null;
+      sourceImportRecordId: string | null;
+      importSourceKind: NonNullable<LocalObservationGroupRecord["sourceImport"]>["sourceKind"] | null;
+      importFileName: string | null;
+      importedAt: string | null;
+      parserVersion: string | null;
+      checksum: string | null;
+      rowCount: number | null;
+      importStatus: NonNullable<LocalObservationGroupRecord["sourceImport"]>["status"] | null;
+      diagnosticsJson: string | null;
+    }>(`
+      SELECT og.id, og.kind, og.label, og.source_id AS sourceId, og.import_id AS importId,
+        og.start_at AS startAt, og.end_at AS endAt, og.collected_at AS collectedAt,
+        og.metadata_json AS metadataJson,
+        ds.source_kind AS sourceKind, ds.label AS sourceLabel, ds.import_id AS sourceImportId,
+        ds.created_at AS sourceCreatedAt,
+        si.id AS sourceImportRecordId, si.source_kind AS importSourceKind, si.file_name AS importFileName,
+        si.imported_at AS importedAt, si.parser_version AS parserVersion,
+        si.checksum, si.row_count AS rowCount, si.status AS importStatus,
+        si.diagnostics_json AS diagnosticsJson
+      FROM observation_groups og
+      LEFT JOIN data_sources ds ON ds.profile_id = og.profile_id AND ds.id = og.source_id
+      LEFT JOIN source_imports si
+        ON si.profile_id = og.profile_id AND si.id = COALESCE(og.import_id, ds.import_id)
+      WHERE og.profile_id = ? AND og.id = ?
+      LIMIT 1
+    `, profileId, id);
+    if (!row) return undefined;
+    const observations = await this.database.getAllAsync<{
+      id: string;
+      measurementCode: string;
+      observedAt: string;
+      effectiveStart: string | null;
+      effectiveEnd: string | null;
+      value: number;
+      unit: string;
+      sourceId: string;
+      observationGroupId: string | null;
+      deviceId: string | null;
+      note: string | null;
+      sourceJson: string | null;
+    }>(`
+      SELECT id, measurement_code AS measurementCode, observed_at AS observedAt,
+        effective_start AS effectiveStart, effective_end AS effectiveEnd, value, unit,
+        source_id AS sourceId, observation_group_id AS observationGroupId,
+        device_id AS deviceId, note, source_json AS sourceJson
+      FROM observations
+      WHERE profile_id = ? AND observation_group_id = ?
+      ORDER BY observed_at, id
+    `, profileId, id);
+    return {
+      group: {
+        id: row.id,
+        kind: row.kind,
+        label: row.label,
+        sourceId: row.sourceId ?? undefined,
+        importId: row.importId ?? undefined,
+        startAt: row.startAt ?? undefined,
+        endAt: row.endAt ?? undefined,
+        collectedAt: row.collectedAt ?? undefined,
+        metadata: row.metadataJson ? JSON.parse(row.metadataJson) : undefined
+      },
+      source: row.sourceId && row.sourceKind && row.sourceLabel && row.sourceCreatedAt ? {
+        id: row.sourceId,
+        sourceKind: row.sourceKind,
+        label: row.sourceLabel,
+        importId: row.sourceImportId ?? undefined,
+        createdAt: row.sourceCreatedAt
+      } : undefined,
+      sourceImport: row.sourceImportRecordId && row.importFileName && row.importedAt && row.parserVersion && row.checksum
+        && row.rowCount !== null && row.importStatus && row.importSourceKind ? {
+          id: row.sourceImportRecordId,
+          sourceKind: row.importSourceKind,
+          fileName: row.importFileName,
+          importedAt: row.importedAt,
+          parserVersion: row.parserVersion,
+          checksum: row.checksum,
+          rowCount: row.rowCount,
+          status: row.importStatus,
+          diagnostics: row.diagnosticsJson ? JSON.parse(row.diagnosticsJson) : []
+        } : undefined,
+      observations: observations.map((observation) => ({
+        ...observation,
+        effectiveStart: observation.effectiveStart ?? undefined,
+        effectiveEnd: observation.effectiveEnd ?? undefined,
+        observationGroupId: observation.observationGroupId ?? undefined,
+        deviceId: observation.deviceId ?? undefined,
+        note: observation.note ?? undefined,
+        sourceJson: observation.sourceJson ? JSON.parse(observation.sourceJson) : undefined
       }))
     };
   }

@@ -21,6 +21,7 @@ import type {
   ManualObservationPayload,
   MobileMigrationManifest,
   MobileMigrationReceipt,
+  ObservationGroupDetail,
   PersonalReferenceRangeInput,
   UpdateObservationInput
 } from "@vitana/shared";
@@ -94,6 +95,7 @@ interface MobileApiContextValue {
   calendarMonth(query: CalendarMonthQuery, signal?: AbortSignal): Promise<CalendarMonthData>;
   journal(query: JournalQueryInput, signal?: AbortSignal): Promise<JournalPage>;
   healthDataDetail(measurementCode: string, page?: DetailPage): Promise<HealthDataDetail>;
+  observationGroup(id: string): Promise<ObservationGroupDetail>;
   healthDataChartSeries(measurementCode: string, options: HealthDataChartSeriesOptions): Promise<HealthDataChartSeries>;
   importManualObservations(payload: ManualObservationPayload): Promise<unknown>;
   updateObservation(id: string, input: UpdateObservationInput): Promise<void>;
@@ -418,6 +420,13 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     return detail;
   }, [source, updateConnectionState]);
 
+  const observationGroup = useCallback(async (id: string) => {
+    if (!source) throw new Error("Observation groups are unavailable while the companion is disconnected.");
+    const detail = await source.observationGroup(id);
+    updateConnectionState(source, detail);
+    return detail;
+  }, [source, updateConnectionState]);
+
   const journal = useCallback(async (query: JournalQueryInput, signal?: AbortSignal) => {
     if (!source) throw new Error("Journal is unavailable while the companion is disconnected.");
     const page = await source.journal(query, signal);
@@ -668,6 +677,7 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     calendarMonth,
     journal,
     healthDataDetail,
+    observationGroup,
     healthDataChartSeries,
     importManualObservations,
     updateObservation,
@@ -689,7 +699,7 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     disconnect
   }), [
     analytics, bodyTrendTimeline, bootstrap, calendarMonth, cancelPendingConnection, clearTransientData, completeCareItem, connection, connectionState, createCareItem, createHealthEvent,
-    dashboardLoading, deleteCareItem, deleteHealthEvent, deleteObservation, demoMode, discardStandaloneDataAndConnect, disconnect, error, healthDataChartSeries, healthDataDetail, journal,
+    dashboardLoading, deleteCareItem, deleteHealthEvent, deleteObservation, demoMode, discardStandaloneDataAndConnect, disconnect, error, healthDataChartSeries, healthDataDetail, journal, observationGroup,
     importManualObservations, listCareItems, listHealthEvents, operatingMode, refreshAfterImport, refreshDashboard,
     profilePhoto, refreshTrack, reloadConnection, removePersonalReferenceRange, resetStandaloneData, setDemoMode, setOperatingMode, setPersonalReferenceRange, summary, syncing, synchronizeConnectedData, trackLoading,
     migrateStandaloneData, migrationProgress, standaloneMigrationManifest, transientRevision, updateCareItem, updateHealthEvent, updateObservation

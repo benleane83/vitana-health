@@ -4,7 +4,7 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import Svg, { Circle, Line, Path, Rect, Text as SvgText } from "react-native-svg";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Picker } from "@react-native-picker/picker";
-import { ChevronRight, CalendarDays, Clock3 } from "lucide-react-native";
+import { ChevronRight, CalendarDays, Clock3, LayoutGrid } from "lucide-react-native";
 import {
   calendarDateToUtcMidnight,
   calculateChartDomain,
@@ -31,7 +31,7 @@ import { userFacingError } from "../userFacingError";
 type Props = NativeStackScreenProps<RootStackParamList, "TrackDetail">;
 type ReadingDraft = { observedAt: Date; value: string; unit: string; note: string };
 
-export function TrackDetailScreen({ route }: Props) {
+export function TrackDetailScreen({ navigation, route }: Props) {
   const {
     bootstrap,
     connectionState,
@@ -434,21 +434,37 @@ export function TrackDetailScreen({ route }: Props) {
             );
             return (
               <View style={[styles.historyItem, selected && styles.historyItemSelected]}>
-                {canManage ? (
-                  <Pressable
-                    accessibilityHint="Selects this reading to edit or delete it."
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                    disabled={actionBusy || adding || Boolean(pendingDeletion)}
-                    onPress={() => {
-                      setSelectedEntryId(entry.id);
-                      if (!editingEntry) setActionFeedback(undefined);
-                    }}
-                    style={({ pressed }) => [styles.historyRow, pressed && styles.historyRowPressed]}
-                  >
-                    {reading}
-                  </Pressable>
-                ) : <View style={styles.historyRow}>{reading}</View>}
+                <View style={styles.historyRow}>
+                  {canManage ? (
+                    <Pressable
+                      accessibilityHint="Selects this reading to edit or delete it."
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                      disabled={actionBusy || adding || Boolean(pendingDeletion)}
+                      onPress={() => {
+                        setSelectedEntryId(entry.id);
+                        if (!editingEntry) setActionFeedback(undefined);
+                      }}
+                      style={({ pressed }) => [styles.historyReading, pressed && styles.historyRowPressed]}
+                    >
+                      {reading}
+                    </Pressable>
+                  ) : <View style={styles.historyReading}>{reading}</View>}
+                  {entry.observationGroup ? (
+                    <Pressable
+                      accessibilityHint="Opens all measurements recorded in this group."
+                      accessibilityLabel={`View ${entry.observationGroup.label} group`}
+                      accessibilityRole="button"
+                      onPress={() => navigation.push("ObservationGroup", {
+                        groupId: entry.observationGroup!.id,
+                        label: entry.observationGroup!.label
+                      })}
+                      style={({ pressed }) => [styles.groupAction, pressed && styles.historyRowPressed]}
+                    >
+                      <LayoutGrid color={colors.primary} size={22} />
+                    </Pressable>
+                  ) : null}
+                </View>
                 {selected && canManage && !editingEntry ? (
                   <View style={styles.recordActions}>
                     <Button disabled={actionBusy || adding || Boolean(pendingDeletion)} secondary onPress={() => beginEdit(entry)}>Edit reading</Button>
@@ -1101,6 +1117,8 @@ const styles = StyleSheet.create({
   historyItem: { borderBottomColor: colors.border, borderBottomWidth: 1, gap: spacing.sm, paddingVertical: spacing.md },
   historyItemSelected: { backgroundColor: colors.surfaceMuted, marginHorizontal: -spacing.sm, paddingHorizontal: spacing.sm },
   historyRow: { alignItems: "flex-start", flexDirection: "row", gap: spacing.sm, minHeight: 48 },
+  historyReading: { alignItems: "flex-start", flex: 1, flexDirection: "row", gap: spacing.sm, minHeight: 48, minWidth: 0 },
+  groupAction: { alignItems: "center", justifyContent: "center", minHeight: 48, minWidth: 48 },
   historyRowPressed: { opacity: 0.76 },
   undoBanner: { alignItems: "center", backgroundColor: colors.infoMuted, borderRadius: 8, flexDirection: "row", gap: spacing.sm, padding: spacing.sm },
   undoTitle: { color: colors.info, fontSize: 15, fontWeight: "800" },

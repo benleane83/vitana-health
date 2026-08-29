@@ -14,11 +14,14 @@ import type {
   MobileMigrationManifest,
   MobileMigrationReceipt,
   Observation,
+  ObservationGroup,
   ParsedImport,
   Profile,
   ReplicaIdentity,
   ReplicaPage,
   SourceKind,
+  SourceImport,
+  DataSource,
   HealthDataChartSeries,
   HealthDataChartSeriesOptions,
   UpdateObservationInput
@@ -109,6 +112,13 @@ export interface LocalObservationPage {
   total: number;
 }
 
+export interface LocalObservationGroupRecord {
+  group: ObservationGroup;
+  source?: DataSource;
+  sourceImport?: SourceImport;
+  observations: Observation[];
+}
+
 export type LocalCalendarObservation = Pick<Observation, "id" | "measurementCode" | "observedAt" | "value" | "unit"> & {
   sourceLabel?: string;
 };
@@ -135,6 +145,7 @@ export interface LocalStore {
   observationsForBodyTrend(query: BodyTrendQuery): Promise<LocalBodyTrendObservation[]>;
   observationsForCalendar(query: CalendarMonthQuery): Promise<LocalCalendarObservation[]>;
   observationsByCode(measurementCode: string, limit: number, offset: number): Promise<LocalObservationPage>;
+  observationGroup(id: string): Promise<LocalObservationGroupRecord | undefined>;
   observationChartSeries(
     measurementCode: string,
     aggregation: HealthDataChartSeries["aggregation"],

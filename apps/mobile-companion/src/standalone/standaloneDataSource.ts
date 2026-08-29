@@ -1,8 +1,7 @@
 import type {
   ManualObservationPayload,
   MobileMigrationReceipt,
-  MobileDetailPage,
-  MobileProfileRepository
+  MobileDetailPage
 } from "@vitana/shared";
 import type {
   CompanionDataSource,
@@ -29,7 +28,7 @@ export interface StandaloneMigrationSource {
 
 export function createStandaloneDataSource(): CompanionDataSource & CompanionCareService & CompanionMutationService & CompanionObservationMutationService & CompanionMaintenanceService & CompanionLifecycleService & StandaloneMigrationSource {
   let repository = createStandaloneRepository();
-  const getRepository = (): Promise<MobileProfileRepository & Pick<LocalProfileRepository, "bodyTrendTimeline" | "calendarMonth" | "healthDataChartSeries">> => repository;
+  const getRepository = (): Promise<LocalProfileRepository> => repository;
   return {
     bootstrap: async () => (await getRepository()).bootstrap(),
     analytics: async () => (await getRepository()).analytics(),
@@ -39,6 +38,11 @@ export function createStandaloneDataSource(): CompanionDataSource & CompanionCar
     journal: async (query) => ({ timezone: query.timezone, days: [] }),
     healthDataDetail: async (measurementCode: string, page?: MobileDetailPage) =>
       (await getRepository()).healthDataDetail(measurementCode, page),
+    observationGroup: async (id) => {
+      const detail = await (await getRepository()).observationGroup(id);
+      if (!detail) throw new Error("Observation group not found.");
+      return detail;
+    },
     healthDataChartSeries: async (measurementCode, options) =>
       (await getRepository()).healthDataChartSeries(measurementCode, options),
     listHealthEvents: async (query) => (await repository).listHealthEvents(query),

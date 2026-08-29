@@ -23,6 +23,7 @@ import {
   type JournalQueryInput,
   type ManualObservationPayload,
   type MobileImportResult,
+  type ObservationGroupDetail,
   type PersonalReferenceRange
 } from "@vitana/shared";
 import type {
@@ -51,6 +52,9 @@ const metrics: DemoMetric[] = [
   { code: "sleep_duration", values: [7.2, 6.8, 7.6, 7.0, 7.4, 6.9, 7.8], unit: "h", kind: "sample", sourceLabel: "Demo fitness tracker" },
   { code: "oxygen_saturation", values: [98, 97, 98, 99, 98, 97, 98], unit: "%", kind: "sample", sourceLabel: "Demo fitness tracker" },
   { code: "weight", values: [74.8, 74.6, 74.5, 74.3, 74.1, 74.0, 73.8], unit: "kg", kind: "observation", sourceLabel: "Demo manual entry", isPinned: true },
+  { code: "muscle_mass", values: [30.4, 30.5, 30.7, 30.9, 31.0, 31.1, 31.3], unit: "kg", kind: "observation", sourceLabel: "Demo smart scale" },
+  { code: "fat_mass", values: [20.8, 20.7, 20.4, 20.2, 20.0, 19.8, 19.6], unit: "kg", kind: "observation", sourceLabel: "Demo smart scale" },
+  { code: "bone_mineral_content", values: [3.1, 3.1, 3.1, 3.2, 3.2, 3.2, 3.2], unit: "kg", kind: "observation", sourceLabel: "Demo smart scale" },
   { code: "blood_pressure_systolic", values: [124, 121, 119, 122, 118, 120, 117], unit: "mmHg", kind: "observation", sourceLabel: "Demo home monitor" },
   { code: "glucose", values: [5.1, 5.0, 5.4, 5.2, 5.1, 4.9, 5.0], unit: "mmol/L", kind: "observation", sourceLabel: "Demo laboratory report" }
 ];
@@ -77,10 +81,53 @@ function makeBodyTrendObservations(now: Date) {
   });
 }
 
+function makeDemoObservationGroups(
+  details: Map<string, HealthDataDetail>,
+  now: Date
+): Map<string, ObservationGroupDetail> {
+  const id = "demo-body-latest";
+  const label = "Smart scale body composition";
+  const codes = ["weight", "muscle_mass", "fat_mass", "bone_mineral_content"];
+  const observations = codes.flatMap((code) => {
+    const detail = details.get(code);
+    const entry = detail?.entries[0];
+    if (!detail || !entry) return [];
+    const observationGroup = {
+      id,
+      kind: "body_composition_report" as const,
+      label,
+      collectedAt: now.toISOString()
+    };
+    detail.entries[0] = { ...entry, observationGroup };
+    return [{
+      id: entry.id,
+      measurementCode: entry.measurementCode,
+      displayName: entry.displayName,
+      observedAt: entry.timestamp,
+      value: entry.value,
+      unit: entry.unit,
+      note: entry.note,
+      referenceRange: entry.referenceRange,
+      status: entry.status
+    }];
+  });
+  return new Map([[id, {
+    id,
+    kind: "body_composition_report",
+    label,
+    collectedAt: now.toISOString(),
+    source: { kind: "body-composition-report", label: "Demo smart scale" },
+    editable: false,
+    readOnlyReason: "Demo groups are read-only.",
+    observations
+  }]]);
+}
+
 export function createDemoDataSource(
   now = new Date()
 ): CompanionDataSource & CompanionCareService & CompanionMutationService & CompanionObservationMutationService {
   const details = new Map(metrics.map((metric) => [metric.code, makeDetail(metric, now)]));
+  const observationGroups = makeDemoObservationGroups(details, now);
   let healthEvents = makeHealthEvents(now);
   let careItems = makeCareItems(now);
   let nextHealthEventId = healthEvents.length + 1;
@@ -114,6 +161,11 @@ export function createDemoDataSource(
       if (!detail) throw new Error("This metric is not available in demo mode.");
       return paginateDetail(detail, page);
     },
+    async observationGroup(id) {
+      const detail = observationGroups.get(id);
+      if (!detail) throw new Error("This observation group is not available in demo mode.");
+      return detail;
+    },
     async healthDataChartSeries(measurementCode, options) {
       const detail = details.get(measurementCode);
       if (!detail) throw new Error("This metric is not available in demo mode.");
@@ -129,6 +181,7 @@ export function createDemoDataSource(
         if (!detail || !measurement || !measurementCode) {
           throw new Error("This metric is not available in demo mode.");
         }
+
         return {
           detail,
           entry: createManualEntry({

@@ -19,6 +19,7 @@ import { assertTransportSecurity } from "./src/transportSecurity";
 import { DashboardScreen } from "./src/screens/DashboardScreen";
 import { ImportScreen } from "./src/screens/ImportScreen";
 import { TrackDetailScreen } from "./src/screens/TrackDetailScreen";
+import { ObservationGroupScreen } from "./src/screens/ObservationGroupScreen";
 import { TrackCalendarScreen } from "./src/screens/TrackCalendarScreen";
 import { TrackBodyTrendScreen } from "./src/screens/TrackBodyTrendScreen";
 import { TrackJournalScreen } from "./src/screens/TrackJournalScreen";
@@ -62,6 +63,11 @@ export default function App() {
                     name="TrackDetail"
                     component={TrackDetailScreen}
                     options={({ route }) => ({ title: route.params.displayName })}
+                  />
+                  <Stack.Screen
+                    name="ObservationGroup"
+                    component={ObservationGroupScreen}
+                    options={({ route }) => ({ title: route.params.label })}
                   />
                 </Stack.Navigator>
               </NavigationContainer>

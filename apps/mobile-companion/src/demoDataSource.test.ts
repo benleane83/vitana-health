@@ -65,6 +65,24 @@ describe("demo data source", () => {
     });
   });
 
+  it("links grouped Track Detail readings to a read-only demo group", async () => {
+    const source = createDemoDataSource(new Date("2026-07-17T12:00:00.000Z"));
+    const weight = await source.healthDataDetail("weight");
+    const summary = weight.entries[0]?.observationGroup;
+
+    expect(summary).toMatchObject({ id: "demo-body-latest", label: "Smart scale body composition" });
+    await expect(source.observationGroup(summary!.id)).resolves.toMatchObject({
+      editable: false,
+      observations: expect.arrayContaining([
+        expect.objectContaining({ measurementCode: "weight" }),
+        expect.objectContaining({ measurementCode: "muscle_mass" }),
+        expect.objectContaining({ measurementCode: "fat_mass" }),
+        expect.objectContaining({ measurementCode: "bone_mineral_content" })
+      ])
+    });
+    await expect(source.observationGroup("missing")).rejects.toThrow("not available in demo mode");
+  });
+
   it("classifies ranged samples without inventing a status for range-less metrics", async () => {
     const source = createDemoDataSource(new Date("2026-07-17T12:00:00.000Z"));
     const oxygen = await source.healthDataDetail("oxygen_saturation");

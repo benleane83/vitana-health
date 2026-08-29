@@ -32,6 +32,7 @@ import {
   type LocalObservationAggregate,
   type LocalCalendarObservation,
   type LocalObservationPage,
+  type LocalObservationGroupRecord,
   type LocalStore,
   type LocalStoreCounts,
   type ReplicaEntityFilter
@@ -331,6 +332,22 @@ export class MemoryLocalStore implements LocalStore {
         };
       })
     };
+  }
+
+  async observationGroup(id: string): Promise<LocalObservationGroupRecord | undefined> {
+    const profileId = this.requireProfileId();
+    const group = this.state.observationGroups.get(key(profileId, id));
+    if (!group) return undefined;
+    const source = group.sourceId
+      ? this.state.dataSources.get(key(profileId, group.sourceId))
+      : undefined;
+    const sourceImportId = group.importId ?? source?.importId;
+    const sourceImport = sourceImportId
+      ? this.state.sourceImports.get(key(profileId, sourceImportId))
+      : undefined;
+    const observations = this.profileValues(this.state.observations)
+      .filter((observation) => observation.observationGroupId === id);
+    return structuredClone({ group, source, sourceImport, observations });
   }
 
   async observationChartSeries(

@@ -26,6 +26,7 @@ import {
   type MeasurementType,
   type Observation,
   type ObservationGroup,
+  type ObservationGroupDetail,
   type PersonalReferenceRange,
   type PinnedMeasurement,
   type Profile,
@@ -37,6 +38,7 @@ import { chartRangeCutoff, chartSeriesFromPoints } from "../chartSeries";
 import { BODY_TREND_CODES, bodyTrendFromObservations } from "../bodyTrendProjection";
 import { calendarMonthFromEntries } from "../calendarProjection";
 import { journalFromSnapshot } from "../journalProjection";
+import { projectObservationGroup } from "../observationGroupProjection";
 import type { LocalStore, LocalReplicaMetadata, ReplicaEntityFilter } from "../standalone/localStore";
 
 const ACTIVITY_SESSIONS_CODE = "activity_sessions";
@@ -227,6 +229,25 @@ export class ConnectedReplicaRepository {
         hasMore: offset + entries.length < allEntries.length
       }
     };
+  }
+
+  async observationGroup(id: string): Promise<ObservationGroupDetail | undefined> {
+    const { data } = await this.readProjection();
+    const group = data.observationGroups.find((entry) => entry.id === id);
+    if (!group) return undefined;
+    const source = data.dataSources.find((entry) => entry.id === group.sourceId);
+    const sourceImport = data.sourceImports.find(
+      (entry) => entry.id === (group.importId ?? source?.importId)
+    );
+    return projectObservationGroup({
+      group,
+      observations: data.observations.filter((entry) => entry.observationGroupId === id),
+      profile: data.profile,
+      measurementTypes: data.measurementTypes,
+      personalReferenceRanges: data.personalReferenceRanges,
+      source,
+      sourceImport
+    });
   }
 
   /**

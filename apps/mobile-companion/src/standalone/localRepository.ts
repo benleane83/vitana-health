@@ -20,6 +20,7 @@ import {
   type MobileDetailPage,
   type MobileImportResult,
   type MobileProfileRepository,
+  type ObservationGroupDetail,
   type ParsedImport,
   type Profile,
   type UpdateObservationInput
@@ -27,6 +28,7 @@ import {
 import type { LocalStore } from "./localStore";
 import { calendarMonthFromEntries } from "../calendarProjection";
 import { bodyTrendFromObservations } from "../bodyTrendProjection";
+import { projectObservationGroup } from "../observationGroupProjection";
 
 const DEFAULT_DETAIL_LIMIT = 50;
 const MAX_DETAIL_LIMIT = 100;
@@ -220,6 +222,20 @@ export class LocalProfileRepository implements MobileProfileRepository {
         hasMore: offset + entries.length < result.total
       }
     };
+  }
+
+  async observationGroup(id: string): Promise<ObservationGroupDetail | undefined> {
+    await this.ensureInitialized();
+    const [profile, record] = await Promise.all([
+      this.store.getProfile(),
+      this.store.observationGroup(id)
+    ]);
+    if (!record) return undefined;
+    return projectObservationGroup({
+      ...record,
+      profile,
+      measurementTypes: defaultMeasurementTypes
+    });
   }
 
   async healthDataChartSeries(measurementCode: string, options: HealthDataChartSeriesOptions) {
