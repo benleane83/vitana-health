@@ -22,6 +22,11 @@ import type {
   JournalPage,
   JournalQueryInput,
   ManualObservationPayload,
+  Medication,
+  MedicationListQuery,
+  MedicationMutationResponse,
+  CreateMedicationInput,
+  DeleteMedicationResponse,
   MobileImportResult,
   ObservationGroupDetail,
   HealthEvent,
@@ -83,4 +88,8 @@ export interface CompanionCareService {
   updateCareItem(id: string, payload: CreateCareItemInput): Promise<CareItemMutationResponse>;
   completeCareItem(id: string, payload: CompleteCareItemInput): Promise<CompleteCareItemResponse>;
   deleteCareItem(id: string): Promise<DeleteCareItemResponse>;
+  listMedications(query?: MedicationListQuery): Promise<PaginatedResult<Medication>>;
+  createMedication(payload: CreateMedicationInput): Promise<MedicationMutationResponse>;
+  updateMedication(id: string, payload: CreateMedicationInput): Promise<MedicationMutationResponse>;
+  deleteMedication(id: string): Promise<DeleteMedicationResponse>;
 }

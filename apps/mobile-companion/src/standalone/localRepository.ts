@@ -16,6 +16,7 @@ import {
   type HealthDataChartSeriesOptions,
   type HealthDataSummary,
   type ManualObservationPayload,
+  type CreateMedicationInput,
   MobileMigrationReceipt,
   type MobileDetailPage,
   type MobileImportResult,
@@ -322,6 +323,29 @@ export class LocalProfileRepository implements MobileProfileRepository {
     await this.ensureInitialized();
     const deletedCareItem = await this.store.deleteCareItem(id);
     return { deletedCount: deletedCareItem ? 1 : 0, deletedCareItem, counts: (await this.bootstrap()).counts };
+  }
+
+  async listMedications(query = {}) {
+    await this.ensureInitialized();
+    return this.store.listMedications(query);
+  }
+
+  async createMedication(payload: CreateMedicationInput) {
+    await this.ensureInitialized();
+    return { medication: await this.store.createMedication(payload) };
+  }
+
+  async updateMedication(id: string, payload: CreateMedicationInput) {
+    await this.ensureInitialized();
+    const medication = await this.store.updateMedication(id, payload);
+    if (!medication) throw new Error("Medication not found.");
+    return { medication };
+  }
+
+  async deleteMedication(id: string) {
+    await this.ensureInitialized();
+    const deletedMedication = await this.store.deleteMedication(id);
+    return { deletedCount: deletedMedication ? 1 : 0, deletedMedication };
   }
 
   async mergeImport(imported: ParsedImport): Promise<MobileImportResult> {

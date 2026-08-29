@@ -9,13 +9,17 @@ import type {
   CompleteCareItemResponse,
   CreateCareItemInput,
   CreateHealthEventInput,
+  CreateMedicationInput,
   DeleteCareItemResponse,
   DeleteHealthEventResponse,
   DeleteObservationResponse,
+  DeleteMedicationResponse,
   DeleteObservationsByTypeResponse,
   HealthDataChartSeriesOptions,
   HealthEventListQuery,
   HealthStoreData,
+  MedicationListQuery,
+  MedicationMutationResponse,
   JournalQuery,
   MobileMigrationBatch,
   MobileMigrationManifest,
@@ -25,6 +29,7 @@ import type {
   SleepSessionListQueryContract,
   UpdateCareItemInput,
   UpdateHealthEventInput,
+  UpdateMedicationInput,
   UpdateObservationInput,
   UpdateObservationGroupInput,
   UpdateObservationResponse
@@ -342,6 +347,22 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
 
   deleteCareItem(id: string): Promise<DeleteCareItemResponse | undefined> {
     return this.enqueueMutation(async () => this.repository.deleteCareItem(id));
+  }
+
+  listMedications(query: MedicationListQuery) {
+    return this.repository.listMedications(query);
+  }
+
+  createMedication(input: CreateMedicationInput): Promise<MedicationMutationResponse> {
+    return this.enqueueMutation(async () => this.repository.createMedication(input));
+  }
+
+  updateMedication(id: string, input: UpdateMedicationInput): Promise<MedicationMutationResponse | undefined> {
+    return this.enqueueMutation(async () => this.repository.updateMedication(id, input));
+  }
+
+  deleteMedication(id: string): Promise<DeleteMedicationResponse | undefined> {
+    return this.enqueueMutation(async () => this.repository.deleteMedication(id));
   }
 
   runCompiledQuery(query: CompiledQuery): Promise<Array<Record<string, unknown>>> {

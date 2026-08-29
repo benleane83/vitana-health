@@ -9,6 +9,9 @@ import type {
   CreateHealthEventInput,
   HealthEvent,
   HealthEventListQuery,
+  Medication,
+  MedicationListQuery,
+  CreateMedicationInput,
   MobileImportResult,
   CalendarMonthQuery,
   MobileMigrationBatch,
@@ -381,6 +384,7 @@ export class SqliteLocalStore implements LocalStore {
   async deleteSelectedDataset(): Promise<void> {
     const profileId = this.requireProfileId();
     await this.database.withTransactionAsync(async () => {
+      await this.database.runAsync("DELETE FROM medications WHERE profile_id = ?", profileId);
       await this.database.runAsync("DELETE FROM care_items WHERE profile_id = ?", profileId);
       await this.database.runAsync("DELETE FROM health_events WHERE profile_id = ?", profileId);
       await this.database.runAsync("DELETE FROM observations WHERE profile_id = ?", profileId);
@@ -1188,6 +1192,56 @@ export class SqliteLocalStore implements LocalStore {
     return result.changes === 1 ? existing : undefined;
   }
 
+  async listMedications(query: MedicationListQuery = {}) {
+    const { where, parameters } = medicationWhere(this.requireProfileId(), query);
+    const limit = boundedLimit(query.limit);
+    const offset = boundedOffset(query.offset);
+    const [count, rows] = await Promise.all([
+      this.database.getFirstAsync<{ total: number }>(`SELECT COUNT(*) AS total FROM medications ${where}`, ...parameters),
+      this.database.getAllAsync<{ payload_json: string }>(
+        `SELECT payload_json FROM medications ${where}
+         ORDER BY start_date IS NULL, start_date DESC, id
+         LIMIT ? OFFSET ?`,
+        ...parameters, limit, offset
+      )
+    ]);
+    const total = count?.total ?? 0;
+    const items = rows.map((row) => JSON.parse(row.payload_json) as Medication);
+    const included = query.includeId && !items.some((item) => item.id === query.includeId)
+      ? await this.medicationById(query.includeId)
+      : undefined;
+    if (included) items.push(included);
+    return { items, total, offset, limit, hasMore: offset + rows.length < total };
+  }
+
+  async createMedication(payload: CreateMedicationInput): Promise<Medication> {
+    await this.assertWritable();
+    const now = new Date().toISOString();
+    const medication: Medication = { id: `medication-${Crypto.randomUUID()}`, ...payload, createdAt: now, updatedAt: now };
+    await this.insertMedication(medication);
+    return medication;
+  }
+
+  async updateMedication(id: string, payload: CreateMedicationInput): Promise<Medication | undefined> {
+    await this.assertWritable();
+    const existing = await this.medicationById(id);
+    if (!existing) return undefined;
+    const medication: Medication = { id, ...payload, createdAt: existing.createdAt, updatedAt: new Date().toISOString() };
+    const result = await this.database.runAsync(
+      `UPDATE medications SET start_date = ?, name = ?, payload_json = ? WHERE profile_id = ? AND id = ?`,
+      medication.startDate ?? null, medication.name, JSON.stringify(medication), this.requireProfileId(), id
+    );
+    return result.changes === 1 ? medication : undefined;
+  }
+
+  async deleteMedication(id: string): Promise<Medication | undefined> {
+    await this.assertWritable();
+    const existing = await this.medicationById(id);
+    if (!existing) return undefined;
+    const result = await this.database.runAsync("DELETE FROM medications WHERE profile_id = ? AND id = ?", this.requireProfileId(), id);
+    return result.changes === 1 ? existing : undefined;
+  }
+
   async replicaMetadata(identity: ReplicaIdentity) {
     const row = await this.replicaDatabase.getFirstAsync<{
       server_instance_id: string;
@@ -1463,6 +1517,14 @@ export class SqliteLocalStore implements LocalStore {
     return row ? JSON.parse(row.payload_json) as CareItem : undefined;
   }
 
+  private async medicationById(id: string): Promise<Medication | undefined> {
+    const row = await this.database.getFirstAsync<{ payload_json: string }>(
+      "SELECT payload_json FROM medications WHERE profile_id = ? AND id = ?",
+      this.requireProfileId(), id
+    );
+    return row ? JSON.parse(row.payload_json) as Medication : undefined;
+  }
+
   private async insertHealthEvent(event: HealthEvent): Promise<void> {
     await this.database.runAsync(
       `INSERT INTO health_events (profile_id, id, kind, status, occurred_at, payload_json) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -1474,6 +1536,13 @@ export class SqliteLocalStore implements LocalStore {
     await this.database.runAsync(
       `INSERT INTO care_items (profile_id, id, kind, status, priority, due_start, title, payload_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       this.requireProfileId(), item.id, item.kind, item.status, item.priority, item.dueStart ?? null, item.title, JSON.stringify(item)
+    );
+  }
+
+  private async insertMedication(medication: Medication): Promise<void> {
+    await this.database.runAsync(
+      `INSERT INTO medications (profile_id, id, start_date, name, payload_json) VALUES (?, ?, ?, ?, ?)`,
+      this.requireProfileId(), medication.id, medication.startDate ?? null, medication.name, JSON.stringify(medication)
     );
   }
 
@@ -1507,6 +1576,15 @@ function careItemWhere(profileId: string, query: CareItemListQuery) {
   if (query.dueFrom) { clauses.push("due_start >= ?"); parameters.push(query.dueFrom); }
   if (query.dueTo) { clauses.push("due_start <= ?"); parameters.push(query.dueTo); }
   if (query.search) { clauses.push("lower(title || ' ' || payload_json) LIKE ?"); parameters.push(`%${query.search.toLowerCase()}%`); }
+  return { where: `WHERE ${clauses.join(" AND ")}`, parameters };
+}
+
+function medicationWhere(profileId: string, query: MedicationListQuery) {
+  const clauses = ["profile_id = ?"];
+  const parameters: string[] = [profileId];
+  if (query.startedFrom) { clauses.push("start_date >= ?"); parameters.push(query.startedFrom); }
+  if (query.startedTo) { clauses.push("start_date <= ?"); parameters.push(query.startedTo); }
+  if (query.search) { clauses.push("lower(payload_json) LIKE ?"); parameters.push(`%${query.search.toLowerCase()}%`); }
   return { where: `WHERE ${clauses.join(" AND ")}`, parameters };
 }
 

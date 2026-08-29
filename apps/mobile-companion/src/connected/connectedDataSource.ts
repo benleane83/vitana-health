@@ -156,6 +156,7 @@ export function createConnectedDataSource(
       )),
     listHealthEvents: (query) => cachedRead((current) => current.listHealthEvents(query)),
     listCareItems: (query) => cachedRead((current) => current.listCareItems(query)),
+    listMedications: (query) => cachedRead((current) => current.listMedications(query)),
     importManualObservations: (payload) => liveMutation(() => live.importManualObservations(payload)),
     updateObservation: (id, input) => liveMutation(() => live.updateObservation(id, input)),
     deleteObservation: (id) => liveMutation(() => live.deleteObservation(id)),
@@ -170,6 +171,9 @@ export function createConnectedDataSource(
     updateCareItem: (id, payload) => liveMutation(() => live.updateCareItem(id, payload)),
     completeCareItem: (id, payload) => liveMutation(() => live.completeCareItem(id, payload)),
     deleteCareItem: (id) => liveMutation(() => live.deleteCareItem(id)),
+    createMedication: (payload) => liveMutation(() => live.createMedication(payload)),
+    updateMedication: (id, payload) => liveMutation(() => live.updateMedication(id, payload)),
+    deleteMedication: (id) => liveMutation(() => live.deleteMedication(id)),
     connectionError: (result) => connectionErrors.get(result),
     prepareConnectedReplica: async () => {
       await synchronize();

@@ -6,6 +6,7 @@ import {
   healthEventObjectSchema,
   measurementAggregateSchema,
   measurementTypeSchema,
+  persistedMedicationSchema,
   observationGroupSchema,
   observationSchema,
   personalReferenceRangeSchema,
@@ -41,7 +42,8 @@ export const replicaEntityTypes = [
   "measurement-aggregate",
   "activity-session",
   "health-event",
-  "care-item"
+  "care-item",
+  "medication"
 ] as const;
 
 export type ReplicaEntityType = typeof replicaEntityTypes[number];
@@ -136,7 +138,8 @@ const replicaPayloadSchemas: Record<ReplicaEntityType, z.ZodTypeAny> = {
   "measurement-aggregate": measurementAggregateSchema.passthrough(),
   "activity-session": activitySessionSchema.passthrough(),
   "health-event": healthEventObjectSchema.passthrough(),
-  "care-item": persistedCareItemSchema.passthrough()
+  "care-item": persistedCareItemSchema.passthrough(),
+  "medication": persistedMedicationSchema
 };
 
 export const replicaChangeSchema: z.ZodType<ReplicaChange> = z.object({
@@ -202,5 +205,3 @@ export const replicaPageSchema: z.ZodType<ReplicaPage> = z.object({
   complete: z.boolean(),
   cachedAt: z.string().datetime({ offset: true })
 }).strict();
-
-

@@ -22,6 +22,9 @@ import {
   type JournalPage,
   type JournalQueryInput,
   type ManualObservationPayload,
+  type Medication,
+  type MedicationListQuery,
+  type CreateMedicationInput,
   type MobileImportResult,
   type ObservationGroupDetail,
   type PersonalReferenceRange
@@ -130,8 +133,10 @@ export function createDemoDataSource(
   const observationGroups = makeDemoObservationGroups(details, now);
   let healthEvents = makeHealthEvents(now);
   let careItems = makeCareItems(now);
+  let medications = makeMedications(now);
   let nextHealthEventId = healthEvents.length + 1;
   let nextCareItemId = careItems.length + 1;
+  let nextMedicationId = medications.length + 1;
   let nextObservationId = 1;
 
   return {
@@ -322,8 +327,78 @@ export function createDemoDataSource(
       const deletedCareItem = careItems.find((entry) => entry.id === id);
       careItems = careItems.filter((entry) => entry.id !== id);
       return { deletedCount: deletedCareItem ? 1 : 0, deletedCareItem, counts: makeBootstrap(details, now).counts };
+    },
+    async listMedications(query = {}) {
+      return paginateCollection(filterMedications(medications, query), query);
+    },
+    async createMedication(payload: CreateMedicationInput) {
+      const timestamp = new Date().toISOString();
+      const medication: Medication = {
+        id: `demo-medication-${nextMedicationId++}`,
+        ...payload,
+        createdAt: timestamp,
+        updatedAt: timestamp
+      };
+      medications = [medication, ...medications];
+      return { medication };
+    },
+    async updateMedication(id: string, payload: CreateMedicationInput) {
+      const existing = medications.find((entry) => entry.id === id);
+      if (!existing) throw new Error("Medication not found.");
+      const medication: Medication = { id, ...payload, createdAt: existing.createdAt, updatedAt: new Date().toISOString() };
+      medications = medications.map((entry) => entry.id === id ? medication : entry);
+      return { medication };
+    },
+    async deleteMedication(id: string) {
+      const deletedMedication = medications.find((entry) => entry.id === id);
+      medications = medications.filter((entry) => entry.id !== id);
+      return { deletedCount: deletedMedication ? 1 : 0, deletedMedication };
     }
   };
+}
+
+function makeMedications(now: Date): Medication[] {
+  const timestamp = now.toISOString();
+  return [
+    {
+      id: "demo-medication-1",
+      name: "Atorvastatin",
+      activeIngredient: "Atorvastatin calcium",
+      dose: 20,
+      unit: "mg",
+      startDate: dateDaysAgo(now, 180),
+      createdAt: timestamp,
+      updatedAt: timestamp
+    },
+    {
+      id: "demo-medication-2",
+      name: "Amoxicillin",
+      dose: 500,
+      unit: "mg",
+      startDate: dateDaysAgo(now, 45),
+      endDate: dateDaysAgo(now, 38),
+      createdAt: timestamp,
+      updatedAt: timestamp
+    }
+  ];
+}
+
+function filterMedications(values: Medication[], query: MedicationListQuery): Medication[] {
+  const search = query.search?.trim().toLowerCase();
+  return values
+    .filter((entry) => !query.startedFrom || Boolean(entry.startDate && entry.startDate >= query.startedFrom))
+    .filter((entry) => !query.startedTo || Boolean(entry.startDate && entry.startDate <= query.startedTo))
+    .filter((entry) => !search || [entry.name, entry.activeIngredient]
+      .some((value) => value?.toLowerCase().includes(search)))
+    .sort((left, right) => Number(left.startDate == null) - Number(right.startDate == null)
+      || (right.startDate ?? "").localeCompare(left.startDate ?? "")
+      || left.id.localeCompare(right.id));
+}
+
+function dateDaysAgo(now: Date, days: number): string {
+  const date = new Date(now);
+  date.setUTCDate(date.getUTCDate() - days);
+  return date.toISOString().slice(0, 10);
 }
 
 function makeBootstrap(details: Map<string, HealthDataDetail>, now: Date): AppBootstrap {

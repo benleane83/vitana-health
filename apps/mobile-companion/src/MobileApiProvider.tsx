@@ -19,10 +19,12 @@ import type {
   JournalPage,
   JournalQueryInput,
   ManualObservationPayload,
+  MedicationListQuery,
   MobileMigrationManifest,
   MobileMigrationReceipt,
   ObservationGroupDetail,
   PersonalReferenceRangeInput,
+  CreateMedicationInput,
   UpdateObservationInput
 } from "@vitana/shared";
 import { clearConnection, clearSelectedProfileId, loadConnection } from "./endpointStore";
@@ -112,6 +114,10 @@ interface MobileApiContextValue {
   updateCareItem(id: string, payload: CreateCareItemInput): Promise<void>;
   completeCareItem(id: string, payload: CompleteCareItemInput): Promise<void>;
   deleteCareItem(id: string): Promise<void>;
+  listMedications(query?: MedicationListQuery): Promise<Awaited<ReturnType<CompanionCareService["listMedications"]>>>;
+  createMedication(payload: CreateMedicationInput): Promise<void>;
+  updateMedication(id: string, payload: CreateMedicationInput): Promise<void>;
+  deleteMedication(id: string): Promise<void>;
   refreshAfterImport(): Promise<void>;
   clearTransientData(): void;
   disconnect(): Promise<void>;
@@ -541,6 +547,24 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     await runMutation(() => requireCareService(source).deleteCareItem(id));
   }, [runMutation, source]);
 
+  const listMedications = useCallback(async (query?: MedicationListQuery) => {
+    const result = await requireCareService(source).listMedications(query);
+    updateConnectionState(source!, result);
+    return result;
+  }, [source, updateConnectionState]);
+
+  const createMedication = useCallback(async (payload: CreateMedicationInput) => {
+    await runMutation(() => requireCareService(source).createMedication(payload));
+  }, [runMutation, source]);
+
+  const updateMedication = useCallback(async (id: string, payload: CreateMedicationInput) => {
+    await runMutation(() => requireCareService(source).updateMedication(id, payload));
+  }, [runMutation, source]);
+
+  const deleteMedication = useCallback(async (id: string) => {
+    await runMutation(() => requireCareService(source).deleteMedication(id));
+  }, [runMutation, source]);
+
   const refreshAfterImport = useCallback(async () => {
     await synchronizeConnectedData(true);
     await Promise.all([refreshDashboard(), refreshTrack()]);
@@ -694,15 +718,19 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     updateCareItem,
     completeCareItem,
     deleteCareItem,
+    listMedications,
+    createMedication,
+    updateMedication,
+    deleteMedication,
     refreshAfterImport,
     clearTransientData,
     disconnect
   }), [
-    analytics, bodyTrendTimeline, bootstrap, calendarMonth, cancelPendingConnection, clearTransientData, completeCareItem, connection, connectionState, createCareItem, createHealthEvent,
-    dashboardLoading, deleteCareItem, deleteHealthEvent, deleteObservation, demoMode, discardStandaloneDataAndConnect, disconnect, error, healthDataChartSeries, healthDataDetail, journal, observationGroup,
-    importManualObservations, listCareItems, listHealthEvents, operatingMode, refreshAfterImport, refreshDashboard,
+    analytics, bodyTrendTimeline, bootstrap, calendarMonth, cancelPendingConnection, clearTransientData, completeCareItem, connection, connectionState, createCareItem, createHealthEvent, createMedication,
+    dashboardLoading, deleteCareItem, deleteHealthEvent, deleteMedication, deleteObservation, demoMode, discardStandaloneDataAndConnect, disconnect, error, healthDataChartSeries, healthDataDetail, journal, observationGroup,
+    importManualObservations, listCareItems, listHealthEvents, listMedications, operatingMode, refreshAfterImport, refreshDashboard,
     profilePhoto, refreshTrack, reloadConnection, removePersonalReferenceRange, resetStandaloneData, setDemoMode, setOperatingMode, setPersonalReferenceRange, summary, syncing, synchronizeConnectedData, trackLoading,
-    migrateStandaloneData, migrationProgress, standaloneMigrationManifest, transientRevision, updateCareItem, updateHealthEvent, updateObservation
+    migrateStandaloneData, migrationProgress, standaloneMigrationManifest, transientRevision, updateCareItem, updateHealthEvent, updateMedication, updateObservation
   ]);
   return <MobileApiContext.Provider value={value}>{children}</MobileApiContext.Provider>;
 }
@@ -718,7 +746,8 @@ function requireCareService(source: CompanionDataSource | undefined): CompanionC
   if (
     !candidate?.listHealthEvents || !candidate.createHealthEvent || !candidate.updateHealthEvent ||
     !candidate.deleteHealthEvent || !candidate.listCareItems || !candidate.createCareItem ||
-    !candidate.updateCareItem || !candidate.completeCareItem || !candidate.deleteCareItem
+    !candidate.updateCareItem || !candidate.completeCareItem || !candidate.deleteCareItem ||
+    !candidate.listMedications || !candidate.createMedication || !candidate.updateMedication || !candidate.deleteMedication
   ) {
     throw new Error("Pair with your PC to use Care.");
   }

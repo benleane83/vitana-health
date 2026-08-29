@@ -25,6 +25,7 @@ import type {
   DeleteHealthEventResponse,
   DeleteObservationResponse,
   DeleteObservationsByTypeResponse,
+  DeleteMedicationResponse,
   HealthDataChartSeries,
   HealthDataDetail,
   HealthDataSummary,
@@ -34,6 +35,8 @@ import type {
   Insight,
   JournalPage,
   MeasurementPinState,
+  Medication,
+  MedicationMutationResponse,
   ObservationGroupDetail,
   Profile,
   ProfilePhotoResponse,
@@ -288,14 +291,6 @@ const immunizationDetailsSchema = z.object({
   reaction: z.string().optional()
 }).strict();
 
-const medicationAdministrationDetailsSchema = z.object({
-  medication: z.string(),
-  activeIngredient: z.string().optional(),
-  dose: z.number(),
-  unit: z.string(),
-  route: z.string().optional()
-}).strict();
-
 const healthEventBaseShape = {
   id: z.string(),
   status: z.enum(["completed", "entered-in-error"]),
@@ -319,8 +314,7 @@ export const healthEventSchema: z.ZodType<HealthEvent> = z.discriminatedUnion("k
   }).strict(),
   z.object({
     ...healthEventBaseShape,
-    kind: z.literal("medication"),
-    medicationAdministration: medicationAdministrationDetailsSchema.optional()
+    kind: z.literal("medication")
   }).strict(),
   z.object({
     ...healthEventBaseShape,
@@ -504,6 +498,38 @@ export const careItemListQuerySchema = z.object({
   }
 });
 
+export const medicationSchema: z.ZodType<Medication> = z.object({
+  id: z.string().min(1).max(160),
+  name: z.string().min(1).max(160),
+  activeIngredient: z.string().min(1).max(160).optional(),
+  dose: z.number().finite().positive().optional(),
+  unit: z.string().min(1).max(40).optional(),
+  startDate: z.string().date().optional(),
+  endDate: z.string().date().optional(),
+  notes: z.string().min(1).max(4000).optional(),
+  createdAt: isoTimestampSchema,
+  updatedAt: isoTimestampSchema
+}).strict().superRefine((value, context) => {
+  if (value.startDate && value.endDate && value.endDate < value.startDate) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["endDate"], message: "End date must be on or after start date." });
+  }
+});
+
+export const medicationListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
+  search: optionalTrimmedString(120),
+  startedFrom: z.string().date().optional(),
+  startedTo: z.string().date().optional(),
+  includeId: z.string().trim().min(1).max(160).optional()
+}).strict().superRefine((value, context) => {
+  if (value.startedFrom && value.startedTo && value.startedFrom > value.startedTo) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["startedTo"], message: "Start-date end must be on or after start-date beginning." });
+  }
+});
+export type MedicationListQueryContract = z.infer<typeof medicationListQuerySchema>;
+export type MedicationListQuery = Partial<MedicationListQueryContract>;
+
 const journalDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 export const journalQuerySchema = z.object({
@@ -602,6 +628,23 @@ export const updateCareItemInputSchema = createCareItemInputSchema;
 export type CreateCareItemInput = z.infer<typeof createCareItemInputSchema>;
 export type UpdateCareItemInput = CreateCareItemInput;
 
+export const createMedicationInputSchema = z.object({
+  name: z.string().trim().min(1).max(160),
+  activeIngredient: optionalTrimmedString(160),
+  dose: z.number().finite().positive().optional(),
+  unit: optionalTrimmedString(40),
+  startDate: z.string().date().optional(),
+  endDate: z.string().date().optional(),
+  notes: optionalTrimmedString(4000)
+}).strict().superRefine((value, context) => {
+  if (value.startDate && value.endDate && value.endDate < value.startDate) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["endDate"], message: "End date must be on or after start date." });
+  }
+});
+export const updateMedicationInputSchema = createMedicationInputSchema;
+export type CreateMedicationInput = z.infer<typeof createMedicationInputSchema>;
+export type UpdateMedicationInput = CreateMedicationInput;
+
 export const completeCareItemInputSchema = z.object({
   occurredAt: isoTimestampSchema,
   kind: z.enum(healthEventKindCodes).optional()
@@ -623,6 +666,10 @@ export const paginatedHealthEventsResponseSchema = z.object({
 }).strict();
 export const paginatedCareItemsResponseSchema = z.object({
   items: z.array(careItemSchema),
+  ...carePaginationSchema.shape
+}).strict();
+export const paginatedMedicationsResponseSchema = z.object({
+  items: z.array(medicationSchema),
   ...carePaginationSchema.shape
 }).strict();
 
@@ -1053,6 +1100,9 @@ export const careItemMutationResponseSchema: z.ZodType<CareItemMutationResponse>
   careItem: careItemSchema,
   counts: entityCountsSchema
 }).strict();
+export const medicationMutationResponseSchema: z.ZodType<MedicationMutationResponse> = z.object({
+  medication: medicationSchema
+}).strict();
 export const completeCareItemResponseSchema: z.ZodType<CompleteCareItemResponse> = z.object({
   careItem: careItemSchema,
   healthEvent: healthEventSchema.optional(),
@@ -1067,6 +1117,10 @@ export const deleteCareItemResponseSchema: z.ZodType<DeleteCareItemResponse> = z
   deletedCount: nonNegativeInt,
   deletedCareItem: careItemSchema.optional(),
   counts: entityCountsSchema
+}).strict();
+export const deleteMedicationResponseSchema: z.ZodType<DeleteMedicationResponse> = z.object({
+  deletedCount: nonNegativeInt,
+  deletedMedication: medicationSchema.optional()
 }).strict();
 export const linkedHealthEventConflictSchema = apiErrorResponseSchema.extend({
   code: z.literal("CARE_HEALTH_EVENT_LINK_CONFLICT"),

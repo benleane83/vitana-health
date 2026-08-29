@@ -19,7 +19,10 @@ import type {
   CreateCareItemInput,
   CreateHealthEventInput,
   HealthEvent,
-  HealthEventListQuery
+  HealthEventListQuery,
+  Medication,
+  MedicationListQuery,
+  CreateMedicationInput
 } from "@vitana/shared";
 import { api, ApiError } from "../../api.js";
 import type { CareView } from "../../types.js";
@@ -30,6 +33,7 @@ type ConfirmAction = (title: string, description: string, confirmLabel: string, 
 type HealthEventDraft = CreateHealthEventInput;
 type CareItemDraft = CreateCareItemInput;
 type CompletionDraft = CompleteCareItemInput;
+type MedicationDraft = Omit<CreateMedicationInput, "dose"> & { dose: string };
 
 const defaultHealthEventDraft: HealthEventDraft = {
   kind: "other",
@@ -46,6 +50,13 @@ const defaultCareItemDraft: CareItemDraft = {
   status: "open",
   reminderAt: undefined,
   notes: ""
+};
+
+const defaultMedicationDraft: MedicationDraft = {
+  name: "",
+  dose: "",
+  unit: "",
+  startDate: undefined
 };
 
 export function CareRoute({
@@ -67,12 +78,16 @@ export function CareRoute({
 }) {
   const [healthEvents, setHealthEvents] = useState<RemoteState<Awaited<ReturnType<typeof api.care.listHealthEvents>>>>({ busy: true });
   const [careItems, setCareItems] = useState<RemoteState<Awaited<ReturnType<typeof api.care.listCareItems>>>>({ busy: true });
+  const [medications, setMedications] = useState<RemoteState<Awaited<ReturnType<typeof api.care.listMedications>>>>({ busy: true });
   const [healthEventFilters, setHealthEventFilters] = useState<HealthEventListQuery>({ limit: 20, offset: 0 });
   const [careItemFilters, setCareItemFilters] = useState<CareItemListQuery>({ limit: 20, offset: 0, status: "open" });
+  const [medicationFilters, setMedicationFilters] = useState<MedicationListQuery>({ limit: 20, offset: 0 });
   const [healthEventDraft, setHealthEventDraft] = useState<HealthEventDraft>(defaultHealthEventDraft);
   const [careItemDraft, setCareItemDraft] = useState<CareItemDraft>(defaultCareItemDraft);
+  const [medicationDraft, setMedicationDraft] = useState<MedicationDraft>(defaultMedicationDraft);
   const [editingHealthEventId, setEditingHealthEventId] = useState<string>();
   const [editingCareItemId, setEditingCareItemId] = useState<string>();
+  const [editingMedicationId, setEditingMedicationId] = useState<string>();
   const [completingCareItem, setCompletingCareItem] = useState<CareItem>();
   const [completionDraft, setCompletionDraft] = useState<CompletionDraft>(() => ({
     occurredAt: dateOnlyIso(new Date()),
@@ -85,10 +100,13 @@ export function CareRoute({
   function handleTabKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, currentView: CareView) {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
-    const nextView: CareView = event.key === "ArrowRight" || event.key === "End" ? "health-events" : "items";
-    const resolvedView = event.key.startsWith("Arrow") && nextView === currentView
-      ? currentView === "items" ? "health-events" : "items"
-      : nextView;
+    const views: CareView[] = ["items", "health-events", "medications"];
+    const currentIndex = views.indexOf(currentView);
+    const resolvedView = event.key === "Home"
+      ? views[0]
+      : event.key === "End"
+        ? views[views.length - 1]
+        : views[(currentIndex + (event.key === "ArrowRight" ? 1 : -1) + views.length) % views.length];
     onViewChange(resolvedView);
     document.getElementById(`care-tab-${resolvedView}`)?.focus();
   }
@@ -98,12 +116,18 @@ export function CareRoute({
       void loadHealthEvents(true);
       return;
     }
+    if (view === "medications") {
+      void loadMedications(true);
+      return;
+    }
     void loadCareItems(true);
   }, [view, activeProfileId, selectedCareItemId]);
 
   const editorActive = view === "health-events"
     ? Boolean(editingHealthEventId)
-    : Boolean(editingCareItemId || completingCareItem);
+    : view === "medications"
+      ? Boolean(editingMedicationId)
+      : Boolean(editingCareItemId || completingCareItem);
 
   useEffect(() => {
     if (!editorActive || typeof window.matchMedia !== "function" || !window.matchMedia("(max-width: 900px)").matches) return;
@@ -116,6 +140,10 @@ export function CareRoute({
   function closeEditor() {
     if (view === "health-events") {
       setEditingHealthEventId(undefined);
+      return;
+    }
+    if (view === "medications") {
+      setEditingMedicationId(undefined);
       return;
     }
     setEditingCareItemId(undefined);
@@ -170,10 +198,36 @@ export function CareRoute({
     }
   }
 
+  async function loadMedications(reset = false, filters = medicationFilters) {
+    const query = {
+      ...filters,
+      offset: reset ? 0 : filters.offset ?? 0,
+      limit: filters.limit ?? 20
+    };
+    setMedications((current) => ({ ...current, busy: true, error: undefined }));
+    try {
+      const next = await api.care.listMedications(query);
+      setMedications((current) => ({
+        busy: false,
+        data: !reset && current.data ? {
+          ...next,
+          items: [...current.data.items, ...next.items.filter((entry) => !current.data?.items.some((existing) => existing.id === entry.id))]
+        } : next
+      }));
+    } catch (error) {
+      setMedications({ busy: false, error: error instanceof Error ? error.message : "Unable to load medications." });
+    }
+  }
+
   function beginCreate() {
     if (view === "health-events") {
       setEditingHealthEventId("new");
       setHealthEventDraft(defaultHealthEventDraft);
+      return;
+    }
+    if (view === "medications") {
+      setEditingMedicationId("new");
+      setMedicationDraft(defaultMedicationDraft);
       return;
     }
     setCompletingCareItem(undefined);
@@ -186,6 +240,12 @@ export function CareRoute({
       const next: HealthEventListQuery = { limit: 20, offset: 0 };
       setHealthEventFilters(next);
       void loadHealthEvents(true, next);
+      return;
+    }
+    if (view === "medications") {
+      const next: MedicationListQuery = { limit: 20, offset: 0 };
+      setMedicationFilters(next);
+      void loadMedications(true, next);
       return;
     }
     const next: CareItemListQuery = { limit: 20, offset: 0, status: "open" };
@@ -221,6 +281,19 @@ export function CareRoute({
       priority: entry.priority,
       status: entry.status,
       notes: entry.notes ?? ""
+    });
+  }
+
+  function beginEditMedication(entry: Medication) {
+    setEditingMedicationId(entry.id);
+    setMedicationDraft({
+      name: entry.name,
+      activeIngredient: entry.activeIngredient,
+      dose: entry.dose === undefined ? "" : String(entry.dose),
+      unit: entry.unit ?? "",
+      startDate: entry.startDate,
+      endDate: entry.endDate,
+      notes: entry.notes
     });
   }
 
@@ -265,6 +338,22 @@ export function CareRoute({
     });
   }
 
+  async function saveMedication() {
+    await runAction(async () => {
+      const payload = normalizeMedicationDraft(medicationDraft);
+      if (editingMedicationId && editingMedicationId !== "new") {
+        await api.care.updateMedication(editingMedicationId, payload);
+        onNotice("Medication updated.");
+      } else {
+        await api.care.createMedication(payload);
+        onNotice("Medication added.");
+      }
+      await Promise.all([loadMedications(true), onDataChanged()]);
+      setEditingMedicationId(undefined);
+      setMedicationDraft(defaultMedicationDraft);
+    });
+  }
+
   async function completeCareItem() {
     if (!completingCareItem) return;
     await runAction(async () => {
@@ -306,6 +395,16 @@ export function CareRoute({
     });
   }
 
+  async function deleteMedication(entry: Medication) {
+    const confirmed = await confirm("Delete medication", `Delete ${entry.name}?`, "Delete", true);
+    if (!confirmed) return;
+    await runAction(async () => {
+      await api.care.deleteMedication(entry.id);
+      await Promise.all([loadMedications(true), onDataChanged()]);
+      onNotice("Medication deleted.");
+    });
+  }
+
   async function runAction(task: () => Promise<void>) {
     setActionBusy(true);
     try {
@@ -317,15 +416,18 @@ export function CareRoute({
     }
   }
 
-  const listBusy = view === "health-events" ? healthEvents.busy : careItems.busy;
-  const listError = view === "health-events" ? healthEvents.error : careItems.error;
+  const listBusy = view === "health-events" ? healthEvents.busy : view === "medications" ? medications.busy : careItems.busy;
+  const listError = view === "health-events" ? healthEvents.error : view === "medications" ? medications.error : careItems.error;
   const healthEventList = healthEvents.data?.items ?? [];
   const careItemList = careItems.data?.items ?? [];
-  const canLoadMore = view === "health-events" ? !!healthEvents.data?.hasMore : !!careItems.data?.hasMore;
+  const medicationList = medications.data?.items ?? [];
+  const canLoadMore = view === "health-events" ? !!healthEvents.data?.hasMore : view === "medications" ? !!medications.data?.hasMore : !!careItems.data?.hasMore;
   const hasActiveFilters = view === "health-events"
     ? Boolean(healthEventFilters.search?.trim() || healthEventFilters.kind || healthEventFilters.status)
-    : Boolean(careItemFilters.search?.trim() || careItemFilters.kind || (careItemFilters.status && careItemFilters.status !== "open"));
-  const listEmpty = !listBusy && !listError && (view === "health-events" ? !healthEventList.length : !careItemList.length);
+    : view === "medications"
+      ? Boolean(medicationFilters.search?.trim())
+      : Boolean(careItemFilters.search?.trim() || careItemFilters.kind || (careItemFilters.status && careItemFilters.status !== "open"));
+  const listEmpty = !listBusy && !listError && (view === "health-events" ? !healthEventList.length : view === "medications" ? !medicationList.length : !careItemList.length);
   const showEmptyState = listEmpty && !editorActive;
 
   return (
@@ -337,35 +439,39 @@ export function CareRoute({
         </div>
       </header>
       <div className="care-switch route-local-nav" role="tablist" aria-label="Care views" aria-orientation="horizontal">
-        {(["items", "health-events"] as const).map((value) => (
+        {(["items", "health-events", "medications"] as const).map((value) => (
           <button key={value} id={`care-tab-${value}`} role="tab" aria-selected={view === value} aria-controls="care-view-panel" tabIndex={view === value ? 0 : -1} className={view === value ? "active" : ""} onClick={() => onViewChange(value)} onKeyDown={(event) => handleTabKeyDown(event, value)}>
-            {value === "items" ? "Care items" : "Health events"}
+            {value === "items" ? "Care items" : value === "health-events" ? "Health events" : "Medications"}
           </button>
         ))}
       </div>
       <section className="panel care-panel" aria-labelledby="care-view-title">
         <div className="care-view-header">
           <div>
-            <h2 id="care-view-title">{view === "items" ? "Care items" : "Health events"}</h2>
+            <h2 id="care-view-title">{view === "items" ? "Care items" : view === "health-events" ? "Health events" : "Medications"}</h2>
             <p className="care-view-description">
               {view === "items"
                 ? "Plan and track appointments, follow-ups, and other care that still needs attention."
-                : "Record care, symptoms, tests, treatments, and other health moments that have already happened."}
+                : view === "health-events"
+                  ? "Record care, symptoms, tests, treatments, and other health moments that have already happened."
+                  : "Keep an up-to-date list of medicines, doses, dates, and notes."}
             </p>
           </div>
-          {!showEmptyState ? <button type="button" onClick={beginCreate} disabled={editorActive}>{view === "health-events" ? "Add health event" : "Add care item"}</button> : null}
+          {!showEmptyState ? <button type="button" onClick={beginCreate} disabled={editorActive}>{view === "health-events" ? "Add health event" : view === "medications" ? "Add medication" : "Add care item"}</button> : null}
         </div>
         <div id="care-view-panel" className={`care-layout${editorActive ? " has-editor" : ""}${showEmptyState ? " is-empty" : ""}`} role="tabpanel" aria-labelledby={`care-tab-${view}`}>
         <div className="care-list-panel" ref={listPanelRef}>
           {!showEmptyState || hasActiveFilters ? (
             view === "health-events" ? (
               <HealthEventFilters filters={healthEventFilters} onChange={(next) => setHealthEventFilters((current) => ({ ...current, ...next, offset: 0 }))} onApply={() => { void loadHealthEvents(true); }} />
+            ) : view === "medications" ? (
+              <MedicationFilters filters={medicationFilters} onChange={(next) => setMedicationFilters((current) => ({ ...current, ...next, offset: 0 }))} onApply={() => { void loadMedications(true); }} />
             ) : (
               <CareItemFilters filters={careItemFilters} onChange={(next) => setCareItemFilters((current) => ({ ...current, ...next, offset: 0 }))} onApply={() => { void loadCareItems(true); }} />
             )
           ) : null}
           <div aria-live="polite" aria-atomic="true">
-            {listBusy ? <p className="empty" role="status">Loading {view === "health-events" ? "health events" : "care items"}…</p> : null}
+            {listBusy ? <p className="empty" role="status">Loading {view === "health-events" ? "health events" : view === "medications" ? "medications" : "care items"}…</p> : null}
             {listError ? <p className="empty" role="alert">{listError}</p> : null}
           </div>
           {view === "health-events" ? (
@@ -388,6 +494,28 @@ export function CareRoute({
                     onEdit={() => beginEditHealthEvent(entry)}
                     onDelete={() => { void deleteHealthEvent(entry); }}
                   />
+                </article>
+              ))}
+              {showEmptyState ? <CareEmptyState view={view} filtered={hasActiveFilters} onCreate={beginCreate} onClearFilters={clearFilters} /> : null}
+            </div>
+          ) : view === "medications" ? (
+            <div className="care-results">
+              {medicationList.map((entry) => (
+                <article className="care-row" key={entry.id}>
+                  <button
+                    type="button"
+                    className="care-row-content care-row-select"
+                    aria-label={`Edit ${entry.name}`}
+                    aria-pressed={editingMedicationId === entry.id}
+                    onClick={() => beginEditMedication(entry)}
+                  >
+                    <strong>{entry.name}{entry.activeIngredient ? ` (${entry.activeIngredient})` : ""}</strong>
+                    {entry.dose !== undefined || entry.unit
+                      ? <span>{[entry.dose, entry.unit].filter((value) => value !== undefined && value !== "").join(" ")}</span>
+                      : null}
+                    {entry.startDate ? <span>Started {formatDateOnly(entry.startDate)}</span> : null}
+                  </button>
+                  <CareRowActions label={entry.name} onEdit={() => beginEditMedication(entry)} onDelete={() => { void deleteMedication(entry); }} />
                 </article>
               ))}
               {showEmptyState ? <CareEmptyState view={view} filtered={hasActiveFilters} onCreate={beginCreate} onClearFilters={clearFilters} /> : null}
@@ -430,6 +558,11 @@ export function CareRoute({
                 void loadHealthEvents();
                 return;
               }
+              if (view === "medications") {
+                setMedicationFilters((current) => ({ ...current, offset: medicationList.length }));
+                void loadMedications();
+                return;
+              }
               setCareItemFilters((current) => ({ ...current, offset: careItemList.length }));
               void loadCareItems();
             }}>Load more</button>
@@ -439,7 +572,7 @@ export function CareRoute({
           {editorActive ? (
             <button type="button" className="care-editor-mobile-back" onClick={closeEditor}>
               <ArrowLeft aria-hidden="true" size={18} />
-              Back to {view === "health-events" ? "health events" : "care items"}
+              Back to {view === "health-events" ? "health events" : view === "medications" ? "medications" : "care items"}
             </button>
           ) : null}
           {view === "items" && completingCareItem ? (
@@ -450,6 +583,9 @@ export function CareRoute({
           ) : null}
           {view === "items" && editingCareItemId ? (
             <CareItemEditor draft={careItemDraft} busy={actionBusy} onChange={setCareItemDraft} onCancel={() => setEditingCareItemId(undefined)} onSave={() => { void saveCareItem(); }} />
+          ) : null}
+          {view === "medications" && editingMedicationId ? (
+            <MedicationEditor draft={medicationDraft} busy={actionBusy} onChange={setMedicationDraft} onCancel={() => setEditingMedicationId(undefined)} onSave={() => { void saveMedication(); }} />
           ) : null}
           {!editorActive && !listEmpty ? <p className="empty">Select a record to edit it, or add a new one.</p> : null}
         </div>
@@ -488,21 +624,24 @@ function CareEmptyState({
   }
 
   const isHealthEvents = view === "health-events";
+  const isMedications = view === "medications";
   return (
     <section className="care-empty-state" aria-labelledby="care-empty-title">
       <span className="care-empty-state-icon" aria-hidden="true">
         {isHealthEvents ? <History size={24} /> : <CalendarPlus size={24} />}
       </span>
       <div className="care-empty-copy">
-        <h2 id="care-empty-title">{isHealthEvents ? "Build your health history" : "Nothing needs your attention"}</h2>
+        <h2 id="care-empty-title">{isHealthEvents ? "Build your health history" : isMedications ? "No medications recorded" : "Nothing needs your attention"}</h2>
         <p>
           {isHealthEvents
             ? "Record visits, tests, treatments, symptoms, and other health moments as they happen."
-            : "Add appointments, check-ups, or follow-ups with an optional due date and reminder. Completed care is recorded in Health events."}
+            : isMedications
+              ? "Add current or previous medicines so their key details stay together."
+              : "Add appointments, check-ups, or follow-ups with an optional due date and reminder. Completed care is recorded in Health events."}
         </p>
       </div>
       <div className="care-empty-actions">
-        <button type="button" onClick={onCreate}>{isHealthEvents ? "Add health event" : "Add care item"}</button>
+        <button type="button" onClick={onCreate}>{isHealthEvents ? "Add health event" : isMedications ? "Add medication" : "Add care item"}</button>
         {canShowAll && onShowAll ? <button type="button" className="care-empty-secondary" onClick={onShowAll}>View all statuses</button> : null}
       </div>
     </section>
@@ -572,6 +711,15 @@ function CareItemFilters({ filters, onChange, onApply }: { filters: CareItemList
   return <div className="care-filters"><input aria-label="Search care items" placeholder="Search care items" value={filters.search ?? ""} onChange={(event) => onChange({ search: event.target.value })} /><select aria-label="Filter care item type" value={filters.kind ?? ""} onChange={(event) => onChange({ kind: (event.target.value || undefined) as CareItemListQuery["kind"] })}><option value="">All types</option>{careItemKindCodes.map((kind) => <option key={kind} value={kind}>{careItemKindLabels[kind]}</option>)}</select><select aria-label="Filter care item status" value={filters.status ?? ""} onChange={(event) => onChange({ status: (event.target.value || undefined) as CareItemListQuery["status"] })}><option value="">All statuses</option><option value="open">Open</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select><button type="button" onClick={onApply}>Apply</button></div>;
 }
 
+function MedicationFilters({ filters, onChange, onApply }: { filters: MedicationListQuery; onChange: (next: Partial<MedicationListQuery>) => void; onApply: () => void; }) {
+  return (
+    <div className="care-filters">
+      <input aria-label="Search medications" placeholder="Search medications" value={filters.search ?? ""} onChange={(event) => onChange({ search: event.target.value })} />
+      <button type="button" onClick={onApply}>Apply</button>
+    </div>
+  );
+}
+
 function HealthEventEditor({ draft, busy, onChange, onCancel, onSave }: { draft: HealthEventDraft; busy: boolean; onChange: (next: HealthEventDraft) => void; onCancel: () => void; onSave: () => void; }) {
   return <form className="care-editor" onSubmit={(event) => { event.preventDefault(); onSave(); }}><h2 tabIndex={-1}>{healthEventKindLabels[draft.kind]}</h2><label>Type<select value={draft.kind} onChange={(event) => onChange({ ...draft, kind: event.target.value as HealthEventDraft["kind"] })}>{healthEventKindCodes.map((kind) => <option key={kind} value={kind}>{healthEventKindLabels[kind]}</option>)}</select></label><label>Date<input type="date" value={toDateOnly(draft.occurredAt)} onChange={(event) => onChange({ ...draft, occurredAt: fromDateOnly(event.target.value) || draft.occurredAt })} /></label><label>Provider<input value={draft.provider ?? ""} maxLength={160} onChange={(event) => onChange({ ...draft, provider: event.target.value })} /></label><label>Notes<textarea value={draft.notes ?? ""} maxLength={4000} onChange={(event) => onChange({ ...draft, notes: event.target.value })} /></label><div className="care-editor-actions"><button type="submit" disabled={busy}>{busy ? "Saving…" : "Save"}</button><button type="button" onClick={onCancel}>Cancel</button></div></form>;
 }
@@ -590,6 +738,22 @@ function CareItemEditor({ draft, busy, onChange, onCancel, onSave }: { draft: Ca
           {(["one-day", "one-week"] as CareItemReminderLead[]).map((lead) => <button key={lead} type="button" disabled={!draft.dueStart} onClick={() => onChange({ ...draft, reminderAt: careItemReminderAt(draft.dueStart, lead) })}>{careItemReminderLeadLabels[lead]}</button>)}
         </div>
       </div>
+      <label>Notes<textarea value={draft.notes ?? ""} maxLength={4000} onChange={(event) => onChange({ ...draft, notes: event.target.value })} /></label>
+      <div className="care-editor-actions"><button type="submit" disabled={busy}>{busy ? "Saving…" : "Save"}</button><button type="button" onClick={onCancel}>Cancel</button></div>
+    </form>
+  );
+}
+
+function MedicationEditor({ draft, busy, onChange, onCancel, onSave }: { draft: MedicationDraft; busy: boolean; onChange: (next: MedicationDraft) => void; onCancel: () => void; onSave: () => void; }) {
+  return (
+    <form className="care-editor" onSubmit={(event) => { event.preventDefault(); onSave(); }}>
+      <h2 tabIndex={-1}>{draft.name || "Medication"}</h2>
+      <label>Name<input required value={draft.name} maxLength={160} onChange={(event) => onChange({ ...draft, name: event.target.value })} /></label>
+      <label>Active Ingredient(s)<input value={draft.activeIngredient ?? ""} maxLength={160} onChange={(event) => onChange({ ...draft, activeIngredient: event.target.value })} /></label>
+      <label>Dose (optional)<input aria-label="Dose" type="number" min="0.000001" step="any" value={draft.dose} onChange={(event) => onChange({ ...draft, dose: event.target.value })} /></label>
+      <label>Unit (optional)<input aria-label="Unit" value={draft.unit ?? ""} maxLength={40} onChange={(event) => onChange({ ...draft, unit: event.target.value })} /></label>
+      <label>Start date<input type="date" value={draft.startDate ?? ""} onChange={(event) => onChange({ ...draft, startDate: event.target.value || undefined })} /></label>
+      <label>End date<input type="date" min={draft.startDate ?? undefined} value={draft.endDate ?? ""} onChange={(event) => onChange({ ...draft, endDate: event.target.value || undefined })} /></label>
       <label>Notes<textarea value={draft.notes ?? ""} maxLength={4000} onChange={(event) => onChange({ ...draft, notes: event.target.value })} /></label>
       <div className="care-editor-actions"><button type="submit" disabled={busy}>{busy ? "Saving…" : "Save"}</button><button type="button" onClick={onCancel}>Cancel</button></div>
     </form>
@@ -641,6 +805,25 @@ function formatWhen(value: string): string {
 
 function normalizeHealthEventDraft(draft: HealthEventDraft): CreateHealthEventInput {
   return { kind: draft.kind, status: draft.status, occurredAt: draft.occurredAt, provider: draft.provider?.trim() || undefined, notes: draft.notes?.trim() || undefined };
+}
+
+function normalizeMedicationDraft(draft: MedicationDraft): CreateMedicationInput {
+  return {
+    name: draft.name.trim(),
+    activeIngredient: draft.activeIngredient?.trim() || undefined,
+    dose: draft.dose.trim() ? Number(draft.dose) : undefined,
+    unit: draft.unit?.trim() || undefined,
+    startDate: draft.startDate || undefined,
+    endDate: draft.endDate || undefined,
+    notes: draft.notes?.trim() || undefined
+  };
+}
+
+function formatDateOnly(value: string): string {
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isFinite(date.getTime())
+    ? date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })
+    : value;
 }
 
 function normalizeCareItemDraft(draft: CareItemDraft): CreateCareItemInput {

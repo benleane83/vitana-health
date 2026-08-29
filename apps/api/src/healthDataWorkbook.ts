@@ -107,8 +107,16 @@ const collectionSheets: readonly CollectionSheet[] = [
     columns: [
       key("id", "ID", 26), key("kind", "Kind", 22), key("status", "Status", 18), key("occurredAt", "Occurred at", 25),
       key("source", "Source", 22), key("provider", "Provider", 28), key("notes", "Notes", 40),
-      key("metadata", "Metadata (JSON)", 45), key("immunization", "Immunization (JSON)", 45),
-      key("medicationAdministration", "Medication administration (JSON)", 45)
+      key("metadata", "Metadata (JSON)", 45), key("immunization", "Immunization (JSON)", 45)
+    ]
+  },
+  {
+    collection: "medications",
+    name: "Medications",
+    columns: [
+      key("id", "ID", 26), key("name", "Name", 30), key("activeIngredient", "Active Ingredient(s)", 28),
+      key("dose", "Dose", 14), key("unit", "Unit", 14), key("startDate", "Start date", 16),
+      key("endDate", "End date", 16), key("notes", "Notes", 40)
     ]
   },
   {

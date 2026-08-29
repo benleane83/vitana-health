@@ -262,6 +262,66 @@ export const migrations: readonly Migration[] = [
           payload_json = json_set(payload_json, '$.status', 'cancelled')
       WHERE status = 'skipped';
   `
+  },
+  {
+  version: 8,
+  sql: `
+  CREATE TABLE medications (
+    profile_id TEXT NOT NULL,
+    id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    start_date TEXT NOT NULL,
+    name TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    PRIMARY KEY (profile_id, id),
+    FOREIGN KEY (profile_id) REFERENCES profiles(id)
+  );
+  CREATE INDEX medications_filter_idx
+    ON medications(profile_id, status, start_date DESC, id);
+  `
+  },
+  {
+  version: 9,
+  sql: `
+  CREATE TABLE medications_v9 (
+    profile_id TEXT NOT NULL,
+    id TEXT NOT NULL,
+    start_date TEXT NOT NULL,
+    name TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    PRIMARY KEY (profile_id, id),
+    FOREIGN KEY (profile_id) REFERENCES profiles(id)
+  );
+  INSERT INTO medications_v9 (profile_id, id, start_date, name, payload_json)
+    SELECT profile_id, id, start_date, name,
+      json_remove(payload_json, '$.route', '$.schedule', '$.prescriber', '$.reason', '$.status')
+    FROM medications;
+  DROP TABLE medications;
+  ALTER TABLE medications_v9 RENAME TO medications;
+  CREATE INDEX medications_filter_idx
+    ON medications(profile_id, start_date DESC, id);
+  `
+  },
+  {
+  version: 10,
+  sql: `
+  CREATE TABLE medications_v10 (
+    profile_id TEXT NOT NULL,
+    id TEXT NOT NULL,
+    start_date TEXT,
+    name TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    PRIMARY KEY (profile_id, id),
+    FOREIGN KEY (profile_id) REFERENCES profiles(id)
+  );
+  INSERT INTO medications_v10 (profile_id, id, start_date, name, payload_json)
+    SELECT profile_id, id, start_date, name, payload_json
+    FROM medications;
+  DROP TABLE medications;
+  ALTER TABLE medications_v10 RENAME TO medications;
+  CREATE INDEX medications_filter_idx
+    ON medications(profile_id, start_date DESC, id);
+  `
   }
 ];
 

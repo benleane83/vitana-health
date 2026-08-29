@@ -9,8 +9,11 @@ import {
   calendarMonthQuerySchema,
   calendarMonthResponseSchema,
   careItemSchema,
+  createMedicationInputSchema,
   healthDataSummaryResponseSchema,
   healthEventSchema,
+  medicationListQuerySchema,
+  medicationSchema,
   personalReferenceRangeInputSchema
 } from "../apiContract.js";
 
@@ -148,6 +151,55 @@ describe("response contracts", () => {
       priority: "normal",
       status: "open"
     }).success).toBe(false);
+  });
+
+  it("keeps removed medication fields out of records, mutations, and list queries", () => {
+    const medication = {
+      id: "medication-1",
+      name: "Metformin",
+      activeIngredient: "Metformin hydrochloride",
+      dose: 500,
+      unit: "mg",
+      startDate: "2026-01-10",
+      createdAt: "2026-01-10T08:00:00.000Z",
+      updatedAt: "2026-01-10T08:00:00.000Z"
+    };
+
+    expect(medicationSchema.safeParse(medication).success).toBe(true);
+    expect(createMedicationInputSchema.safeParse({
+      name: medication.name,
+      activeIngredient: medication.activeIngredient,
+      dose: medication.dose,
+      unit: medication.unit
+    }).success).toBe(true);
+    expect(createMedicationInputSchema.safeParse({
+      name: medication.name
+    }).success).toBe(true);
+    expect(createMedicationInputSchema.safeParse({
+      name: medication.name,
+      dose: medication.dose,
+      unit: medication.unit,
+      endDate: "2026-01-09"
+    }).success).toBe(true);
+    expect(createMedicationInputSchema.safeParse({
+      name: medication.name,
+      dose: medication.dose,
+      unit: medication.unit,
+      startDate: "2026-01-10",
+      endDate: "2026-01-09"
+    }).success).toBe(false);
+
+    for (const retiredField of ["route", "schedule", "prescriber", "reason", "status"] as const) {
+      expect(medicationSchema.safeParse({ ...medication, [retiredField]: "removed" }).success).toBe(false);
+      expect(createMedicationInputSchema.safeParse({
+        name: medication.name,
+        dose: medication.dose,
+        unit: medication.unit,
+        startDate: medication.startDate,
+        [retiredField]: "removed"
+      }).success).toBe(false);
+    }
+    expect(medicationListQuerySchema.safeParse({ status: "active" }).success).toBe(false);
   });
 
   it("ties health event details to the matching kind", () => {

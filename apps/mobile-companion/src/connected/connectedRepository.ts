@@ -24,6 +24,8 @@ import {
   type HealthStoreData,
   type JournalQueryInput,
   type MeasurementType,
+  type Medication,
+  type MedicationListQuery,
   type Observation,
   type ObservationGroup,
   type ObservationGroupDetail,
@@ -335,6 +337,28 @@ export class ConnectedReplicaRepository {
     };
   }
 
+  async listMedications(query: MedicationListQuery = {}) {
+    const { data } = await this.readProjection();
+    const medications = data.medications ?? [];
+    const { limit, offset } = normalizePagination(query);
+    const search = query.search?.trim().toLowerCase();
+    const matching = medications
+      .filter((entry) => !query.startedFrom || Boolean(entry.startDate && entry.startDate >= query.startedFrom))
+      .filter((entry) => !query.startedTo || Boolean(entry.startDate && entry.startDate <= query.startedTo))
+      .filter((entry) => !search || [entry.name, entry.activeIngredient]
+        .some((value) => value?.toLowerCase().includes(search)))
+      .sort(compareMedications);
+    const items = matching.slice(offset, offset + limit);
+    appendIncluded(items, medications, query.includeId);
+    return {
+      items,
+      total: matching.length,
+      offset,
+      limit,
+      hasMore: offset + Math.min(limit, Math.max(matching.length - offset, 0)) < matching.length
+    };
+  }
+
   metadata() {
     return this.store.replicaMetadata(this.identity);
   }
@@ -419,10 +443,18 @@ export class ConnectedReplicaRepository {
       activitySessions: values<ActivitySession>("activity-session"),
       healthEvents: values<HealthEvent>("health-event"),
       careItems: values<CareItem>("care-item"),
+      medications: values<Medication>("medication"),
       insights: [],
       auditEvents: []
     };
   }
+
+}
+
+function compareMedications(left: Medication, right: Medication): number {
+  return Number(left.startDate == null) - Number(right.startDate == null)
+    || (right.startDate ?? "").localeCompare(left.startDate ?? "")
+    || left.id.localeCompare(right.id);
 }
 
 function sourceCalendarDate(value: unknown): string | undefined {

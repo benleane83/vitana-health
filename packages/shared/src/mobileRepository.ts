@@ -4,10 +4,19 @@ import type {
   DeleteObservationResponse,
   HealthDataDetail,
   HealthDataSummary,
+  DeleteMedicationResponse,
+  Medication,
+  MedicationMutationResponse,
   ObservationGroupDetail,
+  PaginatedResult,
   UpdateObservationResponse
 } from "./types.js";
-import type { ImportCategoryOutcome, UpdateObservationInput } from "./apiContract.js";
+import type {
+  CreateMedicationInput,
+  ImportCategoryOutcome,
+  MedicationListQuery,
+  UpdateObservationInput
+} from "./apiContract.js";
 import type { ManualObservationPayload, ParsedImport } from "./parserTypes.js";
 
 export interface MobileDetailPage {
@@ -36,6 +45,10 @@ export interface MobileProfileRepository {
   summary(): Promise<HealthDataSummary>;
   healthDataDetail(measurementCode: string, page?: MobileDetailPage): Promise<HealthDataDetail>;
   observationGroup(id: string): Promise<ObservationGroupDetail | undefined>;
+  listMedications(query?: MedicationListQuery): Promise<PaginatedResult<Medication>>;
+  createMedication(input: CreateMedicationInput): Promise<MedicationMutationResponse>;
+  updateMedication(id: string, input: CreateMedicationInput): Promise<MedicationMutationResponse>;
+  deleteMedication(id: string): Promise<DeleteMedicationResponse>;
   updateObservation(id: string, input: UpdateObservationInput): Promise<UpdateObservationResponse | undefined>;
   deleteObservation(id: string): Promise<DeleteObservationResponse | undefined>;
   mergeImport(imported: ParsedImport): Promise<MobileImportResult>;

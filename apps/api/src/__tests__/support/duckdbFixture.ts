@@ -133,6 +133,7 @@ export function createDuckDbHealthStoreFixture(): HealthStoreData {
     }],
     healthEvents: [],
     careItems: [],
+    medications: [],
     insights: [{
       id: "insight-1",
       createdAt: "2026-07-12T10:03:00.000Z",

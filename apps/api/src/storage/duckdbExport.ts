@@ -177,14 +177,11 @@ export async function snapshot(
   }), row.source_json_present, row.source_json));
   const eventRows = await orderedRows(connection, "health_events");
   const immunizations = new Map((await all(connection, "SELECT * FROM immunizations;")).map((row) => [String(row.health_event_id), row]));
-  const medications = new Map((await all(connection, "SELECT * FROM medication_administrations;")).map((row) => [String(row.health_event_id), row]));
   const healthEvents = eventRows.map((row) => {
     const base = compact({ id: row.id, kind: row.kind, status: row.status, occurredAt: isoTimestamp(row.occurred_at),
       source: row.source, provider: row.provider, notes: row.notes, metadata: optionalJson(row.metadata) });
     const immunization = immunizations.get(String(row.id));
-    const medication = medications.get(String(row.id));
     if (immunization) return { ...base, kind: "immunization", immunization: compact({ vaccine: immunization.vaccine, targetDisease: immunization.target_disease, doseNumber: optionalNumber(immunization.dose_number), series: immunization.series, manufacturer: immunization.manufacturer, lotNumber: immunization.lot_number, expiresAt: immunization.expires_at ? String(immunization.expires_at).slice(0, 10) : undefined, route: immunization.route, site: immunization.site, reaction: immunization.reaction }) };
-    if (medication) return { ...base, kind: "medication", medicationAdministration: compact({ medication: medication.medication, activeIngredient: medication.active_ingredient, dose: Number(medication.dose), unit: medication.unit, route: medication.route }) };
     const kind = String(row.kind);
     if (!isHealthEventKind(kind)) throw new Error(`Unsupported health event kind "${kind}".`);
     return { ...base, kind };
@@ -195,6 +192,7 @@ export async function snapshot(
     scheduleVersion: row.schedule_version, notes: row.notes,
     completedHealthEventId: row.completed_health_event_id, completedAt: optionalTimestamp(row.completed_at)
   }));
+  const medications = (await orderedRows(connection, "medications")).map(mapMedicationExportRow);
   const insights = (await orderedRows(connection, "insights")).map((row) => compact({
     id: row.id,
     createdAt: isoTimestamp(row.created_at),
@@ -228,6 +226,7 @@ export async function snapshot(
     activitySessions,
     healthEvents,
     careItems,
+    medications,
     insights,
     auditEvents
   }) as HealthStoreData;
@@ -272,6 +271,11 @@ export async function insertStore(connection: duckdb.Connection, store: HealthSt
   await insertHealthEventRows(connection, store.healthEvents ?? []);
   await insertRows(connection, "care_items",
     (store.careItems ?? []).map((entry, ordinal) => [ordinal, entry.id, entry.kind, entry.code ?? null, entry.title, entry.dueStart ?? null, entry.reminderAt ?? null, entry.priority, entry.status, entry.scheduleProvenance ?? null, entry.scheduleVersion ?? null, entry.notes ?? null, entry.completedHealthEventId ?? null, entry.completedAt ?? null]));
+  await insertRows(connection, "medications",
+    (store.medications ?? []).map((entry, ordinal) => [
+      ordinal, entry.id, entry.name, entry.activeIngredient ?? null, entry.dose ?? null, entry.unit ?? null,
+      entry.startDate ?? null, entry.endDate ?? null, entry.notes ?? null, entry.createdAt, entry.updatedAt
+    ]));
   await insertRows(connection, "insights",
     store.insights.map((entry, ordinal) => [ordinal, entry.id, entry.createdAt, entry.title, entry.body,
       json(entry.evidence), entry.confidence, entry.model, entry.safetyNotice]));
@@ -369,11 +373,6 @@ async function insertHealthEventRows(connection: duckdb.Connection, events: Heal
       event.id, event.immunization.vaccine, event.immunization.targetDisease ?? null, event.immunization.doseNumber ?? null,
       event.immunization.series ?? null, event.immunization.manufacturer ?? null, event.immunization.lotNumber ?? null,
       event.immunization.expiresAt ?? null, event.immunization.route ?? null, event.immunization.site ?? null, event.immunization.reaction ?? null
-    ]));
-  await insertRows(connection, "medication_administrations",
-    events.filter((event): event is Extract<HealthEvent, { kind: "medication" }> & { medicationAdministration: NonNullable<Extract<HealthEvent, { kind: "medication" }>["medicationAdministration"]> } => event.kind === "medication" && !!event.medicationAdministration).map((event) => [
-      event.id, event.medicationAdministration.medication, event.medicationAdministration.activeIngredient ?? null,
-      event.medicationAdministration.dose, event.medicationAdministration.unit, event.medicationAdministration.route ?? null
     ]));
 }
 
@@ -477,17 +476,17 @@ function exportCollectionQuery(collection: ProfileExportCollection): {
     case "healthEvents":
       return { sql: `SELECT h.${selectColumns("health_events", { excludeOrdinal: true }).split(", ").join(", h.")},
           i.vaccine, i.target_disease, i.dose_number, i.series, i.manufacturer AS immunization_manufacturer,
-          i.lot_number, i.expires_at, i.route AS immunization_route, i.site, i.reaction,
-          m.medication, m.active_ingredient, m.dose, m.unit AS medication_unit, m.route AS medication_route
+          i.lot_number, i.expires_at, i.route AS immunization_route, i.site, i.reaction
         FROM health_events h
         LEFT JOIN immunizations i ON i.health_event_id = h.id
-        LEFT JOIN medication_administrations m ON m.health_event_id = h.id
         ORDER BY h.ordinal`, map: mapHealthEventExportRow };
     case "careItems":
       return orderedExportQuery("care_items", (row) => compact({ id: row.id, kind: row.kind, code: row.code, title: row.title,
         dueStart: optionalTimestamp(row.due_start), reminderAt: optionalTimestamp(row.reminder_at), priority: row.priority,
         status: row.status, scheduleProvenance: row.schedule_provenance, scheduleVersion: row.schedule_version,
         notes: row.notes, completedHealthEventId: row.completed_health_event_id, completedAt: optionalTimestamp(row.completed_at) }));
+    case "medications":
+      return orderedExportQuery("medications", mapMedicationExportRow);
     case "insights":
       return orderedExportQuery("insights", (row) => compact({ id: row.id, createdAt: isoTimestamp(row.created_at),
         title: row.title, body: row.body, evidence: requiredJson(row.evidence), confidence: row.confidence,
@@ -513,9 +512,22 @@ function mapHealthEventExportRow(row: Record<string, unknown>): unknown {
     manufacturer: row.immunization_manufacturer, lotNumber: row.lot_number,
     expiresAt: row.expires_at ? String(row.expires_at).slice(0, 10) : undefined,
     route: row.immunization_route, site: row.site, reaction: row.reaction }) };
-  if (row.medication) return { ...base, kind: "medication", medicationAdministration: compact({ medication: row.medication,
-    activeIngredient: row.active_ingredient, dose: Number(row.dose), unit: row.medication_unit, route: row.medication_route }) };
   const kind = String(row.kind);
   if (!isHealthEventKind(kind)) throw new Error(`Unsupported health event kind "${kind}".`);
   return { ...base, kind };
+}
+
+function mapMedicationExportRow(row: Record<string, unknown>): unknown {
+  return compact({
+    id: row.id,
+    name: row.name,
+    activeIngredient: row.active_ingredient,
+    dose: optionalNumber(row.dose),
+    unit: row.unit,
+    startDate: row.start_date ? String(row.start_date).slice(0, 10) : undefined,
+    endDate: row.end_date ? String(row.end_date).slice(0, 10) : undefined,
+    notes: row.notes,
+    createdAt: isoTimestamp(row.created_at),
+    updatedAt: isoTimestamp(row.updated_at)
+  });
 }

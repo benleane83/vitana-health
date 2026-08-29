@@ -106,7 +106,14 @@ describe("generateInsight", () => {
       }],
       activities: [{ type: "walking", sessions: 12, durationMinutes: 420 }],
       healthEvents: [{ kind: "visit", count: 2, latestDate: "2026-08-01" }],
-      care: { open: 3, overdue: 1, highPriority: 1 }
+      care: { open: 3, overdue: 1, highPriority: 1 },
+      medications: [{
+        name: "Metformin",
+        activeIngredient: "metformin hydrochloride",
+        dose: 500,
+        unit: "mg",
+        startDate: "2026-01-01"
+      }]
     });
 
     expect(evidence[0]).toContain("child profile");
@@ -117,6 +124,7 @@ describe("generateInsight", () => {
     expect(evidence).toContain("Activities, last 30 days: walking 12 session(s)/420 minutes.");
     expect(evidence).toContain("Completed health events, last 90 days: visit 2 (latest 2026-08-01).");
     expect(evidence).toContain("Care plan: 3 open item(s), 1 overdue, 1 high priority.");
+    expect(evidence).toContain("Medications: Metformin (metformin hydrochloride), 500 mg, started 2026-01-01.");
   });
 
   it("does not repeat metrics already represented by an alert or trend", () => {
@@ -157,7 +165,8 @@ describe("generateInsight", () => {
         }],
         activities: [],
         healthEvents: [],
-        care: { open: 0, overdue: 0, highPriority: 0 }
+        care: { open: 0, overdue: 0, highPriority: 0 },
+        medications: [{ name: "Contact test@example.com" }]
       }
     });
 

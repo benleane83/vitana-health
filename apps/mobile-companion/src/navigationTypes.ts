@@ -16,7 +16,7 @@ export type TabParamList = {
   Import: undefined;
   Track: undefined;
   Care: {
-    view?: "items";
+    view?: "items" | "health-events" | "medications";
     editCareItemId?: string;
   } | undefined;
 };

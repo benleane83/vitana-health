@@ -54,6 +54,10 @@ export function createStandaloneDataSource(): CompanionDataSource & CompanionCar
     updateCareItem: async (id, payload) => (await repository).updateCareItem(id, payload),
     completeCareItem: async (id, payload) => (await repository).completeCareItem(id, payload),
     deleteCareItem: async (id) => (await repository).deleteCareItem(id),
+    listMedications: async (query) => (await repository).listMedications(query),
+    createMedication: async (payload) => (await repository).createMedication(payload),
+    updateMedication: async (id, payload) => (await repository).updateMedication(id, payload),
+    deleteMedication: async (id) => (await repository).deleteMedication(id),
     updateObservation: async (id, input) => {
       const updated = await (await getRepository()).updateObservation(id, input);
       if (!updated) throw new Error("Observation not found.");

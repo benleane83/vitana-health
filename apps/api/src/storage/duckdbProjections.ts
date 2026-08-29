@@ -31,6 +31,9 @@ import {
   type JournalQuery,
   type JournalTimelineItem,
   type MeasurementType,
+  type Medication,
+  type MedicationListQuery,
+  medicationSchema,
   type ObservationGroup,
   type ObservationGroupDetail,
   type PaginatedResult,
@@ -295,7 +298,7 @@ const insightReviewMetricCodes = [
 export async function insightReviewContext(connection: duckdb.Connection): Promise<InsightReviewContext> {
   const windowDays = 30;
   const metricPlaceholders = insightReviewMetricCodes.map(() => "?").join(", ");
-  const [coverageRows, metricRows, activityRows, eventRows, careRows] = await Promise.all([
+  const [coverageRows, metricRows, activityRows, eventRows, careRows, medicationRows] = await Promise.all([
     allWithParams(connection, `
       SELECT MIN(day) AS earliest_date, MAX(day) AS latest_date, COUNT(DISTINCT day) AS active_days
       FROM v_daily_metrics
@@ -336,6 +339,12 @@ export async function insightReviewContext(connection: duckdb.Connection): Promi
         COUNT(*) FILTER (WHERE status = 'open' AND due_start < CURRENT_TIMESTAMP) AS overdue_count,
         COUNT(*) FILTER (WHERE status = 'open' AND priority = 'high') AS high_priority_count
       FROM care_items;
+    `),
+    allWithParams(connection, `
+      SELECT name, active_ingredient, dose, unit, start_date, end_date
+      FROM medications
+      ORDER BY start_date IS NULL, start_date DESC, name ASC
+      LIMIT 20;
     `)
   ]);
   const coverage = coverageRows[0] ?? {};
@@ -372,7 +381,15 @@ export async function insightReviewContext(connection: duckdb.Connection): Promi
       open: Number(care.open_count ?? 0),
       overdue: Number(care.overdue_count ?? 0),
       highPriority: Number(care.high_priority_count ?? 0)
-    }
+    },
+    medications: medicationRows.map((row) => ({
+      name: String(row.name),
+      ...(row.active_ingredient ? { activeIngredient: String(row.active_ingredient) } : {}),
+      ...(row.dose === null || row.dose === undefined ? {} : { dose: Number(row.dose) }),
+      ...(row.unit ? { unit: String(row.unit) } : {}),
+      ...(row.start_date ? { startDate: dateOnly(row.start_date) } : {}),
+      ...(row.end_date ? { endDate: dateOnly(row.end_date) } : {})
+    }))
   };
 }
 
@@ -1535,6 +1552,59 @@ export async function listCareItems(
   };
 }
 
+export async function listMedications(
+  connection: duckdb.Connection,
+  query: MedicationListQuery
+): Promise<PaginatedResult<Medication>> {
+  const normalized = normalizeMedicationListQuery(query);
+  const { whereSql, params } = buildMedicationWhere(normalized);
+  const rows = await allWithParams(
+    connection,
+    `SELECT * FROM medications ${whereSql}
+      ORDER BY
+        start_date IS NULL,
+        start_date DESC,
+        id ASC
+      LIMIT ? OFFSET ?;`,
+    ...params,
+    normalized.limit,
+    normalized.offset
+  );
+  const totalRows = await allWithParams(
+    connection,
+    `SELECT COUNT(*) AS count FROM medications ${whereSql};`,
+    ...params
+  );
+  const items = rows.map(medicationFromRow);
+  if (normalized.includeId && !items.some((item) => item.id === normalized.includeId)) {
+    const includedRows = await allWithParams(connection, "SELECT * FROM medications WHERE id = ?;", normalized.includeId);
+    if (includedRows[0]) items.push(medicationFromRow(includedRows[0]));
+  }
+  const total = Number(totalRows[0]?.count ?? 0);
+  return {
+    items,
+    total,
+    offset: normalized.offset,
+    limit: normalized.limit,
+    hasMore: normalized.offset + rows.length < total
+  };
+}
+
+function medicationFromRow(row: Record<string, unknown>): Medication {
+  return medicationSchema.parse({
+    id: String(row.id),
+    name: String(row.name),
+    activeIngredient: optionalString(row.active_ingredient),
+    dose: optionalNumber(row.dose),
+    unit: optionalString(row.unit),
+    startDate: row.start_date == null ? undefined : dateOnly(row.start_date),
+    endDate: row.end_date == null ? undefined : dateOnly(row.end_date),
+    notes: optionalString(row.notes),
+    createdAt: isoTimestamp(row.created_at),
+    updatedAt: isoTimestamp(row.updated_at)
+  });
+}
+
 export async function storageCounts(connection: duckdb.Connection): Promise<AppBootstrap["counts"]> {
   const rows = await all(connection, `
     SELECT
@@ -1647,12 +1717,12 @@ async function hydrateHealthEventRows(
   }
   const ids = rows.map((row) => String(row.id));
   const placeholders = ids.map(() => "?").join(", ");
-  const [immunizationRows, medicationRows] = await Promise.all([
-    allWithParams(connection, `SELECT * FROM immunizations WHERE health_event_id IN (${placeholders});`, ...ids),
-    allWithParams(connection, `SELECT * FROM medication_administrations WHERE health_event_id IN (${placeholders});`, ...ids)
-  ]);
+  const immunizationRows = await allWithParams(
+    connection,
+    `SELECT * FROM immunizations WHERE health_event_id IN (${placeholders});`,
+    ...ids
+  );
   const immunizations = new Map(immunizationRows.map((row) => [String(row.health_event_id), row]));
-  const medications = new Map(medicationRows.map((row) => [String(row.health_event_id), row]));
   return rows.map((row) => {
     const kind = String(row.kind);
     if (!isHealthEventKind(kind)) {
@@ -1668,7 +1738,6 @@ async function hydrateHealthEventRows(
       metadata: optionalJson<Record<string, unknown>>(row.metadata)
     };
     const immunization = immunizations.get(String(row.id));
-    const medication = medications.get(String(row.id));
     if (immunization) {
       return {
         ...base,
@@ -1684,19 +1753,6 @@ async function hydrateHealthEventRows(
           route: optionalString(immunization.route),
           site: optionalString(immunization.site),
           reaction: optionalString(immunization.reaction)
-        }
-      } satisfies HealthEvent;
-    }
-    if (medication) {
-      return {
-        ...base,
-        kind: "medication",
-        medicationAdministration: {
-          medication: String(medication.medication),
-          activeIngredient: optionalString(medication.active_ingredient),
-          dose: Number(medication.dose),
-          unit: String(medication.unit),
-          route: optionalString(medication.route)
         }
       } satisfies HealthEvent;
     }
@@ -1879,6 +1935,7 @@ function buildCareItemWhere(query: NormalizedCareItemListQuery): { whereSql: str
     clauses.push("care_items.kind = ?");
     params.push(query.kind);
   }
+
   if (query.status) {
     clauses.push("care_items.status = ?");
     params.push(query.status);
@@ -1901,6 +1958,50 @@ function buildCareItemWhere(query: NormalizedCareItemListQuery): { whereSql: str
     );
     const token = `%${query.search.toLowerCase()}%`;
     params.push(token, token, token);
+  }
+  return {
+    whereSql: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "",
+    params
+  };
+}
+
+interface NormalizedMedicationListQuery {
+  limit: number;
+  offset: number;
+  search?: string;
+  startedFrom?: string;
+  startedTo?: string;
+  includeId?: string;
+}
+
+function normalizeMedicationListQuery(query: MedicationListQuery): NormalizedMedicationListQuery {
+  return {
+    limit: Math.min(Math.max(Number(query.limit ?? 20), 1), 100),
+    offset: Math.max(Number(query.offset ?? 0), 0),
+    search: query.search?.trim() || undefined,
+    startedFrom: query.startedFrom,
+    startedTo: query.startedTo,
+    includeId: query.includeId?.trim() || undefined
+  };
+}
+
+function buildMedicationWhere(query: NormalizedMedicationListQuery): { whereSql: string; params: unknown[] } {
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+  if (query.startedFrom) {
+    clauses.push("start_date >= ?");
+    params.push(query.startedFrom);
+  }
+  if (query.startedTo) {
+    clauses.push("start_date <= ?");
+    params.push(query.startedTo);
+  }
+  if (query.search) {
+    clauses.push(
+      "(LOWER(name) LIKE ? OR LOWER(COALESCE(active_ingredient, '')) LIKE ?)"
+    );
+    const token = `%${query.search.toLowerCase()}%`;
+    params.push(token, token);
   }
   return {
     whereSql: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "",

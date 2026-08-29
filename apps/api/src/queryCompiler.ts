@@ -8,7 +8,8 @@ const ALLOWED_TABLES = new Set([
   "v_weekly_metrics",
   "activities",
   "v_ai_health_events",
-  "v_ai_care_items"
+  "v_ai_care_items",
+  "v_ai_medications"
 ]);
 
 const ALLOWED_COLUMNS = new Set([
@@ -42,7 +43,13 @@ const ALLOWED_COLUMNS = new Set([
   "title",
   "due_start",
   "priority",
-  "completed_at"
+  "completed_at",
+  // AI medication view
+  "name",
+  "active_ingredient",
+  "dose",
+  "start_date",
+  "end_date"
 ]);
 
 const ALLOWED_OUTPUT_ALIASES = new Set(["value", "count", "month_start", "due_bucket"]);
@@ -238,6 +245,10 @@ export function compileQueryDSL(dsl: QueryDSL): CompileOutcome {
     const outcome = buildCareItemsSql(dsl, resolvedTime, limit, sortDir);
     if ("error" in outcome) return { ok: false, error: outcome.error };
     statement = outcome;
+  } else if (source === "medications") {
+    const outcome = buildMedicationsSql(dsl, limit, sortDir);
+    if ("error" in outcome) return { ok: false, error: outcome.error };
+    statement = outcome;
   } else if (source === "activities" && dsl.intent === "list_activities") {
     if (dsl.filters) return { ok: false, error: "Activity queries do not support domain filters." };
     statement = buildActivitiesSql(dsl, resolvedTime, limit, sortDir);
@@ -246,7 +257,7 @@ export function compileQueryDSL(dsl: QueryDSL): CompileOutcome {
   } else if (dsl.intent === "list_activities") {
     return { ok: false, error: `Intent "list_activities" requires the activities source.` };
   } else if (dsl.filters) {
-    return { ok: false, error: "Metric queries do not support health event or care item filters." };
+    return { ok: false, error: "Metric queries do not support domain filters." };
   } else if (dsl.metric === null) {
     return { ok: false, error: "A metric is required for metric intents." };
   } else if (dsl.intent === "timeseries") {
@@ -502,6 +513,7 @@ function buildCareItemsSql(
   if (!allowedIntents.includes(dsl.intent)) {
     return { error: `Source "care_items" supports list, count, and overdue intents.` };
   }
+
   if (dsl.filters?.status && !["open", "completed", "cancelled"].includes(dsl.filters.status)) {
     return { error: `Care item status "${dsl.filters.status}" is unsupported.` };
   }
@@ -524,6 +536,44 @@ function buildCareItemsSql(
       `ORDER BY due_start ${sortDir}`,
       `LIMIT ${limit}`
     ].join("\n"), parameters: where.parameters };
+  }
+
+  function buildMedicationsSql(
+    dsl: QueryDSL,
+    limit: number,
+    sortDir: string
+  ): SqlStatement | CompileError {
+    if (!["list", "count", "latest"].includes(dsl.intent)) {
+      return { error: `Source "medications" supports list, count, and latest intents.` };
+    }
+    const unsupportedFilters = dsl.filters && Object.keys(dsl.filters).some((key) => key !== "medication");
+    if (unsupportedFilters) return { error: "Medication queries support only the medication name or active ingredient filter." };
+
+    const clauses: string[] = [];
+    const parameters: QueryParameter[] = [];
+    if (dsl.filters?.medication) {
+      clauses.push("(LOWER(name) LIKE LOWER(?) ESCAPE '\\' OR LOWER(COALESCE(active_ingredient, '')) LIKE LOWER(?) ESCAPE '\\')");
+      const pattern = `%${escapeLikePattern(dsl.filters.medication)}%`;
+      parameters.push(pattern, pattern);
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    if (dsl.intent === "count") {
+      return {
+        sql: ["SELECT COUNT(*) AS count", "FROM v_ai_medications", where, "LIMIT 1"].filter(Boolean).join("\n"),
+        parameters
+      };
+    }
+    const appliedLimit = dsl.intent === "latest" ? 1 : limit;
+    return {
+      sql: [
+        "SELECT id, name, active_ingredient, dose, unit, start_date, end_date, notes",
+        "FROM v_ai_medications",
+        where,
+        `ORDER BY start_date IS NULL, start_date ${sortDir}, name ASC`,
+        `LIMIT ${appliedLimit}`
+      ].filter(Boolean).join("\n"),
+      parameters
+    };
   }
 
   if (dsl.intent === "overdue" || dsl.groupBy === null) {
@@ -591,6 +641,44 @@ function careItemGroup(groupBy: QueryDSL["groupBy"]): { expression: string; alia
     };
   }
   return null;
+}
+
+function buildMedicationsSql(
+  dsl: QueryDSL,
+  limit: number,
+  sortDir: string
+): SqlStatement | CompileError {
+  if (!["list", "count", "latest"].includes(dsl.intent)) {
+    return { error: `Source "medications" supports list, count, and latest intents.` };
+  }
+  const unsupportedFilters = dsl.filters && Object.keys(dsl.filters).some((key) => key !== "medication");
+  if (unsupportedFilters) return { error: "Medication queries support only the medication name or active ingredient filter." };
+
+  const clauses: string[] = [];
+  const parameters: QueryParameter[] = [];
+  if (dsl.filters?.medication) {
+    clauses.push("(LOWER(name) LIKE LOWER(?) ESCAPE '\\' OR LOWER(COALESCE(active_ingredient, '')) LIKE LOWER(?) ESCAPE '\\')");
+    const pattern = `%${escapeLikePattern(dsl.filters.medication)}%`;
+    parameters.push(pattern, pattern);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  if (dsl.intent === "count") {
+    return {
+      sql: ["SELECT COUNT(*) AS count", "FROM v_ai_medications", where, "LIMIT 1"].filter(Boolean).join("\n"),
+      parameters
+    };
+  }
+  const appliedLimit = dsl.intent === "latest" ? 1 : limit;
+  return {
+    sql: [
+      "SELECT id, name, active_ingredient, dose, unit, start_date, end_date, notes",
+      "FROM v_ai_medications",
+      where,
+      `ORDER BY start_date IS NULL, start_date ${sortDir}, name ASC`,
+      `LIMIT ${appliedLimit}`
+    ].filter(Boolean).join("\n"),
+    parameters
+  };
 }
 
 // ─── SQL Validator ─────────────────────────────────────────────────────────────

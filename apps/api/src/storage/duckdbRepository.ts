@@ -15,9 +15,11 @@ import {
   type CompleteCareItemResponse,
   type CreateCareItemInput,
   type CreateHealthEventInput,
+  type CreateMedicationInput,
   type DeleteCareItemResponse,
   type DeleteHealthEventResponse,
   type DeleteObservationResponse,
+  type DeleteMedicationResponse,
   type DeleteObservationsByTypeResponse,
   HEALTH_CONNECT_SYNC_PROTOCOL_VERSION,
   type HealthConnectSyncBatchAcknowledgement,
@@ -25,6 +27,8 @@ import {
   type HealthEventListQuery,
   type HealthEventMutationResponse,
   type HealthStoreData,
+  type MedicationListQuery,
+  type MedicationMutationResponse,
   type JournalQuery,
   type MobileMigrationBatch,
   type MobileMigrationManifest,
@@ -39,6 +43,7 @@ import {
   type SleepSessionPage,
   type UpdateCareItemInput,
   type UpdateHealthEventInput,
+  type UpdateMedicationInput,
   type UpdateObservationInput,
   type UpdateObservationGroupInput,
   type UpdateObservationResponse
@@ -83,8 +88,10 @@ import {
   completeCareItem as completeDuckDbCareItem,
   createCareItem as createDuckDbCareItem,
   createHealthEvent as createDuckDbHealthEvent,
+  createMedication as createDuckDbMedication,
   deleteCareItem as deleteDuckDbCareItem,
   deleteHealthEvent as deleteDuckDbHealthEvent,
+  deleteMedication as deleteDuckDbMedication,
   deleteObservation as deleteDuckDbObservation,
   deletePersonalReferenceRange as deleteDuckDbPersonalReferenceRange,
   deleteObservationRecord as deleteDuckDbObservationRecord,
@@ -101,6 +108,7 @@ import {
   replaceProfilePhoto as replaceDuckDbProfilePhoto,
   updateCareItem as updateDuckDbCareItem,
   updateHealthEvent as updateDuckDbHealthEvent,
+  updateMedication as updateDuckDbMedication,
   updateObservation as updateDuckDbObservation,
   updateObservationGroup as updateDuckDbObservationGroup,
   unpinMeasurement as unpinDuckDbMeasurement,
@@ -139,6 +147,7 @@ import {
   listCareItems as readCareItems,
   listActivities as readActivities,
   listHealthEvents as readHealthEvents,
+  listMedications as readMedications,
   journal as readJournal,
   measurementDetail as readMeasurementDetail,
   measurementChartSeries as readMeasurementChartSeries,
@@ -583,6 +592,42 @@ export class DuckDbRepository implements ProfileRepository {
         ? [replicaTombstone("care-item", result.deletedCareItem.id)]
         : [],
       { affectsStorageCounts: true }
+    );
+  }
+
+  async listMedications(query: MedicationListQuery) {
+    this.assertOpen();
+    return readMedications(this.reader, query);
+  }
+
+  async createMedication(input: CreateMedicationInput): Promise<MedicationMutationResponse> {
+    this.assertOpen();
+    return this.transaction(
+      () => createDuckDbMedication(this.connection, input),
+      (result) => [replicaUpsert("medication", result.medication.id, result.medication)]
+    );
+  }
+
+  async updateMedication(
+    id: string,
+    input: UpdateMedicationInput
+  ): Promise<MedicationMutationResponse | undefined> {
+    this.assertOpen();
+    return this.transaction(
+      () => updateDuckDbMedication(this.connection, id, input),
+      (result) => result
+        ? [replicaUpsert("medication", result.medication.id, result.medication)]
+        : []
+    );
+  }
+
+  async deleteMedication(id: string): Promise<DeleteMedicationResponse | undefined> {
+    this.assertOpen();
+    return this.transaction(
+      () => deleteDuckDbMedication(this.connection, id),
+      (result) => result?.deletedMedication
+        ? [replicaTombstone("medication", result.deletedMedication.id)]
+        : []
     );
   }
 

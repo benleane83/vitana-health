@@ -17,8 +17,10 @@ import {
   completeCareItemResponseSchema,
   createCareItemInputSchema,
   createHealthEventInputSchema,
+  createMedicationInputSchema,
   deleteCareItemResponseSchema,
   deleteHealthEventResponseSchema,
+  deleteMedicationResponseSchema,
   deleteObservationResponseSchema,
   desktopUpdateStateSchema,
   entitlementResponseSchema,
@@ -44,6 +46,9 @@ import {
   observationGroupDetailResponseSchema,
   paginatedCareItemsResponseSchema,
   paginatedHealthEventsResponseSchema,
+  paginatedMedicationsResponseSchema,
+  medicationListQuerySchema,
+  medicationMutationResponseSchema,
   personalReferenceRangeInputSchema,
   profilePhotoDeleteResponseSchema,
   profilePhotoResponseSchema,
@@ -66,7 +71,9 @@ import type {
   CompleteCareItemInput,
   CreateCareItemInput,
   CreateHealthEventInput,
+  CreateMedicationInput,
   HealthEventListQuery,
+  MedicationListQuery,
   HealthConnectImportPayload,
   GooglePlayEntitlementClaim,
   JournalQueryInput,
@@ -346,7 +353,25 @@ export function createApiClient(transport: ApiTransport) {
     completeCareItem: (id: string, payload: CompleteCareItemInput) =>
       request(completeCareItemResponseSchema, `/api/care/items/${encodeURIComponent(id)}/complete`, { method: "POST", body: completeCareItemInputSchema.parse(payload) }),
     deleteCareItem: (id: string) =>
-      request(deleteCareItemResponseSchema, `/api/care/items/${encodeURIComponent(id)}`, { method: "DELETE" })
+      request(deleteCareItemResponseSchema, `/api/care/items/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    listMedications: (query: MedicationListQuery = {}, signal?: AbortSignal) =>
+      request(
+        paginatedMedicationsResponseSchema,
+        `/api/care/medications${careQuery(medicationListQuerySchema.parse(query), query)}`,
+        { signal }
+      ),
+    createMedication: (payload: CreateMedicationInput) =>
+      request(medicationMutationResponseSchema, "/api/care/medications", {
+        method: "POST",
+        body: createMedicationInputSchema.parse(payload)
+      }),
+    updateMedication: (id: string, payload: CreateMedicationInput) =>
+      request(medicationMutationResponseSchema, `/api/care/medications/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: createMedicationInputSchema.parse(payload)
+      }),
+    deleteMedication: (id: string) =>
+      request(deleteMedicationResponseSchema, `/api/care/medications/${encodeURIComponent(id)}`, { method: "DELETE" })
   };
 }
 

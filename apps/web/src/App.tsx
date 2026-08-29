@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { defaultMeasurementTypes, hasFeature } from "@vitana/shared";
-import { isProfileDataCategory, type AppRoute, type ImportMode, type InsightsTab, type ProfileDataCategory, type SettingsView, type TrackView } from "./types.js";
+import { isProfileDataCategory, type AppRoute, type CareView, type ImportMode, type InsightsTab, type ProfileDataCategory, type SettingsView, type TrackView } from "./types.js";
 import { ProfileLifecycleDialogs, useProfileLifecycle } from "./features/profiles/useProfileLifecycle.js";
 import { ConfirmDialog } from "./components/ConfirmDialog.js";
 import { api, setOwnerTokenPrompt } from "./api.js";
@@ -182,7 +182,7 @@ export function App() {
     setRoute(nextRoute);
   }
 
-  function navigateCare(nextView: "items" | "health-events") {
+  function navigateCare(nextView: CareView) {
     const nextPath = carePath(nextView);
     pushPath(nextPath);
     setCareView(nextView);
@@ -702,8 +702,9 @@ function insightsTabFromPathname(pathname: string): InsightsTab {
   return "biological-age";
 }
 
-function careViewFromPathname(pathname: string): "items" | "health-events" {
+function careViewFromPathname(pathname: string): CareView {
   if (pathname === "/care/health-events") return "health-events";
+  if (pathname === "/care/medications") return "medications";
   return "items";
 }
 
@@ -780,8 +781,9 @@ function locationPath(): string {
   return window.location.pathname + window.location.search;
 }
 
-function carePath(view: "items" | "health-events", careItemId?: string): string {
+function carePath(view: CareView, careItemId?: string): string {
   if (view === "health-events") return "/care/health-events";
+  if (view === "medications") return "/care/medications";
   return careItemId ? `/care/items/${encodeURIComponent(careItemId)}` : "/care/items";
 }
 

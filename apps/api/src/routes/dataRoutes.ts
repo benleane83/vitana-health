@@ -18,8 +18,10 @@ import {
   completeCareItemResponseSchema,
   createCareItemInputSchema,
   createHealthEventInputSchema,
+  createMedicationInputSchema,
   deleteCareItemResponseSchema,
   deleteHealthEventResponseSchema,
+  deleteMedicationResponseSchema,
   deleteObservationResponseSchema,
   deleteObservationsByTypeResponseSchema,
   healthDataChartSeriesResponseSchema,
@@ -36,6 +38,9 @@ import {
   observationGroupDetailResponseSchema,
   paginatedCareItemsResponseSchema,
   paginatedHealthEventsResponseSchema,
+  paginatedMedicationsResponseSchema,
+  medicationListQuerySchema,
+  medicationMutationResponseSchema,
   personalReferenceRangeInputSchema,
   PRO_FEATURE_GATING_ENABLED,
   referenceRangeStateResponseSchema,
@@ -396,6 +401,58 @@ export function makeDataRoutes(
     }
   });
 
+  router.get("/care/medications", async (request, response, next) => {
+    try {
+      sendJson(
+        response,
+        paginatedMedicationsResponseSchema,
+        await requestStore(response).listMedications(medicationListQuerySchema.parse(request.query))
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/care/medications", async (request, response, next) => {
+    try {
+      sendJson(
+        response.status(201),
+        medicationMutationResponseSchema,
+        await requestStore(response).createMedication(createMedicationInputSchema.parse(request.body))
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.patch("/care/medications/:id", async (request, response, next) => {
+    try {
+      const id = recordIdParamSchema.parse(request.params.id);
+      const updated = await requestStore(response).updateMedication(id, createMedicationInputSchema.parse(request.body));
+      if (!updated) {
+        response.status(404).json({ error: "Medication not found.", code: "MEDICATION_NOT_FOUND" });
+        return;
+      }
+      sendJson(response, medicationMutationResponseSchema, updated);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.delete("/care/medications/:id", async (request, response, next) => {
+    try {
+      const id = recordIdParamSchema.parse(request.params.id);
+      const deleted = await requestStore(response).deleteMedication(id);
+      if (!deleted) {
+        response.status(404).json({ error: "Medication not found.", code: "MEDICATION_NOT_FOUND" });
+        return;
+      }
+      sendJson(response, deleteMedicationResponseSchema, deleted);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.get("/observation-groups/:id", async (request, response, next) => {
     try {
       const id = recordIdParamSchema.parse(request.params.id);
@@ -538,13 +595,20 @@ export function makeDataRoutes(
   router.get("/export/pdf", async (_request, response, next) => {
     try {
       const store = activeStore();
-      const [profile, analytics, latestMeasurements, sourceImports] = await Promise.all([
+      const [profile, analytics, latestMeasurements, sourceImports, medications] = await Promise.all([
         store.getProfile(),
         store.analyticsSummary(),
         store.clinicianReportLatestMeasurements(),
-        store.clinicianReportSourceImports()
+        store.clinicianReportSourceImports(),
+        store.listMedications({ limit: 100 })
       ]);
-      const report = buildClinicianReport({ profile, analytics, latestMeasurements, sourceImports });
+      const report = buildClinicianReport({
+        profile,
+        analytics,
+        latestMeasurements,
+        sourceImports,
+        medications: medications.items
+      });
       const pdf = await createClinicianReportPdf(report);
       response.setHeader("content-type", "application/pdf");
       response.setHeader("content-disposition", `attachment; filename="${reportFilename(report.patient.displayName)}"`);

@@ -6,6 +6,7 @@ import {
   type AnalyticsSummary,
   type ClinicianReport,
   type ClinicianReportLatestMeasurement,
+  type Medication,
   type Profile,
   type SourceImport
 } from "@vitana/shared";
@@ -17,6 +18,7 @@ export interface ClinicianReportInput {
   analytics: AnalyticsSummary;
   sourceImports: ClinicianReportSourceImport[];
   latestMeasurements?: ClinicianReportLatestMeasurement[];
+  medications?: Array<Pick<Medication, "name" | "activeIngredient" | "dose" | "unit" | "startDate" | "endDate">>;
 }
 
 export function buildClinicianReport(input: ClinicianReportInput, generatedAt = new Date().toISOString()): ClinicianReport {
@@ -62,6 +64,7 @@ export function buildClinicianReport(input: ClinicianReportInput, generatedAt = 
       samples: analytics.counts.samples,
       activities: analytics.counts.activities
     },
+    medications: input.medications ?? [],
     latestMeasurements,
     flaggedLabs,
     trends: analytics.trendCards.map((trend) => ({

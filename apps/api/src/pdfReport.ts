@@ -82,6 +82,21 @@ export async function createClinicianReportPdf(report: ClinicianReport): Promise
     }
   }
 
+  section(document, "Medications");
+  bulletList(
+    document,
+    report.medications.map((medication) => {
+      const ingredient = medication.activeIngredient ? ` (${medication.activeIngredient})` : "";
+      const dose = [medication.dose, medication.unit].filter((value) => value !== undefined).join(" ");
+      const dates = [
+        medication.startDate ? `started ${medication.startDate}` : undefined,
+        medication.endDate ? `ended ${medication.endDate}` : undefined
+      ].filter(Boolean).join(", ");
+      return `${medication.name}${ingredient}${dose ? ` — ${dose}` : ""}${dates ? `; ${dates}` : ""}`;
+    }),
+    "No medications have been recorded."
+  );
+
   section(document, "Flagged laboratory results");
   bulletList(
     document,

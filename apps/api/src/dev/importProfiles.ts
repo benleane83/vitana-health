@@ -58,6 +58,7 @@ const tableOrder = [
   "health_events",
   "immunizations",
   "medication_administrations",
+  "medications",
   "care_items",
   "insights",
   "audit_events",

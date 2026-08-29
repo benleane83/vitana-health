@@ -76,13 +76,6 @@ export interface ImmunizationDetails {
   site?: string;
   reaction?: string;
 }
-export interface MedicationAdministrationDetails {
-  medication: string;
-  activeIngredient?: string;
-  dose: number;
-  unit: string;
-  route?: string;
-}
 export interface HealthEventBase {
   id: string;
   kind: HealthEventKind;
@@ -99,7 +92,6 @@ export interface ImmunizationEvent extends HealthEventBase {
 }
 export interface MedicationEvent extends HealthEventBase {
   kind: "medication";
-  medicationAdministration?: MedicationAdministrationDetails;
 }
 export interface GeneralHealthEvent extends HealthEventBase { kind: GeneralHealthEventKind; }
 export type OtherHealthEvent = GeneralHealthEvent & { kind: "other" };
@@ -198,6 +190,23 @@ export interface CareItem {
   completedAt?: string;
   completedHealthEvent?: HealthEventReference;
 }
+
+/**
+ * Lightweight active-medication record aligned with the core fields of FHIR MedicationStatement.
+ * Historical medication events remain separate Health Events and are not the source of truth here.
+ */
+export interface Medication {
+  id: string;
+  name: string;
+  activeIngredient?: string;
+  dose?: number;
+  unit?: string;
+  startDate?: string;
+  endDate?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
 export interface CarePagination {
   total: number;
   offset: number;
@@ -240,6 +249,15 @@ export interface DeleteCareItemResponse {
   deletedCount: number;
   deletedCareItem?: CareItem;
   counts: AppBootstrap["counts"];
+}
+
+export interface MedicationMutationResponse {
+  medication: Medication;
+}
+
+export interface DeleteMedicationResponse {
+  deletedCount: number;
+  deletedMedication?: Medication;
 }
 
 export type CareLinkedHealthEventRole = "completion";
@@ -648,6 +666,9 @@ export interface AuditEvent {
     | "care-item-completed"
     | "care-item-cancelled"
     | "care-item-deleted"
+    | "medication-created"
+    | "medication-updated"
+    | "medication-deleted"
     | "personal-reference-range-set"
     | "personal-reference-range-removed"
     | "measurement-pinned"
@@ -673,7 +694,7 @@ export interface HealthStoreData {
    * Always the current version. Older persisted stores are upgraded by `parsePersistedHealthStore`
    * before they ever become a `HealthStoreData`.
    */
-  schemaVersion: 13;
+  schemaVersion: 15;
   profile: Profile;
   sourceImports: SourceImport[];
   dataSources: DataSource[];
@@ -688,6 +709,7 @@ export interface HealthStoreData {
   activitySessions: ActivitySession[];
   healthEvents?: HealthEvent[];
   careItems?: CareItem[];
+  medications?: Medication[];
   insights: Insight[];
   auditEvents: AuditEvent[];
 }
@@ -961,6 +983,7 @@ export interface ClinicianReport {
     samples: number;
     activities: number;
   };
+  medications: Array<Pick<Medication, "name" | "activeIngredient" | "dose" | "unit" | "startDate" | "endDate">>;
   latestMeasurements: ClinicianReportLatestMeasurement[];
   flaggedLabs: Array<{
     displayName: string;
