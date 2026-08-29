@@ -61,7 +61,7 @@ import {
   type EncryptedDuckDbDatabase
 } from "./duckdbRuntime.js";
 import { pruneRetention } from "./duckdbRetention.js";
-import type { BackupExportCollection, ImportMutationResult, MeasurementRegistryResetResult, ProfileImport, ProfileRepository } from "./profileRepository.js";
+import type { ImportMutationResult, MeasurementRegistryResetResult, ProfileExportCollection, ProfileImport, ProfileRepository } from "./profileRepository.js";
 import {
   reconcileDefaultMeasurementTypes,
   recordCurrentMeasurementRegistry,
@@ -69,8 +69,8 @@ import {
   schemaVersions as readSchemaVersions
 } from "./duckdbSchema.js";
 import {
-  backupExportMetadata as readBackupExportMetadata,
-  backupExportPage as readBackupExportPage,
+  profileExportMetadata as readProfileExportMetadata,
+  profileExportPage as readProfileExportPage,
   digestBackupExportData,
   digestHealthStoreData,
   recordExportAudit,
@@ -292,14 +292,14 @@ export class DuckDbRepository implements ProfileRepository {
     return snapshotDuckDb(this.reader, options);
   }
 
-  async backupExportMetadata() {
+  async profileExportMetadata() {
     this.assertOpen();
-    return readBackupExportMetadata(this.reader);
+    return readProfileExportMetadata(this.reader);
   }
 
-  async backupExportPage(collection: BackupExportCollection, offset: number, limit: number) {
+  async profileExportPage(collection: ProfileExportCollection, offset: number, limit: number) {
     this.assertOpen();
-    return readBackupExportPage(this.reader, collection, offset, limit);
+    return readProfileExportPage(this.reader, collection, offset, limit);
   }
 
   async appBootstrap(): Promise<AppBootstrap> {

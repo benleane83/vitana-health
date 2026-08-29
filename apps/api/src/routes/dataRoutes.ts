@@ -1,4 +1,5 @@
 import express from "express";
+import { pipeline } from "node:stream/promises";
 import { z } from "zod";
 import {
   analyticsSummaryResponseSchema,
@@ -45,11 +46,13 @@ import {
   updateObservationResponseSchema
 } from "@vitana/shared";
 import { sendJson } from "./sendJson.js";
+import { healthDataFilename, reportFilename } from "./exportFilenames.js";
 import type { ProfileStoreManager } from "../storage/profileStoreManager.js";
 import { describeAnalyticsStorage } from "../storage/analyticsBackend.js";
 import { generateInsight } from "../insights.js";
 import { buildClinicianReport } from "../clinicianReport.js";
 import { createClinicianReportPdf } from "../pdfReport.js";
+import { createHealthDataWorkbookStream } from "../healthDataWorkbook.js";
 import type { AuthorizationPrincipal } from "../requestPrincipal.js";
 import { resolvePrincipalStore } from "../requestPrincipal.js";
 import {
@@ -87,15 +90,6 @@ const chartSeriesQuerySchema = z.object({
 });
 
 const updateObservationBodySchema = updateObservationInputSchema;
-
-function reportFilename(displayName: string): string {
-  const safeStem = displayName
-    .replace(/[^A-Za-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80)
-    .toLowerCase();
-  return `${safeStem || "health"}-health-report.pdf`;
-}
 
 export function makeDataRoutes(
   storeManager: ProfileStoreManager,
@@ -557,6 +551,43 @@ export function makeDataRoutes(
       response.setHeader("content-length", String(pdf.length));
       response.send(pdf);
     } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/export/xlsx", async (request, response, next) => {
+    const abortController = new AbortController();
+    const onAborted = () => abortController.abort();
+    request.once("aborted", onAborted);
+    response.once("close", () => {
+      if (!response.writableFinished) abortController.abort();
+    });
+
+    try {
+      const store = activeStore();
+      const profile = await store.getProfile();
+      const workbook = createHealthDataWorkbookStream(store, {
+        signal: abortController.signal
+      });
+
+      response.setHeader(
+        "content-type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
+      response.setHeader(
+        "content-disposition",
+        `attachment; filename="${healthDataFilename(profile.displayName)}"`
+      );
+      response.status(200);
+      await pipeline(workbook, response);
+      request.off("aborted", onAborted);
+      await store.recordExportAudit();
+    } catch (error) {
+      request.off("aborted", onAborted);
+      if (response.headersSent) {
+        response.destroy(error instanceof Error ? error : undefined);
+        return;
+      }
       next(error);
     }
   });

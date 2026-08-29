@@ -4,6 +4,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { defaultMeasurementTypes, safetyNotice } from "@vitana/shared";
 import { App } from "../App.js";
 
+let desktopUpdateState: Record<string, unknown>;
+
 function mockResponse(body: unknown): Response {
   return {
     ok: true,
@@ -15,6 +17,12 @@ function mockResponse(body: unknown): Response {
 
 beforeEach(() => {
   globalThis.history.replaceState({}, "", "/");
+  desktopUpdateState = {
+    status: "unsupported",
+    currentVersion: "0.1.0",
+    channel: null,
+    distributionChannel: "github"
+  };
   global.fetch = vi.fn((input: string | URL | Request) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     if (url.includes("/api/bootstrap")) {
@@ -189,6 +197,9 @@ beforeEach(() => {
     if (url.includes("/api/settings/desktop")) {
       return Promise.resolve(mockResponse({ supported: false, backgroundServiceEnabled: false }));
     }
+    if (url.includes("/api/settings/updates")) {
+      return Promise.resolve(mockResponse(desktopUpdateState));
+    }
     if (url.includes("/api/settings/ai")) {
       return Promise.resolve(mockResponse({
         provider: "ollama",
@@ -208,6 +219,23 @@ afterEach(() => {
 });
 
 describe("App smoke", () => {
+  it("opens App Settings from a startup desktop update notification", async () => {
+    desktopUpdateState = {
+      status: "available",
+      currentVersion: "0.1.0",
+      availableVersion: "0.2.0",
+      channel: "production",
+      distributionChannel: "github"
+    };
+
+    render(<App />);
+
+    expect(await screen.findByText("Version 0.2.0 is available for Vitana Health.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("link", { name: "Open App Settings" }));
+
+    expect(window.location.pathname).toBe("/settings/app");
+  });
+
   it("opens a clearable Track category filter from a dashboard profile summary row", async () => {
     render(<App />);
 

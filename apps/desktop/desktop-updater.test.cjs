@@ -120,6 +120,7 @@ test("uses safe errors and installs only after graceful shutdown", async () => {
   assert.equal(logged.some((message) => message.includes("private-feed")), false);
   updater.emit("update-downloaded", { version: "1.1.0" });
   await controller.restartToInstall();
+  assert.equal(controller.getState().status, "installing");
   await scheduled.pop()();
   assert.deepEqual(order, ["shutdown", "install"]);
 });
@@ -146,6 +147,9 @@ test("allows retrying installation after graceful shutdown fails", async () => {
   updater.emit("update-downloaded", { version: "1.2.4" });
 
   await retryController.restartToInstall();
+  assert.equal(retryController.getState().status, "installing");
+  await retryController.restartToInstall();
+  assert.equal(scheduled.length, 1);
   await scheduled.pop()();
   assert.equal(retryController.getState().status, "downloaded");
   assert.match(retryController.getState().error, /Try again/);

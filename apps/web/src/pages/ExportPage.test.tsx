@@ -9,6 +9,8 @@ describe("backup restore actions", () => {
         busy={false}
         hasHealthData={false}
         onDownload={vi.fn()}
+        xlsxStatus={{ busy: false }}
+        onDownloadXlsx={vi.fn()}
         backupPassphrase=""
         backupPassphraseConfirmation=""
         backupScope="all"
@@ -65,5 +67,42 @@ describe("backup restore actions", () => {
       "Replace existing profile",
       "Skip"
     ]);
+  });
+
+  it("exposes the health data workbook tab and preserves keyboard tab navigation", () => {
+    const onDownloadXlsx = vi.fn();
+    render(
+      <ExportPage
+        busy={false}
+        hasHealthData={false}
+        onDownload={vi.fn()}
+        xlsxStatus={{ busy: false }}
+        onDownloadXlsx={onDownloadXlsx}
+        backupPassphrase=""
+        backupPassphraseConfirmation=""
+        backupScope="all"
+        backupStatus={{ busy: false }}
+        onBackupPassphraseChange={vi.fn()}
+        onBackupPassphraseConfirmationChange={vi.fn()}
+        onBackupScopeChange={vi.fn()}
+        onCreateBackup={vi.fn()}
+        restorePassphrase=""
+        restoreSelections={[]}
+        restoreStatus={{ busy: false }}
+        onRestoreFileChange={vi.fn()}
+        onRestorePassphraseChange={vi.fn()}
+        onInspectBackup={vi.fn()}
+        onRestoreSelectionChange={vi.fn()}
+        onReplacementAcknowledgmentChange={vi.fn()}
+        onRestoreBackup={vi.fn()}
+      />
+    );
+
+    const pdfTab = screen.getByRole("tab", { name: "PDF report" });
+    fireEvent.keyDown(pdfTab, { key: "ArrowRight" });
+    expect(screen.getByRole("tab", { name: "Excel workbook" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("status")).toHaveTextContent("No health records are available yet");
+    fireEvent.click(screen.getByRole("button", { name: "Download Excel workbook" }));
+    expect(onDownloadXlsx).toHaveBeenCalledOnce();
   });
 });

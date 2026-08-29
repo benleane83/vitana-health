@@ -112,7 +112,7 @@ function AppSettingsPanel({ confirm }: { confirm: ConfirmAction }) {
       }
     };
     if (!updates) void loadUpdates();
-    const active = updates?.status === "checking" || updates?.status === "downloading";
+    const active = updates?.status === "checking" || updates?.status === "downloading" || updates?.status === "installing";
     const interval = active ? window.setInterval(() => { void loadUpdates(); }, 750) : undefined;
     return () => {
       cancelled = true;
@@ -231,23 +231,26 @@ function AppSettingsPanel({ confirm }: { confirm: ConfirmAction }) {
                   updates.status === "available" ? `Version ${updates.availableVersion} is available.` :
                     updates.status === "downloaded" ? `Version ${updates.availableVersion} is ready to install.` :
                       updates.status === "checking" ? "Checking for updates…" :
-                        updates.status === "downloading" ? "Downloading update…" : "Ready to check for updates.")}
+                        updates.status === "downloading" ? "Downloading update…" :
+                          updates.status === "installing" ? "Restarting to install the update…" : "Ready to check for updates.")}
             </p>
             <progress
-              aria-label="Update download progress"
+              aria-label="Update progress"
               max={100}
-              value={updates.progress?.percent ?? 0}
-              style={{ visibility: updates.status === "downloading" || updates.status === "downloaded" ? "visible" : "hidden" }}
+              value={updates.status === "installing" ? undefined : updates.progress?.percent ?? 0}
+              style={{ visibility: updates.status === "downloading" || updates.status === "downloaded" || updates.status === "installing" ? "visible" : "hidden" }}
             />
             <div className="settings-actions">
-              <button type="button" disabled={updateBusy || updates.status === "checking" || updates.status === "downloading"} onClick={() => { void updateCommand("check"); }}>
+              <button type="button" disabled={updateBusy || updates.status === "checking" || updates.status === "downloading" || updates.status === "installing"} onClick={() => { void updateCommand("check"); }}>
                 Check for updates
               </button>
               {updates.status === "available" ? (
                 <button type="button" disabled={updateBusy} onClick={() => { void updateCommand("download"); }}>Download update</button>
               ) : null}
-              {updates.status === "downloaded" ? (
-                <button type="button" disabled={updateBusy} onClick={() => { void updateCommand("restart"); }}>Restart to update</button>
+              {updates.status === "downloaded" || updates.status === "installing" ? (
+                <button type="button" disabled={updateBusy || updates.status === "installing"} aria-busy={updates.status === "installing"} onClick={() => { void updateCommand("restart"); }}>
+                  {updates.status === "installing" ? "Restarting to update…" : "Restart to update"}
+                </button>
               ) : null}
             </div>
           </>

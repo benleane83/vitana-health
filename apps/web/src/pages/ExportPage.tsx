@@ -5,13 +5,15 @@ import type { BackupInspectResponse, RestoreDecision } from "@vitana/shared";
 import { useResponsiveTabOrientation } from "../hooks/useResponsiveTabOrientation.js";
 
 const minBackupPassphraseLength = 12;
-type ExportView = "report" | "backup";
+type ExportView = "report" | "health-data" | "backup";
 
 export function ExportPage({
   busy,
   error,
   hasHealthData,
   onDownload,
+  xlsxStatus,
+  onDownloadXlsx,
   backupPassphrase,
   backupPassphraseConfirmation,
   backupScope,
@@ -36,6 +38,8 @@ export function ExportPage({
   error?: string;
   hasHealthData: boolean;
   onDownload: () => void;
+  xlsxStatus: { busy: boolean; error?: string };
+  onDownloadXlsx: () => void;
   backupPassphrase: string;
   backupPassphraseConfirmation: string;
   backupScope: "active" | "all";
@@ -66,12 +70,14 @@ export function ExportPage({
     (selection) => selection.decision !== "replace" || selection.acknowledgeReplacement === "REPLACE_CONFIRMED"
   ) && inspection.profiles.every((profile) => profile.digestValid);
   const reportTabId = "export-tab-report";
+  const healthDataTabId = "export-tab-health-data";
   const backupTabId = "export-tab-backup";
   const reportPanelId = "export-panel-report";
+  const healthDataPanelId = "export-panel-health-data";
   const backupPanelId = "export-panel-backup";
 
   function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, currentView: ExportView) {
-    const views: ExportView[] = ["report", "backup"];
+    const views: ExportView[] = ["report", "health-data", "backup"];
     const currentIndex = views.indexOf(currentView);
     let nextIndex: number | undefined;
 
@@ -84,7 +90,11 @@ export function ExportPage({
     event.preventDefault();
     const nextView = views[nextIndex];
     setView(nextView);
-    const nextTabId = nextView === "report" ? reportTabId : backupTabId;
+    const nextTabId = {
+      report: reportTabId,
+      "health-data": healthDataTabId,
+      backup: backupTabId
+    }[nextView];
     event.currentTarget.parentElement?.querySelector<HTMLElement>(`#${nextTabId}`)?.focus();
   }
 
@@ -110,6 +120,19 @@ export function ExportPage({
             onKeyDown={(event) => handleTabKeyDown(event, "report")}
           >
             PDF report
+          </button>
+          <button
+            id={healthDataTabId}
+            type="button"
+            role="tab"
+            aria-selected={view === "health-data"}
+            aria-controls={healthDataPanelId}
+            className={view === "health-data" ? "active" : ""}
+            tabIndex={view === "health-data" ? 0 : -1}
+            onClick={() => setView("health-data")}
+            onKeyDown={(event) => handleTabKeyDown(event, "health-data")}
+          >
+            Excel workbook
           </button>
           <button
             id={backupTabId}
@@ -142,6 +165,30 @@ export function ExportPage({
             </div>
             <button type="button" onClick={onDownload} disabled={busy}>
               {busy ? "Preparing PDF…" : "Download PDF report"}
+            </button>
+          </section>
+        ) : view === "health-data" ? (
+          <section className="panel export-tool-panel" id={healthDataPanelId} role="tabpanel" aria-labelledby={healthDataTabId}>
+            <h2>Export Excel workbook</h2>
+            <p>
+              Download an Excel workbook containing the current profile, observations, time-series samples,
+              activities, care records, measurement metadata, sources, imports, ranges, pins and insights.
+            </p>
+            <p>
+              Audit history, profile photos, original imported file contents and raw source payloads are excluded.
+              Use an encrypted backup instead when you need a complete recovery copy.
+            </p>
+            <p className="summary-detail-hint">
+              This workbook is not encrypted and contains sensitive health information. Store and share it carefully.
+            </p>
+            <div aria-live="polite" aria-atomic="true">
+              {!hasHealthData ? (
+                <p className="empty" role="status">No health records are available yet. The workbook will still include profile details and collection headers.</p>
+              ) : null}
+              {xlsxStatus.error ? <p className="empty" role="alert">{xlsxStatus.error}</p> : null}
+            </div>
+            <button type="button" onClick={onDownloadXlsx} disabled={xlsxStatus.busy}>
+              {xlsxStatus.busy ? "Preparing workbook…" : "Download Excel workbook"}
             </button>
           </section>
         ) : (

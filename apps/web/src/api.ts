@@ -223,6 +223,16 @@ export const api = {
       filename: response.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "health-report.pdf"
     };
   },
+  exportXlsx: async () => {
+    const response = await fetchAsOwner("/api/export/xlsx", {
+      headers: { accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }
+    });
+    await assertResponseOk(response);
+    return {
+      blob: await response.blob(),
+      filename: response.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "health-data.xlsx"
+    };
+  },
   backups: {
     create: async (payload: BackupCreateRequest) => {
       const response = await fetchAsOwner("/api/backups/create", {

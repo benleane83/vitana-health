@@ -74,6 +74,32 @@ describe("desktop update settings", () => {
     expect(await screen.findByRole("progressbar")).toHaveAttribute("value", "0");
   });
 
+  it("keeps restart disabled and announces installation preparation", async () => {
+    mocks.getUpdates.mockResolvedValue({
+      status: "downloaded",
+      currentVersion: "1.0.0",
+      availableVersion: "1.1.0",
+      channel: "production",
+      distributionChannel: "github",
+      progress: { percent: 100, transferred: 0, total: 0 }
+    });
+    mocks.restartUpdates.mockResolvedValue({
+      status: "installing",
+      currentVersion: "1.0.0",
+      availableVersion: "1.1.0",
+      channel: "production",
+      distributionChannel: "github"
+    });
+
+    render(<SettingsPage view="app" onViewChange={() => {}} confirm={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Restart to update" }));
+
+    expect(await screen.findByRole("button", { name: "Restarting to update…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Restarting to update…" })).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByText("Restarting to install the update…")).toBeInTheDocument();
+    expect(screen.getByRole("progressbar")).not.toHaveAttribute("value");
+  });
+
   it("clearly reports unsupported web development mode", async () => {
     mocks.getUpdates.mockResolvedValue({
       status: "unsupported",
