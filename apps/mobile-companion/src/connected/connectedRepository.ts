@@ -29,6 +29,7 @@ import {
   type Observation,
   type ObservationGroup,
   type ObservationGroupDetail,
+  type ObservationGroupListQuery,
   type PersonalReferenceRange,
   type PinnedMeasurement,
   type Profile,
@@ -41,6 +42,7 @@ import { BODY_TREND_CODES, bodyTrendFromObservations } from "../bodyTrendProject
 import { calendarMonthFromEntries } from "../calendarProjection";
 import { journalFromSnapshot } from "../journalProjection";
 import { projectObservationGroup } from "../observationGroupProjection";
+import { paginateObservationGroups } from "../observationGroupList";
 import type { LocalStore, LocalReplicaMetadata, ReplicaEntityFilter } from "../standalone/localStore";
 
 const ACTIVITY_SESSIONS_CODE = "activity_sessions";
@@ -250,6 +252,13 @@ export class ConnectedReplicaRepository {
       source,
       sourceImport
     });
+  }
+
+  async listObservationGroups(query: ObservationGroupListQuery = {}) {
+    const data = await this.readStore({
+      entityTypes: ["profile", "observation-group", "observation"]
+    });
+    return paginateObservationGroups(data.observationGroups, data.observations, query);
   }
 
   /**

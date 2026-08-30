@@ -22,6 +22,7 @@ import {
   type MobileImportResult,
   type MobileProfileRepository,
   type ObservationGroupDetail,
+  type ObservationGroupListQuery,
   type ParsedImport,
   type Profile,
   type UpdateObservationInput
@@ -237,6 +238,11 @@ export class LocalProfileRepository implements MobileProfileRepository {
       profile,
       measurementTypes: defaultMeasurementTypes
     });
+  }
+
+  async listObservationGroups(query: ObservationGroupListQuery = {}) {
+    await this.ensureInitialized();
+    return this.store.listObservationGroups(query);
   }
 
   async healthDataChartSeries(measurementCode: string, options: HealthDataChartSeriesOptions) {

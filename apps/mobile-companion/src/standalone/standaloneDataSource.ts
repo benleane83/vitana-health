@@ -43,6 +43,7 @@ export function createStandaloneDataSource(): CompanionDataSource & CompanionCar
       if (!detail) throw new Error("Observation group not found.");
       return detail;
     },
+    listObservationGroups: async (query) => (await repository).listObservationGroups(query),
     healthDataChartSeries: async (measurementCode, options) =>
       (await getRepository()).healthDataChartSeries(measurementCode, options),
     listHealthEvents: async (query) => (await repository).listHealthEvents(query),

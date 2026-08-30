@@ -6,6 +6,7 @@ export type RootStackParamList = {
   Connection: { activatePairing?: boolean } | undefined;
   License: undefined;
   TrackMetrics: { category?: ProfileDataCategory } | undefined;
+  TrackPanels: undefined;
   TrackJournal: undefined;
   TrackCalendar: undefined;
   TrackBodyTrend: undefined;

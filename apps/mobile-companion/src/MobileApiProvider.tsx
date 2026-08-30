@@ -23,6 +23,9 @@ import type {
   MobileMigrationManifest,
   MobileMigrationReceipt,
   ObservationGroupDetail,
+  ObservationGroupListItem,
+  ObservationGroupListQuery,
+  PaginatedResult,
   PersonalReferenceRangeInput,
   CreateMedicationInput,
   UpdateObservationInput
@@ -98,6 +101,7 @@ interface MobileApiContextValue {
   journal(query: JournalQueryInput, signal?: AbortSignal): Promise<JournalPage>;
   healthDataDetail(measurementCode: string, page?: DetailPage): Promise<HealthDataDetail>;
   observationGroup(id: string): Promise<ObservationGroupDetail>;
+  listObservationGroups(query?: ObservationGroupListQuery): Promise<PaginatedResult<ObservationGroupListItem>>;
   healthDataChartSeries(measurementCode: string, options: HealthDataChartSeriesOptions): Promise<HealthDataChartSeries>;
   importManualObservations(payload: ManualObservationPayload): Promise<unknown>;
   updateObservation(id: string, input: UpdateObservationInput): Promise<void>;
@@ -433,6 +437,13 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     return detail;
   }, [source, updateConnectionState]);
 
+  const listObservationGroups = useCallback(async (query?: ObservationGroupListQuery) => {
+    if (!source) throw new Error("Observation groups are unavailable while the companion is disconnected.");
+    const page = await source.listObservationGroups(query);
+    updateConnectionState(source, page);
+    return page;
+  }, [source, updateConnectionState]);
+
   const journal = useCallback(async (query: JournalQueryInput, signal?: AbortSignal) => {
     if (!source) throw new Error("Journal is unavailable while the companion is disconnected.");
     const page = await source.journal(query, signal);
@@ -702,6 +713,7 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     journal,
     healthDataDetail,
     observationGroup,
+    listObservationGroups,
     healthDataChartSeries,
     importManualObservations,
     updateObservation,
@@ -728,7 +740,7 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
   }), [
     analytics, bodyTrendTimeline, bootstrap, calendarMonth, cancelPendingConnection, clearTransientData, completeCareItem, connection, connectionState, createCareItem, createHealthEvent, createMedication,
     dashboardLoading, deleteCareItem, deleteHealthEvent, deleteMedication, deleteObservation, demoMode, discardStandaloneDataAndConnect, disconnect, error, healthDataChartSeries, healthDataDetail, journal, observationGroup,
-    importManualObservations, listCareItems, listHealthEvents, listMedications, operatingMode, refreshAfterImport, refreshDashboard,
+    importManualObservations, listCareItems, listHealthEvents, listMedications, listObservationGroups, operatingMode, refreshAfterImport, refreshDashboard,
     profilePhoto, refreshTrack, reloadConnection, removePersonalReferenceRange, resetStandaloneData, setDemoMode, setOperatingMode, setPersonalReferenceRange, summary, syncing, synchronizeConnectedData, trackLoading,
     migrateStandaloneData, migrationProgress, standaloneMigrationManifest, transientRevision, updateCareItem, updateHealthEvent, updateMedication, updateObservation
   ]);

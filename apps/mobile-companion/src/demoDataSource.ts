@@ -27,6 +27,7 @@ import {
   type CreateMedicationInput,
   type MobileImportResult,
   type ObservationGroupDetail,
+  type ObservationGroupListQuery,
   type PersonalReferenceRange
 } from "@vitana/shared";
 import type {
@@ -39,6 +40,7 @@ import type {
 import { chartSeriesFromDetail } from "./chartSeries";
 import { calendarMonthFromEntries } from "./calendarProjection";
 import { bodyTrendFromObservations } from "./bodyTrendProjection";
+import { paginateObservationGroups } from "./observationGroupList";
 
 interface DemoMetric {
   code: string;
@@ -170,6 +172,19 @@ export function createDemoDataSource(
       const detail = observationGroups.get(id);
       if (!detail) throw new Error("This observation group is not available in demo mode.");
       return detail;
+    },
+    async listObservationGroups(query: ObservationGroupListQuery = {}) {
+      const details = [...observationGroups.values()];
+      return paginateObservationGroups(
+        details.map((detail) => ({
+          id: detail.id,
+          kind: detail.kind,
+          label: detail.label,
+          collectedAt: detail.collectedAt
+        })),
+        details.flatMap((detail) => detail.observations.map(() => ({ observationGroupId: detail.id }))),
+        query
+      );
     },
     async healthDataChartSeries(measurementCode, options) {
       const detail = details.get(measurementCode);

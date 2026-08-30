@@ -21,6 +21,7 @@ import type {
   MedicationListQuery,
   MedicationMutationResponse,
   JournalQuery,
+  ObservationGroupListQuery,
   MobileMigrationBatch,
   MobileMigrationManifest,
   ObservationGroupDetail,
@@ -267,6 +268,10 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
 
   getObservationGroup(id: string): Promise<ObservationGroupDetail | undefined> {
     return this.repository.getObservationGroup(id);
+  }
+
+  listObservationGroups(query: ObservationGroupListQuery) {
+    return this.repository.listObservationGroups(query);
   }
 
   updateObservationGroup(

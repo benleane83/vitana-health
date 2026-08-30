@@ -281,6 +281,7 @@ export const api = {
   calendarMonth: sharedApi.calendarMonth,
   journal: sharedApi.journal,
   observationGroup: sharedApi.observationGroup,
+  observationGroups: sharedApi.observationGroups,
   updateObservationGroup: sharedApi.updateObservationGroup,
   healthDataDetail: sharedApi.healthDataDetail,
   healthDataChartSeries: sharedApi.healthDataChartSeries,

@@ -18,6 +18,9 @@ import type {
   MobileMigrationManifest,
   MobileMigrationReceipt,
   Observation,
+  ObservationGroupListItem,
+  ObservationGroupListQuery,
+  PaginatedResult,
   ParsedImport,
   Profile,
   ReplicaIdentity,
@@ -949,6 +952,65 @@ export class SqliteLocalStore implements LocalStore {
         note: observation.note ?? undefined,
         sourceJson: observation.sourceJson ? JSON.parse(observation.sourceJson) : undefined
       }))
+    };
+  }
+
+  async listObservationGroups(
+    query: ObservationGroupListQuery = {}
+  ): Promise<PaginatedResult<ObservationGroupListItem>> {
+    const profileId = this.requireProfileId();
+    const limit = Math.min(Math.max(Number(query.limit ?? 50), 1), 100);
+    const offset = Math.max(Number(query.offset ?? 0), 0);
+    const clauses = ["og.profile_id = ?"];
+    const params: Array<string | number> = [profileId];
+    if (query.kinds?.length) {
+      clauses.push(`og.kind IN (${query.kinds.map(() => "?").join(", ")})`);
+      params.push(...query.kinds);
+    }
+    const panelDateSql = "COALESCE(og.collected_at, og.start_at, og.end_at)";
+    if (query.dateFrom) {
+      clauses.push(`${panelDateSql} IS NOT NULL AND date(${panelDateSql}) >= date(?)`);
+      params.push(query.dateFrom);
+    }
+    if (query.dateTo) {
+      clauses.push(`${panelDateSql} IS NOT NULL AND date(${panelDateSql}) <= date(?)`);
+      params.push(query.dateTo);
+    }
+    const whereSql = clauses.join(" AND ");
+    const rows = await this.database.getAllAsync<{
+      id: string;
+      kind: ObservationGroupListItem["kind"];
+      label: string;
+      date: string | null;
+      measurementCount: number;
+    }>(`
+      SELECT og.id, og.kind, og.label, ${panelDateSql} AS date,
+        COUNT(o.id) AS measurementCount
+      FROM observation_groups og
+      LEFT JOIN observations o
+        ON o.profile_id = og.profile_id AND o.observation_group_id = og.id
+      WHERE ${whereSql}
+      GROUP BY og.id, og.kind, og.label, og.collected_at, og.start_at, og.end_at
+      ORDER BY date IS NULL, date DESC, og.id ASC
+      LIMIT ? OFFSET ?
+    `, ...params, limit, offset);
+    const totalRow = await this.database.getFirstAsync<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM observation_groups og WHERE ${whereSql}`,
+      ...params
+    );
+    const total = totalRow?.count ?? 0;
+    return {
+      items: rows.map((row) => ({
+        id: row.id,
+        kind: row.kind,
+        label: row.label,
+        date: row.date ?? undefined,
+        measurementCount: row.measurementCount
+      })),
+      total,
+      offset,
+      limit,
+      hasMore: offset + rows.length < total
     };
   }
 

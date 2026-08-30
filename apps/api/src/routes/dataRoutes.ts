@@ -36,9 +36,11 @@ import {
   linkedHealthEventConflictSchema,
   measurementPinStateResponseSchema,
   observationGroupDetailResponseSchema,
+  observationGroupListQuerySchema,
   paginatedCareItemsResponseSchema,
   paginatedHealthEventsResponseSchema,
   paginatedMedicationsResponseSchema,
+  paginatedObservationGroupsResponseSchema,
   medicationListQuerySchema,
   medicationMutationResponseSchema,
   personalReferenceRangeInputSchema,
@@ -448,6 +450,19 @@ export function makeDataRoutes(
         return;
       }
       sendJson(response, deleteMedicationResponseSchema, deleted);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/observation-groups", async (request, response, next) => {
+    try {
+      const query = observationGroupListQuerySchema.parse(request.query);
+      sendJson(
+        response,
+        paginatedObservationGroupsResponseSchema,
+        await requestStore(response).listObservationGroups(query)
+      );
     } catch (error) {
       next(error);
     }

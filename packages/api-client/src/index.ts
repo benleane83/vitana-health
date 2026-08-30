@@ -44,6 +44,8 @@ import {
   mobileMigrationStartResponseSchema,
   measurementPinStateResponseSchema,
   observationGroupDetailResponseSchema,
+  observationGroupListQuerySchema,
+  paginatedObservationGroupsResponseSchema,
   paginatedCareItemsResponseSchema,
   paginatedHealthEventsResponseSchema,
   paginatedMedicationsResponseSchema,
@@ -74,6 +76,7 @@ import type {
   CreateMedicationInput,
   HealthEventListQuery,
   MedicationListQuery,
+  ObservationGroupListQuery,
   HealthConnectImportPayload,
   GooglePlayEntitlementClaim,
   JournalQueryInput,
@@ -231,6 +234,14 @@ export function createApiClient(transport: ApiTransport) {
     },
     observationGroup: (id: string, signal?: AbortSignal) =>
       request(observationGroupDetailResponseSchema, `/api/observation-groups/${encodeURIComponent(id)}`, { signal }),
+    observationGroups: (query?: ObservationGroupListQuery, signal?: AbortSignal) => {
+      const validated = observationGroupListQuerySchema.parse(query ?? {});
+      return request(
+        paginatedObservationGroupsResponseSchema,
+        `/api/observation-groups${careQuery(validated, query)}`,
+        { signal }
+      );
+    },
     updateObservationGroup: (id: string, input: UpdateObservationGroupInput) =>
       request(observationGroupDetailResponseSchema, `/api/observation-groups/${encodeURIComponent(id)}`, {
         method: "PATCH",

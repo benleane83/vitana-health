@@ -225,7 +225,7 @@ export function App() {
   function navigateTrackView(nextView: TrackView) {
     pushPath(
       nextView === "calendar" ? "/track/calendar" : nextView === "body-trend" ? "/track/body-trend"
-        : nextView === "journal" ? "/track/journal" : "/track"
+        : nextView === "journal" ? "/track/journal" : nextView === "panels" ? "/track/panels" : "/track"
     );
     setSummaryDetailCode(undefined);
     setObservationGroupId(undefined);
@@ -247,7 +247,7 @@ export function App() {
     pushPath(`/track/groups/${encodeURIComponent(groupId)}`, { observationGroupReturnPath: window.location.pathname });
     setSummaryDetailCode(undefined);
     setObservationGroupId(groupId);
-    setTrackView("measurements");
+    setTrackView(trackView);
     setTrackCategory(undefined);
     setRoute("track");
   }
@@ -272,7 +272,7 @@ export function App() {
       window.history.back();
       return;
     }
-    navigate("track");
+    navigateTrackView(trackView);
   }
 
   function confirm(
@@ -744,7 +744,9 @@ function trackViewFromPathname(pathname: string): TrackView {
       ? "body-trend"
       : pathname === "/track/journal" || pathname.startsWith("/track/journal/")
         ? "journal"
-        : "measurements";
+        : pathname === "/track/panels"
+          ? "panels"
+          : "measurements";
 }
 
 function importModeFromPathname(pathname: string): ImportMode {

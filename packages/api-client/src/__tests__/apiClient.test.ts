@@ -87,6 +87,27 @@ describe("apiErrorFromResponse", () => {
 });
 
 describe("createApiClient", () => {
+  it("encodes panel list filters and validates the response", async () => {
+    const transport = vi.fn(async (_request: ApiTransportRequest) => response({
+      items: [{ id: "group-1", kind: "lab_panel", label: "Blood panel", measurementCount: 3 }],
+      total: 1,
+      offset: 0,
+      limit: 25,
+      hasMore: false
+    }));
+    const client = createApiClient(transport);
+
+    await client.observationGroups({
+      kinds: ["lab_panel", "custom"],
+      dateFrom: "2026-08-01",
+      limit: 25
+    });
+
+    expect(transport).toHaveBeenCalledWith(expect.objectContaining({
+      path: "/api/observation-groups?kinds=lab_panel%2Ccustom&dateFrom=2026-08-01&limit=25"
+    }));
+  });
+
   it("encodes calendar queries deterministically and forwards abort signals", async () => {
     const transport = vi.fn(async (_request: ApiTransportRequest) => response({
       month: "2026-08",

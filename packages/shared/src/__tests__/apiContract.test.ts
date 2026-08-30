@@ -14,6 +14,8 @@ import {
   healthEventSchema,
   medicationListQuerySchema,
   medicationSchema,
+  observationGroupListQuerySchema,
+  paginatedObservationGroupsResponseSchema,
   personalReferenceRangeInputSchema
 } from "../apiContract.js";
 
@@ -22,6 +24,33 @@ import {
  * under the hood, so an empty object satisfied every one of them and drift went unnoticed.
  */
 describe("response contracts", () => {
+  it("validates panel list filters and responses", () => {
+    expect(observationGroupListQuerySchema.parse({
+      kinds: ["lab_panel", "custom"],
+      dateFrom: "2026-08-01",
+      dateTo: "2026-08-31"
+    })).toMatchObject({ limit: 50, offset: 0 });
+    expect(observationGroupListQuerySchema.parse({ kinds: "lab_panel,custom" }).kinds)
+      .toEqual(["lab_panel", "custom"]);
+    expect(observationGroupListQuerySchema.safeParse({
+      dateFrom: "2026-08-31",
+      dateTo: "2026-08-01"
+    }).success).toBe(false);
+    expect(paginatedObservationGroupsResponseSchema.safeParse({
+      items: [{
+        id: "group-1",
+        kind: "lab_panel",
+        label: "Blood panel",
+        date: "2026-08-12T08:00:00.000Z",
+        measurementCount: 4
+      }],
+      total: 1,
+      offset: 0,
+      limit: 50,
+      hasMore: false
+    }).success).toBe(true);
+  });
+
   it("validates tri-state optimal reference-range inputs", () => {
     for (const input of [
       { low: 4, high: 6, unit: "mmol/L" },

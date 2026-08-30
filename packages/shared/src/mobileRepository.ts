@@ -8,6 +8,7 @@ import type {
   Medication,
   MedicationMutationResponse,
   ObservationGroupDetail,
+  ObservationGroupListItem,
   PaginatedResult,
   UpdateObservationResponse
 } from "./types.js";
@@ -15,6 +16,7 @@ import type {
   CreateMedicationInput,
   ImportCategoryOutcome,
   MedicationListQuery,
+  ObservationGroupListQuery,
   UpdateObservationInput
 } from "./apiContract.js";
 import type { ManualObservationPayload, ParsedImport } from "./parserTypes.js";
@@ -45,6 +47,7 @@ export interface MobileProfileRepository {
   summary(): Promise<HealthDataSummary>;
   healthDataDetail(measurementCode: string, page?: MobileDetailPage): Promise<HealthDataDetail>;
   observationGroup(id: string): Promise<ObservationGroupDetail | undefined>;
+  listObservationGroups(query?: ObservationGroupListQuery): Promise<PaginatedResult<ObservationGroupListItem>>;
   listMedications(query?: MedicationListQuery): Promise<PaginatedResult<Medication>>;
   createMedication(input: CreateMedicationInput): Promise<MedicationMutationResponse>;
   updateMedication(id: string, input: CreateMedicationInput): Promise<MedicationMutationResponse>;

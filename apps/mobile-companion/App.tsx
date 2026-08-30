@@ -24,6 +24,7 @@ import { TrackCalendarScreen } from "./src/screens/TrackCalendarScreen";
 import { TrackBodyTrendScreen } from "./src/screens/TrackBodyTrendScreen";
 import { TrackJournalScreen } from "./src/screens/TrackJournalScreen";
 import { TrackMetricsScreen } from "./src/screens/TrackMetricsScreen";
+import { TrackPanelsScreen } from "./src/screens/TrackPanelsScreen";
 import { TrackScreen } from "./src/screens/TrackScreen";
 import { ProFeatureScreen } from "./src/screens/ProFeatureScreen";
 import { CareScreen } from "./src/screens/CareScreen";
@@ -56,6 +57,7 @@ export default function App() {
                   <Stack.Screen name="Connection" component={ConnectionScreen} options={{ presentation: "modal", title: "Connection" }} />
                   <Stack.Screen name="License" component={LicenseScreen} options={{ title: "Software license" }} />
                   <Stack.Screen name="TrackMetrics" component={TrackMetricsScreen} options={{ title: "Measurements" }} />
+                  <Stack.Screen name="TrackPanels" component={TrackPanelsScreen} options={{ title: "Panels" }} />
                   <Stack.Screen name="TrackJournal" component={TrackJournalScreen} options={{ title: "Journal" }} />
                   <Stack.Screen name="TrackCalendar" component={ProCalendarRoute} options={{ title: "Calendar" }} />
                   <Stack.Screen name="TrackBodyTrend" component={ProBodyTrendRoute} options={{ title: "Body Trend" }} />

@@ -38,6 +38,7 @@ import type {
   Medication,
   MedicationMutationResponse,
   ObservationGroupDetail,
+  ObservationGroupListItem,
   Profile,
   ProfilePhotoResponse,
   ProfileListEntry,
@@ -670,6 +671,47 @@ export const paginatedCareItemsResponseSchema = z.object({
 }).strict();
 export const paginatedMedicationsResponseSchema = z.object({
   items: z.array(medicationSchema),
+  ...carePaginationSchema.shape
+}).strict();
+
+const observationGroupKindsQuerySchema = z.preprocess((value) => {
+  if (value === undefined) return undefined;
+  const values = Array.isArray(value) ? value : [value];
+  return values.flatMap((entry) => String(entry).split(",")).filter(Boolean);
+}, z.array(observationGroupKindSchema).min(1).max(6).refine(
+  (values) => new Set(values).size === values.length,
+  "Panel types must be unique."
+).optional());
+
+export const observationGroupListQuerySchema = z.object({
+  kinds: observationGroupKindsQuerySchema,
+  dateFrom: z.string().date().optional(),
+  dateTo: z.string().date().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).default(0)
+}).strict().superRefine((value, context) => {
+  if (value.dateFrom && value.dateTo && value.dateFrom > value.dateTo) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["dateTo"],
+      message: "Panel end date must be on or after the start date."
+    });
+  }
+});
+export type ObservationGroupListQueryContract = z.infer<typeof observationGroupListQuerySchema>;
+/** Caller-facing form: every filter is optional, and the server applies the paging defaults. */
+export type ObservationGroupListQuery = Partial<ObservationGroupListQueryContract>;
+
+const observationGroupListItemSchema: z.ZodType<ObservationGroupListItem> = z.object({
+  id: z.string(),
+  kind: observationGroupKindSchema,
+  label: z.string(),
+  date: isoTimestampSchema.optional(),
+  measurementCount: z.number().int().nonnegative()
+}).strict();
+
+export const paginatedObservationGroupsResponseSchema = z.object({
+  items: z.array(observationGroupListItemSchema),
   ...carePaginationSchema.shape
 }).strict();
 

@@ -29,6 +29,7 @@ import {
   type HealthStoreData,
   type MedicationListQuery,
   type MedicationMutationResponse,
+  type ObservationGroupListQuery,
   type JournalQuery,
   type MobileMigrationBatch,
   type MobileMigrationManifest,
@@ -148,6 +149,7 @@ import {
   listActivities as readActivities,
   listHealthEvents as readHealthEvents,
   listMedications as readMedications,
+  listObservationGroups as readObservationGroups,
   journal as readJournal,
   measurementDetail as readMeasurementDetail,
   measurementChartSeries as readMeasurementChartSeries,
@@ -720,6 +722,11 @@ export class DuckDbRepository implements ProfileRepository {
   async getObservationGroup(id: string): Promise<ObservationGroupDetail | undefined> {
     this.assertOpen();
     return readObservationGroupDetail(this.reader, id);
+  }
+
+  async listObservationGroups(query: ObservationGroupListQuery) {
+    this.assertOpen();
+    return readObservationGroups(this.reader, query);
   }
 
   async updateObservationGroup(

@@ -10,7 +10,7 @@ export type { ProfileDataCategory };
 export type AppRoute = "dashboard" | "import" | "track" | "care" | "insights" | "export" | "about" | "settings";
 export type InsightsTab = "biological-age" | "ai-query" | "ai-review";
 export type CareView = "items" | "health-events" | "medications";
-export type TrackView = "measurements" | "body-trend" | "calendar" | "journal";
+export type TrackView = "measurements" | "panels" | "body-trend" | "calendar" | "journal";
 export type SummarySort = "name" | "count" | "recency";
 export type ImportMode = "manual" | "upload" | "sync";
 export type SettingsView = "app" | "ai";

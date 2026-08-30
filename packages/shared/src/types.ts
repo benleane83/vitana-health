@@ -531,6 +531,25 @@ export type ObservationGroupKind =
   | "import_batch"
   | "custom";
 
+export interface ObservationGroupListItem {
+  id: string;
+  kind: ObservationGroupKind;
+  label: string;
+  date?: string;
+  measurementCount: number;
+}
+
+export function observationGroupKindLabel(kind: ObservationGroupKind): string {
+  switch (kind) {
+    case "lab_panel": return "Lab panel";
+    case "body_composition_report": return "Body composition report";
+    case "activity_session": return "Activity session";
+    case "sleep_session": return "Sleep session";
+    case "import_batch": return "Import batch";
+    case "custom": return "Custom";
+  }
+}
+
 export interface ObservationGroup {
   id: string;
   kind: ObservationGroupKind;

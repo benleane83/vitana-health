@@ -31,6 +31,7 @@ import type {
   HealthStoreData,
   Medication,
   MedicationListQuery,
+  ObservationGroupListQuery,
   MedicationMutationResponse,
   ImportCategoryOutcome,
   JournalPage,
@@ -39,6 +40,7 @@ import type {
   MeasurementAggregate,
   MeasurementPinState,
   ObservationGroupDetail,
+  ObservationGroupListItem,
   MobileMigrationBatch,
   MobileMigrationBatchAcknowledgement,
   MobileMigrationManifest,
@@ -274,6 +276,7 @@ export interface ProfileRepository {
   deleteMedication(id: string): Promise<DeleteMedicationResponse | undefined>;
   updateObservation(id: string, input: UpdateObservationInput): Promise<UpdateObservationResponse | undefined>;
   getObservationGroup(id: string): Promise<ObservationGroupDetail | undefined>;
+  listObservationGroups(query: ObservationGroupListQuery): Promise<PaginatedResult<ObservationGroupListItem>>;
   updateObservationGroup(id: string, input: UpdateObservationGroupInput): Promise<ObservationGroupDetail | undefined>;
   deleteObservation(id: string): Promise<DeleteObservationResponse | undefined>;
   deleteObservationsByMeasurementCode(measurementCode: string): Promise<DeleteObservationsByTypeResponse>;

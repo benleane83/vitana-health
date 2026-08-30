@@ -269,13 +269,14 @@ describe("App smoke", () => {
     expect(window.location.search).toBe("");
   });
 
-  it("orders Track tabs with Journal after Measurements and follows that order by keyboard", async () => {
+  it("orders Track tabs with Panels after Measurements and follows that order by keyboard", async () => {
     globalThis.history.replaceState({}, "", "/track");
     render(<App />);
 
     const trackTabs = within(screen.getByRole("tablist", { name: "Track views" }));
     expect(trackTabs.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
       "Measurements",
+      "Panels",
       "Journal",
       "Calendar",
       "Body Trend"
@@ -283,7 +284,7 @@ describe("App smoke", () => {
 
     fireEvent.keyDown(trackTabs.getByRole("tab", { name: "Measurements" }), { key: "ArrowRight" });
 
-    expect(trackTabs.getByRole("tab", { name: "Journal" })).toHaveAttribute("aria-selected", "true");
+    expect(trackTabs.getByRole("tab", { name: "Panels" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("routes a Body Trend date deep link without requesting a matching summary detail", async () => {

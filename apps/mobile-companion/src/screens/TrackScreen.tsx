@@ -1,5 +1,5 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { Activity, BookOpenText, CalendarDays, ChartNoAxesCombined, ChevronRight } from "lucide-react-native";
+import { Activity, BookOpenText, CalendarDays, ChartNoAxesCombined, ChevronRight, Layers } from "lucide-react-native";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { hasFeature, type ProFeature } from "@vitana/shared";
@@ -14,6 +14,12 @@ const trackDestinations = [
     icon: Activity,
     label: "Measurements",
     route: "TrackMetrics" as const
+  },
+  {
+    description: "Find measurement panels and grouped records by type and date.",
+    icon: Layers,
+    label: "Panels",
+    route: "TrackPanels" as const
   },
   {
     description: "Your activity, sleep, and health events, day by day.",

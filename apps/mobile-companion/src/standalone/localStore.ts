@@ -18,6 +18,9 @@ import type {
   MobileMigrationReceipt,
   Observation,
   ObservationGroup,
+  ObservationGroupListItem,
+  ObservationGroupListQuery,
+  PaginatedResult,
   ParsedImport,
   Profile,
   ReplicaIdentity,
@@ -149,6 +152,7 @@ export interface LocalStore {
   observationsForCalendar(query: CalendarMonthQuery): Promise<LocalCalendarObservation[]>;
   observationsByCode(measurementCode: string, limit: number, offset: number): Promise<LocalObservationPage>;
   observationGroup(id: string): Promise<LocalObservationGroupRecord | undefined>;
+  listObservationGroups(query?: ObservationGroupListQuery): Promise<PaginatedResult<ObservationGroupListItem>>;
   observationChartSeries(
     measurementCode: string,
     aggregation: HealthDataChartSeries["aggregation"],

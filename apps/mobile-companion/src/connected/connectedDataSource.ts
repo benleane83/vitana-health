@@ -1,6 +1,6 @@
 import type { ReplicaIdentity } from "@vitana/shared";
 import { createCompanionApi } from "../api";
-import type { CompanionLifecycleService, DetailPage } from "../companionDataSource";
+import type { CompanionDataSource, CompanionLifecycleService, DetailPage } from "../companionDataSource";
 import { saveConnection, type ConnectionDetails } from "../endpointStore";
 import { LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS } from "../pinnedFetch";
 import { createConnectedStore } from "./createConnectedStore";
@@ -48,7 +48,7 @@ export class ReplicaRefreshFailedError extends Error {
 
 export function createConnectedDataSource(
   connection: ConnectionDetails
-): ReturnType<typeof createCompanionApi> & CompanionLifecycleService & ConnectedReplicaMaintenance {
+): ReturnType<typeof createCompanionApi> & CompanionDataSource & CompanionLifecycleService & ConnectedReplicaMaintenance {
   const live = createCompanionApi(connection, LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS);
   const storePromise = createConnectedStore();
   let repository: ConnectedReplicaRepository | undefined;
@@ -149,6 +149,7 @@ export function createConnectedDataSource(
       if (!detail) throw new Error("Observation group not found.");
       return detail;
     },
+    listObservationGroups: (query) => cachedRead((current) => current.listObservationGroups(query)),
     healthDataChartSeries: (measurementCode, options) =>
       cachedRead((current) => current.healthDataChartSeries(
         measurementCode,

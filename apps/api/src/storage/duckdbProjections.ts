@@ -36,6 +36,8 @@ import {
   medicationSchema,
   type ObservationGroup,
   type ObservationGroupDetail,
+  type ObservationGroupListItem,
+  type ObservationGroupListQuery,
   type PaginatedResult,
   type PersonalReferenceRange,
   type Profile,
@@ -1587,6 +1589,64 @@ export async function listMedications(
     offset: normalized.offset,
     limit: normalized.limit,
     hasMore: normalized.offset + rows.length < total
+  };
+}
+
+export async function listObservationGroups(
+  connection: duckdb.Connection,
+  query: ObservationGroupListQuery
+): Promise<PaginatedResult<ObservationGroupListItem>> {
+  const limit = Math.min(Math.max(Number(query.limit ?? 50), 1), 100);
+  const offset = Math.max(Number(query.offset ?? 0), 0);
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+  if (query.kinds?.length) {
+    clauses.push(`g.kind IN (${query.kinds.map(() => "?").join(", ")})`);
+    params.push(...query.kinds);
+  }
+  const panelDateSql = "COALESCE(g.collected_at, g.start_at, g.end_at)";
+  if (query.dateFrom) {
+    clauses.push(`${panelDateSql} IS NOT NULL AND CAST(${panelDateSql} AS DATE) >= CAST(? AS DATE)`);
+    params.push(query.dateFrom);
+  }
+  if (query.dateTo) {
+    clauses.push(`${panelDateSql} IS NOT NULL AND CAST(${panelDateSql} AS DATE) <= CAST(? AS DATE)`);
+    params.push(query.dateTo);
+  }
+  const whereSql = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const rows = await allWithParams(connection, `
+    SELECT
+      g.id,
+      g.kind,
+      g.label,
+      ${panelDateSql} AS panel_date,
+      COUNT(o.id) AS measurement_count
+    FROM observation_groups g
+    LEFT JOIN observations o ON o.observation_group_id = g.id
+    ${whereSql}
+    GROUP BY g.id, g.kind, g.label, g.collected_at, g.start_at, g.end_at
+    ORDER BY panel_date IS NULL, panel_date DESC, g.id ASC
+    LIMIT ? OFFSET ?;
+  `, ...params, limit, offset);
+  const totalRows = await allWithParams(
+    connection,
+    `SELECT COUNT(*) AS count FROM observation_groups g ${whereSql};`,
+    ...params
+  );
+  const items = rows.map((row): ObservationGroupListItem => ({
+    id: String(row.id),
+    kind: String(row.kind) as ObservationGroupListItem["kind"],
+    label: String(row.label),
+    date: row.panel_date == null ? undefined : isoTimestamp(row.panel_date),
+    measurementCount: Number(row.measurement_count)
+  }));
+  const total = Number(totalRows[0]?.count ?? 0);
+  return {
+    items,
+    total,
+    offset,
+    limit,
+    hasMore: offset + rows.length < total
   };
 }
 

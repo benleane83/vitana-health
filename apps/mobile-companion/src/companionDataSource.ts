@@ -29,6 +29,8 @@ import type {
   DeleteMedicationResponse,
   MobileImportResult,
   ObservationGroupDetail,
+  ObservationGroupListItem,
+  ObservationGroupListQuery,
   HealthEvent,
   HealthEventListQuery,
   HealthEventMutationResponse,
@@ -53,6 +55,7 @@ export interface CompanionDataSource {
   journal(query: JournalQueryInput, signal?: AbortSignal): Promise<JournalPage>;
   healthDataDetail(measurementCode: string, page?: DetailPage): Promise<HealthDataDetail>;
   observationGroup(id: string): Promise<ObservationGroupDetail>;
+  listObservationGroups(query?: ObservationGroupListQuery): Promise<PaginatedResult<ObservationGroupListItem>>;
   healthDataChartSeries(measurementCode: string, options: HealthDataChartSeriesOptions): Promise<HealthDataChartSeries>;
 }
 

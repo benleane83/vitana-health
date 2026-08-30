@@ -9,6 +9,7 @@ import type {
     HealthEventListQuery,
     Medication,
     MedicationListQuery,
+    ObservationGroupListQuery,
     CreateMedicationInput,
   CalendarMonthQuery,
   HealthDataChartSeries,
@@ -41,6 +42,7 @@ import {
   type ReplicaEntityFilter
 } from "./localStore";
 import { chartSeriesFromPoints } from "../chartSeries";
+import { paginateObservationGroups } from "../observationGroupList";
 
 export interface MemoryLocalStoreState {
   profiles: Map<string, Profile>;
@@ -353,6 +355,15 @@ export class MemoryLocalStore implements LocalStore {
     const observations = this.profileValues(this.state.observations)
       .filter((observation) => observation.observationGroupId === id);
     return structuredClone({ group, source, sourceImport, observations });
+  }
+
+  async listObservationGroups(query: ObservationGroupListQuery = {}) {
+    const profileId = this.requireProfileId();
+    return paginateObservationGroups(
+      this.profileValues(this.state.observationGroups),
+      this.profileValues(this.state.observations),
+      query
+    );
   }
 
   async observationChartSeries(

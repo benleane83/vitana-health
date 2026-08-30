@@ -22,6 +22,7 @@ import { BodyTrendRoute } from "./BodyTrendRoute.js";
 import { CalendarRoute } from "./CalendarRoute.js";
 import { JournalRoute } from "./JournalRoute.js";
 import { ObservationGroupRoute } from "./ObservationGroupRoute.js";
+import { PanelsRoute } from "./PanelsRoute.js";
 import { ProLockedView } from "../../components/ProLockedView.js";
 
 type RemoteState<T> = {
@@ -98,7 +99,7 @@ export function TrackRoute({
   function handleTabKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, currentView: TrackView) {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
-    const views: TrackView[] = ["measurements", "journal", "calendar", "body-trend"];
+    const views: TrackView[] = ["measurements", "panels", "journal", "calendar", "body-trend"];
     const currentIndex = views.indexOf(currentView);
     const resolved = event.key === "Home" ? views[0]! : event.key === "End" ? views.at(-1)! : views[
       (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + views.length) % views.length
@@ -351,7 +352,7 @@ export function TrackRoute({
         </div>
       </header>
       <div className="care-switch track-switch route-local-nav" role="tablist" aria-label="Track views" aria-orientation="horizontal">
-        {(["measurements", "journal", "calendar", "body-trend"] as const).map((value) => (
+        {(["measurements", "panels", "journal", "calendar", "body-trend"] as const).map((value) => (
           <button
             key={value}
             id={`track-tab-${value}`}
@@ -364,12 +365,24 @@ export function TrackRoute({
             onClick={() => onViewChange(value)}
             onKeyDown={(event) => handleTabKeyDown(event, value)}
           >
-            {value === "measurements" ? "Measurements" : value === "body-trend" ? "Body Trend" : value === "calendar" ? "Calendar" : "Journal"}
+            {value === "measurements" ? "Measurements" : value === "panels" ? "Panels" : value === "body-trend" ? "Body Trend" : value === "calendar" ? "Calendar" : "Journal"}
           </button>
         ))}
       </div>
       <div id="track-view-panel" role="tabpanel" aria-labelledby={`track-tab-${view}`}>
-      {view === "body-trend" && !bodyTrendAllowed ? (
+      {observationGroupId ? (
+        <ObservationGroupRoute
+          groupId={observationGroupId}
+          activeProfileId={activeProfileId}
+          measurementTypes={measurementTypes}
+          units={units}
+          backLabel={view === "panels" ? "Back to panels" : "Back to measurements"}
+          onBack={onBack}
+          onSelectMeasurement={onSelectDetail}
+          onDataChanged={onDataChanged}
+          onNotice={onNotice}
+        />
+      ) : view === "panels" ? null : view === "body-trend" && !bodyTrendAllowed ? (
         <ProLockedView feature="Body Trend" />
       ) : view === "calendar" && !calendarAllowed ? (
         <ProLockedView feature="Calendar" />
@@ -389,17 +402,6 @@ export function TrackRoute({
         />
       ) : view === "journal" ? (
         <JournalRoute activeProfileId={activeProfileId} />
-      ) : observationGroupId ? (
-        <ObservationGroupRoute
-          groupId={observationGroupId}
-          activeProfileId={activeProfileId}
-          measurementTypes={measurementTypes}
-          units={units}
-          onBack={onBack}
-          onSelectMeasurement={onSelectDetail}
-          onDataChanged={onDataChanged}
-          onNotice={onNotice}
-        />
       ) : detailCode ? (
         <ObservationTypeDetailPage
           key={`${activeProfileId ?? ""}:${detailCode}`}
@@ -446,6 +448,14 @@ export function TrackRoute({
           onAddCategory={onAddCategory}
         />
       )}
+      {view === "panels" ? (
+        <div hidden={Boolean(observationGroupId)}>
+          <PanelsRoute
+            activeProfileId={activeProfileId}
+            onViewObservationGroup={onViewObservationGroup}
+          />
+        </div>
+      ) : null}
       </div>
       {observationBeingEdited ? (
         <ObservationEditDialog
