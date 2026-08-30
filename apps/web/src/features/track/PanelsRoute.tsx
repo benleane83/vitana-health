@@ -14,7 +14,6 @@ const groupKinds: ObservationGroupKind[] = [
   "lab_panel",
   "body_composition_report",
   "activity_session",
-  "sleep_session",
   "import_batch",
   "custom"
 ];

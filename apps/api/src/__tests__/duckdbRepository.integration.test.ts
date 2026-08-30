@@ -545,7 +545,7 @@ describe("DuckDbRepository fidelity", () => {
     const replacement = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe1]), Buffer.alloc(64 * 1024, 2), Buffer.from([0xff, 0xd9])]);
 
     try {
-      expect(await first.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+      expect(await first.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
       const created = await first.replaceProfilePhoto("image/jpeg", original);
       expect(created.revision).toBe(createHash("sha256").update(original).digest("hex"));
       expect(await second.getProfilePhoto()).toBeUndefined();
@@ -2048,7 +2048,7 @@ describe("DuckDbRepository fidelity", () => {
 
     const opened = await DuckDbRepository.open(root, databasePath, key, options);
     try {
-      expect(await opened.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+      expect(await opened.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
       expect(await opened.dailyMetrics()).toEqual([]);
       expect(await opened.weeklyMetrics()).toEqual([]);
     } finally {
@@ -2100,16 +2100,16 @@ describe("DuckDbRepository fidelity", () => {
 
     const reopened = await DuckDbRepository.open(root, databasePath, key, options);
     try {
-      expect(await reopened.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+      expect(await reopened.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
     } finally {
       await reopened.close();
     }
   }, 30_000);
 
-  it.skipIf(!httpfsExtensionPath)("preserves medication data while removing retired columns from schema 8", async () => {
+  it.skipIf(!httpfsExtensionPath)("preserves medication data while creating the final schema 8 shape", async () => {
     const databasePath = join(root, "databases", "health-store-medication-migration.duckdb-poc");
     const options = { httpfsExtensionPath };
-    await createDuckDbSchema(root, databasePath, key, options, 8);
+    await createDuckDbSchema(root, databasePath, key, options, 7);
 
     const legacyHandle = await openEncryptedDuckDbDatabase(root, databasePath, key, options);
     try {
@@ -2125,7 +2125,7 @@ describe("DuckDbRepository fidelity", () => {
 
     const migrated = await DuckDbRepository.open(root, databasePath, key, options);
     try {
-      expect(await migrated.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+      expect(await migrated.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
       expect((await migrated.listMedications({ limit: 20 })).items).toEqual([{
         id: "medication-legacy",
         name: "Metformin",
@@ -2148,11 +2148,38 @@ describe("DuckDbRepository fidelity", () => {
         WHERE table_name = 'medications'
         ORDER BY ordinal_position;
       `);
-      expect(columns.map((row) => row.column_name)).not.toEqual(expect.arrayContaining([
-        "route", "schedule", "status", "prescriber", "reason"
-      ]));
+      expect(columns.map((row) => row.column_name)).toEqual([
+        "ordinal", "id", "name", "active_ingredient", "dose", "unit",
+        "start_date", "end_date", "notes", "created_at", "updated_at"
+      ]);
+      const administrationTables = await querySql(migratedHandle.connection, `
+        SELECT COUNT(*) AS count FROM information_schema.tables
+        WHERE table_name = 'medication_administrations';
+      `);
+      expect(Number(administrationTables[0]?.count)).toBe(0);
     } finally {
       await closeEncryptedDuckDbDatabase(migratedHandle);
+    }
+  }, 30_000);
+
+  it.skipIf(!httpfsExtensionPath)("migrates a schema 7 profile that predates the medications table", async () => {
+    const databasePath = join(root, "databases", "health-store-pre-medications-migration.duckdb-poc");
+    const options = { httpfsExtensionPath };
+    await createDuckDbSchema(root, databasePath, key, options, 7);
+
+    const legacyHandle = await openEncryptedDuckDbDatabase(root, databasePath, key, options);
+    try {
+      await execSql(legacyHandle.connection, "DROP VIEW v_ai_medications; DROP TABLE medications;");
+    } finally {
+      await closeEncryptedDuckDbDatabase(legacyHandle);
+    }
+
+    const migrated = await DuckDbRepository.open(root, databasePath, key, options);
+    try {
+      expect(await migrated.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+      expect((await migrated.listMedications({ limit: 20 })).items).toEqual([]);
+    } finally {
+      await migrated.close();
     }
   }, 30_000);
 
@@ -2255,7 +2282,7 @@ describe("DuckDbRepository fidelity", () => {
 
     const migrated = await DuckDbRepository.open(root, databasePath, key, options);
     try {
-      expect(await migrated.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+      expect(await migrated.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
       expect((await migrated.listHealthEvents({ limit: 100 })).items).toEqual(expect.arrayContaining([
         expect.objectContaining({ id: "legacy-medication", kind: "medication" }),
         expect.objectContaining({ id: "legacy-allergy", kind: "allergy-intolerance" })
@@ -2302,7 +2329,7 @@ describe("DuckDbRepository fidelity", () => {
 
     const migrated = await DuckDbRepository.open(root, databasePath, key, options);
     try {
-      expect(await migrated.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+      expect(await migrated.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
       await expect(migrated.startHealthConnectSyncSession("pairing-1", {
         sessionKey: "device-1:2026-07-01:2026-07-02",
         deviceLabel: "Test Phone",
@@ -2337,7 +2364,7 @@ describe("DuckDbRepository fidelity", () => {
     const futurePath = join(root, "databases", "health-store-schema-future.duckdb-poc");
     await createDuckDbSchema(root, futurePath, key, options, 1);
     const futureHandle = await openEncryptedDuckDbDatabase(root, futurePath, key, options);
-    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (2, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (3, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (4, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (5, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (6, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (7, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (8, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (9, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (10, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (11, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (12, CURRENT_TIMESTAMP, 'future');");
+    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (2, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (3, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (4, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (5, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (6, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (7, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (8, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (9, CURRENT_TIMESTAMP, 'future');");
     await execSql(futureHandle.connection, "CHECKPOINT;");
     await closeEncryptedDuckDbDatabase(futureHandle);
     const futureHash = hashFile(futurePath);

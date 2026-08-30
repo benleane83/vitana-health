@@ -39,9 +39,10 @@ describe("PanelsRoute", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open Annual blood tests" }));
     expect(onViewObservationGroup).toHaveBeenCalledWith("panel-1");
 
-    fireEvent.change(screen.getByLabelText("Type"), { target: { value: "sleep_session" } });
+    expect(screen.queryByRole("option", { name: "Sleep session" })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Type"), { target: { value: "custom" } });
     await waitFor(() => expect(observationGroups).toHaveBeenLastCalledWith(
-      expect.objectContaining({ kinds: ["sleep_session"], limit: 50, offset: 0 }),
+      expect.objectContaining({ kinds: ["custom"], limit: 50, offset: 0 }),
       expect.any(AbortSignal)
     ));
     expect(await screen.findByText("No matching panels")).toBeInTheDocument();

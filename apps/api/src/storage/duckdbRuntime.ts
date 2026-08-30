@@ -22,7 +22,7 @@ const markerName = ".vitana-duckdb-poc";
  * bumps the export format and may leave this alone. Backup/restore correctness depends on the
  * distinction — a restore validates the export format and is indifferent to the engine version.
  */
-const DB_SCHEMA_VERSION = 11;
+const DB_SCHEMA_VERSION = 8;
 
 export interface DuckDbOptions {
   httpfsExtensionPath?: string;
@@ -670,67 +670,13 @@ const careItemStatusConsolidationSchemaSql = `
 
 const medicationsSchemaSql = `
   DROP TABLE IF EXISTS medication_administrations;
+  -- Some schema-7 profiles predate medications entirely. This empty source shape lets the same
+  -- rebuild handle those profiles and newer schema-7 profiles that already contain medication rows.
   CREATE TABLE IF NOT EXISTS medications (
-    ordinal BIGINT NOT NULL UNIQUE, id VARCHAR PRIMARY KEY, name VARCHAR NOT NULL,
-    active_ingredient VARCHAR, dose DOUBLE NOT NULL, unit VARCHAR NOT NULL, route VARCHAR,
-    schedule VARCHAR, start_date DATE NOT NULL, end_date DATE, status VARCHAR NOT NULL,
-    prescriber VARCHAR, reason VARCHAR, notes VARCHAR, created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL,
-    CHECK (dose > 0),
-    CHECK (status IN ('active', 'on-hold', 'completed', 'stopped')),
-    CHECK (end_date IS NULL OR end_date >= start_date)
+    ordinal BIGINT, id VARCHAR, name VARCHAR, active_ingredient VARCHAR, dose DOUBLE, unit VARCHAR,
+    start_date DATE, end_date DATE, notes VARCHAR, created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ
   );
-  CREATE INDEX IF NOT EXISTS medications_status_start_idx
-    ON medications(status, start_date DESC, id);
-
-  INSERT OR IGNORE INTO poc_metadata VALUES
-    (8, CURRENT_TIMESTAMP, 'Dedicated medications');
-`;
-
-const medicationSimplificationSchemaSql = `
-  CREATE TABLE medications_v9 (
-    ordinal BIGINT NOT NULL UNIQUE, id VARCHAR PRIMARY KEY, name VARCHAR NOT NULL,
-    active_ingredient VARCHAR, dose DOUBLE NOT NULL, unit VARCHAR NOT NULL,
-    start_date DATE NOT NULL, end_date DATE, notes VARCHAR, created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL,
-    CHECK (dose > 0),
-    CHECK (end_date IS NULL OR end_date >= start_date)
-  );
-  INSERT INTO medications_v9
-    SELECT ordinal, id, name, active_ingredient, dose, unit, start_date, end_date, notes,
-      created_at, updated_at
-    FROM medications;
-  DROP TABLE medications;
-  ALTER TABLE medications_v9 RENAME TO medications;
-  CREATE INDEX medications_start_idx ON medications(start_date DESC, id);
-
-  INSERT OR IGNORE INTO poc_metadata VALUES
-    (9, CURRENT_TIMESTAMP, 'Simplified medications');
-`;
-
-const optionalMedicationStartDateSchemaSql = `
-  CREATE TABLE medications_v10 (
-    ordinal BIGINT NOT NULL UNIQUE, id VARCHAR PRIMARY KEY, name VARCHAR NOT NULL,
-    active_ingredient VARCHAR, dose DOUBLE NOT NULL, unit VARCHAR NOT NULL,
-    start_date DATE, end_date DATE, notes VARCHAR, created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL,
-    CHECK (dose > 0),
-    CHECK (start_date IS NULL OR end_date IS NULL OR end_date >= start_date)
-  );
-  INSERT INTO medications_v10
-    SELECT ordinal, id, name, active_ingredient, dose, unit, start_date, end_date, notes,
-      created_at, updated_at
-    FROM medications;
-  DROP TABLE medications;
-  ALTER TABLE medications_v10 RENAME TO medications;
-  CREATE INDEX medications_start_idx ON medications(start_date DESC, id);
-
-  INSERT OR IGNORE INTO poc_metadata VALUES
-    (10, CURRENT_TIMESTAMP, 'Optional medication start date');
-`;
-
-const optionalMedicationDoseSchemaSql = `
-  CREATE TABLE medications_v11 (
+  CREATE TABLE medications_v8 (
     ordinal BIGINT NOT NULL UNIQUE, id VARCHAR PRIMARY KEY, name VARCHAR NOT NULL,
     active_ingredient VARCHAR, dose DOUBLE, unit VARCHAR,
     start_date DATE, end_date DATE, notes VARCHAR, created_at TIMESTAMPTZ NOT NULL,
@@ -738,16 +684,16 @@ const optionalMedicationDoseSchemaSql = `
     CHECK (dose IS NULL OR dose > 0),
     CHECK (start_date IS NULL OR end_date IS NULL OR end_date >= start_date)
   );
-  INSERT INTO medications_v11
+  INSERT INTO medications_v8
     SELECT ordinal, id, name, active_ingredient, dose, unit, start_date, end_date, notes,
       created_at, updated_at
     FROM medications;
   DROP TABLE medications;
-  ALTER TABLE medications_v11 RENAME TO medications;
+  ALTER TABLE medications_v8 RENAME TO medications;
   CREATE INDEX medications_start_idx ON medications(start_date DESC, id);
 
   INSERT OR IGNORE INTO poc_metadata VALUES
-    (11, CURRENT_TIMESTAMP, 'Optional medication dose and unit');
+    (8, CURRENT_TIMESTAMP, 'Dedicated simplified medications');
 `;
 
 const schemaMigrations = [
@@ -758,10 +704,7 @@ const schemaMigrations = [
   { version: 5, sql: healthEventKindConceptsSchemaSql },
   { version: 6, sql: careItemKindConsolidationSchemaSql },
   { version: 7, sql: careItemStatusConsolidationSchemaSql },
-  { version: 8, sql: medicationsSchemaSql },
-  { version: 9, sql: medicationSimplificationSchemaSql },
-  { version: 10, sql: optionalMedicationStartDateSchemaSql },
-  { version: 11, sql: optionalMedicationDoseSchemaSql }
+  { version: 8, sql: medicationsSchemaSql }
 ] as const;
 
 const analyticalViewStatements = [

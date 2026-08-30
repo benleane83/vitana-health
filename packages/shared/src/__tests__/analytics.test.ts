@@ -171,6 +171,16 @@ describe("computeAnalytics — trendCards", () => {
 
     expect(analyticsOf(store).trendCards.find((card) => card.code === "height")).toBeUndefined();
   });
+
+  it("does not generate a trend card for fractional rounding noise", () => {
+    const store = makeEmptyStore();
+    store.observations = [
+      makeObservation({ id: "h1", measurementCode: "height", observedAt: "2026-01-01T00:00:00.000Z", value: 176, unit: "cm", sourceId: "src1" }),
+      makeObservation({ id: "h2", measurementCode: "height", observedAt: "2026-01-15T00:00:00.000Z", value: 176.0001, unit: "cm", sourceId: "src1" })
+    ];
+
+    expect(analyticsOf(store).trendCards.find((card) => card.code === "height")).toBeUndefined();
+  });
 });
 
 describe("computeAnalytics — labAlerts", () => {
@@ -221,7 +231,7 @@ describe("computeAnalytics — labAlerts", () => {
     expect(result.latestMetrics.find((metric) => metric.code === "glucose")?.status).toBe("unknown");
   });
 
-  it("displays mixed-unit trends in the active profile's preferred unit", () => {
+  it("does not generate a mixed-unit trend for conversion rounding noise", () => {
     const store = makeEmptyStore();
     store.profile.units = "imperial";
     store.observations = [
@@ -229,9 +239,7 @@ describe("computeAnalytics — labAlerts", () => {
       makeObservation({ id: "w2", measurementCode: "weight", observedAt: "2026-01-02T00:00:00.000Z", value: 154.324, unit: "lb", sourceId: "source" })
     ];
     const result = analyticsOf(store);
-    const trend = result.trendCards.find((card) => card.code === "weight");
-    expect(trend?.unit).toBe("lb");
-    expect(trend?.points[0].value).toBeCloseTo(trend?.points[1].value ?? 0, 2);
+    expect(result.trendCards.find((card) => card.code === "weight")).toBeUndefined();
   });
 });
 
