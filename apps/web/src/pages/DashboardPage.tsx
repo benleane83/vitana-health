@@ -184,7 +184,7 @@ export function DashboardPage({
       </section>
 
       <details className="dashboard-deeper-review" open>
-        <summary>Explore trends and lab ranges</summary>
+        <summary>Explore trends and ranges</summary>
         <div className="dashboard-deeper-grid">
           <section className="dashboard-deeper-section">
             <h2>Trend traces</h2>
@@ -210,11 +210,11 @@ export function DashboardPage({
           </section>
 
           <section className="dashboard-deeper-section dashboard-lab-review">
-            <h2>Lab range review</h2>
-            {analytics?.labAlerts.length
+            <h2>Range Review</h2>
+            {analytics?.rangeAlerts.length
               ? (
-                  <div className="metric-list" aria-label="Lab range alerts">
-                    {analytics.labAlerts.map((alert) => (
+                  <div className="metric-list" aria-label="Range alerts">
+                    {analytics.rangeAlerts.map((alert) => (
                       <button
                         type="button"
                         className="alert metric-link"
@@ -229,7 +229,7 @@ export function DashboardPage({
                     ))}
                   </div>
                 )
-              : <p className="empty">No out-of-range lab markers yet.</p>}
+              : <p className="empty">No out-of-range results yet.</p>}
           </section>
 
         </div>

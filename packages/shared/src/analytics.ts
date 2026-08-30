@@ -78,21 +78,36 @@ export function computeAnalyticsFromInput(input: AnalyticsInput): AnalyticsSumma
     .filter((card): card is NonNullable<typeof card> => card !== undefined)
     .slice(0, 8);
 
-  const labAlerts = [...observationsByCode.entries()]
-        .filter(([code]) => registry.get(code)?.category === "lab")
-        .map(([code, observations]) => {
-          const latest = latestObservation(observations);
-          return labAlert(
-            latest,
-            registry.get(code),
-            input.units ?? "metric",
-            input.subjectKind ?? "adult",
-            personalRanges.get(code)
-          );
-        })
-        .filter((alert): alert is NonNullable<typeof alert> => alert !== undefined)
-        .sort((a, b) => b.observedAt.localeCompare(a.observedAt))
-        .slice(0, 12);
+  const allRangeAlerts = [...observationsByCode.entries()]
+    .filter(([code]) => {
+      const category = registry.get(code)?.category;
+      return category === "body" || category === "lab";
+    })
+    .map(([code, observations]) => {
+      const latest = latestObservation(observations);
+      return rangeAlert(
+        latest,
+        registry.get(code),
+        input.units ?? "metric",
+        input.subjectKind ?? "adult",
+        personalRanges.get(code)
+      );
+    })
+    .filter((alert): alert is NonNullable<typeof alert> => alert !== undefined)
+    .sort((a, b) => b.observedAt.localeCompare(a.observedAt));
+  const rangeAlerts = allRangeAlerts.slice(0, 12);
+  const labAlerts = allRangeAlerts
+    .filter((alert) => alert.category === "lab")
+    .slice(0, 12)
+    .map((alert) => ({
+      code: alert.code,
+      marker: alert.marker,
+      value: alert.value,
+      unit: alert.unit,
+      observedAt: alert.observedAt,
+      reference: alert.reference,
+      flag: alert.flag
+    }));
 
   const evidenceDigest = [
     `Imported ${input.counts.imports} source file(s), ${input.counts.observations} observations, and ${input.counts.samples} tracker samples.`,
@@ -110,6 +125,7 @@ export function computeAnalyticsFromInput(input: AnalyticsInput): AnalyticsSumma
     latestMetricsForInsight,
     trendCards,
     labAlerts,
+    rangeAlerts,
     evidenceDigest
   };
 }
@@ -171,14 +187,14 @@ function trendCard(code: string, observations: Observation[], type: MeasurementT
   };
 }
 
-function labAlert(
+function rangeAlert(
   observation: Observation,
   type: MeasurementType | undefined,
   units: UnitSystem,
   subjectKind: SubjectKind,
   personalRange: PersonalReferenceRange | undefined
 ) {
-  if (!type) return undefined;
+  if (!type || (type.category !== "body" && type.category !== "lab")) return undefined;
   const status = classifyValueWithRange(
     observation.value,
     resolveReferenceRange(type, observation.unit, personalRange, subjectKind).effective
@@ -189,6 +205,7 @@ function labAlert(
   return {
     code: observation.measurementCode,
     marker: type.display,
+    category: type.category,
     value: display.value,
     unit: display.unit,
     observedAt: observation.observedAt,

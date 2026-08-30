@@ -33,6 +33,7 @@ function makeEmptyAnalytics() {
     latestMetrics: [],
     trendCards: [],
     labAlerts: [],
+    rangeAlerts: [],
     evidenceDigest: ["Imported 0 source file(s), 0 observations, and 0 tracker samples."]
   };
 }

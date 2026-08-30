@@ -3,6 +3,7 @@ export * from "./dateFormatting.js";
 export * from "./storeSchema.js";
 export * from "./registry.js";
 export * from "./measurementRegistry.js";
+export * from "./profileDataCategories.js";
 export * from "./mobileFeatures.js";
 export * from "./analytics.js";
 export * from "./biologicalAge.js";

@@ -1,9 +1,11 @@
+import type { ProfileDataCategory } from "@vitana/shared";
+
 export type RootStackParamList = {
   Main: undefined;
   Pair: { app?: string; url?: string; pairingCode?: string; publicKeyHash?: string } | undefined;
   Connection: { activatePairing?: boolean } | undefined;
   License: undefined;
-  TrackMetrics: undefined;
+  TrackMetrics: { category?: ProfileDataCategory } | undefined;
   TrackJournal: undefined;
   TrackCalendar: undefined;
   TrackBodyTrend: undefined;

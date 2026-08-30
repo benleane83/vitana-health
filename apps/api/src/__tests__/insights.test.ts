@@ -28,7 +28,8 @@ function analytics(): AnalyticsSummary {
       { code: "heart_rate", label: "Heart rate", value: 72, unit: "bpm", observedAt: "2026-07-22T00:00:00.000Z", status: "normal", isPinned: false }
     ],
     trendCards: [],
-    labAlerts: []
+    labAlerts: [],
+    rangeAlerts: []
   };
 }
 
@@ -138,6 +139,7 @@ describe("generateInsight", () => {
         code: "hba1c", marker: "HbA1c", value: 5.7, unit: "%", observedAt: "2026-07-23T00:00:00.000Z",
         reference: "4-5.6", flag: "high"
       }],
+      rangeAlerts: [],
       trendCards: [{
         code: "weight", label: "Weight", unit: "kg", direction: "down", summary: "Weight is down.",
         points: [{ date: "2026-07-01", value: 82 }, { date: "2026-07-23", value: 80 }]

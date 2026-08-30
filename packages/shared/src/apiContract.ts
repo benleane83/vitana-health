@@ -752,6 +752,16 @@ export const analyticsSummaryResponseSchema: z.ZodType<AnalyticsSummary, z.ZodTy
     reference: z.string().optional(),
     flag: z.enum(["low", "high", "critical", "unknown"])
   }).strict()),
+  rangeAlerts: z.array(z.object({
+    code: z.string(),
+    marker: z.string(),
+    category: z.enum(["body", "lab"]),
+    value: z.number(),
+    unit: z.string(),
+    observedAt: z.string(),
+    reference: z.string().optional(),
+    flag: z.enum(["low", "high", "critical", "unknown"])
+  }).strict()),
   evidenceDigest: z.array(z.string())
 }).strict();
 

@@ -61,6 +61,25 @@ beforeEach(() => {
           reference: "--3",
           flag: "high"
         }],
+        rangeAlerts: [{
+          code: "ldl_cholesterol",
+          marker: "LDL cholesterol",
+          category: "lab",
+          value: 31.13248797551377,
+          unit: "mmol/L",
+          observedAt: "2026-01-01T00:00:00.000Z",
+          reference: "--3",
+          flag: "high"
+        }, {
+          code: "bmi",
+          marker: "BMI (Body mass index)",
+          category: "body",
+          value: 29,
+          unit: "kg/m2",
+          observedAt: "2026-01-02T00:00:00.000Z",
+          reference: "18.5-24.9",
+          flag: "high"
+        }],
         evidenceDigest: []
       }));
     }
@@ -338,12 +357,15 @@ describe("App smoke", () => {
     expect(screen.queryByText("Offline")).not.toBeInTheDocument();
   });
 
-  it("formats lab range review values to at most two decimal places", async () => {
+  it("shows Body and Lab results in Range Review with concise values", async () => {
     render(<App />);
 
-    expect(await screen.findByText("Explore trends and lab ranges")).toBeInTheDocument();
+    expect(await screen.findByText("Explore trends and ranges")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Range Review" })).toBeInTheDocument();
+    expect(screen.getByText("Stored results outside their recorded reference range")).toBeInTheDocument();
     expect(screen.getByText("31.13 mmol/L")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /ldl cholesterol, 31\.13 mmol\/l/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /bmi.*29 kg\/m2/i })).toBeInTheDocument();
     expect(screen.getByText("high / ref 3")).toBeInTheDocument();
     expect(screen.queryByText("high / ref --3")).not.toBeInTheDocument();
     expect(screen.queryByText(/31\.13248797551377/)).not.toBeInTheDocument();

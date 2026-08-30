@@ -217,6 +217,7 @@ describe("computeAnalytics — labAlerts", () => {
 
     const result = analyticsOf(store);
     expect(result.labAlerts).toEqual([]);
+    expect(result.rangeAlerts).toEqual([]);
     expect(result.latestMetrics.find((metric) => metric.code === "glucose")?.status).toBe("unknown");
   });
 
@@ -231,6 +232,44 @@ describe("computeAnalytics — labAlerts", () => {
     const trend = result.trendCards.find((card) => card.code === "weight");
     expect(trend?.unit).toBe("lb");
     expect(trend?.points[0].value).toBeCloseTo(trend?.points[1].value ?? 0, 2);
+  });
+});
+
+describe("computeAnalytics — rangeAlerts", () => {
+  it("includes out-of-range Body measurements while keeping labAlerts lab-only", () => {
+    const store = makeEmptyStore();
+    store.observations = [
+      makeObservation({ id: "body", measurementCode: "bmi", observedAt: "2026-02-01T00:00:00.000Z", value: 29, unit: "kg/m2", sourceId: "source" }),
+      makeObservation({ id: "lab", measurementCode: "glucose", observedAt: "2026-01-01T00:00:00.000Z", value: 8, unit: "mmol/L", sourceId: "source" })
+    ];
+
+    const result = analyticsOf(store);
+
+    expect(result.rangeAlerts).toMatchObject([
+      { code: "bmi", category: "body", flag: "high" },
+      { code: "glucose", category: "lab", flag: "high" }
+    ]);
+    expect(result.labAlerts).toMatchObject([{ code: "glucose", flag: "high" }]);
+    expect(result.labAlerts[0]).not.toHaveProperty("category");
+  });
+
+  it("uses personal Body ranges and excludes normal Body results", () => {
+    const store = makeEmptyStore();
+    store.personalReferenceRanges = [{
+      measurementCode: "weight",
+      normalLow: 60,
+      normalHigh: 80,
+      unit: "kg",
+      updatedAt: "2026-01-01T00:00:00.000Z"
+    }];
+    store.observations = [
+      makeObservation({ id: "weight", measurementCode: "weight", observedAt: "2026-02-01T00:00:00.000Z", value: 85, unit: "kg", sourceId: "source" }),
+      makeObservation({ id: "bmi", measurementCode: "bmi", observedAt: "2026-02-01T00:00:00.000Z", value: 22, unit: "kg/m2", sourceId: "source" })
+    ];
+
+    expect(analyticsOf(store).rangeAlerts).toMatchObject([
+      { code: "weight", category: "body", reference: "60-80", flag: "high" }
+    ]);
   });
 });
 

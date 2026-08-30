@@ -769,6 +769,16 @@ export interface AnalyticsSummary {
     reference?: string;
     flag: "low" | "high" | "critical" | "unknown";
   }>;
+  rangeAlerts: Array<{
+    code: string;
+    marker: string;
+    category: "body" | "lab";
+    value: number;
+    unit: string;
+    observedAt: string;
+    reference?: string;
+    flag: "low" | "high" | "critical" | "unknown";
+  }>;
   evidenceDigest: string[];
 }
 

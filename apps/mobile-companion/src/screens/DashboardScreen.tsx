@@ -1,20 +1,42 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View, Pressable } from "react-native";
+import { ActivityIndicator, Image, RefreshControl, ScrollView, StyleSheet, Text, View, Pressable } from "react-native";
 import { CompositeNavigationProp, useIsFocused, useNavigation } from "@react-navigation/native";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { AlertTriangle, CalendarClock, CheckCircle2, ChevronRight, Database, MonitorSmartphone, Pin, RefreshCw } from "lucide-react-native";
-import { careItemKindLabels, isUtcMidnightTimestamp, type CareItem } from "@vitana/shared";
+import {
+  AlertTriangle,
+  CalendarClock,
+  CheckCircle2,
+  ChevronRight,
+  MonitorSmartphone,
+  Pin,
+  RefreshCw
+} from "lucide-react-native";
+import {
+  careItemKindLabels,
+  isUtcMidnightTimestamp,
+  type CareItem,
+  type ProfileDataCategory
+} from "@vitana/shared";
 import { useMobileApi } from "../MobileApiProvider";
 import { connectionStateLabel } from "../connectionState";
 import { latestHealthSourceCursor } from "../healthSourceCursor";
 import { activeHealthSourceProvider } from "../healthSourceProvider";
 import type { RootStackParamList, TabParamList } from "../navigationTypes";
-import { Button, Card, Loading, Message, Screen } from "../ui/components";
+import { Button, Loading, Message, Screen } from "../ui/components";
 import { colors, radii, spacing, type } from "../ui/theme";
 import { ProfileAvatar } from "../ui/ProfileAvatar";
 import { useHealthSourceSync } from "../useHealthSourceSync";
-import { dashboardMetrics, formatDashboardMetricValue } from "./dashboardMetrics";
+import {
+  dashboardCategoryCounts,
+  dashboardMetrics,
+  formatDashboardMetricValue,
+  formatLabReference,
+  formatLabValue,
+  formatTrendSummary,
+  sparklineGeometry
+} from "./dashboardMetrics";
+import { TrendSparkline } from "./TrendSparkline";
 
 type DashboardNavigation = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, "Dashboard">,
@@ -34,9 +56,12 @@ export function DashboardScreen() {
     error,
     profilePhotoUri,
     refreshDashboard,
+    refreshTrack,
     listCareItems,
+    summary,
     standaloneMode,
-    syncing
+    syncing,
+    trackLoading
   } = useMobileApi();
   const healthSourceSync = useHealthSourceSync();
   const [upcomingCare, setUpcomingCare] = useState<{
@@ -67,8 +92,9 @@ export function DashboardScreen() {
 
   const refresh = useCallback(async () => {
     await refreshDashboard({ synchronize: true });
+    await refreshTrack();
     await loadUpcomingCare();
-  }, [loadUpcomingCare, refreshDashboard]);
+  }, [loadUpcomingCare, refreshDashboard, refreshTrack]);
 
   if (connectionState === "unpaired" || connectionState === "re-pair-required") {
     return (
@@ -94,8 +120,8 @@ export function DashboardScreen() {
     );
   }
 
-  const counts = analytics.counts;
   const visibleMetrics = dashboardMetrics(analytics.latestMetrics);
+  const categoryCounts = dashboardCategoryCounts(summary);
   const healthSourceProvider = activeHealthSourceProvider();
   const healthSourceConfigured = Boolean(
     !demoMode &&
@@ -121,7 +147,7 @@ export function DashboardScreen() {
     <Screen>
       <ScrollView
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={dashboardLoading} onRefresh={() => { void refresh(); }} />}
+        refreshControl={<RefreshControl refreshing={dashboardLoading || trackLoading} onRefresh={() => { void refresh(); }} />}
       >
         <View style={styles.contextPanel}>
           <View style={styles.profileRow}>
@@ -221,24 +247,55 @@ export function DashboardScreen() {
             })}
           </View>
         )}
-        <View style={styles.recordsSection}>
-          <View style={styles.recordsTitleRow}>
-            <Database color={colors.muted} size={17} />
-            <Text style={styles.recordsTitle}>Summary</Text>
-          </View>
-          <View accessibilityLabel="Stored health data totals" style={styles.countRow}>
-            {[
-              ["Imports", counts.imports],
-              ["Observations", counts.observations],
-              ["Samples", counts.samples],
-              ["Activities", counts.activities]
-            ].map(([label, value]) => (
-              <View key={String(label)} style={styles.countItem}>
-                <Text adjustsFontSizeToFit numberOfLines={1} style={styles.count}>{formatCount(Number(value))}</Text>
-                <Text numberOfLines={1} style={styles.label}>{label}</Text>
-              </View>
-            ))}
-          </View>
+        <View style={styles.summarySection}>
+          <Text style={styles.sectionTitle}>Summary</Text>
+          {trackLoading && !summary ? (
+            <View accessibilityLabel="Loading stored health data totals" accessibilityRole="progressbar" style={styles.summaryList}>
+              {[0, 1, 2, 3].map((index) => (
+                <View key={index} style={[styles.summaryLoadingRow, index > 0 && styles.summaryDivider]}>
+                  <View style={styles.summaryLoadingIcon} />
+                  <View style={styles.summaryLoadingLabel} />
+                  <View style={styles.summaryLoadingCount} />
+                </View>
+              ))}
+            </View>
+          ) : summary ? (
+            <View accessibilityLabel="Stored health data totals" style={styles.summaryList}>
+              {categoryCounts.map((category, index) => {
+                return (
+                  <Pressable
+                    accessibilityLabel={`View ${category.label}: ${category.count} entries in Measurements`}
+                    accessibilityRole="button"
+                    key={category.key}
+                    onPress={() => navigation.navigate("TrackMetrics", { category: category.key })}
+                    style={({ pressed }) => [
+                      styles.summaryRow,
+                      index > 0 && styles.summaryDivider,
+                      pressed && styles.summaryRowPressed
+                    ]}
+                  >
+                    <Image
+                      accessibilityIgnoresInvertColors
+                      accessible={false}
+                      resizeMode="contain"
+                      source={categoryIcons[category.key]}
+                      style={styles.summaryIcon}
+                    />
+                    <Text numberOfLines={1} style={styles.summaryLabel}>{category.label}</Text>
+                    <Text adjustsFontSizeToFit numberOfLines={1} style={styles.summaryCount}>{formatCount(category.count)}</Text>
+                    <ChevronRight color={colors.muted} size={18} />
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : (
+            <View accessibilityRole="alert" style={styles.summaryUnavailable}>
+              <Text style={styles.summaryUnavailableText}>Profile summary could not be loaded.</Text>
+              <Pressable accessibilityRole="button" onPress={() => { void refreshTrack(); }} style={styles.summaryRetry}>
+                <Text style={styles.retryText}>Try again</Text>
+              </Pressable>
+            </View>
+          )}
         </View>
         <View style={styles.careSection}>
           <View style={styles.sectionHeader}>
@@ -323,6 +380,100 @@ export function DashboardScreen() {
             </View>
           )}
         </View>
+        <View style={styles.deeperSection}>
+          <View style={styles.sectionHeadingText}>
+            <Text style={styles.sectionTitle}>Trend traces</Text>
+            <Text style={styles.sectionCopy}>Recent movement across your measurements</Text>
+          </View>
+          {analytics.trendCards.length > 0 ? (
+            <View style={styles.reviewList}>
+              {analytics.trendCards.map((card, index) => {
+                const summaryText = formatTrendSummary(card.label, card.summary);
+                const geometry = sparklineGeometry(card.points, 112, 48);
+                const rangeText = geometry
+                  ? `${geometry.count} readings, from ${formatLabValue(geometry.min)} to ${formatLabValue(geometry.max)} ${card.unit}`
+                  : "Trend values unavailable";
+                return (
+                  <Pressable
+                    accessibilityLabel={`View details for ${card.label} trend, ${summaryText}, ${rangeText}`}
+                    accessibilityRole="button"
+                    key={card.code}
+                    onPress={() => navigation.navigate("TrackDetail", {
+                      measurementCode: card.code,
+                      displayName: card.label
+                    })}
+                    style={({ pressed }) => [
+                      styles.trendRow,
+                      index > 0 && styles.reviewDivider,
+                      pressed && styles.reviewRowPressed
+                    ]}
+                  >
+                    <View style={styles.trendCopy}>
+                      <Text style={styles.reviewTitle}>{card.label}</Text>
+                      <Text style={styles.reviewSummary}>{summaryText}</Text>
+                    </View>
+                    <TrendSparkline points={card.points} />
+                    <ChevronRight color={colors.muted} size={18} />
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : (
+            <View style={styles.reviewEmpty}>
+              <Text style={styles.reviewEmptyText}>Two or more dated readings are needed for trend traces.</Text>
+            </View>
+          )}
+        </View>
+        <View style={styles.deeperSection}>
+          <View style={styles.sectionHeadingText}>
+            <Text style={styles.sectionTitle}>Range Review</Text>
+            <Text style={styles.sectionCopy}>Stored results outside their recorded reference range</Text>
+          </View>
+          {analytics.rangeAlerts.length > 0 ? (
+            <View style={styles.reviewList}>
+              {analytics.rangeAlerts.map((alert, index) => {
+                const value = formatLabValue(alert.value);
+                const reference = alert.reference ? formatLabReference(alert.reference) : undefined;
+                const flag = formatLabFlag(alert.flag);
+                const observed = formatObservedDate(alert.observedAt);
+                return (
+                  <Pressable
+                    accessibilityLabel={`View details for ${alert.marker}, ${value} ${alert.unit}, ${observed}, ${flag}${reference ? `, reference ${reference}` : ""}`}
+                    accessibilityRole="button"
+                    key={`${alert.code}-${alert.observedAt}`}
+                    onPress={() => navigation.navigate("TrackDetail", {
+                      measurementCode: alert.code,
+                      displayName: alert.marker
+                    })}
+                    style={({ pressed }) => [
+                      styles.labRow,
+                      index > 0 && styles.reviewDivider,
+                      pressed && styles.reviewRowPressed
+                    ]}
+                  >
+                    <View style={styles.labCopy}>
+                      <View style={styles.labHeading}>
+                        <Text numberOfLines={2} style={styles.reviewTitle}>{alert.marker}</Text>
+                        <Text style={styles.labDate}>{observed}</Text>
+                      </View>
+                      <Text style={styles.labValue}>
+                        {value} <Text style={styles.labUnit}>{alert.unit}</Text>
+                      </Text>
+                      <Text style={styles.labRange}>
+                        {flag}{reference ? ` · ref ${reference}` : ""}
+                      </Text>
+                    </View>
+                    <ChevronRight color={colors.muted} size={18} />
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : (
+            <View style={styles.reviewEmpty}>
+              <Text style={styles.reviewEmptyText}>No out-of-range results yet.</Text>
+            </View>
+          )}
+        </View>
       </ScrollView>
     </Screen>
   );
@@ -344,6 +495,11 @@ function formatObservedDate(value: string): string {
 function formatCount(value: number): string {
   if (!Number.isFinite(value)) return "—";
   return new Intl.NumberFormat(undefined, { notation: value >= 100_000 ? "compact" : "standard" }).format(value);
+}
+
+function formatLabFlag(flag: "low" | "high" | "critical" | "unknown"): string {
+  if (flag === "unknown") return "Range unavailable";
+  return `${flag.charAt(0).toUpperCase()}${flag.slice(1)}`;
 }
 
 function formatLastHealthSourceSync(value: string | null): string {
@@ -425,13 +581,42 @@ const styles = StyleSheet.create({
   metricValue: { color: colors.primaryStrong, fontSize: 22, fontWeight: "800" },
   metricUnit: { color: colors.muted, fontSize: type.label, fontWeight: "700" },
   metricDate: { color: colors.muted, fontSize: type.label },
-  recordsSection: { gap: spacing.sm },
-  recordsTitleRow: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
-  recordsTitle: { color: colors.text, fontSize: type.title, fontWeight: "700" },
-  countRow: { backgroundColor: colors.surfaceMuted, borderRadius: radii.md, flexDirection: "row", paddingVertical: spacing.md },
-  countItem: { alignItems: "center", flex: 1, gap: spacing.xs, minWidth: 0, paddingHorizontal: spacing.xs },
-  count: { color: colors.textStrong, fontSize: type.title, fontWeight: "800" },
-  label: { color: colors.muted, fontSize: 13, lineHeight: 18, textAlign: "center" },
+  summarySection: { gap: spacing.sm },
+  summaryList: {
+    backgroundColor: colors.lavenderMuted,
+    borderColor: colors.border,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    overflow: "hidden"
+  },
+  summaryRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.sm,
+    minHeight: 58,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm
+  },
+  summaryRowPressed: { backgroundColor: colors.primaryMuted },
+  summaryDivider: { borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth },
+  summaryIcon: { height: 34, width: 34 },
+  summaryLabel: { color: colors.text, flex: 1, fontSize: type.body, fontWeight: "700", minWidth: 0 },
+  summaryCount: { color: colors.textStrong, fontSize: type.body, fontWeight: "800", maxWidth: 92, textAlign: "right" },
+  summaryLoadingRow: { alignItems: "center", flexDirection: "row", gap: spacing.sm, height: 58, paddingHorizontal: spacing.md },
+  summaryLoadingIcon: { backgroundColor: colors.surface, borderRadius: radii.pill, height: 36, width: 36 },
+  summaryLoadingLabel: { backgroundColor: colors.surface, borderRadius: radii.sm, flex: 1, height: 14 },
+  summaryLoadingCount: { backgroundColor: colors.surface, borderRadius: radii.sm, height: 14, width: 34 },
+  summaryUnavailable: {
+    alignItems: "center",
+    backgroundColor: colors.warningMuted,
+    borderRadius: radii.md,
+    flexDirection: "row",
+    gap: spacing.sm,
+    minHeight: 58,
+    paddingHorizontal: spacing.md
+  },
+  summaryUnavailableText: { color: colors.warning, flex: 1, fontSize: type.label, lineHeight: 19 },
+  summaryRetry: { justifyContent: "center", minHeight: 44 },
   careSection: { gap: spacing.sm },
   careList: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, overflow: "hidden" },
   careRow: { alignItems: "center", flexDirection: "row", gap: spacing.sm, minHeight: 68, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
@@ -452,5 +637,49 @@ const styles = StyleSheet.create({
   careLoadingIcon: { backgroundColor: colors.surfaceMuted, borderRadius: radii.sm, height: 36, width: 36 },
   careLoadingCopy: { flex: 1, gap: spacing.sm },
   careLoadingTitle: { backgroundColor: colors.surfaceMuted, borderRadius: radii.sm, height: 12, width: "62%" },
-  careLoadingMeta: { backgroundColor: colors.surfaceMuted, borderRadius: radii.sm, height: 10, width: "38%" }
+  careLoadingMeta: { backgroundColor: colors.surfaceMuted, borderRadius: radii.sm, height: 10, width: "38%" },
+  deeperSection: { gap: spacing.sm },
+  reviewList: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    overflow: "hidden"
+  },
+  reviewDivider: { borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth },
+  reviewRowPressed: { backgroundColor: colors.surfaceMuted },
+  trendRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.sm,
+    minHeight: 78,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm
+  },
+  trendCopy: { flex: 1, gap: spacing.xs, minWidth: 0 },
+  reviewTitle: { color: colors.textStrong, flexShrink: 1, fontSize: type.body, fontWeight: "800" },
+  reviewSummary: { color: colors.muted, fontSize: 13, lineHeight: 18 },
+  reviewEmpty: { backgroundColor: colors.surfaceMuted, borderRadius: radii.md, padding: spacing.md },
+  reviewEmptyText: { color: colors.muted, fontSize: type.label, lineHeight: 19 },
+  labRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.sm,
+    minHeight: 96,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md
+  },
+  labCopy: { flex: 1, gap: spacing.xs, minWidth: 0 },
+  labHeading: { alignItems: "baseline", flexDirection: "row", gap: spacing.sm, justifyContent: "space-between" },
+  labDate: { color: colors.muted, flexShrink: 0, fontSize: 12 },
+  labValue: { color: colors.primaryStrong, fontSize: type.title, fontWeight: "800" },
+  labUnit: { color: colors.muted, fontSize: type.label, fontWeight: "700" },
+  labRange: { color: colors.warning, fontSize: 13, fontWeight: "700", lineHeight: 18 }
 });
+
+const categoryIcons = {
+  activity: require("../../assets/profile-navigation/activity.png"),
+  body: require("../../assets/profile-navigation/body-composition.png"),
+  lab: require("../../assets/profile-navigation/lab-results.png"),
+  sleep: require("../../assets/profile-navigation/sleep.png")
+} satisfies Record<ProfileDataCategory, number>;

@@ -443,6 +443,7 @@ function makeAnalytics(details: Map<string, HealthDataDetail>, now: Date): Analy
       .sort((left, right) => Number(right.isPinned) - Number(left.isPinned) || right.observedAt.localeCompare(left.observedAt)),
     trendCards: [],
     labAlerts: [],
+    rangeAlerts: [],
     evidenceDigest: [
       "Sample activity has remained consistent over the last seven days.",
       "Sample cardiovascular measurements are within their illustrative ranges."

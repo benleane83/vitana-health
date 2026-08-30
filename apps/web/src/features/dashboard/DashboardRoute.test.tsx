@@ -51,6 +51,7 @@ const analyticsWithTrend = {
     summary: "Weight is down over the latest 2 reading(s)."
   }],
   labAlerts: [],
+  rangeAlerts: [],
   evidenceDigest: []
 };
 
@@ -157,6 +158,28 @@ describe("DashboardRoute upcoming care", () => {
     expect(screen.getByText("Weight", { selector: "strong" })).toBeInTheDocument();
     expect(screen.getByText("is down over the latest 2 reading(s).")).toBeInTheDocument();
     expect(screen.queryByText("Weight is down over the latest 2 reading(s).")).not.toBeInTheDocument();
+  });
+
+  it("uses category-neutral Range Review copy when no results are outside range", async () => {
+    vi.spyOn(api.care, "listCareItems").mockResolvedValue({
+      items: [], total: 0, offset: 0, limit: 3, hasMore: false
+    });
+
+    render(
+      <DashboardRoute
+        analytics={analyticsWithTrend}
+        profile={{ id: "self", displayName: "Local user", setupStatus: "complete", units: "metric", updatedAt: dateOffset(0) }}
+        onEditProfile={vi.fn()}
+        onNavigateSummary={vi.fn()}
+        onNavigateMeasurement={vi.fn()}
+        onNavigateCategory={vi.fn()}
+        onNavigateCare={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("heading", { name: "Range Review" })).toBeInTheDocument();
+    expect(screen.queryByText("Stored results outside their recorded reference range")).not.toBeInTheDocument();
+    expect(screen.getByText("No out-of-range results yet.")).toBeInTheDocument();
   });
 
   it("loads overdue and next-30-day items, caps the preview, and routes item actions", async () => {

@@ -1,23 +1,25 @@
 import { useMemo, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { ChevronRight } from "lucide-react-native";
-import { useNavigation } from "@react-navigation/native";
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { filterAndSortSummary, type SummarySort } from "@vitana/shared";
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { filterAndSortSummary, profileDataCategories, type SummarySort } from "@vitana/shared";
 import { useMobileApi } from "../MobileApiProvider";
 import { connectionStateLabel } from "../connectionState";
 import type { RootStackParamList } from "../navigationTypes";
 import { Button, Card, Loading, Message, Screen } from "../ui/components";
 import { colors, spacing } from "../ui/theme";
 
-export function TrackMetricsScreen() {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+type Props = NativeStackScreenProps<RootStackParamList, "TrackMetrics">;
+
+export function TrackMetricsScreen({ navigation, route }: Props) {
   const { connectionState, summary, trackLoading, error, refreshTrack } = useMobileApi();
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SummarySort>("recency");
+  const category = route.params?.category;
+  const categoryLabel = profileDataCategories.find((entry) => entry.key === category)?.label;
   const visible = useMemo(
-    () => summary ? filterAndSortSummary(summary, search, sort) : undefined,
-    [search, sort, summary]
+    () => summary ? filterAndSortSummary(summary, search, sort, category) : undefined,
+    [category, search, sort, summary]
   );
 
   if (trackLoading && !visible) return <Screen><Loading label="Loading measurements…" /></Screen>;
@@ -36,6 +38,22 @@ export function TrackMetricsScreen() {
       >
         {connectionState !== "online" ? (
           <Message title={connectionStateLabel(connectionState)} detail={error ?? "Reconnect to refresh metric data."} />
+        ) : null}
+        {categoryLabel ? (
+          <View accessibilityLabel={`Filtering measurements by ${categoryLabel}`} style={styles.activeFilter}>
+            <View style={styles.activeFilterCopy}>
+              <Text style={styles.activeFilterLabel}>Showing</Text>
+              <Text style={styles.activeFilterValue}>{categoryLabel}</Text>
+            </View>
+            <Pressable
+              accessibilityLabel="Show all measurements"
+              accessibilityRole="button"
+              onPress={() => navigation.setParams({ category: undefined })}
+              style={({ pressed }) => [styles.clearFilter, pressed && styles.clearFilterPressed]}
+            >
+              <Text style={styles.clearFilterText}>All measurements</Text>
+            </Pressable>
+          </View>
         ) : null}
         <TextInput
           accessibilityLabel="Search measurements"
@@ -91,6 +109,23 @@ export function TrackMetricsScreen() {
 
 const styles = StyleSheet.create({
   content: { gap: spacing.md, paddingBottom: spacing.xl },
+  activeFilter: {
+    alignItems: "center",
+    backgroundColor: colors.primaryMuted,
+    borderRadius: 12,
+    flexDirection: "row",
+    gap: spacing.md,
+    justifyContent: "space-between",
+    minHeight: 58,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm
+  },
+  activeFilterCopy: { flex: 1, minWidth: 0 },
+  activeFilterLabel: { color: colors.muted, fontSize: 12, fontWeight: "700" },
+  activeFilterValue: { color: colors.textStrong, fontSize: 16, fontWeight: "800", marginTop: 1 },
+  clearFilter: { justifyContent: "center", minHeight: 44, paddingLeft: spacing.sm },
+  clearFilterPressed: { opacity: 0.8 },
+  clearFilterText: { color: colors.primary, fontSize: 14, fontWeight: "800" },
   input: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
