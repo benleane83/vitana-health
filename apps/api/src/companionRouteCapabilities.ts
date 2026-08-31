@@ -53,12 +53,16 @@ export const companionRouteCapabilities: readonly CompanionRouteCapability[] = [
   // makeDataRoutes (care section) — routes/dataRoutes.ts
   { method: "GET", path: "/care/health-events", capability: "care:read", router: "makeDataRoutes" },
   { method: "GET", path: "/care/items", capability: "care:read", router: "makeDataRoutes" },
+  { method: "GET", path: "/care/medications", capability: "care:read", router: "makeDataRoutes" },
   { method: "POST", path: "/care/health-events", capability: "care:write", router: "makeDataRoutes" },
   { method: "POST", path: "/care/items", capability: "care:write", router: "makeDataRoutes" },
+  { method: "POST", path: "/care/medications", capability: "care:write", router: "makeDataRoutes" },
   { method: "PATCH", path: /^\/care\/health-events\/[^/]+$/, capability: "care:write", router: "makeDataRoutes" },
   { method: "DELETE", path: /^\/care\/health-events\/[^/]+$/, capability: "care:write", router: "makeDataRoutes" },
   { method: "PATCH", path: /^\/care\/items\/[^/]+$/, capability: "care:write", router: "makeDataRoutes" },
   { method: "DELETE", path: /^\/care\/items\/[^/]+$/, capability: "care:write", router: "makeDataRoutes" },
+  { method: "PATCH", path: /^\/care\/medications\/[^/]+$/, capability: "care:write", router: "makeDataRoutes" },
+  { method: "DELETE", path: /^\/care\/medications\/[^/]+$/, capability: "care:write", router: "makeDataRoutes" },
   { method: "POST", path: /^\/care\/items\/[^/]+\/complete$/, capability: "care:write", router: "makeDataRoutes" },
 
   // makeImportRoutes — routes/importRoutes.ts

@@ -213,21 +213,24 @@ export function DashboardPage({
             <h2>Range Review</h2>
             {analytics?.rangeAlerts.length
               ? (
-                  <div className="metric-list" aria-label="Range alerts">
-                    {analytics.rangeAlerts.map((alert) => (
-                      <button
-                        type="button"
-                        className="alert metric-link"
-                        key={`${alert.code}-${alert.observedAt}`}
-                        onClick={() => onNavigateMeasurement(alert.code)}
-                        aria-label={`View details for ${alert.marker}, ${formatDetailValue(alert.value)} ${alert.unit}, ${formatShortTimestamp(alert.observedAt)}, ${alert.flag}${alert.reference ? `, reference ${alert.reference}` : ""}`}
-                      >
-                        <span>{alert.marker}</span>
-                        <strong>{formatDetailValue(alert.value)} {alert.unit}</strong>
-                        <em>{alert.flag}{alert.reference ? ` / ref ${formatReferenceNumber(alert.reference)}` : ""}</em>
-                      </button>
-                    ))}
-                  </div>
+                  <>
+                    <p>Stored results outside their recorded reference range</p>
+                    <div className="metric-list" aria-label="Range alerts">
+                      {analytics.rangeAlerts.map((alert) => (
+                        <button
+                          type="button"
+                          className="alert metric-link"
+                          key={`${alert.code}-${alert.observedAt}`}
+                          onClick={() => onNavigateMeasurement(alert.code)}
+                          aria-label={`View details for ${alert.marker}, ${formatDetailValue(alert.value)} ${alert.unit}, ${formatShortTimestamp(alert.observedAt)}, ${alert.flag}${alert.reference ? `, reference ${alert.reference}` : ""}`}
+                        >
+                          <span>{alert.marker}</span>
+                          <strong>{formatDetailValue(alert.value)} {alert.unit}</strong>
+                          <em>{alert.flag}{alert.reference ? ` / ref ${formatReferenceNumber(alert.reference)}` : ""}</em>
+                        </button>
+                      ))}
+                    </div>
+                  </>
                 )
               : <p className="empty">No out-of-range results yet.</p>}
           </section>
