@@ -105,6 +105,13 @@ The installer packages the API and web UI, configures private-network firewall a
 
 For signing, verification, checksums, and the protected Windows release process, see the [Windows release runbook](docs/WINDOWS_RELEASE.md).
 
+To update the desktop version, create the matching tag, and push it to start the
+release workflow, run this from the repository root:
+
+```powershell
+npm run release:desktop -- v0.1.27
+```
+
 The packaged desktop can remain available for companion sync after its window closes. In **Settings > App**, enable **Keep the service running in the background**. This opt-in setting also starts the app hidden at user login. Reopen it from the tray or Start menu, and use **Quit** in the tray menu to stop the API completely. Disabling the setting removes login startup and restores foreground-only behavior, where closing the window stops companion access.
 
 ### Model runtime configuration

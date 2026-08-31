@@ -55,6 +55,7 @@
     "dev:health": "node ./scripts/check-urls.mjs \"API=http://127.0.0.1:4317/api/health\" \"Web=http://127.0.0.1:5173\"",
     "package:desktop": "npm run build && npm run package -w @vitana/desktop",
     "package:store": "npm run build && npm run package:store -w @vitana/desktop",
+    "release:desktop": "pwsh -NoProfile -File ./scripts/publish-desktop-release.ps1",
     "audit:ci": "node ./scripts/audit-ci.mjs",
     "audit:prod": "npm audit --omit=dev",
     "audit:prod:api": "npm audit --omit=dev -w apps/api",

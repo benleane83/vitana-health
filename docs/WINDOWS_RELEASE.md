@@ -26,24 +26,24 @@ and review release assets before sharing a build.
 ## Publish a preview
 
 1. Complete the normal CI gates.
-2. Set `apps/desktop/package.json` to a strictly higher SemVer version and commit it.
-3. Create and push the exact matching tag, for example:
+2. Run the release helper from the repository root. It updates the desktop
+   package and root lockfile, commits only those files, creates the exact
+   matching tag, and pushes the commit and tag:
 
    ```powershell
-   git tag v0.2.0
-   git push origin v0.2.0
+   npm run release:desktop -- v0.2.0
    ```
 
-4. The **Windows release** workflow packages the unsigned NSIS installer and asserts
+3. The **Windows release** workflow packages the unsigned NSIS installer and asserts
    that both installer and application are `NotSigned`. It validates `latest.yml`,
   its installer SHA-512, the block map, installation, packaged runtime, and encrypted
   DuckDB activation. The longer background, restart, upgrade, and uninstall lifecycle
   runs in full CI rather than delaying every tagged preview.
-5. Review the `unsigned-windows-preview-release` workflow artifact and smoke evidence.
+4. Review the `unsigned-windows-preview-release` workflow artifact and smoke evidence.
   Failed smoke runs upload startup diagnostics in the same artifact.
    The workflow creates or updates the matching non-draft GitHub Release with the
    installer, `latest.yml`, block map, and `SHA256SUMS.txt`.
-6. Install on a test PC, then verify the version, encrypted profiles, background mode,
+5. Install on a test PC, then verify the version, encrypted profiles, background mode,
    login startup, companion connection, and Windows private-network consent when pairing.
 
 The tag must exactly equal `v` plus the desktop package version. Reusing a version is
