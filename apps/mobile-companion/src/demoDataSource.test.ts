@@ -35,6 +35,19 @@ describe("demo data source", () => {
     await expect(source.healthDataDetail("unknown")).rejects.toThrow("not available in demo mode");
   });
 
+  it("filters medications by inferred status using the demo date", async () => {
+    const source = createDemoDataSource(new Date("2026-07-17T12:00:00.000Z"));
+
+    await expect(source.listMedications({ status: "active" })).resolves.toMatchObject({
+      items: [expect.objectContaining({ name: "Atorvastatin" })],
+      total: 1
+    });
+    await expect(source.listMedications({ status: "past" })).resolves.toMatchObject({
+      items: [expect.objectContaining({ name: "Amoxicillin" })],
+      total: 1
+    });
+  });
+
   it("returns valid Journal days and pages older dates with the server cursor contract", async () => {
     const source = createDemoDataSource(new Date("2026-07-17T12:00:00.000Z"));
     const first = await source.journal({ timezone: "UTC", dayLimit: 2 });

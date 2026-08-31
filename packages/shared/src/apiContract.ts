@@ -520,6 +520,7 @@ export const medicationListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   offset: z.coerce.number().int().min(0).default(0),
   search: optionalTrimmedString(120),
+  status: z.enum(["active", "past"]).optional(),
   startedFrom: z.string().date().optional(),
   startedTo: z.string().date().optional(),
   includeId: z.string().trim().min(1).max(160).optional()

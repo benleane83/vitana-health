@@ -82,6 +82,7 @@ export function CareRoute({
   const [healthEventFilters, setHealthEventFilters] = useState<HealthEventListQuery>({ limit: 20, offset: 0 });
   const [careItemFilters, setCareItemFilters] = useState<CareItemListQuery>({ limit: 20, offset: 0, status: "open" });
   const [medicationFilters, setMedicationFilters] = useState<MedicationListQuery>({ limit: 20, offset: 0 });
+  const [appliedMedicationFilters, setAppliedMedicationFilters] = useState<MedicationListQuery>({ limit: 20, offset: 0 });
   const [healthEventDraft, setHealthEventDraft] = useState<HealthEventDraft>(defaultHealthEventDraft);
   const [careItemDraft, setCareItemDraft] = useState<CareItemDraft>(defaultCareItemDraft);
   const [medicationDraft, setMedicationDraft] = useState<MedicationDraft>(defaultMedicationDraft);
@@ -204,6 +205,7 @@ export function CareRoute({
       offset: reset ? 0 : filters.offset ?? 0,
       limit: filters.limit ?? 20
     };
+    if (reset) setAppliedMedicationFilters(query);
     setMedications((current) => ({ ...current, busy: true, error: undefined }));
     try {
       const next = await api.care.listMedications(query);
@@ -425,7 +427,7 @@ export function CareRoute({
   const hasActiveFilters = view === "health-events"
     ? Boolean(healthEventFilters.search?.trim() || healthEventFilters.kind || healthEventFilters.status)
     : view === "medications"
-      ? Boolean(medicationFilters.search?.trim())
+      ? Boolean(appliedMedicationFilters.search?.trim() || appliedMedicationFilters.status)
       : Boolean(careItemFilters.search?.trim() || careItemFilters.kind || (careItemFilters.status && careItemFilters.status !== "open"));
   const listEmpty = !listBusy && !listError && (view === "health-events" ? !healthEventList.length : view === "medications" ? !medicationList.length : !careItemList.length);
   const showEmptyState = listEmpty && !editorActive;
@@ -435,7 +437,7 @@ export function CareRoute({
       <header className="route-page-header">
         <div>
           <h1 id="care-title">Care</h1>
-          <p id="care-description" className="route-page-description">Plan future care and keep a history of important health events.</p>
+          <p id="care-description" className="route-page-description">Plan future care and keep a history of important health events and medications.</p>
         </div>
       </header>
       <div className="care-switch route-local-nav" role="tablist" aria-label="Care views" aria-orientation="horizontal">
@@ -715,6 +717,11 @@ function MedicationFilters({ filters, onChange, onApply }: { filters: Medication
   return (
     <div className="care-filters">
       <input aria-label="Search medications" placeholder="Search medications" value={filters.search ?? ""} onChange={(event) => onChange({ search: event.target.value })} />
+      <select aria-label="Filter medication status" value={filters.status ?? ""} onChange={(event) => onChange({ status: (event.target.value || undefined) as MedicationListQuery["status"] })}>
+        <option value="">All</option>
+        <option value="active">Active</option>
+        <option value="past">Past</option>
+      </select>
       <button type="button" onClick={onApply}>Apply</button>
     </div>
   );

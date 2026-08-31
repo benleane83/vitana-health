@@ -71,6 +71,9 @@ describe("CareRoute", () => {
     fireEvent.change(screen.getByLabelText("Search medications"), { target: { value: "metformin" } });
     fireEvent.click(screen.getByRole("button", { name: "Apply" }));
     await waitFor(() => expect(api.care.listMedications).toHaveBeenLastCalledWith(expect.objectContaining({ search: "metformin" })));
+    fireEvent.change(screen.getByLabelText("Filter medication status"), { target: { value: "active" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(api.care.listMedications).toHaveBeenLastCalledWith(expect.objectContaining({ search: "metformin", status: "active" })));
 
     fireEvent.click(screen.getByRole("button", { name: "Edit Metformin" }));
     expect(screen.getByLabelText("Active Ingredient(s)")).toBeInTheDocument();
@@ -82,6 +85,31 @@ describe("CareRoute", () => {
     fireEvent.change(screen.getByLabelText("Dose"), { target: { value: "750" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(update).toHaveBeenCalledWith("medication-1", expect.objectContaining({ dose: 750, startDate: "2026-01-10" })));
+  });
+
+  it("keeps medication filters visible while clearing a filter with no results", async () => {
+    vi.mocked(api.care.listMedications).mockImplementation(async (query) => {
+      const isPast = query?.status === "past";
+      return {
+        items: isPast ? [] : [medication],
+        total: isPast ? 0 : 1,
+        offset: 0,
+        limit: 20,
+        hasMore: false
+      };
+    });
+    render(<CareRoute view="medications" activeProfileId="self" onViewChange={vi.fn()} onDataChanged={vi.fn().mockResolvedValue(undefined)} onNotice={vi.fn()} confirm={vi.fn()} />);
+
+    expect(await screen.findByText("Metformin (Metformin hydrochloride)")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Filter medication status"), { target: { value: "past" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(screen.queryByText("Metformin (Metformin hydrochloride)")).not.toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText("Filter medication status"), { target: { value: "" } });
+    expect(screen.getByLabelText("Filter medication status")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+
+    expect(await screen.findByText("Metformin (Metformin hydrochloride)")).toBeInTheDocument();
   });
 
   it("saves a medication without dose, unit, or dates", async () => {

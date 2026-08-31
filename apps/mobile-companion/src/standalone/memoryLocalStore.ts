@@ -28,6 +28,7 @@ import type {
   UpdateObservationInput
 } from "@vitana/shared";
 import { defaultHealthEventKindForCareItem } from "@vitana/shared";
+import { medicationMatchesStatus } from "@vitana/shared";
 import {
   DEFAULT_MIGRATION_BATCH_SIZE,
   MEASUREMENT_SCOPED_REPLICA_TYPES,
@@ -509,6 +510,7 @@ export class MemoryLocalStore implements LocalStore {
     const values = this.profileValues(this.state.medications)
       .filter((entry) => !query.startedFrom || Boolean(entry.startDate && entry.startDate >= query.startedFrom))
       .filter((entry) => !query.startedTo || Boolean(entry.startDate && entry.startDate <= query.startedTo))
+      .filter((entry) => medicationMatchesStatus(entry, query.status))
       .filter((entry) => !query.search || `${entry.name} ${entry.activeIngredient ?? ""}`.toLowerCase().includes(query.search.toLowerCase()))
       .sort(compareMedications);
     return withIncludedId(

@@ -8,6 +8,8 @@ import {
   defaultHealthEventKindForCareItem,
   defaultMeasurementTypes,
   getReferenceRange,
+  localCalendarDate,
+  medicationMatchesStatus,
   resolveReferenceRange,
   type AnalyticsSummary,
   type AppBootstrap,
@@ -344,7 +346,7 @@ export function createDemoDataSource(
       return { deletedCount: deletedCareItem ? 1 : 0, deletedCareItem, counts: makeBootstrap(details, now).counts };
     },
     async listMedications(query = {}) {
-      return paginateCollection(filterMedications(medications, query), query);
+      return paginateCollection(filterMedications(medications, query, localCalendarDate(now)), query);
     },
     async createMedication(payload: CreateMedicationInput) {
       const timestamp = new Date().toISOString();
@@ -398,11 +400,12 @@ function makeMedications(now: Date): Medication[] {
   ];
 }
 
-function filterMedications(values: Medication[], query: MedicationListQuery): Medication[] {
+function filterMedications(values: Medication[], query: MedicationListQuery, today?: string): Medication[] {
   const search = query.search?.trim().toLowerCase();
   return values
     .filter((entry) => !query.startedFrom || Boolean(entry.startDate && entry.startDate >= query.startedFrom))
     .filter((entry) => !query.startedTo || Boolean(entry.startDate && entry.startDate <= query.startedTo))
+    .filter((entry) => medicationMatchesStatus(entry, query.status, today))
     .filter((entry) => !search || [entry.name, entry.activeIngredient]
       .some((value) => value?.toLowerCase().includes(search)))
     .sort((left, right) => Number(left.startDate == null) - Number(right.startDate == null)

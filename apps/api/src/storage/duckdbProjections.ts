@@ -26,6 +26,7 @@ import {
   type HealthDataDetailEntry,
   type HealthDataSummaryTypeRow,
   journalItemsPerDayLimit,
+  localCalendarDate,
   type JournalDay,
   type JournalPage,
   type JournalQuery,
@@ -2029,6 +2030,7 @@ interface NormalizedMedicationListQuery {
   limit: number;
   offset: number;
   search?: string;
+  status?: MedicationListQuery["status"];
   startedFrom?: string;
   startedTo?: string;
   includeId?: string;
@@ -2039,6 +2041,7 @@ function normalizeMedicationListQuery(query: MedicationListQuery): NormalizedMed
     limit: Math.min(Math.max(Number(query.limit ?? 20), 1), 100),
     offset: Math.max(Number(query.offset ?? 0), 0),
     search: query.search?.trim() || undefined,
+    status: query.status,
     startedFrom: query.startedFrom,
     startedTo: query.startedTo,
     includeId: query.includeId?.trim() || undefined
@@ -2055,6 +2058,16 @@ function buildMedicationWhere(query: NormalizedMedicationListQuery): { whereSql:
   if (query.startedTo) {
     clauses.push("start_date <= ?");
     params.push(query.startedTo);
+  }
+  if (query.status) {
+    const today = localCalendarDate(new Date());
+    if (query.status === "past") {
+      clauses.push("end_date IS NOT NULL AND end_date < ?");
+      params.push(today);
+    } else {
+      clauses.push("(end_date IS NULL OR end_date >= ?) AND (start_date IS NULL OR end_date IS NULL OR start_date <= ?)");
+      params.push(today, today);
+    }
   }
   if (query.search) {
     clauses.push(

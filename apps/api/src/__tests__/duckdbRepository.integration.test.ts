@@ -16,6 +16,7 @@ import {
   computeAnalytics,
   analyticsCountsFromStore,
   defaultMeasurementTypes,
+  localCalendarDate,
   type HealthStoreData
 } from "@vitana/shared";
 import {
@@ -2206,6 +2207,41 @@ describe("DuckDbRepository fidelity", () => {
       expect(items[0]?.endDate).toBeUndefined();
     } finally {
       await reopened.close();
+    }
+  }, 30_000);
+
+  it.skipIf(!httpfsExtensionPath)("filters medications by inferred active and past status", async () => {
+    const databasePath = join(root, "databases", "health-store-medication-status.duckdb-poc");
+    const options = { httpfsExtensionPath };
+    const repository = await DuckDbRepository.hydrate(
+      root,
+      databasePath,
+      key,
+      createDuckDbHealthStoreFixture(),
+      options
+    );
+    const dateFromToday = (days: number) => {
+      const date = new Date();
+      date.setHours(12, 0, 0, 0);
+      date.setDate(date.getDate() + days);
+      return localCalendarDate(date);
+    };
+
+    try {
+      await repository.createMedication({ name: "No dates" });
+      await repository.createMedication({ name: "Current range", startDate: dateFromToday(-1), endDate: dateFromToday(1) });
+      await repository.createMedication({ name: "Expired without start", endDate: dateFromToday(-1) });
+      await repository.createMedication({ name: "Future range", startDate: dateFromToday(1), endDate: dateFromToday(2) });
+
+      const active = await repository.listMedications({ status: "active", limit: 20 });
+      const past = await repository.listMedications({ status: "past", limit: 20 });
+
+      expect(active.items.map((entry) => entry.name).sort()).toEqual(["Current range", "No dates"]);
+      expect(active.total).toBe(2);
+      expect(past.items.map((entry) => entry.name)).toEqual(["Expired without start"]);
+      expect(past.total).toBe(1);
+    } finally {
+      await repository.close();
     }
   }, 30_000);
 

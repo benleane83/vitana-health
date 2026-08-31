@@ -4,6 +4,7 @@ import {
   computeAnalytics,
   analyticsCountsFromStore,
   getPreferredUnit,
+  medicationMatchesStatus,
   resolveReferenceRange,
   toPreferredMeasurementValue,
   type ActivitySession,
@@ -354,6 +355,7 @@ export class ConnectedReplicaRepository {
     const matching = medications
       .filter((entry) => !query.startedFrom || Boolean(entry.startDate && entry.startDate >= query.startedFrom))
       .filter((entry) => !query.startedTo || Boolean(entry.startDate && entry.startDate <= query.startedTo))
+      .filter((entry) => medicationMatchesStatus(entry, query.status))
       .filter((entry) => !search || [entry.name, entry.activeIngredient]
         .some((value) => value?.toLowerCase().includes(search)))
       .sort(compareMedications);

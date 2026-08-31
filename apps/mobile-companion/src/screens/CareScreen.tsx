@@ -21,6 +21,7 @@ import {
   type HealthEvent,
   type HealthEventKind,
   type Medication,
+  type MedicationStatusFilter,
   type CreateMedicationInput
 } from "@vitana/shared";
 import { CalendarDays } from "lucide-react-native";
@@ -96,6 +97,7 @@ export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamL
   const [loadingMore, setLoadingMore] = useState(false);
   const [careItemKindFilter, setCareItemKindFilter] = useState<"" | CareItemKind>("");
   const [healthEventKindFilter, setHealthEventKindFilter] = useState<"" | HealthEventKind>("");
+  const [medicationStatusFilter, setMedicationStatusFilter] = useState<"" | MedicationStatusFilter>("");
   const [editorMode, setEditorMode] = useState<EditorMode>("closed");
   const [editingId, setEditingId] = useState<string>();
   const [healthEventDraft, setHealthEventDraft] = useState<CreateHealthEventInput>(defaultHealthEvent);
@@ -116,7 +118,7 @@ export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamL
           includeId: route.params?.editCareItemId
         }),
         listHealthEvents({ limit: CARE_PAGE_SIZE, kind: healthEventKindFilter || undefined }),
-        listMedications({ limit: CARE_PAGE_SIZE })
+        listMedications({ limit: CARE_PAGE_SIZE, status: medicationStatusFilter || undefined })
       ]);
       setItems(nextItems.items);
       setEvents(nextEvents.items);
@@ -129,7 +131,7 @@ export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamL
     } finally {
       setLoading(false);
     }
-  }, [careItemKindFilter, demoMode, healthEventKindFilter, listCareItems, listHealthEvents, listMedications, route.params?.editCareItemId, standaloneMode, synchronizeConnectedData]);
+  }, [careItemKindFilter, demoMode, healthEventKindFilter, listCareItems, listHealthEvents, listMedications, medicationStatusFilter, route.params?.editCareItemId, standaloneMode, synchronizeConnectedData]);
 
   // Without this the list silently stopped at the first page, which reads to a user as data loss.
   async function loadMore() {
@@ -141,7 +143,7 @@ export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamL
         setEvents((current) => [...current, ...next.items]);
         setEventsHasMore(next.hasMore);
       } else if (view === "medications") {
-        const next = await listMedications({ limit: CARE_PAGE_SIZE, offset: medications.length });
+        const next = await listMedications({ limit: CARE_PAGE_SIZE, offset: medications.length, status: medicationStatusFilter || undefined });
         setMedications((current) => [...current, ...next.items]);
         setMedicationsHasMore(next.hasMore);
       } else {
@@ -396,6 +398,21 @@ export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamL
                     >
                       <Picker.Item label="All types" value="" />
                       {healthEventKindCodes.map((kind) => <Picker.Item key={kind} label={healthEventKindLabels[kind]} value={kind} />)}
+                    </Picker>
+                  </View>
+                </FormField>
+              ) : view === "medications" ? (
+                <FormField label="Status filter">
+                  <View style={styles.pickerField}>
+                    <Picker
+                      accessibilityLabel="Medication status filter"
+                      selectedValue={medicationStatusFilter}
+                      style={styles.picker}
+                      onValueChange={(value) => setMedicationStatusFilter(value as "" | MedicationStatusFilter)}
+                    >
+                      <Picker.Item label="All" value="" />
+                      <Picker.Item label="Active" value="active" />
+                      <Picker.Item label="Past" value="past" />
                     </Picker>
                   </View>
                 </FormField>

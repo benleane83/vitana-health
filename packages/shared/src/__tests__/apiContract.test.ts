@@ -228,7 +228,9 @@ describe("response contracts", () => {
         [retiredField]: "removed"
       }).success).toBe(false);
     }
-    expect(medicationListQuerySchema.safeParse({ status: "active" }).success).toBe(false);
+    expect(medicationListQuerySchema.safeParse({ status: "active" }).success).toBe(true);
+    expect(medicationListQuerySchema.safeParse({ status: "past" }).success).toBe(true);
+    expect(medicationListQuerySchema.safeParse({ status: "future" }).success).toBe(false);
   });
 
   it("ties health event details to the matching kind", () => {

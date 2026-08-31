@@ -28,6 +28,7 @@ import type {
   UpdateObservationInput
 } from "@vitana/shared";
 import { defaultHealthEventKindForCareItem } from "@vitana/shared";
+import { localCalendarDate } from "@vitana/shared";
 import {
   generateDatabaseKeyHex,
   openWithDatabaseKey,
@@ -1646,6 +1647,16 @@ function medicationWhere(profileId: string, query: MedicationListQuery) {
   const parameters: string[] = [profileId];
   if (query.startedFrom) { clauses.push("start_date >= ?"); parameters.push(query.startedFrom); }
   if (query.startedTo) { clauses.push("start_date <= ?"); parameters.push(query.startedTo); }
+  if (query.status) {
+    const today = localCalendarDate(new Date());
+    if (query.status === "past") {
+      clauses.push("end_date IS NOT NULL AND end_date < ?");
+      parameters.push(today);
+    } else {
+      clauses.push("(end_date IS NULL OR end_date >= ?) AND (start_date IS NULL OR end_date IS NULL OR start_date <= ?)");
+      parameters.push(today, today);
+    }
+  }
   if (query.search) { clauses.push("lower(payload_json) LIKE ?"); parameters.push(`%${query.search.toLowerCase()}%`); }
   return { where: `WHERE ${clauses.join(" AND ")}`, parameters };
 }
