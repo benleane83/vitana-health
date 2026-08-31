@@ -5,6 +5,7 @@ import duckdb from "duckdb";
 import {
   aiCareItemsViewSql,
   aiHealthEventsViewSql,
+  aiMedicationsViewSql,
   dailyMetricsViewSql,
   dailyMetricsWithoutAggregatesViewSql,
   weeklyMetricsViewSql
@@ -21,7 +22,7 @@ const markerName = ".vitana-duckdb-poc";
  * bumps the export format and may leave this alone. Backup/restore correctness depends on the
  * distinction — a restore validates the export format and is indifferent to the engine version.
  */
-const DB_SCHEMA_VERSION = 7;
+const DB_SCHEMA_VERSION = 8;
 
 export interface DuckDbOptions {
   httpfsExtensionPath?: string;
@@ -497,6 +498,17 @@ const baselineSchemaSql = `
     completed_health_event_id VARCHAR REFERENCES health_events(id), completed_at TIMESTAMPTZ
   );
 
+  CREATE TABLE IF NOT EXISTS medications (
+    ordinal BIGINT NOT NULL UNIQUE, id VARCHAR PRIMARY KEY, name VARCHAR NOT NULL,
+    active_ingredient VARCHAR, dose DOUBLE NOT NULL, unit VARCHAR NOT NULL, route VARCHAR,
+    schedule VARCHAR, start_date DATE NOT NULL, end_date DATE, status VARCHAR NOT NULL,
+    prescriber VARCHAR, reason VARCHAR, notes VARCHAR, created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    CHECK (dose > 0),
+    CHECK (status IN ('active', 'on-hold', 'completed', 'stopped')),
+    CHECK (end_date IS NULL OR end_date >= start_date)
+  );
+
   CREATE TABLE IF NOT EXISTS personal_reference_ranges (
     measurement_code VARCHAR PRIMARY KEY, normal_low DOUBLE, normal_high DOUBLE, unit VARCHAR NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL, optimal_low DOUBLE, optimal_high DOUBLE
@@ -656,6 +668,34 @@ const careItemStatusConsolidationSchemaSql = `
     (7, CURRENT_TIMESTAMP, 'Consolidated skipped care item status');
 `;
 
+const medicationsSchemaSql = `
+  DROP TABLE IF EXISTS medication_administrations;
+  -- Some schema-7 profiles predate medications entirely. This empty source shape lets the same
+  -- rebuild handle those profiles and newer schema-7 profiles that already contain medication rows.
+  CREATE TABLE IF NOT EXISTS medications (
+    ordinal BIGINT, id VARCHAR, name VARCHAR, active_ingredient VARCHAR, dose DOUBLE, unit VARCHAR,
+    start_date DATE, end_date DATE, notes VARCHAR, created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ
+  );
+  CREATE TABLE medications_v8 (
+    ordinal BIGINT NOT NULL UNIQUE, id VARCHAR PRIMARY KEY, name VARCHAR NOT NULL,
+    active_ingredient VARCHAR, dose DOUBLE, unit VARCHAR,
+    start_date DATE, end_date DATE, notes VARCHAR, created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    CHECK (dose IS NULL OR dose > 0),
+    CHECK (start_date IS NULL OR end_date IS NULL OR end_date >= start_date)
+  );
+  INSERT INTO medications_v8
+    SELECT ordinal, id, name, active_ingredient, dose, unit, start_date, end_date, notes,
+      created_at, updated_at
+    FROM medications;
+  DROP TABLE medications;
+  ALTER TABLE medications_v8 RENAME TO medications;
+  CREATE INDEX medications_start_idx ON medications(start_date DESC, id);
+
+  INSERT OR IGNORE INTO poc_metadata VALUES
+    (8, CURRENT_TIMESTAMP, 'Dedicated simplified medications');
+`;
+
 const schemaMigrations = [
   { version: 1, sql: baselineSchemaSql },
   { version: 2, sql: healthConnectSyncSchemaSql },
@@ -663,14 +703,16 @@ const schemaMigrations = [
   { version: 4, sql: unlinkObsoleteHealthEventsSchemaSql },
   { version: 5, sql: healthEventKindConceptsSchemaSql },
   { version: 6, sql: careItemKindConsolidationSchemaSql },
-  { version: 7, sql: careItemStatusConsolidationSchemaSql }
+  { version: 7, sql: careItemStatusConsolidationSchemaSql },
+  { version: 8, sql: medicationsSchemaSql }
 ] as const;
 
 const analyticalViewStatements = [
   { name: "v_daily_metrics", sql: dailyMetricsViewSql },
   { name: "v_weekly_metrics", sql: weeklyMetricsViewSql },
   { name: "v_ai_health_events", sql: aiHealthEventsViewSql },
-  { name: "v_ai_care_items", sql: aiCareItemsViewSql }
+  { name: "v_ai_care_items", sql: aiCareItemsViewSql },
+  { name: "v_ai_medications", sql: aiMedicationsViewSql }
 ];
 
 /**

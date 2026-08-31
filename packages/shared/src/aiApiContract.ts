@@ -29,6 +29,7 @@ export const aiQueryContextFiltersSchema = z.object({
   provider: z.string().trim().min(1).max(120).optional(),
   priority: z.enum(["low", "normal", "high"]).optional(),
   code: z.string().trim().min(1).max(80).optional(),
+  medication: z.string().trim().min(1).max(120).optional(),
   completion: z.enum(["completed", "incomplete"]).optional(),
   dueWithinRange: z.boolean().optional()
 }).strict();
@@ -36,7 +37,7 @@ export const aiQueryContextFiltersSchema = z.object({
 export const aiQueryTurnContextSchema = z.object({
   version: z.literal(1),
   profileId: z.string().trim().min(1).max(120),
-  source: z.enum(["metrics", "activities", "health_events", "care_items"]),
+  source: z.enum(["metrics", "activities", "health_events", "care_items", "medications"]),
   metric: z.string().trim().min(1).max(80).nullable(),
   intent: z.enum(["timeseries", "aggregation", "top_n", "latest", "list_activities", "list", "count", "overdue"]),
   aggregation: z.enum(["avg", "max", "min", "sum", "count", "latest"]),

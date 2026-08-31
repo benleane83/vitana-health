@@ -1,8 +1,7 @@
 import type {
   ManualObservationPayload,
   MobileMigrationReceipt,
-  MobileDetailPage,
-  MobileProfileRepository
+  MobileDetailPage
 } from "@vitana/shared";
 import type {
   CompanionDataSource,
@@ -29,7 +28,7 @@ export interface StandaloneMigrationSource {
 
 export function createStandaloneDataSource(): CompanionDataSource & CompanionCareService & CompanionMutationService & CompanionObservationMutationService & CompanionMaintenanceService & CompanionLifecycleService & StandaloneMigrationSource {
   let repository = createStandaloneRepository();
-  const getRepository = (): Promise<MobileProfileRepository & Pick<LocalProfileRepository, "bodyTrendTimeline" | "calendarMonth" | "healthDataChartSeries">> => repository;
+  const getRepository = (): Promise<LocalProfileRepository> => repository;
   return {
     bootstrap: async () => (await getRepository()).bootstrap(),
     analytics: async () => (await getRepository()).analytics(),
@@ -39,6 +38,12 @@ export function createStandaloneDataSource(): CompanionDataSource & CompanionCar
     journal: async (query) => ({ timezone: query.timezone, days: [] }),
     healthDataDetail: async (measurementCode: string, page?: MobileDetailPage) =>
       (await getRepository()).healthDataDetail(measurementCode, page),
+    observationGroup: async (id) => {
+      const detail = await (await getRepository()).observationGroup(id);
+      if (!detail) throw new Error("Observation group not found.");
+      return detail;
+    },
+    listObservationGroups: async (query) => (await repository).listObservationGroups(query),
     healthDataChartSeries: async (measurementCode, options) =>
       (await getRepository()).healthDataChartSeries(measurementCode, options),
     listHealthEvents: async (query) => (await repository).listHealthEvents(query),
@@ -50,6 +55,10 @@ export function createStandaloneDataSource(): CompanionDataSource & CompanionCar
     updateCareItem: async (id, payload) => (await repository).updateCareItem(id, payload),
     completeCareItem: async (id, payload) => (await repository).completeCareItem(id, payload),
     deleteCareItem: async (id) => (await repository).deleteCareItem(id),
+    listMedications: async (query) => (await repository).listMedications(query),
+    createMedication: async (payload) => (await repository).createMedication(payload),
+    updateMedication: async (id, payload) => (await repository).updateMedication(id, payload),
+    deleteMedication: async (id) => (await repository).deleteMedication(id),
     updateObservation: async (id, input) => {
       const updated = await (await getRepository()).updateObservation(id, input);
       if (!updated) throw new Error("Observation not found.");

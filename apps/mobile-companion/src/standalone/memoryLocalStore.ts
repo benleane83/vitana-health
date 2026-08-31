@@ -7,6 +7,10 @@ import type {
   DataSource,
     HealthEvent,
     HealthEventListQuery,
+    Medication,
+    MedicationListQuery,
+    ObservationGroupListQuery,
+    CreateMedicationInput,
   CalendarMonthQuery,
   HealthDataChartSeries,
   HealthDataChartSeriesOptions,
@@ -24,6 +28,7 @@ import type {
   UpdateObservationInput
 } from "@vitana/shared";
 import { defaultHealthEventKindForCareItem } from "@vitana/shared";
+import { medicationMatchesStatus } from "@vitana/shared";
 import {
   DEFAULT_MIGRATION_BATCH_SIZE,
   MEASUREMENT_SCOPED_REPLICA_TYPES,
@@ -32,11 +37,13 @@ import {
   type LocalObservationAggregate,
   type LocalCalendarObservation,
   type LocalObservationPage,
+  type LocalObservationGroupRecord,
   type LocalStore,
   type LocalStoreCounts,
   type ReplicaEntityFilter
 } from "./localStore";
 import { chartSeriesFromPoints } from "../chartSeries";
+import { paginateObservationGroups } from "../observationGroupList";
 
 export interface MemoryLocalStoreState {
   profiles: Map<string, Profile>;
@@ -46,6 +53,7 @@ export interface MemoryLocalStoreState {
   observations: Map<string, Observation>;
   healthEvents: Map<string, HealthEvent>;
   careItems: Map<string, CareItem>;
+  medications: Map<string, Medication>;
   migrationFingerprints: Map<string, string>;
 }
 
@@ -58,6 +66,7 @@ export function createMemoryLocalStoreState(): MemoryLocalStoreState {
     observations: new Map(),
     healthEvents: new Map(),
     careItems: new Map(),
+    medications: new Map(),
     migrationFingerprints: new Map()
   };
 }
@@ -333,6 +342,31 @@ export class MemoryLocalStore implements LocalStore {
     };
   }
 
+  async observationGroup(id: string): Promise<LocalObservationGroupRecord | undefined> {
+    const profileId = this.requireProfileId();
+    const group = this.state.observationGroups.get(key(profileId, id));
+    if (!group) return undefined;
+    const source = group.sourceId
+      ? this.state.dataSources.get(key(profileId, group.sourceId))
+      : undefined;
+    const sourceImportId = group.importId ?? source?.importId;
+    const sourceImport = sourceImportId
+      ? this.state.sourceImports.get(key(profileId, sourceImportId))
+      : undefined;
+    const observations = this.profileValues(this.state.observations)
+      .filter((observation) => observation.observationGroupId === id);
+    return structuredClone({ group, source, sourceImport, observations });
+  }
+
+  async listObservationGroups(query: ObservationGroupListQuery = {}) {
+    const profileId = this.requireProfileId();
+    return paginateObservationGroups(
+      this.profileValues(this.state.observationGroups),
+      this.profileValues(this.state.observations),
+      query
+    );
+  }
+
   async observationChartSeries(
     measurementCode: string,
     aggregation: HealthDataChartSeries["aggregation"],
@@ -472,6 +506,46 @@ export class MemoryLocalStore implements LocalStore {
     return existing ? structuredClone(existing) : undefined;
   }
 
+  async listMedications(query: MedicationListQuery = {}) {
+    const values = this.profileValues(this.state.medications)
+      .filter((entry) => !query.startedFrom || Boolean(entry.startDate && entry.startDate >= query.startedFrom))
+      .filter((entry) => !query.startedTo || Boolean(entry.startDate && entry.startDate <= query.startedTo))
+      .filter((entry) => medicationMatchesStatus(entry, query.status))
+      .filter((entry) => !query.search || `${entry.name} ${entry.activeIngredient ?? ""}`.toLowerCase().includes(query.search.toLowerCase()))
+      .sort(compareMedications);
+    return withIncludedId(
+      paginate(values, query),
+      query.includeId,
+      this.state.medications.get(key(this.requireProfileId(), query.includeId ?? ""))
+    );
+  }
+
+  async createMedication(payload: CreateMedicationInput): Promise<Medication> {
+    this.assertWritable();
+    const now = new Date().toISOString();
+    const medication: Medication = { id: localId("medication"), ...payload, createdAt: now, updatedAt: now };
+    this.state.medications.set(key(this.requireProfileId(), medication.id), medication);
+    return structuredClone(medication);
+  }
+
+  async updateMedication(id: string, payload: CreateMedicationInput): Promise<Medication | undefined> {
+    this.assertWritable();
+    const medicationKey = key(this.requireProfileId(), id);
+    const existing = this.state.medications.get(medicationKey);
+    if (!existing) return undefined;
+    const medication: Medication = { id, ...payload, createdAt: existing.createdAt, updatedAt: new Date().toISOString() };
+    this.state.medications.set(medicationKey, medication);
+    return structuredClone(medication);
+  }
+
+  async deleteMedication(id: string): Promise<Medication | undefined> {
+    this.assertWritable();
+    const medicationKey = key(this.requireProfileId(), id);
+    const existing = this.state.medications.get(medicationKey);
+    if (existing) this.state.medications.delete(medicationKey);
+    return existing ? structuredClone(existing) : undefined;
+  }
+
   async close(): Promise<void> {}
 
   async replicaMetadata(identity: ReplicaIdentity) {
@@ -570,11 +644,13 @@ export class MemoryLocalStore implements LocalStore {
       this.state.observationGroups,
       this.state.observations,
       this.state.healthEvents,
-      this.state.careItems
+      this.state.careItems,
+      this.state.medications
     ]) {
       for (const entryKey of values.keys()) {
         if (entryKey.startsWith(`${profileId}\u0000`)) values.delete(entryKey);
       }
+
     }
     this.profileId = undefined;
   }
@@ -599,6 +675,12 @@ export class MemoryLocalStore implements LocalStore {
     const prefix = `${this.requireProfileId()}\u0000`;
     return [...values.entries()].filter(([entryKey]) => entryKey.startsWith(prefix)).map(([, value]) => value);
   }
+}
+
+function compareMedications(left: Medication, right: Medication): number {
+  return Number(left.startDate == null) - Number(right.startDate == null)
+    || (right.startDate ?? "").localeCompare(left.startDate ?? "")
+    || left.id.localeCompare(right.id);
 }
 
 function key(profileId: string, id: string): string {

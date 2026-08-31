@@ -1,6 +1,6 @@
 import type { ReplicaIdentity } from "@vitana/shared";
 import { createCompanionApi } from "../api";
-import type { CompanionLifecycleService, DetailPage } from "../companionDataSource";
+import type { CompanionDataSource, CompanionLifecycleService, DetailPage } from "../companionDataSource";
 import { saveConnection, type ConnectionDetails } from "../endpointStore";
 import { LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS } from "../pinnedFetch";
 import { createConnectedStore } from "./createConnectedStore";
@@ -48,7 +48,7 @@ export class ReplicaRefreshFailedError extends Error {
 
 export function createConnectedDataSource(
   connection: ConnectionDetails
-): ReturnType<typeof createCompanionApi> & CompanionLifecycleService & ConnectedReplicaMaintenance {
+): ReturnType<typeof createCompanionApi> & CompanionDataSource & CompanionLifecycleService & ConnectedReplicaMaintenance {
   const live = createCompanionApi(connection, LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS);
   const storePromise = createConnectedStore();
   let repository: ConnectedReplicaRepository | undefined;
@@ -144,6 +144,12 @@ export function createConnectedDataSource(
     bodyTrendTimeline: (query) => cachedRead((current) => current.bodyTrendTimeline(query)),
     healthDataDetail: (measurementCode: string, page?: DetailPage) =>
       cachedRead((current) => current.healthDataDetail(measurementCode, page)),
+    observationGroup: async (id) => {
+      const detail = await cachedRead((current) => current.observationGroup(id));
+      if (!detail) throw new Error("Observation group not found.");
+      return detail;
+    },
+    listObservationGroups: (query) => cachedRead((current) => current.listObservationGroups(query)),
     healthDataChartSeries: (measurementCode, options) =>
       cachedRead((current) => current.healthDataChartSeries(
         measurementCode,
@@ -151,6 +157,7 @@ export function createConnectedDataSource(
       )),
     listHealthEvents: (query) => cachedRead((current) => current.listHealthEvents(query)),
     listCareItems: (query) => cachedRead((current) => current.listCareItems(query)),
+    listMedications: (query) => cachedRead((current) => current.listMedications(query)),
     importManualObservations: (payload) => liveMutation(() => live.importManualObservations(payload)),
     updateObservation: (id, input) => liveMutation(() => live.updateObservation(id, input)),
     deleteObservation: (id) => liveMutation(() => live.deleteObservation(id)),
@@ -165,6 +172,9 @@ export function createConnectedDataSource(
     updateCareItem: (id, payload) => liveMutation(() => live.updateCareItem(id, payload)),
     completeCareItem: (id, payload) => liveMutation(() => live.completeCareItem(id, payload)),
     deleteCareItem: (id) => liveMutation(() => live.deleteCareItem(id)),
+    createMedication: (payload) => liveMutation(() => live.createMedication(payload)),
+    updateMedication: (id, payload) => liveMutation(() => live.updateMedication(id, payload)),
+    deleteMedication: (id) => liveMutation(() => live.deleteMedication(id)),
     connectionError: (result) => connectionErrors.get(result),
     prepareConnectedReplica: async () => {
       await synchronize();

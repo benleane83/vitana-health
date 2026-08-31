@@ -100,6 +100,26 @@ describe("health data workbook", () => {
     expect(allXml).not.toContain("Audit events");
   });
 
+  it("exports medications with active ingredients and blank optional dose fields", async () => {
+    const entries = textEntries(await workbookBytes(createReader({
+      medications: [{
+        id: "med-1",
+        name: "Metformin",
+        activeIngredient: "metformin hydrochloride",
+        startDate: "2026-01-15",
+        createdAt: "2026-01-15T00:00:00.000Z",
+        updatedAt: "2026-01-15T00:00:00.000Z"
+      }]
+    })));
+    const allXml = Object.values(entries).join("\n");
+
+    expect(entries["xl/workbook.xml"]).toContain('name="Medications"');
+    expect(allXml).toContain("Active Ingredient(s)");
+    expect(allXml).toContain("Metformin");
+    expect(allXml).toContain("metformin hydrochloride");
+    expect(allXml).not.toContain("undefined");
+  });
+
   it("uses bounded pages and creates continuation sheets at the configured row limit", async () => {
     const observations = Array.from({ length: 1_002 }, (_, index) => ({
       id: `obs-${index}`,

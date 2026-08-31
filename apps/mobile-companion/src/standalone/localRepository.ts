@@ -16,10 +16,13 @@ import {
   type HealthDataChartSeriesOptions,
   type HealthDataSummary,
   type ManualObservationPayload,
+  type CreateMedicationInput,
   MobileMigrationReceipt,
   type MobileDetailPage,
   type MobileImportResult,
   type MobileProfileRepository,
+  type ObservationGroupDetail,
+  type ObservationGroupListQuery,
   type ParsedImport,
   type Profile,
   type UpdateObservationInput
@@ -27,6 +30,7 @@ import {
 import type { LocalStore } from "./localStore";
 import { calendarMonthFromEntries } from "../calendarProjection";
 import { bodyTrendFromObservations } from "../bodyTrendProjection";
+import { projectObservationGroup } from "../observationGroupProjection";
 
 const DEFAULT_DETAIL_LIMIT = 50;
 const MAX_DETAIL_LIMIT = 100;
@@ -222,6 +226,25 @@ export class LocalProfileRepository implements MobileProfileRepository {
     };
   }
 
+  async observationGroup(id: string): Promise<ObservationGroupDetail | undefined> {
+    await this.ensureInitialized();
+    const [profile, record] = await Promise.all([
+      this.store.getProfile(),
+      this.store.observationGroup(id)
+    ]);
+    if (!record) return undefined;
+    return projectObservationGroup({
+      ...record,
+      profile,
+      measurementTypes: defaultMeasurementTypes
+    });
+  }
+
+  async listObservationGroups(query: ObservationGroupListQuery = {}) {
+    await this.ensureInitialized();
+    return this.store.listObservationGroups(query);
+  }
+
   async healthDataChartSeries(measurementCode: string, options: HealthDataChartSeriesOptions) {
     await this.ensureInitialized();
     const measurement = defaultMeasurementTypes.find((candidate) => candidate.code === measurementCode);
@@ -306,6 +329,29 @@ export class LocalProfileRepository implements MobileProfileRepository {
     await this.ensureInitialized();
     const deletedCareItem = await this.store.deleteCareItem(id);
     return { deletedCount: deletedCareItem ? 1 : 0, deletedCareItem, counts: (await this.bootstrap()).counts };
+  }
+
+  async listMedications(query = {}) {
+    await this.ensureInitialized();
+    return this.store.listMedications(query);
+  }
+
+  async createMedication(payload: CreateMedicationInput) {
+    await this.ensureInitialized();
+    return { medication: await this.store.createMedication(payload) };
+  }
+
+  async updateMedication(id: string, payload: CreateMedicationInput) {
+    await this.ensureInitialized();
+    const medication = await this.store.updateMedication(id, payload);
+    if (!medication) throw new Error("Medication not found.");
+    return { medication };
+  }
+
+  async deleteMedication(id: string) {
+    await this.ensureInitialized();
+    const deletedMedication = await this.store.deleteMedication(id);
+    return { deletedCount: deletedMedication ? 1 : 0, deletedMedication };
   }
 
   async mergeImport(imported: ParsedImport): Promise<MobileImportResult> {

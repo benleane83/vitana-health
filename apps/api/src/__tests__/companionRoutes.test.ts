@@ -47,6 +47,7 @@ function store(profileId: string) {
       latestMetrics: [],
       trendCards: [],
       labAlerts: [],
+      rangeAlerts: [],
       evidenceDigest: []
     })),
     summary: vi.fn(async () => ({

@@ -9,12 +9,18 @@ import type {
   CreateHealthEventInput,
   HealthEvent,
   HealthEventListQuery,
+  Medication,
+  MedicationListQuery,
+  CreateMedicationInput,
   MobileImportResult,
   CalendarMonthQuery,
   MobileMigrationBatch,
   MobileMigrationManifest,
   MobileMigrationReceipt,
   Observation,
+  ObservationGroupListItem,
+  ObservationGroupListQuery,
+  PaginatedResult,
   ParsedImport,
   Profile,
   ReplicaIdentity,
@@ -22,6 +28,7 @@ import type {
   UpdateObservationInput
 } from "@vitana/shared";
 import { defaultHealthEventKindForCareItem } from "@vitana/shared";
+import { localCalendarDate } from "@vitana/shared";
 import {
   generateDatabaseKeyHex,
   openWithDatabaseKey,
@@ -52,6 +59,7 @@ import {
   type LocalObservationAggregate,
   type LocalCalendarObservation,
   type LocalObservationPage,
+  type LocalObservationGroupRecord,
   type LocalDatasetSummary,
   type LocalDatasetMetadata,
   type LocalStore,
@@ -380,6 +388,7 @@ export class SqliteLocalStore implements LocalStore {
   async deleteSelectedDataset(): Promise<void> {
     const profileId = this.requireProfileId();
     await this.database.withTransactionAsync(async () => {
+      await this.database.runAsync("DELETE FROM medications WHERE profile_id = ?", profileId);
       await this.database.runAsync("DELETE FROM care_items WHERE profile_id = ?", profileId);
       await this.database.runAsync("DELETE FROM health_events WHERE profile_id = ?", profileId);
       await this.database.runAsync("DELETE FROM observations WHERE profile_id = ?", profileId);
@@ -839,6 +848,173 @@ export class SqliteLocalStore implements LocalStore {
     };
   }
 
+  async observationGroup(id: string): Promise<LocalObservationGroupRecord | undefined> {
+    const profileId = this.requireProfileId();
+    const row = await this.database.getFirstAsync<{
+      id: string;
+      kind: LocalObservationGroupRecord["group"]["kind"];
+      label: string;
+      sourceId: string | null;
+      importId: string | null;
+      startAt: string | null;
+      endAt: string | null;
+      collectedAt: string | null;
+      metadataJson: string | null;
+      sourceKind: NonNullable<LocalObservationGroupRecord["source"]>["sourceKind"] | null;
+      sourceLabel: string | null;
+      sourceImportId: string | null;
+      sourceCreatedAt: string | null;
+      sourceImportRecordId: string | null;
+      importSourceKind: NonNullable<LocalObservationGroupRecord["sourceImport"]>["sourceKind"] | null;
+      importFileName: string | null;
+      importedAt: string | null;
+      parserVersion: string | null;
+      checksum: string | null;
+      rowCount: number | null;
+      importStatus: NonNullable<LocalObservationGroupRecord["sourceImport"]>["status"] | null;
+      diagnosticsJson: string | null;
+    }>(`
+      SELECT og.id, og.kind, og.label, og.source_id AS sourceId, og.import_id AS importId,
+        og.start_at AS startAt, og.end_at AS endAt, og.collected_at AS collectedAt,
+        og.metadata_json AS metadataJson,
+        ds.source_kind AS sourceKind, ds.label AS sourceLabel, ds.import_id AS sourceImportId,
+        ds.created_at AS sourceCreatedAt,
+        si.id AS sourceImportRecordId, si.source_kind AS importSourceKind, si.file_name AS importFileName,
+        si.imported_at AS importedAt, si.parser_version AS parserVersion,
+        si.checksum, si.row_count AS rowCount, si.status AS importStatus,
+        si.diagnostics_json AS diagnosticsJson
+      FROM observation_groups og
+      LEFT JOIN data_sources ds ON ds.profile_id = og.profile_id AND ds.id = og.source_id
+      LEFT JOIN source_imports si
+        ON si.profile_id = og.profile_id AND si.id = COALESCE(og.import_id, ds.import_id)
+      WHERE og.profile_id = ? AND og.id = ?
+      LIMIT 1
+    `, profileId, id);
+    if (!row) return undefined;
+    const observations = await this.database.getAllAsync<{
+      id: string;
+      measurementCode: string;
+      observedAt: string;
+      effectiveStart: string | null;
+      effectiveEnd: string | null;
+      value: number;
+      unit: string;
+      sourceId: string;
+      observationGroupId: string | null;
+      deviceId: string | null;
+      note: string | null;
+      sourceJson: string | null;
+    }>(`
+      SELECT id, measurement_code AS measurementCode, observed_at AS observedAt,
+        effective_start AS effectiveStart, effective_end AS effectiveEnd, value, unit,
+        source_id AS sourceId, observation_group_id AS observationGroupId,
+        device_id AS deviceId, note, source_json AS sourceJson
+      FROM observations
+      WHERE profile_id = ? AND observation_group_id = ?
+      ORDER BY observed_at, id
+    `, profileId, id);
+    return {
+      group: {
+        id: row.id,
+        kind: row.kind,
+        label: row.label,
+        sourceId: row.sourceId ?? undefined,
+        importId: row.importId ?? undefined,
+        startAt: row.startAt ?? undefined,
+        endAt: row.endAt ?? undefined,
+        collectedAt: row.collectedAt ?? undefined,
+        metadata: row.metadataJson ? JSON.parse(row.metadataJson) : undefined
+      },
+      source: row.sourceId && row.sourceKind && row.sourceLabel && row.sourceCreatedAt ? {
+        id: row.sourceId,
+        sourceKind: row.sourceKind,
+        label: row.sourceLabel,
+        importId: row.sourceImportId ?? undefined,
+        createdAt: row.sourceCreatedAt
+      } : undefined,
+      sourceImport: row.sourceImportRecordId && row.importFileName && row.importedAt && row.parserVersion && row.checksum
+        && row.rowCount !== null && row.importStatus && row.importSourceKind ? {
+          id: row.sourceImportRecordId,
+          sourceKind: row.importSourceKind,
+          fileName: row.importFileName,
+          importedAt: row.importedAt,
+          parserVersion: row.parserVersion,
+          checksum: row.checksum,
+          rowCount: row.rowCount,
+          status: row.importStatus,
+          diagnostics: row.diagnosticsJson ? JSON.parse(row.diagnosticsJson) : []
+        } : undefined,
+      observations: observations.map((observation) => ({
+        ...observation,
+        effectiveStart: observation.effectiveStart ?? undefined,
+        effectiveEnd: observation.effectiveEnd ?? undefined,
+        observationGroupId: observation.observationGroupId ?? undefined,
+        deviceId: observation.deviceId ?? undefined,
+        note: observation.note ?? undefined,
+        sourceJson: observation.sourceJson ? JSON.parse(observation.sourceJson) : undefined
+      }))
+    };
+  }
+
+  async listObservationGroups(
+    query: ObservationGroupListQuery = {}
+  ): Promise<PaginatedResult<ObservationGroupListItem>> {
+    const profileId = this.requireProfileId();
+    const limit = Math.min(Math.max(Number(query.limit ?? 50), 1), 100);
+    const offset = Math.max(Number(query.offset ?? 0), 0);
+    const clauses = ["og.profile_id = ?"];
+    const params: Array<string | number> = [profileId];
+    if (query.kinds?.length) {
+      clauses.push(`og.kind IN (${query.kinds.map(() => "?").join(", ")})`);
+      params.push(...query.kinds);
+    }
+    const panelDateSql = "COALESCE(og.collected_at, og.start_at, og.end_at)";
+    if (query.dateFrom) {
+      clauses.push(`${panelDateSql} IS NOT NULL AND date(${panelDateSql}) >= date(?)`);
+      params.push(query.dateFrom);
+    }
+    if (query.dateTo) {
+      clauses.push(`${panelDateSql} IS NOT NULL AND date(${panelDateSql}) <= date(?)`);
+      params.push(query.dateTo);
+    }
+    const whereSql = clauses.join(" AND ");
+    const rows = await this.database.getAllAsync<{
+      id: string;
+      kind: ObservationGroupListItem["kind"];
+      label: string;
+      date: string | null;
+      measurementCount: number;
+    }>(`
+      SELECT og.id, og.kind, og.label, ${panelDateSql} AS date,
+        COUNT(o.id) AS measurementCount
+      FROM observation_groups og
+      LEFT JOIN observations o
+        ON o.profile_id = og.profile_id AND o.observation_group_id = og.id
+      WHERE ${whereSql}
+      GROUP BY og.id, og.kind, og.label, og.collected_at, og.start_at, og.end_at
+      ORDER BY date IS NULL, date DESC, og.id ASC
+      LIMIT ? OFFSET ?
+    `, ...params, limit, offset);
+    const totalRow = await this.database.getFirstAsync<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM observation_groups og WHERE ${whereSql}`,
+      ...params
+    );
+    const total = totalRow?.count ?? 0;
+    return {
+      items: rows.map((row) => ({
+        id: row.id,
+        kind: row.kind,
+        label: row.label,
+        date: row.date ?? undefined,
+        measurementCount: row.measurementCount
+      })),
+      total,
+      offset,
+      limit,
+      hasMore: offset + rows.length < total
+    };
+  }
+
   async observationChartSeries(
     measurementCode: string,
     aggregation: HealthDataChartSeries["aggregation"],
@@ -1076,6 +1252,56 @@ export class SqliteLocalStore implements LocalStore {
     const existing = await this.careItemById(id);
     if (!existing) return undefined;
     const result = await this.database.runAsync("DELETE FROM care_items WHERE profile_id = ? AND id = ?", this.requireProfileId(), id);
+    return result.changes === 1 ? existing : undefined;
+  }
+
+  async listMedications(query: MedicationListQuery = {}) {
+    const { where, parameters } = medicationWhere(this.requireProfileId(), query);
+    const limit = boundedLimit(query.limit);
+    const offset = boundedOffset(query.offset);
+    const [count, rows] = await Promise.all([
+      this.database.getFirstAsync<{ total: number }>(`SELECT COUNT(*) AS total FROM medications ${where}`, ...parameters),
+      this.database.getAllAsync<{ payload_json: string }>(
+        `SELECT payload_json FROM medications ${where}
+         ORDER BY start_date IS NULL, start_date DESC, id
+         LIMIT ? OFFSET ?`,
+        ...parameters, limit, offset
+      )
+    ]);
+    const total = count?.total ?? 0;
+    const items = rows.map((row) => JSON.parse(row.payload_json) as Medication);
+    const included = query.includeId && !items.some((item) => item.id === query.includeId)
+      ? await this.medicationById(query.includeId)
+      : undefined;
+    if (included) items.push(included);
+    return { items, total, offset, limit, hasMore: offset + rows.length < total };
+  }
+
+  async createMedication(payload: CreateMedicationInput): Promise<Medication> {
+    await this.assertWritable();
+    const now = new Date().toISOString();
+    const medication: Medication = { id: `medication-${Crypto.randomUUID()}`, ...payload, createdAt: now, updatedAt: now };
+    await this.insertMedication(medication);
+    return medication;
+  }
+
+  async updateMedication(id: string, payload: CreateMedicationInput): Promise<Medication | undefined> {
+    await this.assertWritable();
+    const existing = await this.medicationById(id);
+    if (!existing) return undefined;
+    const medication: Medication = { id, ...payload, createdAt: existing.createdAt, updatedAt: new Date().toISOString() };
+    const result = await this.database.runAsync(
+      `UPDATE medications SET start_date = ?, name = ?, payload_json = ? WHERE profile_id = ? AND id = ?`,
+      medication.startDate ?? null, medication.name, JSON.stringify(medication), this.requireProfileId(), id
+    );
+    return result.changes === 1 ? medication : undefined;
+  }
+
+  async deleteMedication(id: string): Promise<Medication | undefined> {
+    await this.assertWritable();
+    const existing = await this.medicationById(id);
+    if (!existing) return undefined;
+    const result = await this.database.runAsync("DELETE FROM medications WHERE profile_id = ? AND id = ?", this.requireProfileId(), id);
     return result.changes === 1 ? existing : undefined;
   }
 
@@ -1354,6 +1580,14 @@ export class SqliteLocalStore implements LocalStore {
     return row ? JSON.parse(row.payload_json) as CareItem : undefined;
   }
 
+  private async medicationById(id: string): Promise<Medication | undefined> {
+    const row = await this.database.getFirstAsync<{ payload_json: string }>(
+      "SELECT payload_json FROM medications WHERE profile_id = ? AND id = ?",
+      this.requireProfileId(), id
+    );
+    return row ? JSON.parse(row.payload_json) as Medication : undefined;
+  }
+
   private async insertHealthEvent(event: HealthEvent): Promise<void> {
     await this.database.runAsync(
       `INSERT INTO health_events (profile_id, id, kind, status, occurred_at, payload_json) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -1365,6 +1599,13 @@ export class SqliteLocalStore implements LocalStore {
     await this.database.runAsync(
       `INSERT INTO care_items (profile_id, id, kind, status, priority, due_start, title, payload_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       this.requireProfileId(), item.id, item.kind, item.status, item.priority, item.dueStart ?? null, item.title, JSON.stringify(item)
+    );
+  }
+
+  private async insertMedication(medication: Medication): Promise<void> {
+    await this.database.runAsync(
+      `INSERT INTO medications (profile_id, id, start_date, name, payload_json) VALUES (?, ?, ?, ?, ?)`,
+      this.requireProfileId(), medication.id, medication.startDate ?? null, medication.name, JSON.stringify(medication)
     );
   }
 
@@ -1398,6 +1639,25 @@ function careItemWhere(profileId: string, query: CareItemListQuery) {
   if (query.dueFrom) { clauses.push("due_start >= ?"); parameters.push(query.dueFrom); }
   if (query.dueTo) { clauses.push("due_start <= ?"); parameters.push(query.dueTo); }
   if (query.search) { clauses.push("lower(title || ' ' || payload_json) LIKE ?"); parameters.push(`%${query.search.toLowerCase()}%`); }
+  return { where: `WHERE ${clauses.join(" AND ")}`, parameters };
+}
+
+function medicationWhere(profileId: string, query: MedicationListQuery) {
+  const clauses = ["profile_id = ?"];
+  const parameters: string[] = [profileId];
+  if (query.startedFrom) { clauses.push("start_date >= ?"); parameters.push(query.startedFrom); }
+  if (query.startedTo) { clauses.push("start_date <= ?"); parameters.push(query.startedTo); }
+  if (query.status) {
+    const today = localCalendarDate(new Date());
+    if (query.status === "past") {
+      clauses.push("end_date IS NOT NULL AND end_date < ?");
+      parameters.push(today);
+    } else {
+      clauses.push("(end_date IS NULL OR end_date >= ?) AND (start_date IS NULL OR end_date IS NULL OR start_date <= ?)");
+      parameters.push(today, today);
+    }
+  }
+  if (query.search) { clauses.push("lower(payload_json) LIKE ?"); parameters.push(`%${query.search.toLowerCase()}%`); }
   return { where: `WHERE ${clauses.join(" AND ")}`, parameters };
 }
 

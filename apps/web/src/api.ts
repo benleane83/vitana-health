@@ -12,6 +12,8 @@ import type {
   DeleteCareItemResponse,
   DeleteHealthEventResponse,
   HealthEventListQuery,
+  MedicationListQuery,
+  CreateMedicationInput,
   ManualLabEntryPayload,
   ManualObservationPayload,
   Profile,
@@ -279,6 +281,7 @@ export const api = {
   calendarMonth: sharedApi.calendarMonth,
   journal: sharedApi.journal,
   observationGroup: sharedApi.observationGroup,
+  observationGroups: sharedApi.observationGroups,
   updateObservationGroup: sharedApi.updateObservationGroup,
   healthDataDetail: sharedApi.healthDataDetail,
   healthDataChartSeries: sharedApi.healthDataChartSeries,
@@ -295,7 +298,11 @@ export const api = {
     createCareItem: (payload: CreateCareItemInput) => sharedApi.createCareItem(payload),
     updateCareItem: (id: string, payload: CreateCareItemInput) => sharedApi.updateCareItem(id, payload),
     completeCareItem: (id: string, payload: CompleteCareItemInput) => sharedApi.completeCareItem(id, payload),
-    deleteCareItem: (id: string) => sharedApi.deleteCareItem(id)
+    deleteCareItem: (id: string) => sharedApi.deleteCareItem(id),
+    listMedications: (query?: MedicationListQuery) => sharedApi.listMedications(query),
+    createMedication: (payload: CreateMedicationInput) => sharedApi.createMedication(payload),
+    updateMedication: (id: string, payload: CreateMedicationInput) => sharedApi.updateMedication(id, payload),
+    deleteMedication: (id: string) => sharedApi.deleteMedication(id)
   },
   updateObservation: (id: string, input: UpdateObservationInput) =>
     request(updateObservationResponseSchema, `/api/observations/${encodeURIComponent(id)}`, {

@@ -69,6 +69,31 @@ describe("calendar data route", () => {
       expect(updateObservationGroup).not.toHaveBeenCalled();
     });
 
+    it("lists groups with validated filters before matching the detail route", async () => {
+      const result = {
+        items: [{ id: "group-1", kind: "custom", label: "Morning vitals", measurementCount: 1 }],
+        total: 1,
+        offset: 0,
+        limit: 10,
+        hasMore: false
+      };
+      const listObservationGroups = vi.fn(async () => result);
+      const app = appFor({ listObservationGroups });
+
+      const response = await request(app)
+        .get("/api/observation-groups?kinds=custom&dateFrom=2026-08-01&dateTo=2026-08-31&limit=10");
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(result);
+      expect(listObservationGroups).toHaveBeenCalledWith({
+        kinds: ["custom"],
+        dateFrom: "2026-08-01",
+        dateTo: "2026-08-31",
+        limit: 10,
+        offset: 0
+      });
+    });
+
     it("maps read-only and concurrent update failures explicitly", async () => {
       const input = {
         label: "Morning vitals", collectedAt: "2026-08-07T08:15:00.000Z",

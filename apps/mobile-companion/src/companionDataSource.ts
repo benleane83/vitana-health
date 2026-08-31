@@ -22,7 +22,15 @@ import type {
   JournalPage,
   JournalQueryInput,
   ManualObservationPayload,
+  Medication,
+  MedicationListQuery,
+  MedicationMutationResponse,
+  CreateMedicationInput,
+  DeleteMedicationResponse,
   MobileImportResult,
+  ObservationGroupDetail,
+  ObservationGroupListItem,
+  ObservationGroupListQuery,
   HealthEvent,
   HealthEventListQuery,
   HealthEventMutationResponse,
@@ -46,6 +54,8 @@ export interface CompanionDataSource {
   calendarMonth(query: CalendarMonthQuery, signal?: AbortSignal): Promise<CalendarMonthData>;
   journal(query: JournalQueryInput, signal?: AbortSignal): Promise<JournalPage>;
   healthDataDetail(measurementCode: string, page?: DetailPage): Promise<HealthDataDetail>;
+  observationGroup(id: string): Promise<ObservationGroupDetail>;
+  listObservationGroups(query?: ObservationGroupListQuery): Promise<PaginatedResult<ObservationGroupListItem>>;
   healthDataChartSeries(measurementCode: string, options: HealthDataChartSeriesOptions): Promise<HealthDataChartSeries>;
 }
 
@@ -81,4 +91,8 @@ export interface CompanionCareService {
   updateCareItem(id: string, payload: CreateCareItemInput): Promise<CareItemMutationResponse>;
   completeCareItem(id: string, payload: CompleteCareItemInput): Promise<CompleteCareItemResponse>;
   deleteCareItem(id: string): Promise<DeleteCareItemResponse>;
+  listMedications(query?: MedicationListQuery): Promise<PaginatedResult<Medication>>;
+  createMedication(payload: CreateMedicationInput): Promise<MedicationMutationResponse>;
+  updateMedication(id: string, payload: CreateMedicationInput): Promise<MedicationMutationResponse>;
+  deleteMedication(id: string): Promise<DeleteMedicationResponse>;
 }

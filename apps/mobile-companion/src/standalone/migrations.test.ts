@@ -83,6 +83,10 @@ describe("standalone schema migrations", () => {
     const statusSql = migrationSql(6);
     expect(statusSql).toContain("SET status = 'cancelled'");
     expect(statusSql).toContain("json_set(payload_json, '$.status', 'cancelled')");
+    const medicationSimplificationSql = migrationSql(8);
+    expect(medicationSimplificationSql).toContain("CREATE TABLE medications_v9");
+    expect(medicationSimplificationSql).toContain("'$.status'");
+    expect(medicationSimplificationSql).not.toContain("status TEXT NOT NULL");
   });
 
   it("evicts the replica cache from the durable database and never rebuilds it there", () => {

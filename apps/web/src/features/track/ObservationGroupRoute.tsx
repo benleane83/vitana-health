@@ -46,6 +46,7 @@ export function ObservationGroupRoute({
   activeProfileId,
   measurementTypes,
   units,
+  backLabel,
   onBack,
   onSelectMeasurement,
   onDataChanged,
@@ -55,6 +56,7 @@ export function ObservationGroupRoute({
   activeProfileId?: string;
   measurementTypes: MeasurementType[];
   units: UnitSystem;
+  backLabel: string;
   onBack: () => void;
   onSelectMeasurement: (measurementCode: string) => void;
   onDataChanged: () => Promise<void>;
@@ -205,7 +207,7 @@ export function ObservationGroupRoute({
   if (!group) {
     return (
       <section className="observation-group-page">
-        <button type="button" onClick={onBack}>← Back to measurements</button>
+        <button type="button" onClick={onBack}>← {backLabel}</button>
         <h2>Observation group not found</h2>
         <p role="alert">{loadError ?? "This recorded group no longer exists."}</p>
       </section>
@@ -214,7 +216,7 @@ export function ObservationGroupRoute({
 
   return (
     <section className="observation-group-page" aria-labelledby="observation-group-title">
-      <button type="button" onClick={onBack}>← Back to measurements</button>
+      <button type="button" onClick={onBack}>← {backLabel}</button>
       <header className="route-page-header">
         <div>
           <h2 id="observation-group-title">{group.label}</h2>

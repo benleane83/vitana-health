@@ -6,16 +6,19 @@ import {
   completeCareItemInputSchema,
   createCareItemInputSchema,
   createHealthEventInputSchema,
+  createMedicationInputSchema,
   convertMeasurementValue,
   defaultHealthEventKindForCareItem,
   describeMeasurementRejection,
   isHealthEventKind,
   insightSchema,
+  medicationSchema,
   personalReferenceRangeInputSchema,
   personalReferenceRangeSchema,
   profileSchema,
   updateCareItemInputSchema,
   updateHealthEventInputSchema,
+  updateMedicationInputSchema,
   type AppBootstrap,
   type CareItem,
   type CareItemMutationResponse,
@@ -23,14 +26,18 @@ import {
   type CompleteCareItemResponse,
   type CreateCareItemInput,
   type CreateHealthEventInput,
+  type CreateMedicationInput,
   type DeleteCareItemResponse,
   type DeleteHealthEventResponse,
   type DeleteObservationResponse,
+  type DeleteMedicationResponse,
   type DeleteObservationsByTypeResponse,
   type HealthEvent,
   type HealthEventMutationResponse,
   type HealthStoreData,
   type LinkedCareItemConflict,
+  type Medication,
+  type MedicationMutationResponse,
   type Observation,
   type PinnedMeasurement,
   type PersonalReferenceRange,
@@ -38,6 +45,7 @@ import {
   type Profile,
   type UpdateCareItemInput,
   type UpdateHealthEventInput,
+  type UpdateMedicationInput,
   type UpdateObservationGroupInput,
   type UpdateObservationInput,
   type UpdateObservationResponse
@@ -46,6 +54,7 @@ import { storageCounts } from "./duckdbProjections.js";
 import {
   all,
   allWithParams,
+  dateOnly,
   insertObservationRows,
   json,
   measurementTypeFromRow,
@@ -718,9 +727,6 @@ export async function updateHealthEvent(
   if (event.kind !== "immunization") {
     await run(connection, "DELETE FROM immunizations WHERE health_event_id = ?;", id);
   }
-  if (event.kind !== "medication") {
-    await run(connection, "DELETE FROM medication_administrations WHERE health_event_id = ?;", id);
-  }
   await insertAudit(connection, "health-event-updated", `${event.kind} event updated for ${event.occurredAt}.`);
   return { healthEvent: event, counts: await storageCounts(connection) };
 }
@@ -739,7 +745,6 @@ export async function deleteHealthEvent(
   }
   const healthEvent = healthEventFromRow(rows[0]);
   await run(connection, "DELETE FROM immunizations WHERE health_event_id = ?;", id);
-  await run(connection, "DELETE FROM medication_administrations WHERE health_event_id = ?;", id);
   await run(connection, "DELETE FROM health_events WHERE id = ?;", id);
   await insertAudit(connection, "health-event-deleted", `${healthEvent.kind} event deleted for ${healthEvent.occurredAt}.`);
   return {
@@ -890,6 +895,114 @@ export async function deleteCareItem(
   await run(connection, "DELETE FROM care_items WHERE id = ?;", id);
   await insertAudit(connection, "care-item-deleted", `${careItem.title} care item deleted.`);
   return { deletedCount: 1, deletedCareItem: careItem, counts: await storageCounts(connection) };
+}
+
+export async function createMedication(
+  connection: duckdb.Connection,
+  input: CreateMedicationInput
+): Promise<MedicationMutationResponse> {
+  const validated = createMedicationInputSchema.parse(input);
+  const now = new Date().toISOString();
+  const medication = medicationSchema.parse({
+    ...validated,
+    id: `med_${globalThis.crypto.randomUUID().replaceAll("-", "").slice(0, 18)}`,
+    createdAt: now,
+    updatedAt: now
+  });
+  await run(
+    connection,
+    `INSERT INTO medications VALUES (${Array.from({ length: 11 }, () => "?").join(", ")});`,
+    await prependOrdinal(connection, "medications"),
+    medication.id,
+    medication.name,
+    medication.activeIngredient ?? null,
+    medication.dose ?? null,
+    medication.unit ?? null,
+    medication.startDate ?? null,
+    medication.endDate ?? null,
+    medication.notes ?? null,
+    medication.createdAt,
+    medication.updatedAt
+  );
+  await insertAudit(connection, "medication-created", `${medication.name} medication created.`);
+  return { medication };
+}
+
+export async function updateMedication(
+  connection: duckdb.Connection,
+  id: string,
+  input: UpdateMedicationInput
+): Promise<MedicationMutationResponse | undefined> {
+  const rows = await allWithParams(connection, "SELECT * FROM medications WHERE id = ?;", id);
+  if (!rows[0]) return undefined;
+  const current = medicationFromRow(rows[0]);
+  const validated = updateMedicationInputSchema.parse(input);
+  const medication = medicationSchema.parse({
+    ...validated,
+    id,
+    createdAt: current.createdAt,
+    updatedAt: new Date().toISOString()
+  });
+  await run(
+    connection,
+    `UPDATE medications
+      SET name = ?, active_ingredient = ?, dose = ?, unit = ?,
+        start_date = ?, end_date = ?, notes = ?, updated_at = ?
+      WHERE id = ?;`,
+    medication.name,
+    medication.activeIngredient ?? null,
+    medication.dose ?? null,
+    medication.unit ?? null,
+    medication.startDate ?? null,
+    medication.endDate ?? null,
+    medication.notes ?? null,
+    medication.updatedAt,
+    id
+  );
+  await insertAudit(connection, "medication-updated", `${medication.name} medication updated.`);
+  return { medication };
+}
+
+export async function deleteMedication(
+  connection: duckdb.Connection,
+  id: string
+): Promise<DeleteMedicationResponse | undefined> {
+  const rows = await allWithParams(connection, "SELECT * FROM medications WHERE id = ?;", id);
+  if (!rows[0]) return undefined;
+  const medication = medicationFromRow(rows[0]);
+  await run(connection, "DELETE FROM medications WHERE id = ?;", id);
+  await insertAudit(connection, "medication-deleted", `${medication.name} medication deleted.`);
+  return { deletedCount: 1, deletedMedication: medication };
+}
+
+function medicationFromRow(row: Record<string, unknown>): Medication {
+  return medicationSchema.parse({
+    id: String(row.id),
+    name: String(row.name),
+    activeIngredient: optionalString(row.active_ingredient),
+    dose: optionalNumber(row.dose),
+    unit: optionalString(row.unit),
+    startDate: optionalDateOnly(row.start_date),
+    endDate: optionalDateOnly(row.end_date),
+    notes: optionalString(row.notes),
+    createdAt: new Date(String(row.created_at)).toISOString(),
+    updatedAt: new Date(String(row.updated_at)).toISOString()
+  });
+}
+
+function optionalString(value: unknown): string | undefined {
+  if (value === null || value === undefined || value === "") return undefined;
+  return String(value);
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  if (value === null || value === undefined || value === "") return undefined;
+  return Number(value);
+}
+
+function optionalDateOnly(value: unknown): string | undefined {
+  if (value === null || value === undefined || value === "") return undefined;
+  return dateOnly(value);
 }
 
 export async function insertAudit(
@@ -1104,5 +1217,6 @@ type OrderedTable =
   | "activities"
   | "health_events"
   | "care_items"
+  | "medications"
   | "insights"
   | "audit_events";

@@ -52,12 +52,13 @@ export const tableColumns = {
     "health_event_id", "vaccine", "target_disease", "dose_number", "series", "manufacturer",
     "lot_number", "expires_at", "route", "site", "reaction"
   ],
-  medication_administrations: [
-    "health_event_id", "medication", "active_ingredient", "dose", "unit", "route"
-  ],
   care_items: [
     "ordinal", "id", "kind", "code", "title", "due_start", "reminder_at", "priority", "status",
     "schedule_provenance", "schedule_version", "notes", "completed_health_event_id", "completed_at"
+  ],
+  medications: [
+    "ordinal", "id", "name", "active_ingredient", "dose", "unit", "start_date", "end_date",
+    "notes", "created_at", "updated_at"
   ],
   personal_reference_ranges: [
     "measurement_code", "normal_low", "normal_high", "unit", "updated_at", "optimal_low", "optimal_high"

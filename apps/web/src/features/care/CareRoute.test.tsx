@@ -21,6 +21,17 @@ const healthEvent = {
   source: "manual-entry" as const
 };
 
+const medication = {
+  id: "medication-1",
+  name: "Metformin",
+  activeIngredient: "Metformin hydrochloride",
+  dose: 500,
+  unit: "mg",
+  startDate: "2026-01-10",
+  createdAt: "2026-01-10T08:00:00.000Z",
+  updatedAt: "2026-01-10T08:00:00.000Z"
+};
+
 beforeEach(() => {
   vi.spyOn(api.care, "listCareItems").mockResolvedValue({
     items: [openCareItem],
@@ -36,6 +47,13 @@ beforeEach(() => {
     limit: 20,
     hasMore: false
   });
+  vi.spyOn(api.care, "listMedications").mockResolvedValue({
+    items: [medication],
+    total: 1,
+    offset: 0,
+    limit: 20,
+    hasMore: false
+  });
 });
 
 afterEach(() => {
@@ -44,6 +62,79 @@ afterEach(() => {
 });
 
 describe("CareRoute", () => {
+  it("lists, filters, and edits medications without removed fields", async () => {
+    const update = vi.spyOn(api.care, "updateMedication").mockResolvedValue({ medication });
+    render(<CareRoute view="medications" activeProfileId="self" onViewChange={vi.fn()} onDataChanged={vi.fn().mockResolvedValue(undefined)} onNotice={vi.fn()} confirm={vi.fn()} />);
+
+    expect(await screen.findByText("Metformin (Metformin hydrochloride)")).toBeInTheDocument();
+    expect(screen.getByText("500 mg")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Search medications"), { target: { value: "metformin" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(api.care.listMedications).toHaveBeenLastCalledWith(expect.objectContaining({ search: "metformin" })));
+    fireEvent.change(screen.getByLabelText("Filter medication status"), { target: { value: "active" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(api.care.listMedications).toHaveBeenLastCalledWith(expect.objectContaining({ search: "metformin", status: "active" })));
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit Metformin" }));
+    expect(screen.getByLabelText("Active Ingredient(s)")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Status")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Route")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Schedule or instructions")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Prescriber")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Reason")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Dose"), { target: { value: "750" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith("medication-1", expect.objectContaining({ dose: 750, startDate: "2026-01-10" })));
+  });
+
+  it("keeps medication filters visible while clearing a filter with no results", async () => {
+    vi.mocked(api.care.listMedications).mockImplementation(async (query) => {
+      const isPast = query?.status === "past";
+      return {
+        items: isPast ? [] : [medication],
+        total: isPast ? 0 : 1,
+        offset: 0,
+        limit: 20,
+        hasMore: false
+      };
+    });
+    render(<CareRoute view="medications" activeProfileId="self" onViewChange={vi.fn()} onDataChanged={vi.fn().mockResolvedValue(undefined)} onNotice={vi.fn()} confirm={vi.fn()} />);
+
+    expect(await screen.findByText("Metformin (Metformin hydrochloride)")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Filter medication status"), { target: { value: "past" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(screen.queryByText("Metformin (Metformin hydrochloride)")).not.toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText("Filter medication status"), { target: { value: "" } });
+    expect(screen.getByLabelText("Filter medication status")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+
+    expect(await screen.findByText("Metformin (Metformin hydrochloride)")).toBeInTheDocument();
+  });
+
+  it("saves a medication without dose, unit, or dates", async () => {
+    const created = { ...medication, id: "medication-2", dose: undefined, unit: undefined, startDate: undefined };
+    const create = vi.spyOn(api.care, "createMedication").mockResolvedValue({ medication: created });
+    render(<CareRoute view="medications" activeProfileId="self" onViewChange={vi.fn()} onDataChanged={vi.fn().mockResolvedValue(undefined)} onNotice={vi.fn()} confirm={vi.fn()} />);
+
+    await screen.findByText("Metformin (Metformin hydrochloride)");
+    fireEvent.click(screen.getByRole("button", { name: "Add medication" }));
+    expect(screen.getByLabelText("Dose")).toHaveValue(null);
+    expect(screen.getByLabelText("Start date")).toHaveValue("");
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Vitamin D" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(create).toHaveBeenCalledWith({
+      name: "Vitamin D",
+      activeIngredient: undefined,
+      dose: undefined,
+      unit: undefined,
+      startDate: undefined,
+      endDate: undefined,
+      notes: undefined
+    }));
+  });
+
   it("keeps route identity outside the bounded task panel", async () => {
     const { container } = render(<CareRoute view="items" activeProfileId="self" onViewChange={vi.fn()} onDataChanged={vi.fn().mockResolvedValue(undefined)} onNotice={vi.fn()} confirm={vi.fn()} />);
 

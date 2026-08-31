@@ -2,31 +2,18 @@
  * Shared front-end types extracted from App.tsx.
  */
 
-import type { UploadDraftRow } from "@vitana/shared";
+import { profileDataCategories, type ProfileDataCategory, type UploadDraftRow } from "@vitana/shared";
+
+export { profileDataCategories };
+export type { ProfileDataCategory };
 
 export type AppRoute = "dashboard" | "import" | "track" | "care" | "insights" | "export" | "about" | "settings";
 export type InsightsTab = "biological-age" | "ai-query" | "ai-review";
-export type CareView = "items" | "health-events";
-export type TrackView = "measurements" | "body-trend" | "calendar" | "journal";
+export type CareView = "items" | "health-events" | "medications";
+export type TrackView = "measurements" | "panels" | "body-trend" | "calendar" | "journal";
 export type SummarySort = "name" | "count" | "recency";
 export type ImportMode = "manual" | "upload" | "sync";
 export type SettingsView = "app" | "ai";
-export type ProfileDataCategory = "activity" | "body" | "lab" | "sleep";
-
-type ProfileDataCategoryConfig = {
-  key: ProfileDataCategory;
-  label: string;
-  manualGroup?: string;
-  uploadKind?: "structured" | "body-composition" | "blood-test";
-};
-
-export const profileDataCategories: readonly ProfileDataCategoryConfig[] = [
-  { key: "activity", label: "Activities", manualGroup: "Activity", uploadKind: "structured" },
-  { key: "body", label: "Body", manualGroup: "Body", uploadKind: "body-composition" },
-  { key: "lab", label: "Lab Results", manualGroup: "Lab", uploadKind: "blood-test" },
-  { key: "sleep", label: "Sleep" }
-];
-
 export const profileDataCategoryIconPaths: Record<ProfileDataCategory, string> = {
   activity: "/images/profile-navigation/activity.png",
   body: "/images/profile-navigation/body-composition.png",

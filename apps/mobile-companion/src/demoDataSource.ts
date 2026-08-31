@@ -8,6 +8,8 @@ import {
   defaultHealthEventKindForCareItem,
   defaultMeasurementTypes,
   getReferenceRange,
+  localCalendarDate,
+  medicationMatchesStatus,
   resolveReferenceRange,
   type AnalyticsSummary,
   type AppBootstrap,
@@ -22,7 +24,12 @@ import {
   type JournalPage,
   type JournalQueryInput,
   type ManualObservationPayload,
+  type Medication,
+  type MedicationListQuery,
+  type CreateMedicationInput,
   type MobileImportResult,
+  type ObservationGroupDetail,
+  type ObservationGroupListQuery,
   type PersonalReferenceRange
 } from "@vitana/shared";
 import type {
@@ -35,6 +42,7 @@ import type {
 import { chartSeriesFromDetail } from "./chartSeries";
 import { calendarMonthFromEntries } from "./calendarProjection";
 import { bodyTrendFromObservations } from "./bodyTrendProjection";
+import { paginateObservationGroups } from "./observationGroupList";
 
 interface DemoMetric {
   code: string;
@@ -51,6 +59,9 @@ const metrics: DemoMetric[] = [
   { code: "sleep_duration", values: [7.2, 6.8, 7.6, 7.0, 7.4, 6.9, 7.8], unit: "h", kind: "sample", sourceLabel: "Demo fitness tracker" },
   { code: "oxygen_saturation", values: [98, 97, 98, 99, 98, 97, 98], unit: "%", kind: "sample", sourceLabel: "Demo fitness tracker" },
   { code: "weight", values: [74.8, 74.6, 74.5, 74.3, 74.1, 74.0, 73.8], unit: "kg", kind: "observation", sourceLabel: "Demo manual entry", isPinned: true },
+  { code: "muscle_mass", values: [30.4, 30.5, 30.7, 30.9, 31.0, 31.1, 31.3], unit: "kg", kind: "observation", sourceLabel: "Demo smart scale" },
+  { code: "fat_mass", values: [20.8, 20.7, 20.4, 20.2, 20.0, 19.8, 19.6], unit: "kg", kind: "observation", sourceLabel: "Demo smart scale" },
+  { code: "bone_mineral_content", values: [3.1, 3.1, 3.1, 3.2, 3.2, 3.2, 3.2], unit: "kg", kind: "observation", sourceLabel: "Demo smart scale" },
   { code: "blood_pressure_systolic", values: [124, 121, 119, 122, 118, 120, 117], unit: "mmHg", kind: "observation", sourceLabel: "Demo home monitor" },
   { code: "glucose", values: [5.1, 5.0, 5.4, 5.2, 5.1, 4.9, 5.0], unit: "mmol/L", kind: "observation", sourceLabel: "Demo laboratory report" }
 ];
@@ -77,14 +88,59 @@ function makeBodyTrendObservations(now: Date) {
   });
 }
 
+function makeDemoObservationGroups(
+  details: Map<string, HealthDataDetail>,
+  now: Date
+): Map<string, ObservationGroupDetail> {
+  const id = "demo-body-latest";
+  const label = "Smart scale body composition";
+  const codes = ["weight", "muscle_mass", "fat_mass", "bone_mineral_content"];
+  const observations = codes.flatMap((code) => {
+    const detail = details.get(code);
+    const entry = detail?.entries[0];
+    if (!detail || !entry) return [];
+    const observationGroup = {
+      id,
+      kind: "body_composition_report" as const,
+      label,
+      collectedAt: now.toISOString()
+    };
+    detail.entries[0] = { ...entry, observationGroup };
+    return [{
+      id: entry.id,
+      measurementCode: entry.measurementCode,
+      displayName: entry.displayName,
+      observedAt: entry.timestamp,
+      value: entry.value,
+      unit: entry.unit,
+      note: entry.note,
+      referenceRange: entry.referenceRange,
+      status: entry.status
+    }];
+  });
+  return new Map([[id, {
+    id,
+    kind: "body_composition_report",
+    label,
+    collectedAt: now.toISOString(),
+    source: { kind: "body-composition-report", label: "Demo smart scale" },
+    editable: false,
+    readOnlyReason: "Demo groups are read-only.",
+    observations
+  }]]);
+}
+
 export function createDemoDataSource(
   now = new Date()
 ): CompanionDataSource & CompanionCareService & CompanionMutationService & CompanionObservationMutationService {
   const details = new Map(metrics.map((metric) => [metric.code, makeDetail(metric, now)]));
+  const observationGroups = makeDemoObservationGroups(details, now);
   let healthEvents = makeHealthEvents(now);
   let careItems = makeCareItems(now);
+  let medications = makeMedications(now);
   let nextHealthEventId = healthEvents.length + 1;
   let nextCareItemId = careItems.length + 1;
+  let nextMedicationId = medications.length + 1;
   let nextObservationId = 1;
 
   return {
@@ -114,6 +170,24 @@ export function createDemoDataSource(
       if (!detail) throw new Error("This metric is not available in demo mode.");
       return paginateDetail(detail, page);
     },
+    async observationGroup(id) {
+      const detail = observationGroups.get(id);
+      if (!detail) throw new Error("This observation group is not available in demo mode.");
+      return detail;
+    },
+    async listObservationGroups(query: ObservationGroupListQuery = {}) {
+      const details = [...observationGroups.values()];
+      return paginateObservationGroups(
+        details.map((detail) => ({
+          id: detail.id,
+          kind: detail.kind,
+          label: detail.label,
+          collectedAt: detail.collectedAt
+        })),
+        details.flatMap((detail) => detail.observations.map(() => ({ observationGroupId: detail.id }))),
+        query
+      );
+    },
     async healthDataChartSeries(measurementCode, options) {
       const detail = details.get(measurementCode);
       if (!detail) throw new Error("This metric is not available in demo mode.");
@@ -129,6 +203,7 @@ export function createDemoDataSource(
         if (!detail || !measurement || !measurementCode) {
           throw new Error("This metric is not available in demo mode.");
         }
+
         return {
           detail,
           entry: createManualEntry({
@@ -269,8 +344,79 @@ export function createDemoDataSource(
       const deletedCareItem = careItems.find((entry) => entry.id === id);
       careItems = careItems.filter((entry) => entry.id !== id);
       return { deletedCount: deletedCareItem ? 1 : 0, deletedCareItem, counts: makeBootstrap(details, now).counts };
+    },
+    async listMedications(query = {}) {
+      return paginateCollection(filterMedications(medications, query, localCalendarDate(now)), query);
+    },
+    async createMedication(payload: CreateMedicationInput) {
+      const timestamp = new Date().toISOString();
+      const medication: Medication = {
+        id: `demo-medication-${nextMedicationId++}`,
+        ...payload,
+        createdAt: timestamp,
+        updatedAt: timestamp
+      };
+      medications = [medication, ...medications];
+      return { medication };
+    },
+    async updateMedication(id: string, payload: CreateMedicationInput) {
+      const existing = medications.find((entry) => entry.id === id);
+      if (!existing) throw new Error("Medication not found.");
+      const medication: Medication = { id, ...payload, createdAt: existing.createdAt, updatedAt: new Date().toISOString() };
+      medications = medications.map((entry) => entry.id === id ? medication : entry);
+      return { medication };
+    },
+    async deleteMedication(id: string) {
+      const deletedMedication = medications.find((entry) => entry.id === id);
+      medications = medications.filter((entry) => entry.id !== id);
+      return { deletedCount: deletedMedication ? 1 : 0, deletedMedication };
     }
   };
+}
+
+function makeMedications(now: Date): Medication[] {
+  const timestamp = now.toISOString();
+  return [
+    {
+      id: "demo-medication-1",
+      name: "Atorvastatin",
+      activeIngredient: "Atorvastatin calcium",
+      dose: 20,
+      unit: "mg",
+      startDate: dateDaysAgo(now, 180),
+      createdAt: timestamp,
+      updatedAt: timestamp
+    },
+    {
+      id: "demo-medication-2",
+      name: "Amoxicillin",
+      dose: 500,
+      unit: "mg",
+      startDate: dateDaysAgo(now, 45),
+      endDate: dateDaysAgo(now, 38),
+      createdAt: timestamp,
+      updatedAt: timestamp
+    }
+  ];
+}
+
+function filterMedications(values: Medication[], query: MedicationListQuery, today?: string): Medication[] {
+  const search = query.search?.trim().toLowerCase();
+  return values
+    .filter((entry) => !query.startedFrom || Boolean(entry.startDate && entry.startDate >= query.startedFrom))
+    .filter((entry) => !query.startedTo || Boolean(entry.startDate && entry.startDate <= query.startedTo))
+    .filter((entry) => medicationMatchesStatus(entry, query.status, today))
+    .filter((entry) => !search || [entry.name, entry.activeIngredient]
+      .some((value) => value?.toLowerCase().includes(search)))
+    .sort((left, right) => Number(left.startDate == null) - Number(right.startDate == null)
+      || (right.startDate ?? "").localeCompare(left.startDate ?? "")
+      || left.id.localeCompare(right.id));
+}
+
+function dateDaysAgo(now: Date, days: number): string {
+  const date = new Date(now);
+  date.setUTCDate(date.getUTCDate() - days);
+  return date.toISOString().slice(0, 10);
 }
 
 function makeBootstrap(details: Map<string, HealthDataDetail>, now: Date): AppBootstrap {
@@ -315,6 +461,7 @@ function makeAnalytics(details: Map<string, HealthDataDetail>, now: Date): Analy
       .sort((left, right) => Number(right.isPinned) - Number(left.isPinned) || right.observedAt.localeCompare(left.observedAt)),
     trendCards: [],
     labAlerts: [],
+    rangeAlerts: [],
     evidenceDigest: [
       "Sample activity has remained consistent over the last seven days.",
       "Sample cardiovascular measurements are within their illustrative ranges."

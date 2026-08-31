@@ -19,17 +19,22 @@ import {
   type CreateCareItemInput,
   type CreateHealthEventInput,
   type HealthEvent,
-  type HealthEventKind
+  type HealthEventKind,
+  type Medication,
+  type MedicationStatusFilter,
+  type CreateMedicationInput
 } from "@vitana/shared";
 import { CalendarDays } from "lucide-react-native";
 import { useMobileApi } from "../MobileApiProvider";
 import { connectionStateLabel } from "../connectionState";
 import type { TabParamList } from "../navigationTypes";
 import { Button, Card, Message, Screen } from "../ui/components";
+
+type MedicationDraft = Omit<CreateMedicationInput, "dose"> & { dose: string };
 import { colors, radii, spacing, type } from "../ui/theme";
 import { userFacingError } from "../userFacingError";
 
-type CareView = "items" | "health-events";
+type CareView = "items" | "health-events" | "medications";
 type EditorMode = "closed" | "create" | "edit" | "complete";
 type Feedback = { detail: string; tone: "success" | "danger" };
 
@@ -51,6 +56,13 @@ const defaultCareItem: CreateCareItemInput = {
   notes: ""
 };
 
+const defaultMedication: MedicationDraft = {
+  name: "",
+  dose: "",
+  unit: "",
+  startDate: new Date().toISOString().slice(0, 10)
+};
+
 export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamList, "Care">) {
   const isFocused = useIsFocused();
   const {
@@ -68,21 +80,29 @@ export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamL
     deleteCareItem,
     createHealthEvent,
     updateHealthEvent,
-    deleteHealthEvent
+    deleteHealthEvent,
+    listMedications,
+    createMedication,
+    updateMedication,
+    deleteMedication
   } = useMobileApi();
   const [view, setView] = useState<CareView>("items");
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<CareItem[]>([]);
   const [events, setEvents] = useState<HealthEvent[]>([]);
+  const [medications, setMedications] = useState<Medication[]>([]);
   const [itemsHasMore, setItemsHasMore] = useState(false);
   const [eventsHasMore, setEventsHasMore] = useState(false);
+  const [medicationsHasMore, setMedicationsHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [careItemKindFilter, setCareItemKindFilter] = useState<"" | CareItemKind>("");
   const [healthEventKindFilter, setHealthEventKindFilter] = useState<"" | HealthEventKind>("");
+  const [medicationStatusFilter, setMedicationStatusFilter] = useState<"" | MedicationStatusFilter>("");
   const [editorMode, setEditorMode] = useState<EditorMode>("closed");
   const [editingId, setEditingId] = useState<string>();
   const [healthEventDraft, setHealthEventDraft] = useState<CreateHealthEventInput>(defaultHealthEvent);
   const [careItemDraft, setCareItemDraft] = useState<CreateCareItemInput>(defaultCareItem);
+  const [medicationDraft, setMedicationDraft] = useState<MedicationDraft>(defaultMedication);
   const [completionDraft, setCompletionDraft] = useState<CompleteCareItemInput>({ occurredAt: dateOnlyIso(new Date()), kind: "other" });
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>();
@@ -91,24 +111,27 @@ export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamL
     setLoading(true);
     try {
       if (synchronize && !standaloneMode && !demoMode) await synchronizeConnectedData(true);
-      const [nextItems, nextEvents] = await Promise.all([
+      const [nextItems, nextEvents, nextMedications] = await Promise.all([
         listCareItems({
           limit: CARE_PAGE_SIZE,
           kind: careItemKindFilter || undefined,
           includeId: route.params?.editCareItemId
         }),
-        listHealthEvents({ limit: CARE_PAGE_SIZE, kind: healthEventKindFilter || undefined })
+        listHealthEvents({ limit: CARE_PAGE_SIZE, kind: healthEventKindFilter || undefined }),
+        listMedications({ limit: CARE_PAGE_SIZE, status: medicationStatusFilter || undefined })
       ]);
       setItems(nextItems.items);
       setEvents(nextEvents.items);
+      setMedications(nextMedications.items);
       setItemsHasMore(nextItems.hasMore);
       setEventsHasMore(nextEvents.hasMore);
+      setMedicationsHasMore(nextMedications.hasMore);
     } catch (caught) {
       setFeedback({ detail: userFacingError(caught, "Unable to load care data. Try again."), tone: "danger" });
     } finally {
       setLoading(false);
     }
-  }, [careItemKindFilter, demoMode, healthEventKindFilter, listCareItems, listHealthEvents, route.params?.editCareItemId, standaloneMode, synchronizeConnectedData]);
+  }, [careItemKindFilter, demoMode, healthEventKindFilter, listCareItems, listHealthEvents, listMedications, medicationStatusFilter, route.params?.editCareItemId, standaloneMode, synchronizeConnectedData]);
 
   // Without this the list silently stopped at the first page, which reads to a user as data loss.
   async function loadMore() {
@@ -119,6 +142,10 @@ export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamL
         const next = await listHealthEvents({ limit: CARE_PAGE_SIZE, offset: events.length, kind: healthEventKindFilter || undefined });
         setEvents((current) => [...current, ...next.items]);
         setEventsHasMore(next.hasMore);
+      } else if (view === "medications") {
+        const next = await listMedications({ limit: CARE_PAGE_SIZE, offset: medications.length, status: medicationStatusFilter || undefined });
+        setMedications((current) => [...current, ...next.items]);
+        setMedicationsHasMore(next.hasMore);
       } else {
         const next = await listCareItems({ limit: CARE_PAGE_SIZE, offset: items.length, kind: careItemKindFilter || undefined });
         setItems((current) => [...current, ...next.items]);
@@ -134,7 +161,7 @@ export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamL
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
     if (!isFocused || !route.params?.view) return;
-    setView("items");
+    setView(route.params.view);
     setEditorMode("closed");
     setEditingId(undefined);
     setFeedback(undefined);
@@ -173,6 +200,10 @@ export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamL
         const payload = normalizeHealthEvent(healthEventDraft);
         if (editorMode === "edit" && editingId) await updateHealthEvent(editingId, payload);
         else await createHealthEvent(payload);
+      } else if (view === "medications") {
+        const payload = normalizeMedication(medicationDraft);
+        if (editorMode === "edit" && editingId) await updateMedication(editingId, payload);
+        else await createMedication(payload);
       } else {
         const payload = normalizeCareItem(careItemDraft);
         if (editorMode === "edit" && editingId) await updateCareItem(editingId, payload);
@@ -180,7 +211,7 @@ export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamL
       }
       setEditorMode("closed");
       setEditingId(undefined);
-      setFeedback({ detail: view === "health-events" ? "Health event saved." : "Care item saved.", tone: "success" });
+      setFeedback({ detail: view === "health-events" ? "Health event saved." : view === "medications" ? "Medication saved." : "Care item saved.", tone: "success" });
       await load();
     } catch (caught) {
       setFeedback({ detail: userFacingError(caught, "Unable to save care data. Try again."), tone: "danger" });
@@ -210,8 +241,9 @@ export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamL
     setBusy(true);
     try {
       if (view === "health-events") await deleteHealthEvent(id);
+      else if (view === "medications") await deleteMedication(id);
       else await deleteCareItem(id);
-      setFeedback({ detail: view === "health-events" ? "Health event deleted." : "Care item deleted.", tone: "success" });
+      setFeedback({ detail: view === "health-events" ? "Health event deleted." : view === "medications" ? "Medication deleted." : "Care item deleted.", tone: "success" });
       await load();
     } catch (caught) {
       setFeedback({ detail: userFacingError(caught, "Unable to delete care data. Try again."), tone: "danger" });
@@ -226,6 +258,7 @@ export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamL
     setEditorMode("create");
     setHealthEventDraft(defaultHealthEvent);
     setCareItemDraft(defaultCareItem);
+    setMedicationDraft(defaultMedication);
   }
 
   function startEditHealthEvent(entry: HealthEvent) {
@@ -241,6 +274,22 @@ export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamL
     setView("items");
     setEditingId(entry.id);
     setCareItemDraft({ title: entry.title, kind: normalizedCareItemKind(entry.kind), dueStart: entry.dueStart, reminderAt: entry.reminderAt, priority: entry.priority, status: entry.status, notes: entry.notes ?? "" });
+    setEditorMode("edit");
+  }
+
+  function startEditMedication(entry: Medication) {
+    setFeedback(undefined);
+    setView("medications");
+    setEditingId(entry.id);
+    setMedicationDraft({
+      name: entry.name,
+      activeIngredient: entry.activeIngredient,
+      dose: entry.dose === undefined ? "" : String(entry.dose),
+      unit: entry.unit ?? "",
+      startDate: entry.startDate,
+      endDate: entry.endDate,
+      notes: entry.notes
+    });
     setEditorMode("edit");
   }
 
@@ -264,13 +313,24 @@ export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamL
 
   const canWrite = demoMode || standaloneMode || connectionState === "online";
 
-  const listData: Array<CareItem | HealthEvent> = editorMode === "closed" ? (view === "health-events" ? events : items) : [];
-  const renderRow = (entry: CareItem | HealthEvent) => ("occurredAt" in entry ? (
+  const listData: Array<CareItem | HealthEvent | Medication> = editorMode === "closed"
+    ? view === "health-events" ? events : view === "medications" ? medications : items
+    : [];
+  const renderRow = (entry: CareItem | HealthEvent | Medication) => ("occurredAt" in entry ? (
     <Card>
       <Text style={styles.title}>{healthEventKindLabels[entry.kind]}</Text>
       <Text style={styles.meta}>{formatDate(entry.occurredAt)}{entry.provider ? ` • ${entry.provider}` : ""}</Text>
       {entry.notes ? <Text style={styles.meta}>{entry.notes}</Text> : null}
       {canWrite ? <View style={styles.actions}><Button disabled={busy} secondary onPress={() => startEditHealthEvent(entry)}>Edit</Button><Button disabled={busy} secondary onPress={() => { void remove(entry.id); }}>Delete</Button></View> : null}
+    </Card>
+  ) : !("title" in entry) ? (
+    <Card>
+      <Text style={styles.title}>{entry.name}{entry.activeIngredient ? ` (${entry.activeIngredient})` : ""}</Text>
+      {entry.dose !== undefined || entry.unit
+        ? <Text style={styles.meta}>{[entry.dose, entry.unit].filter((value) => value !== undefined && value !== "").join(" ")}</Text>
+        : null}
+      {entry.startDate ? <Text style={styles.meta}>Started {formatDate(entry.startDate)}</Text> : null}
+      {canWrite ? <View style={styles.actions}><Button disabled={busy} secondary onPress={() => startEditMedication(entry)}>Edit</Button><Button disabled={busy} secondary onPress={() => { void remove(entry.id); }}>Delete</Button></View> : null}
     </Card>
   ) : (
     <Card>
@@ -295,7 +355,7 @@ export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamL
           <View style={styles.section}>
             <View style={styles.headerRow}>
               <View style={styles.segmented}>
-                {(["items", "health-events"] as const).map((value) => (
+                {(["items", "health-events", "medications"] as const).map((value) => (
                   <Pressable
                     accessibilityRole="tab"
                     accessibilityState={{ selected: view === value }}
@@ -303,11 +363,11 @@ export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamL
                     onPress={() => switchView(value)}
                     style={[styles.segment, view === value && styles.segmentActive]}
                   >
-                    <Text style={[styles.segmentText, view === value && styles.segmentTextActive]}>{value === "items" ? "Care items" : "Health events"}</Text>
+                    <Text style={[styles.segmentText, view === value && styles.segmentTextActive]}>{value === "items" ? "Care items" : value === "health-events" ? "Events" : "Medications"}</Text>
                   </Pressable>
                 ))}
               </View>
-              {canWrite && editorMode === "closed" ? <Button disabled={busy} onPress={startCreate}>{view === "items" ? "Add care item" : "Add health event"}</Button> : null}
+              {canWrite && editorMode === "closed" ? <Button disabled={busy} onPress={startCreate}>{view === "items" ? "Add care item" : view === "health-events" ? "Add health event" : "Add medication"}</Button> : null}
             </View>
             {demoMode ? <Message title="Demo care records" detail="Try adding, editing, or completing records. Your changes reset when Demo mode restarts." /> : null}
             {!demoMode && !standaloneMode && connectionState !== "online" ? <Message title={connectionStateLabel(connectionState)} detail={error ?? "Showing read-only Care data. Reconnect or pull to refresh."} tone="warning" /> : null}
@@ -327,7 +387,7 @@ export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamL
                     </Picker>
                   </View>
                 </FormField>
-              ) : (
+              ) : view === "health-events" ? (
                 <FormField label="Type filter">
                   <View style={styles.pickerField}>
                     <Picker
@@ -341,7 +401,22 @@ export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamL
                     </Picker>
                   </View>
                 </FormField>
-              )
+              ) : view === "medications" ? (
+                <FormField label="Status filter">
+                  <View style={styles.pickerField}>
+                    <Picker
+                      accessibilityLabel="Medication status filter"
+                      selectedValue={medicationStatusFilter}
+                      style={styles.picker}
+                      onValueChange={(value) => setMedicationStatusFilter(value as "" | MedicationStatusFilter)}
+                    >
+                      <Picker.Item label="All" value="" />
+                      <Picker.Item label="Active" value="active" />
+                      <Picker.Item label="Past" value="past" />
+                    </Picker>
+                  </View>
+                </FormField>
+              ) : null
             ) : null}
           </View>
         }
@@ -353,14 +428,14 @@ export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamL
         renderItem={({ item }) => renderRow(item)}
         ListFooterComponent={
           <View style={styles.section}>
-        {editorMode === "closed" && (view === "health-events" ? eventsHasMore : itemsHasMore) ? (
+        {editorMode === "closed" && (view === "health-events" ? eventsHasMore : view === "medications" ? medicationsHasMore : itemsHasMore) ? (
           <Button disabled={loadingMore} secondary onPress={() => { void loadMore(); }}>
             {loadingMore ? "Loading…" : "Load more"}
           </Button>
         ) : null}
         {editorMode !== "closed" ? (
           <Card>
-            <Text style={styles.heading}>{editorMode === "complete" ? "Complete care item" : editorMode === "create" ? `New ${view === "health-events" ? "health event" : "care item"}` : `Edit ${view === "health-events" ? "health event" : "care item"}`}</Text>
+            <Text style={styles.heading}>{editorMode === "complete" ? "Complete care item" : editorMode === "create" ? `New ${view === "health-events" ? "health event" : view === "medications" ? "medication" : "care item"}` : `Edit ${view === "health-events" ? "health event" : view === "medications" ? "medication" : "care item"}`}</Text>
             {editorMode === "complete" ? (
               <>
                 <FormField label="Date">
@@ -405,6 +480,30 @@ export function CareScreen({ navigation, route }: BottomTabScreenProps<TabParamL
                 </FormField>
                 <FormField label="Notes (optional)">
                   <TextInput accessibilityLabel="Notes" multiline placeholder="Add context" placeholderTextColor={colors.muted} style={[styles.input, styles.notesInput]} value={healthEventDraft.notes ?? ""} onChangeText={(value) => setHealthEventDraft((current) => ({ ...current, notes: value }))} />
+                </FormField>
+              </>
+            ) : view === "medications" ? (
+              <>
+                <FormField label="Name">
+                  <TextInput accessibilityLabel="Medication name" placeholder="Medication name" placeholderTextColor={colors.muted} style={styles.input} value={medicationDraft.name} onChangeText={(value) => setMedicationDraft((current) => ({ ...current, name: value }))} />
+                </FormField>
+                <FormField label="Active Ingredient(s) (optional)">
+                  <TextInput accessibilityLabel="Active Ingredient(s)" placeholder="Generic ingredient" placeholderTextColor={colors.muted} style={styles.input} value={medicationDraft.activeIngredient ?? ""} onChangeText={(value) => setMedicationDraft((current) => ({ ...current, activeIngredient: value }))} />
+                </FormField>
+                <FormField label="Dose (optional)">
+                  <TextInput accessibilityLabel="Dose" keyboardType="decimal-pad" placeholder="1" placeholderTextColor={colors.muted} style={styles.input} value={medicationDraft.dose} onChangeText={(value) => setMedicationDraft((current) => ({ ...current, dose: value }))} />
+                </FormField>
+                <FormField label="Unit (optional)">
+                  <TextInput accessibilityLabel="Dose unit" placeholder="mg" placeholderTextColor={colors.muted} style={styles.input} value={medicationDraft.unit ?? ""} onChangeText={(value) => setMedicationDraft((current) => ({ ...current, unit: value }))} />
+                </FormField>
+                <FormField label="Start date">
+                  <DatePickerField accessibilityLabel="Medication start date" disabled={busy} onChange={(startDate) => setMedicationDraft((current) => ({ ...current, startDate }))} onClear={() => setMedicationDraft((current) => ({ ...current, startDate: undefined }))} value={medicationDraft.startDate} />
+                </FormField>
+                <FormField label="End date (optional)">
+                  <DatePickerField accessibilityLabel="Medication end date" disabled={busy} minimumDate={dateFromIso(medicationDraft.startDate)} onChange={(endDate) => setMedicationDraft((current) => ({ ...current, endDate }))} onClear={() => setMedicationDraft((current) => ({ ...current, endDate: undefined }))} value={medicationDraft.endDate} />
+                </FormField>
+                <FormField label="Notes (optional)">
+                  <TextInput accessibilityLabel="Medication notes" multiline placeholder="Add context" placeholderTextColor={colors.muted} style={[styles.input, styles.notesInput]} value={medicationDraft.notes ?? ""} onChangeText={(value) => setMedicationDraft((current) => ({ ...current, notes: value }))} />
                 </FormField>
               </>
             ) : (
@@ -552,6 +651,18 @@ function normalizeHealthEvent(draft: CreateHealthEventInput): CreateHealthEventI
 
 function normalizeCareItem(draft: CreateCareItemInput): CreateCareItemInput {
   return { ...draft, title: draft.title.trim(), notes: draft.notes?.trim() || undefined };
+}
+
+function normalizeMedication(draft: MedicationDraft): CreateMedicationInput {
+  return {
+    name: draft.name.trim(),
+    activeIngredient: draft.activeIngredient?.trim() || undefined,
+    dose: draft.dose.trim() ? Number(draft.dose) : undefined,
+    unit: draft.unit?.trim() || undefined,
+    startDate: draft.startDate?.slice(0, 10) || undefined,
+    endDate: draft.endDate?.slice(0, 10) || undefined,
+    notes: draft.notes?.trim() || undefined
+  };
 }
 
 function careItemKindLabel(kind: string): string {

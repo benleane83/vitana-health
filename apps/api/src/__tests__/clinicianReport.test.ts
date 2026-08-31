@@ -28,13 +28,27 @@ describe("buildClinicianReport", () => {
     const report = buildClinicianReport({
       profile: data.profile,
       analytics: analyticsOf(data),
-      sourceImports: data.sourceImports
+      sourceImports: data.sourceImports,
+      medications: [{
+        name: "Metformin",
+        activeIngredient: "metformin hydrochloride",
+        dose: 500,
+        unit: "mg",
+        startDate: "2025-12-01"
+      }]
     }, "2026-01-03T00:00:00.000Z");
 
     expect(report).toMatchObject({
       generatedAt: "2026-01-03T00:00:00.000Z",
       patient: { displayName: "Alex" },
       totals: { observations: 1, samples: 0, activities: 0 },
+      medications: [{
+        name: "Metformin",
+        activeIngredient: "metformin hydrochloride",
+        dose: 500,
+        unit: "mg",
+        startDate: "2025-12-01"
+      }],
       flaggedLabs: [{ displayName: "Cholesterol", flag: "high", collectedAt: "2026-01-01T00:00:00.000Z" }],
       sources: [{ fileName: "labs.csv", rowCount: 1 }]
     });

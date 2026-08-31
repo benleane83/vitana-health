@@ -9,8 +9,13 @@ import {
   calendarMonthQuerySchema,
   calendarMonthResponseSchema,
   careItemSchema,
+  createMedicationInputSchema,
   healthDataSummaryResponseSchema,
   healthEventSchema,
+  medicationListQuerySchema,
+  medicationSchema,
+  observationGroupListQuerySchema,
+  paginatedObservationGroupsResponseSchema,
   personalReferenceRangeInputSchema
 } from "../apiContract.js";
 
@@ -19,6 +24,33 @@ import {
  * under the hood, so an empty object satisfied every one of them and drift went unnoticed.
  */
 describe("response contracts", () => {
+  it("validates panel list filters and responses", () => {
+    expect(observationGroupListQuerySchema.parse({
+      kinds: ["lab_panel", "custom"],
+      dateFrom: "2026-08-01",
+      dateTo: "2026-08-31"
+    })).toMatchObject({ limit: 50, offset: 0 });
+    expect(observationGroupListQuerySchema.parse({ kinds: "lab_panel,custom" }).kinds)
+      .toEqual(["lab_panel", "custom"]);
+    expect(observationGroupListQuerySchema.safeParse({
+      dateFrom: "2026-08-31",
+      dateTo: "2026-08-01"
+    }).success).toBe(false);
+    expect(paginatedObservationGroupsResponseSchema.safeParse({
+      items: [{
+        id: "group-1",
+        kind: "lab_panel",
+        label: "Blood panel",
+        date: "2026-08-12T08:00:00.000Z",
+        measurementCount: 4
+      }],
+      total: 1,
+      offset: 0,
+      limit: 50,
+      hasMore: false
+    }).success).toBe(true);
+  });
+
   it("validates tri-state optimal reference-range inputs", () => {
     for (const input of [
       { low: 4, high: 6, unit: "mmol/L" },
@@ -148,6 +180,57 @@ describe("response contracts", () => {
       priority: "normal",
       status: "open"
     }).success).toBe(false);
+  });
+
+  it("keeps removed medication fields out of records, mutations, and list queries", () => {
+    const medication = {
+      id: "medication-1",
+      name: "Metformin",
+      activeIngredient: "Metformin hydrochloride",
+      dose: 500,
+      unit: "mg",
+      startDate: "2026-01-10",
+      createdAt: "2026-01-10T08:00:00.000Z",
+      updatedAt: "2026-01-10T08:00:00.000Z"
+    };
+
+    expect(medicationSchema.safeParse(medication).success).toBe(true);
+    expect(createMedicationInputSchema.safeParse({
+      name: medication.name,
+      activeIngredient: medication.activeIngredient,
+      dose: medication.dose,
+      unit: medication.unit
+    }).success).toBe(true);
+    expect(createMedicationInputSchema.safeParse({
+      name: medication.name
+    }).success).toBe(true);
+    expect(createMedicationInputSchema.safeParse({
+      name: medication.name,
+      dose: medication.dose,
+      unit: medication.unit,
+      endDate: "2026-01-09"
+    }).success).toBe(true);
+    expect(createMedicationInputSchema.safeParse({
+      name: medication.name,
+      dose: medication.dose,
+      unit: medication.unit,
+      startDate: "2026-01-10",
+      endDate: "2026-01-09"
+    }).success).toBe(false);
+
+    for (const retiredField of ["route", "schedule", "prescriber", "reason", "status"] as const) {
+      expect(medicationSchema.safeParse({ ...medication, [retiredField]: "removed" }).success).toBe(false);
+      expect(createMedicationInputSchema.safeParse({
+        name: medication.name,
+        dose: medication.dose,
+        unit: medication.unit,
+        startDate: medication.startDate,
+        [retiredField]: "removed"
+      }).success).toBe(false);
+    }
+    expect(medicationListQuerySchema.safeParse({ status: "active" }).success).toBe(true);
+    expect(medicationListQuerySchema.safeParse({ status: "past" }).success).toBe(true);
+    expect(medicationListQuerySchema.safeParse({ status: "future" }).success).toBe(false);
   });
 
   it("ties health event details to the matching kind", () => {

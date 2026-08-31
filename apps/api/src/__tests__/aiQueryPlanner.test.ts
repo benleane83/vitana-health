@@ -67,6 +67,41 @@ describe("AI query planner domain sources", () => {
       filters: { priority: "urgent" }
     }).success).toBe(false);
   });
+
+  it("accepts medication questions with a bounded name or ingredient filter", async () => {
+    callConfiguredModel.mockResolvedValue({
+      ok: true,
+      provider: "ollama",
+      endpoint: "http://localhost",
+      model: "test",
+      timeoutMs: 100,
+      elapsedMs: 2,
+      text: JSON.stringify({
+        source: "medications",
+        intent: "list",
+        metric: null,
+        aggregation: "count",
+        groupBy: null,
+        timeRange: { preset: "all_time" },
+        sort: "desc",
+        limit: 20,
+        chartType: "none",
+        filters: { medication: "metformin" }
+      })
+    });
+
+    const result = await planAiQuery("Which medications contain metformin?");
+
+    expect(result).toMatchObject({
+      ok: true,
+      dsl: {
+        source: "medications",
+        intent: "list",
+        filters: { medication: "metformin" }
+      }
+    });
+    expect(callConfiguredModel.mock.calls[0][0]).toContain('source="medications"');
+  });
 });
 
 describe("AI query planner reliability contract", () => {

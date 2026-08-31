@@ -89,3 +89,9 @@ export const aiCareItemsViewSql = `
   SELECT id, kind, code, title, due_start, priority, status, completed_at, notes
   FROM care_items
 `;
+
+export const aiMedicationsViewSql = `
+  CREATE OR REPLACE VIEW v_ai_medications AS
+  SELECT id, name, active_ingredient, dose, unit, start_date, end_date, notes
+  FROM medications
+`;

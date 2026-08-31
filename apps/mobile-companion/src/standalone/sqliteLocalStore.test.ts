@@ -73,6 +73,79 @@ describe("SQLite local store profile selection", () => {
     expect(runAsync).not.toHaveBeenCalled();
   });
 
+  it("reads one profile-scoped observation group with source metadata", async () => {
+    const persistedProfile = profile("mobile-persisted", "2026-07-20T10:00:00.000Z");
+    const database = {
+      getFirstAsync: vi.fn(async (sql: string) => {
+        if (sql.startsWith("SELECT profile_id FROM datasets")) return { profile_id: persistedProfile.id };
+        if (sql.startsWith("SELECT profile_json FROM profiles")) {
+          return { profile_json: JSON.stringify(persistedProfile) };
+        }
+        if (sql.includes("FROM observation_groups og")) {
+          return {
+            id: "group-1",
+            kind: "manual_panel",
+            label: "Body",
+            sourceId: "source-1",
+            importId: "import-1",
+            startAt: null,
+            endAt: null,
+            collectedAt: "2026-07-20T09:00:00.000Z",
+            metadataJson: null,
+            sourceKind: "manual-entry",
+            sourceLabel: "Manual observations: Body",
+            sourceImportId: "import-1",
+            sourceCreatedAt: "2026-07-20T09:01:00.000Z",
+            sourceImportRecordId: "import-1",
+            importSourceKind: "manual-entry",
+            importFileName: "manual-entry.json",
+            importedAt: "2026-07-20T09:01:00.000Z",
+            parserVersion: "manual-v1",
+            checksum: "checksum",
+            rowCount: 1,
+            importStatus: "processed",
+            diagnosticsJson: "[]"
+          };
+        }
+        return null;
+      }),
+      getAllAsync: vi.fn(async () => [{
+        id: "observation-1",
+        measurementCode: "weight",
+        observedAt: "2026-07-20T09:00:00.000Z",
+        effectiveStart: null,
+        effectiveEnd: null,
+        value: 72.5,
+        unit: "kg",
+        sourceId: "source-1",
+        observationGroupId: "group-1",
+        deviceId: null,
+        note: null,
+        sourceJson: null
+      }]),
+      runAsync: vi.fn()
+    };
+    const repository = new LocalProfileRepository(
+      new SqliteLocalStore(database as never),
+      profile("new-profile", "2026-07-21T10:00:00.000Z")
+    );
+
+    await expect(repository.observationGroup("group-1")).resolves.toMatchObject({
+      id: "group-1",
+      source: {
+        kind: "manual-entry",
+        label: "Manual observations: Body",
+        importFileName: "manual-entry.json"
+      },
+      observations: [expect.objectContaining({ id: "observation-1", displayName: "Weight" })]
+    });
+    expect(database.getFirstAsync).toHaveBeenCalledWith(
+      expect.stringContaining("WHERE og.profile_id = ? AND og.id = ?"),
+      persistedProfile.id,
+      "group-1"
+    );
+  });
+
   it("requires an explicit choice when multiple migrated datasets are unselected", async () => {
     const profiles = [
       profile("profile-a", "2026-07-20T10:00:00.000Z"),

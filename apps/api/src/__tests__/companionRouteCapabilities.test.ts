@@ -74,6 +74,10 @@ describe("companion route capabilities", () => {
     expect(companionCapabilityFor("GET", "/calendar")).toBe("assigned-profile:read");
     expect(companionCapabilityFor("PATCH", "/care/items/care-1")).toBe("care:write");
     expect(companionCapabilityFor("POST", "/care/items/care-1/complete")).toBe("care:write");
+    expect(companionCapabilityFor("GET", "/care/medications")).toBe("care:read");
+    expect(companionCapabilityFor("POST", "/care/medications")).toBe("care:write");
+    expect(companionCapabilityFor("PATCH", "/care/medications/medication-1")).toBe("care:write");
+    expect(companionCapabilityFor("DELETE", "/care/medications/medication-1")).toBe("care:write");
     expect(companionCapabilityFor("POST", "/companion/migrations/session-1/batches")).toBe("standalone:migrate");
     expect(companionCapabilityFor("POST", "/import/health-connect/sessions")).toBe("health-connect:import");
     expect(companionCapabilityFor("POST", "/import/health-connect/sessions/session-1/chunks")).toBe("health-connect:import");

@@ -60,7 +60,8 @@ const collections: readonly ReplicaCollection[] = [
   collection("measurement-aggregate", "measurementAggregates", (value) => value.id),
   collection("activity-session", "activitySessions", (value) => value.id),
   collection("health-event", "healthEvents", (value) => value.id),
-  collection("care-item", "careItems", (value) => value.id)
+  collection("care-item", "careItems", (value) => value.id),
+  collection("medication", "medications", (value) => value.id)
 ];
 
 export function replicaEntities(data: HealthStoreData): ReplicaEntity[] {

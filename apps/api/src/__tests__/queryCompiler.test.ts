@@ -185,6 +185,7 @@ describe("compileQueryDSL — care_items", () => {
       groupBy: "status",
       filters: { priority: "high", completion: "incomplete" }
     });
+
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.sql).toMatch(/FROM v_ai_care_items/i);
@@ -244,6 +245,44 @@ describe("compileQueryDSL — care_items", () => {
 
     const unsupported = compileQueryDSL({ ...baseDsl, source: "care_items", intent: "latest", metric: null });
     expect(unsupported).toMatchObject({ ok: false, error: expect.stringMatching(/supports list, count, and overdue/i) });
+  });
+});
+
+describe("compileQueryDSL — medications", () => {
+  it("compiles a bounded medication listing with parameterized name and ingredient matching", () => {
+    const result = compileQueryDSL({
+      ...baseDsl,
+      source: "medications",
+      intent: "list",
+      metric: null,
+      aggregation: "count",
+      groupBy: null,
+      filters: { medication: "Metformin_%" }
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.sql).toMatch(/FROM v_ai_medications/i);
+    expect(result.sql).toMatch(/active_ingredient/i);
+    expect(result.sql).toMatch(/LIMIT 30/i);
+    expect(result.parameters).toEqual(["%Metformin\\_\\%%", "%Metformin\\_\\%%"]);
+    expect(validateCompiledSql(result.sql)).toEqual({ valid: true, violations: [] });
+  });
+
+  it("does not apply the default time range to undated medications", () => {
+    const result = compileQueryDSL({
+      ...baseDsl,
+      source: "medications",
+      intent: "count",
+      metric: null,
+      aggregation: "count",
+      groupBy: null
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.sql).not.toMatch(/start_date\s*[<>]=/i);
+    expect(result.sql).toMatch(/COUNT\(\*\)/i);
   });
 });
 

@@ -10,22 +10,31 @@ import type {
   CreateHealthEventInput,
   HealthEvent,
   HealthEventListQuery,
+  Medication,
+  MedicationListQuery,
+  CreateMedicationInput,
   MobileMigrationBatch,
   MobileMigrationManifest,
   MobileMigrationReceipt,
   Observation,
+  ObservationGroup,
+  ObservationGroupListItem,
+  ObservationGroupListQuery,
+  PaginatedResult,
   ParsedImport,
   Profile,
   ReplicaIdentity,
   ReplicaPage,
   SourceKind,
+  SourceImport,
+  DataSource,
   HealthDataChartSeries,
   HealthDataChartSeriesOptions,
   UpdateObservationInput
 } from "@vitana/shared";
 
 /** Schema version of the durable database, which holds data only this phone has. */
-export const LOCAL_SCHEMA_VERSION = 7;
+export const LOCAL_SCHEMA_VERSION = 10;
 
 /**
  * Schema version of the disposable replica cache.
@@ -109,6 +118,13 @@ export interface LocalObservationPage {
   total: number;
 }
 
+export interface LocalObservationGroupRecord {
+  group: ObservationGroup;
+  source?: DataSource;
+  sourceImport?: SourceImport;
+  observations: Observation[];
+}
+
 export type LocalCalendarObservation = Pick<Observation, "id" | "measurementCode" | "observedAt" | "value" | "unit"> & {
   sourceLabel?: string;
 };
@@ -135,6 +151,8 @@ export interface LocalStore {
   observationsForBodyTrend(query: BodyTrendQuery): Promise<LocalBodyTrendObservation[]>;
   observationsForCalendar(query: CalendarMonthQuery): Promise<LocalCalendarObservation[]>;
   observationsByCode(measurementCode: string, limit: number, offset: number): Promise<LocalObservationPage>;
+  observationGroup(id: string): Promise<LocalObservationGroupRecord | undefined>;
+  listObservationGroups(query?: ObservationGroupListQuery): Promise<PaginatedResult<ObservationGroupListItem>>;
   observationChartSeries(
     measurementCode: string,
     aggregation: HealthDataChartSeries["aggregation"],
@@ -151,6 +169,10 @@ export interface LocalStore {
   updateCareItem(id: string, payload: CreateCareItemInput): Promise<CareItem | undefined>;
   completeCareItem(id: string, payload: CompleteCareItemInput): Promise<{ careItem: CareItem; healthEvent?: HealthEvent } | undefined>;
   deleteCareItem(id: string): Promise<CareItem | undefined>;
+  listMedications(query?: MedicationListQuery): Promise<{ items: Medication[]; total: number; offset: number; limit: number; hasMore: boolean }>;
+  createMedication(payload: CreateMedicationInput): Promise<Medication>;
+  updateMedication(id: string, payload: CreateMedicationInput): Promise<Medication | undefined>;
+  deleteMedication(id: string): Promise<Medication | undefined>;
   reset(): Promise<void>;
   close(): Promise<void>;
   replicaMetadata(identity: ReplicaIdentity): Promise<LocalReplicaMetadata | undefined>;

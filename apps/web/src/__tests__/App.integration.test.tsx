@@ -33,6 +33,7 @@ function makeEmptyAnalytics() {
     latestMetrics: [],
     trendCards: [],
     labAlerts: [],
+    rangeAlerts: [],
     evidenceDigest: ["Imported 0 source file(s), 0 observations, and 0 tracker samples."]
   };
 }
@@ -1354,6 +1355,55 @@ describe("App — measurement detail", () => {
     fireEvent.click(screen.getByRole("option", { name: "Use a custom measurement" }));
     fireEvent.change(screen.getByRole("textbox", { name: /custom measurement name for row 1/i }), { target: { value: "Scan score" } });
     expect(screen.queryByRole("textbox", { name: /measurement code/i })).not.toBeInTheDocument();
+  });
+
+  it("returns a panel detail to the already-loaded Panels page", async () => {
+    globalThis.history.replaceState({}, "", "/track/panels");
+    global.fetch = mockFetch({
+      "/api/store": { ...makeEmptyStore(), measurementTypes: defaultMeasurementTypes },
+      "/api/analytics": makeEmptyAnalytics(),
+      "/api/profiles": { profiles: [], activeProfileId: "self" },
+      "/api/observation-groups?": {
+        items: [{
+          id: "panel-1",
+          kind: "lab_panel",
+          label: "Annual blood tests",
+          date: "2026-08-20T09:00:00.000Z",
+          measurementCount: 1
+        }],
+        total: 1,
+        limit: 50,
+        offset: 0,
+        hasMore: false
+      },
+      "/api/observation-groups/panel-1": {
+        id: "panel-1",
+        kind: "lab_panel",
+        label: "Annual blood tests",
+        collectedAt: "2026-08-20T09:00:00.000Z",
+        source: { kind: "blood-test-csv", label: "Lab CSV" },
+        editable: false,
+        readOnlyReason: "Imported groups are read-only.",
+        observations: []
+      }
+    });
+
+    render(<App />);
+    const panelRow = await screen.findByRole("button", { name: "Open Annual blood tests" });
+    const listRequestCount = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.filter(([url]) =>
+      String(url).includes("/api/observation-groups?")
+    ).length;
+    fireEvent.click(panelRow);
+    expect(globalThis.location.pathname).toBe("/track/groups/panel-1");
+
+    fireEvent.click(await screen.findByRole("button", { name: /back to panels/i }));
+
+    await waitFor(() => expect(globalThis.location.pathname).toBe("/track/panels"));
+    expect(screen.getByRole("tab", { name: "Panels" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("button", { name: "Open Annual blood tests" })).toBeInTheDocument();
+    expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls.filter(([url]) =>
+      String(url).includes("/api/observation-groups?")
+    )).toHaveLength(listRequestCount);
   });
 
   it("explains why an imported recorded group is read-only", async () => {

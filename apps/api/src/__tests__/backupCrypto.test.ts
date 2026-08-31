@@ -53,6 +53,7 @@ function createTestStoreData(profileId = "test-user", displayName = "Test User")
     activitySessions: [],
     healthEvents: [],
     careItems: [],
+    medications: [],
     insights: [],
     auditEvents: []
   };

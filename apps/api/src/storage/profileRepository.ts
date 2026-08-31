@@ -15,10 +15,12 @@ import type {
   CompleteCareItemResponse,
   CreateCareItemInput,
   CreateHealthEventInput,
+  CreateMedicationInput,
   DataSource,
   DeleteCareItemResponse,
   DeleteHealthEventResponse,
   DeleteObservationResponse,
+  DeleteMedicationResponse,
   DeleteObservationsByTypeResponse,
   HealthDataChartSeries,
   HealthDataChartSeriesOptions,
@@ -27,6 +29,10 @@ import type {
   HealthEventListQuery,
   HealthEventMutationResponse,
   HealthStoreData,
+  Medication,
+  MedicationListQuery,
+  ObservationGroupListQuery,
+  MedicationMutationResponse,
   ImportCategoryOutcome,
   JournalPage,
   JournalQuery,
@@ -34,6 +40,7 @@ import type {
   MeasurementAggregate,
   MeasurementPinState,
   ObservationGroupDetail,
+  ObservationGroupListItem,
   MobileMigrationBatch,
   MobileMigrationBatchAcknowledgement,
   MobileMigrationManifest,
@@ -52,6 +59,7 @@ import type {
   SourceImport,
   UpdateCareItemInput,
   UpdateHealthEventInput,
+  UpdateMedicationInput,
   UpdateObservationInput,
   UpdateObservationGroupInput,
   UpdateObservationResponse
@@ -96,6 +104,7 @@ export interface InsightReviewContext {
     overdue: number;
     highPriority: number;
   };
+  medications?: Array<Pick<Medication, "name" | "activeIngredient" | "dose" | "unit" | "startDate" | "endDate">>;
 }
 
 export interface ProfileImport {
@@ -189,6 +198,7 @@ export const profileExportCollections = [
   "insights",
   "measurementAggregates",
   "measurementTypes",
+  "medications",
   "observationGroups",
   "observations",
   "personalReferenceRanges",
@@ -260,8 +270,13 @@ export interface ProfileRepository {
   updateCareItem(id: string, input: UpdateCareItemInput): Promise<CareItemMutationResponse | undefined>;
   completeCareItem(id: string, input: CompleteCareItemInput): Promise<CompleteCareItemResponse | undefined>;
   deleteCareItem(id: string): Promise<DeleteCareItemResponse | undefined>;
+  listMedications(query: MedicationListQuery): Promise<PaginatedResult<Medication>>;
+  createMedication(input: CreateMedicationInput): Promise<MedicationMutationResponse>;
+  updateMedication(id: string, input: UpdateMedicationInput): Promise<MedicationMutationResponse | undefined>;
+  deleteMedication(id: string): Promise<DeleteMedicationResponse | undefined>;
   updateObservation(id: string, input: UpdateObservationInput): Promise<UpdateObservationResponse | undefined>;
   getObservationGroup(id: string): Promise<ObservationGroupDetail | undefined>;
+  listObservationGroups(query: ObservationGroupListQuery): Promise<PaginatedResult<ObservationGroupListItem>>;
   updateObservationGroup(id: string, input: UpdateObservationGroupInput): Promise<ObservationGroupDetail | undefined>;
   deleteObservation(id: string): Promise<DeleteObservationResponse | undefined>;
   deleteObservationsByMeasurementCode(measurementCode: string): Promise<DeleteObservationsByTypeResponse>;

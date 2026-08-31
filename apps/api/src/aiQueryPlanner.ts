@@ -31,7 +31,7 @@ export type TimeRange = z.infer<typeof TimeRangeSchema>;
 export const QueryFiltersSchema = aiQueryContextFiltersSchema;
 
 export const QueryDSLSchema = z.object({
-  source: z.enum(["metrics", "activities", "health_events", "care_items"]).optional(),
+  source: z.enum(["metrics", "activities", "health_events", "care_items", "medications"]).optional(),
   intent: z.enum(["timeseries", "aggregation", "top_n", "latest", "list_activities", "list", "count", "overdue"]),
   metric: z.string().nullable(),
   aggregation: z.enum(["avg", "max", "min", "sum", "count", "latest"]),
@@ -113,6 +113,14 @@ export function validateQueryDslSemantics(dsl: QueryDSL): QueryDslSemanticValida
     if (dsl.groupBy && !["kind", "status", "priority", "due_bucket"].includes(dsl.groupBy)) {
       issues.push(`Group "${dsl.groupBy}" is not supported for care items.`);
     }
+  }
+
+  if (source === "medications") {
+    if (!["list", "count", "latest"].includes(dsl.intent)) {
+      issues.push(`Intent "${dsl.intent}" is not supported for medications.`);
+    }
+    if (dsl.metric !== null) issues.push("Medication queries require metric=null.");
+    if (dsl.groupBy !== null) issues.push("Medication queries require groupBy=null.");
   }
 
   if (dsl.intent === "timeseries" && !["day", "week"].includes(dsl.groupBy ?? "")) {
@@ -231,7 +239,7 @@ Return ONLY a valid JSON object matching the schema below. No prose, no code blo
 
 Schema:
 {
-  "source": one of "metrics" | "activities" | "health_events" | "care_items" (omit for existing metric/activity questions),
+  "source": one of "metrics" | "activities" | "health_events" | "care_items" | "medications" (omit for existing metric/activity questions),
   "intent": one of "timeseries" | "aggregation" | "top_n" | "latest" | "list_activities" | "list" | "count" | "overdue",
   "metric": measurement code string for metrics, otherwise null,
   "aggregation": one of "avg" | "max" | "min" | "sum" | "count" | "latest",
@@ -242,7 +250,7 @@ Schema:
   "sort": "asc" or "desc",
   "limit": integer 1-200,
   "chartType": "line" | "bar" | "none" or null,
-  "filters": optional object with "kind", "status", "source", "provider", "priority", "code", "completion", or "dueWithinRange"
+  "filters": optional object with "kind", "status", "source", "provider", "priority", "code", "medication", "completion", or "dueWithinRange"
 }
 
 Allowed metric codes: ${ALLOWED_METRICS}
@@ -255,8 +263,10 @@ Rules:
 - "list_activities" intent: metric=null, aggregation="count"
 - Health event questions: source="health_events"; use list, count, latest, or timeseries (day/week)
 - Care item questions: source="care_items"; use list, count, or overdue; group counts by status, priority, kind, or due_bucket
+- Medication questions: source="medications"; use list, count, or latest; set filters.medication to match a medication name or active ingredient when one is named
 - For health events, filters support kind, status, source, and provider (contains)
 - For care items, filters support kind, code, status, priority, and completion
+- For medications, filters support medication (contains); medication lists are not limited by the requested time range
 - Use timeRange as the occurred range for health events
 - For a requested care-item due window, set filters.dueWithinRange=true and use timeRange as the due range; otherwise omit it
 - Unsupported cross-source comparisons are not allowed

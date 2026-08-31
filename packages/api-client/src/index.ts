@@ -17,8 +17,10 @@ import {
   completeCareItemResponseSchema,
   createCareItemInputSchema,
   createHealthEventInputSchema,
+  createMedicationInputSchema,
   deleteCareItemResponseSchema,
   deleteHealthEventResponseSchema,
+  deleteMedicationResponseSchema,
   deleteObservationResponseSchema,
   desktopUpdateStateSchema,
   entitlementResponseSchema,
@@ -42,8 +44,13 @@ import {
   mobileMigrationStartResponseSchema,
   measurementPinStateResponseSchema,
   observationGroupDetailResponseSchema,
+  observationGroupListQuerySchema,
+  paginatedObservationGroupsResponseSchema,
   paginatedCareItemsResponseSchema,
   paginatedHealthEventsResponseSchema,
+  paginatedMedicationsResponseSchema,
+  medicationListQuerySchema,
+  medicationMutationResponseSchema,
   personalReferenceRangeInputSchema,
   profilePhotoDeleteResponseSchema,
   profilePhotoResponseSchema,
@@ -66,7 +73,10 @@ import type {
   CompleteCareItemInput,
   CreateCareItemInput,
   CreateHealthEventInput,
+  CreateMedicationInput,
   HealthEventListQuery,
+  MedicationListQuery,
+  ObservationGroupListQuery,
   HealthConnectImportPayload,
   GooglePlayEntitlementClaim,
   JournalQueryInput,
@@ -224,6 +234,14 @@ export function createApiClient(transport: ApiTransport) {
     },
     observationGroup: (id: string, signal?: AbortSignal) =>
       request(observationGroupDetailResponseSchema, `/api/observation-groups/${encodeURIComponent(id)}`, { signal }),
+    observationGroups: (query?: ObservationGroupListQuery, signal?: AbortSignal) => {
+      const validated = observationGroupListQuerySchema.parse(query ?? {});
+      return request(
+        paginatedObservationGroupsResponseSchema,
+        `/api/observation-groups${careQuery(validated, query)}`,
+        { signal }
+      );
+    },
     updateObservationGroup: (id: string, input: UpdateObservationGroupInput) =>
       request(observationGroupDetailResponseSchema, `/api/observation-groups/${encodeURIComponent(id)}`, {
         method: "PATCH",
@@ -346,7 +364,25 @@ export function createApiClient(transport: ApiTransport) {
     completeCareItem: (id: string, payload: CompleteCareItemInput) =>
       request(completeCareItemResponseSchema, `/api/care/items/${encodeURIComponent(id)}/complete`, { method: "POST", body: completeCareItemInputSchema.parse(payload) }),
     deleteCareItem: (id: string) =>
-      request(deleteCareItemResponseSchema, `/api/care/items/${encodeURIComponent(id)}`, { method: "DELETE" })
+      request(deleteCareItemResponseSchema, `/api/care/items/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    listMedications: (query: MedicationListQuery = {}, signal?: AbortSignal) =>
+      request(
+        paginatedMedicationsResponseSchema,
+        `/api/care/medications${careQuery(medicationListQuerySchema.parse(query), query)}`,
+        { signal }
+      ),
+    createMedication: (payload: CreateMedicationInput) =>
+      request(medicationMutationResponseSchema, "/api/care/medications", {
+        method: "POST",
+        body: createMedicationInputSchema.parse(payload)
+      }),
+    updateMedication: (id: string, payload: CreateMedicationInput) =>
+      request(medicationMutationResponseSchema, `/api/care/medications/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: createMedicationInputSchema.parse(payload)
+      }),
+    deleteMedication: (id: string) =>
+      request(deleteMedicationResponseSchema, `/api/care/medications/${encodeURIComponent(id)}`, { method: "DELETE" })
   };
 }
 

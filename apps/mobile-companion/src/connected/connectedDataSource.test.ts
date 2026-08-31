@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
     analytics: vi.fn(),
     summary: vi.fn(),
     healthDataDetail: vi.fn(),
+    observationGroup: vi.fn(),
     healthDataChartSeries: vi.fn(),
     calendarMonth: vi.fn(),
     journal: vi.fn(),
@@ -53,6 +54,7 @@ vi.mock("./connectedRepository", () => ({
     analytics = mocks.cached.analytics;
     summary = mocks.cached.summary;
     healthDataDetail = mocks.cached.healthDataDetail;
+    observationGroup = mocks.cached.observationGroup;
     healthDataChartSeries = mocks.cached.healthDataChartSeries;
     calendarMonth = mocks.cached.calendarMonth;
     journal = mocks.cached.journal;
@@ -142,10 +144,12 @@ describe("connected data source", () => {
 
   it("uses replica reads immediately and keeps Connected mutations live", async () => {
     mocks.cached.summary.mockResolvedValue({ categories: [] });
+    mocks.cached.observationGroup.mockResolvedValue({ id: "group-1", observations: [] });
     mocks.live.updateObservation.mockResolvedValue({ updatedCount: 1 });
     const source = createConnectedDataSource(connection);
 
     const summary = await source.summary();
+    const group = await source.observationGroup("group-1");
     expect(summary).toEqual({ categories: [] });
     await source.updateObservation("observation-1", {
       measurementCode: "weight",
@@ -155,11 +159,20 @@ describe("connected data source", () => {
     });
 
     expect(mocks.cached.summary).toHaveBeenCalledOnce();
+    expect(group).toMatchObject({ id: "group-1" });
+    expect(mocks.cached.observationGroup).toHaveBeenCalledWith("group-1");
     expect(mocks.live.summary).not.toHaveBeenCalled();
     expect(mocks.live.updateObservation).toHaveBeenCalledOnce();
     expect(mocks.synchronize).toHaveBeenCalledOnce();
     expect(mocks.createCompanionApi).toHaveBeenCalledWith(connection, 60_000);
     expect(source.connectionError(summary)).toBeUndefined();
+  });
+
+  it("reports a missing cached observation group explicitly", async () => {
+    mocks.cached.observationGroup.mockResolvedValue(undefined);
+    const source = createConnectedDataSource(connection);
+
+    await expect(source.observationGroup("missing")).rejects.toThrow("Observation group not found.");
   });
 
   it("writes personal reference ranges live and refreshes the replica", async () => {

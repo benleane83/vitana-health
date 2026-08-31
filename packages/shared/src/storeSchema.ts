@@ -12,7 +12,7 @@ import type { HealthStoreData, InsightModel } from "./types.js";
  * layout alone. Confusing them breaks backup/restore, which reads and writes this format and has
  * no knowledge of the storage engine that produced it.
  */
-export const EXPORT_FORMAT_VERSION = 13 as const;
+export const EXPORT_FORMAT_VERSION = 15 as const;
 
 export const sourceKindSchema = z.enum([
   "health-connect", "manual-entry", "blood-test-csv", "observation-csv", "structured-upload",
@@ -165,9 +165,6 @@ export const healthEventObjectSchema = z.object({
     vaccine: z.string(), targetDisease: z.string().optional(), doseNumber: z.number().int().positive().optional(),
     series: z.string().optional(), manufacturer: z.string().optional(), lotNumber: z.string().optional(),
     expiresAt: z.string().optional(), route: z.string().optional(), site: z.string().optional(), reaction: z.string().optional()
-  }).strict().optional(),
-  medicationAdministration: z.object({
-    medication: z.string(), activeIngredient: z.string().optional(), dose: z.number(), unit: z.string(), route: z.string().optional()
   }).strict().optional()
 }).strict();
 
@@ -175,8 +172,22 @@ export const persistedHealthEventSchema = healthEventObjectSchema.superRefine((v
   if (value.immunization && value.kind !== "immunization") {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["immunization"], message: "Immunization details require an immunization event." });
   }
-  if (value.medicationAdministration && value.kind !== "medication") {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["medicationAdministration"], message: "Medication details require a medication event." });
+});
+
+export const persistedMedicationSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  activeIngredient: z.string().optional(),
+  dose: z.number().finite().positive().optional(),
+  unit: z.string().optional(),
+  startDate: z.string().date().optional(),
+  endDate: z.string().date().optional(),
+  notes: z.string().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string()
+}).strict().superRefine((value, context) => {
+  if (value.startDate && value.endDate && value.endDate < value.startDate) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["endDate"], message: "End date must be on or after start date." });
   }
 });
 
@@ -211,10 +222,11 @@ const storeFields = {
   activitySessions: z.array(activitySessionSchema),
   healthEvents: z.array(persistedHealthEventSchema).default([]),
   careItems: z.array(persistedCareItemSchema).default([]),
+  medications: z.array(persistedMedicationSchema).default([]),
   insights: z.array(insightSchema),
   auditEvents: z.array(z.object({
     id: z.string(), createdAt: z.string(),
-    eventType: z.enum(["store-created", "profile-updated", "migration-applied", "import-processed", "insight-generated", "export-created", "observation-updated", "observation-group-updated", "observation-deleted", "observation-type-deleted", "daily-step-aggregates-deleted", "step-samples-deleted", "health-event-created", "health-event-updated", "health-event-deleted", "care-item-created", "care-item-updated", "care-item-completed", "care-item-cancelled", "care-item-deleted", "personal-reference-range-set", "personal-reference-range-removed", "measurement-pinned", "measurement-unpinned", "profile-photo-replaced", "profile-photo-deleted"]),
+    eventType: z.enum(["store-created", "profile-updated", "migration-applied", "import-processed", "insight-generated", "export-created", "observation-updated", "observation-group-updated", "observation-deleted", "observation-type-deleted", "daily-step-aggregates-deleted", "step-samples-deleted", "health-event-created", "health-event-updated", "health-event-deleted", "care-item-created", "care-item-updated", "care-item-completed", "care-item-cancelled", "care-item-deleted", "medication-created", "medication-updated", "medication-deleted", "personal-reference-range-set", "personal-reference-range-removed", "measurement-pinned", "measurement-unpinned", "profile-photo-replaced", "profile-photo-deleted"]),
     detail: z.string()
   }).strict())
 };
@@ -288,7 +300,7 @@ function migrateVersionTwelveHealthStore(data: unknown): unknown {
   const store = versionTwelveHealthStoreSchema.parse(data);
   return {
     ...store,
-    schemaVersion: EXPORT_FORMAT_VERSION,
+    schemaVersion: 13,
     careItems: store.careItems.map((item) => ({
       ...item,
       status: item.status === "skipped" ? "cancelled" : item.status
@@ -296,10 +308,36 @@ function migrateVersionTwelveHealthStore(data: unknown): unknown {
   };
 }
 
+const versionThirteenHealthStoreSchema = z.object({
+  schemaVersion: z.literal(13)
+}).passthrough();
+
+function migrateVersionThirteenHealthStore(data: unknown): unknown {
+  const store = versionThirteenHealthStoreSchema.parse(data);
+  const healthEvents = Array.isArray(store.healthEvents)
+    ? store.healthEvents.map((event) => {
+      if (!event || typeof event !== "object" || Array.isArray(event)) return event;
+      const { medicationAdministration: _retiredAdministration, ...currentEvent } = event as Record<string, unknown>;
+      return currentEvent;
+    })
+    : store.healthEvents;
+  return { ...store, schemaVersion: 14, healthEvents, medications: [] };
+}
+
+const versionFourteenHealthStoreSchema = z.object({
+  schemaVersion: z.literal(14)
+}).passthrough();
+
+function migrateVersionFourteenHealthStore(data: unknown): unknown {
+  const store = versionFourteenHealthStoreSchema.parse(data);
+  return { ...store, schemaVersion: EXPORT_FORMAT_VERSION };
+}
+
 /**
  * Reads the current persisted shape plus the three preceding development formats needed by local
  * profiles. Version 9 first migrates Health Events, version 10 migrates Care Item kinds, version
- * 11 adds profile setup state, and version 12 consolidates skipped Care Item statuses.
+ * 11 adds profile setup state, version 12 consolidates skipped Care Item statuses, version 13
+ * removes retired medication administration payloads, and version 14 allows dose and unit to be omitted.
  */
 export function parsePersistedHealthStore(data: unknown): HealthStoreData {
   const version = z.object({ schemaVersion: z.number().int() }).passthrough().parse(data).schemaVersion;
@@ -308,10 +346,16 @@ export function parsePersistedHealthStore(data: unknown): HealthStoreData {
   const versionTwelveData = version === 9 || version === 10 || version === 11
     ? migrateVersionElevenHealthStore(versionElevenData)
     : data;
-  const currentData = version === 9 || version === 10 || version === 11 || version === 12
+  const versionThirteenData = version === 9 || version === 10 || version === 11 || version === 12
     ? migrateVersionTwelveHealthStore(versionTwelveData)
     : data;
-  if (![9, 10, 11, 12, EXPORT_FORMAT_VERSION].includes(version)) {
+  const versionFourteenData = version >= 9 && version <= 13
+    ? migrateVersionThirteenHealthStore(versionThirteenData)
+    : data;
+  const currentData = version >= 9 && version <= 14
+    ? migrateVersionFourteenHealthStore(versionFourteenData)
+    : data;
+  if (![9, 10, 11, 12, 13, 14, EXPORT_FORMAT_VERSION].includes(version)) {
     throw new Error(`Unsupported health store schema version ${version}.`);
   }
   return healthStoreDataSchema.parse(currentData) as HealthStoreData;

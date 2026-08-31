@@ -9,12 +9,19 @@ import {
   mergeHealthDataDetail
 } from "../mobileFeatures.js";
 import { defaultMeasurementTypes } from "../registry.js";
+import type { ProfileDataCategory } from "../profileDataCategories.js";
 import type { HealthDataDetail, HealthDataSummary, HealthDataSummaryTypeRow } from "../types.js";
 
-const row = (code: string, displayName: string, total: number, lastMeasuredAt?: string): HealthDataSummaryTypeRow => ({
+const row = (
+  code: string,
+  displayName: string,
+  total: number,
+  lastMeasuredAt?: string,
+  category: ProfileDataCategory = "body"
+): HealthDataSummaryTypeRow => ({
   code,
   displayName,
-  category: "body",
+  category,
   counts: { observations: total, samples: 0, activities: 0, total },
   lastMeasuredAt
 });
@@ -60,6 +67,34 @@ describe("mobile feature models", () => {
     expect(filterAndSortSummary(summary, "fat", "name").categories[0].rows).toEqual([bodyFat]);
     expect([...summary.categories[0].rows].sort((a, b) => compareSummaryRows(a, b, "count"))).toEqual([bodyFat, weight]);
     expect(summary.categories[0].rows).toEqual([weight, bodyFat]);
+  });
+
+  it("filters summary rows to a requested profile category", () => {
+    const activity = row("steps", "Steps", 3, "2026-02-02", "activity");
+    const body = row("weight", "Weight", 2, "2026-02-01", "body");
+    const summary: HealthDataSummary = {
+      generatedAt: "2026-03-01",
+      totals: { observations: 2, samples: 0, activities: 3, total: 5, types: 2 },
+      categories: [
+        {
+          key: "activity",
+          label: "Activities",
+          counts: { observations: 0, samples: 0, activities: 3, total: 3, types: 1 },
+          rows: [activity]
+        },
+        {
+          key: "body",
+          label: "Body",
+          counts: { observations: 2, samples: 0, activities: 0, total: 2, types: 1 },
+          rows: [body]
+        }
+      ]
+    };
+
+    expect(filterAndSortSummary(summary, "", "recency", "activity").categories).toEqual([
+      expect.objectContaining({ key: "activity", rows: [activity] })
+    ]);
+    expect(summary.categories).toHaveLength(2);
   });
 
   it("pads flat chart domains and includes reference ranges", () => {

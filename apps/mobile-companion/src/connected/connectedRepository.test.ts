@@ -37,13 +37,21 @@ describe("connected replica repository", () => {
         label: "Phone entry",
         createdAt: "2026-07-20T10:00:00.000Z"
       }),
+      upsert("observation-group", "group-1", {
+        id: "group-1",
+        kind: "manual_panel",
+        label: "Weight readings",
+        sourceId: "source-1",
+        collectedAt: "2026-07-25T09:00:00.000Z"
+      }),
       upsert("observation", "observation-1", {
         id: "observation-1",
         measurementCode: "weight",
         observedAt: "2026-07-25T09:00:00.000Z",
         value: 70,
         unit: "kg",
-        sourceId: "source-1"
+        sourceId: "source-1",
+        observationGroupId: "group-1"
       }),
       upsert("observation", "observation-2", {
         id: "observation-2",
@@ -115,6 +123,12 @@ describe("connected replica repository", () => {
       total: 2,
       hasMore: true
     });
+    await expect(repository.observationGroup("group-1")).resolves.toMatchObject({
+      label: "Weight readings",
+      source: { label: "Phone entry" },
+      observations: [expect.objectContaining({ id: "observation-1", displayName: "Weight" })]
+    });
+    await expect(repository.observationGroup("missing")).resolves.toBeUndefined();
 
     const reopened = new ConnectedReplicaRepository(store, identity);
     await expect(reopened.healthDataDetail("weight", { limit: 1 })).resolves.toMatchObject({

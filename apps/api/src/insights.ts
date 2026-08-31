@@ -88,6 +88,17 @@ export function buildInsightEvidence(
         `${boundedText(event.kind)} ${event.count} (latest ${event.latestDate})`).join(", ")}.`);
     }
     evidence.push(`Care plan: ${reviewContext.care.open} open item(s), ${reviewContext.care.overdue} overdue, ${reviewContext.care.highPriority} high priority.`);
+    if (reviewContext.medications?.length) {
+      evidence.push(`Medications: ${reviewContext.medications.map((medication) => {
+        const ingredient = medication.activeIngredient ? ` (${boundedText(medication.activeIngredient)})` : "";
+        const dose = [medication.dose, medication.unit && boundedText(medication.unit, 24)].filter((value) => value !== undefined).join(" ");
+        const dates = [
+          medication.startDate ? `started ${medication.startDate}` : undefined,
+          medication.endDate ? `ended ${medication.endDate}` : undefined
+        ].filter(Boolean).join(", ");
+        return `${boundedText(medication.name)}${ingredient}${dose ? `, ${dose}` : ""}${dates ? `, ${dates}` : ""}`;
+      }).join("; ")}.`);
+    }
   }
 
   evidence.push(...analytics.labAlerts.map((alert) => {
@@ -157,4 +168,3 @@ function withinEvidenceBudget(evidence: string[]): string[] {
 function id(prefix: string): string {
   return `${prefix}_${globalThis.crypto.randomUUID().replaceAll("-", "").slice(0, 18)}`;
 }
-

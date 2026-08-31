@@ -4,6 +4,7 @@ import {
   computeAnalytics,
   analyticsCountsFromStore,
   getPreferredUnit,
+  medicationMatchesStatus,
   resolveReferenceRange,
   toPreferredMeasurementValue,
   type ActivitySession,
@@ -24,8 +25,12 @@ import {
   type HealthStoreData,
   type JournalQueryInput,
   type MeasurementType,
+  type Medication,
+  type MedicationListQuery,
   type Observation,
   type ObservationGroup,
+  type ObservationGroupDetail,
+  type ObservationGroupListQuery,
   type PersonalReferenceRange,
   type PinnedMeasurement,
   type Profile,
@@ -37,6 +42,8 @@ import { chartRangeCutoff, chartSeriesFromPoints } from "../chartSeries";
 import { BODY_TREND_CODES, bodyTrendFromObservations } from "../bodyTrendProjection";
 import { calendarMonthFromEntries } from "../calendarProjection";
 import { journalFromSnapshot } from "../journalProjection";
+import { projectObservationGroup } from "../observationGroupProjection";
+import { paginateObservationGroups } from "../observationGroupList";
 import type { LocalStore, LocalReplicaMetadata, ReplicaEntityFilter } from "../standalone/localStore";
 
 const ACTIVITY_SESSIONS_CODE = "activity_sessions";
@@ -229,6 +236,32 @@ export class ConnectedReplicaRepository {
     };
   }
 
+  async observationGroup(id: string): Promise<ObservationGroupDetail | undefined> {
+    const { data } = await this.readProjection();
+    const group = data.observationGroups.find((entry) => entry.id === id);
+    if (!group) return undefined;
+    const source = data.dataSources.find((entry) => entry.id === group.sourceId);
+    const sourceImport = data.sourceImports.find(
+      (entry) => entry.id === (group.importId ?? source?.importId)
+    );
+    return projectObservationGroup({
+      group,
+      observations: data.observations.filter((entry) => entry.observationGroupId === id),
+      profile: data.profile,
+      measurementTypes: data.measurementTypes,
+      personalReferenceRanges: data.personalReferenceRanges,
+      source,
+      sourceImport
+    });
+  }
+
+  async listObservationGroups(query: ObservationGroupListQuery = {}) {
+    const data = await this.readStore({
+      entityTypes: ["profile", "observation-group", "observation"]
+    });
+    return paginateObservationGroups(data.observationGroups, data.observations, query);
+  }
+
   /**
    * Applies the range cutoff before downsampling. Deriving the series from `healthDataDetail`'s
    * already-downsampled `chartPoints` meant a short range over a long history returned a handful of
@@ -305,6 +338,29 @@ export class ConnectedReplicaRepository {
       .map(enrich);
     const items = matching.slice(offset, offset + limit);
     appendIncluded(items, careItems.map(enrich), query.includeId);
+    return {
+      items,
+      total: matching.length,
+      offset,
+      limit,
+      hasMore: offset + Math.min(limit, Math.max(matching.length - offset, 0)) < matching.length
+    };
+  }
+
+  async listMedications(query: MedicationListQuery = {}) {
+    const { data } = await this.readProjection();
+    const medications = data.medications ?? [];
+    const { limit, offset } = normalizePagination(query);
+    const search = query.search?.trim().toLowerCase();
+    const matching = medications
+      .filter((entry) => !query.startedFrom || Boolean(entry.startDate && entry.startDate >= query.startedFrom))
+      .filter((entry) => !query.startedTo || Boolean(entry.startDate && entry.startDate <= query.startedTo))
+      .filter((entry) => medicationMatchesStatus(entry, query.status))
+      .filter((entry) => !search || [entry.name, entry.activeIngredient]
+        .some((value) => value?.toLowerCase().includes(search)))
+      .sort(compareMedications);
+    const items = matching.slice(offset, offset + limit);
+    appendIncluded(items, medications, query.includeId);
     return {
       items,
       total: matching.length,
@@ -398,10 +454,18 @@ export class ConnectedReplicaRepository {
       activitySessions: values<ActivitySession>("activity-session"),
       healthEvents: values<HealthEvent>("health-event"),
       careItems: values<CareItem>("care-item"),
+      medications: values<Medication>("medication"),
       insights: [],
       auditEvents: []
     };
   }
+
+}
+
+function compareMedications(left: Medication, right: Medication): number {
+  return Number(left.startDate == null) - Number(right.startDate == null)
+    || (right.startDate ?? "").localeCompare(left.startDate ?? "")
+    || left.id.localeCompare(right.id);
 }
 
 function sourceCalendarDate(value: unknown): string | undefined {

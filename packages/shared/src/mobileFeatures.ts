@@ -6,6 +6,7 @@ import type {
   ManualObservationGroupTemplate,
   MeasurementType
 } from "./types.js";
+import type { ProfileDataCategory } from "./profileDataCategories.js";
 
 export type SummarySort = "name" | "count" | "recency";
 
@@ -60,12 +61,14 @@ export function compareSummaryRows(
 export function filterAndSortSummary(
   summary: HealthDataSummary,
   search: string,
-  sort: SummarySort
+  sort: SummarySort,
+  categoryFilter?: ProfileDataCategory
 ): HealthDataSummary {
   const query = search.trim().toLocaleLowerCase();
   return {
     ...summary,
     categories: summary.categories
+      .filter((category) => !categoryFilter || category.key === categoryFilter)
       .map((category) => ({
         ...category,
         rows: category.rows

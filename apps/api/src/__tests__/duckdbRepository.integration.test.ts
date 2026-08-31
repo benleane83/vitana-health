@@ -16,6 +16,7 @@ import {
   computeAnalytics,
   analyticsCountsFromStore,
   defaultMeasurementTypes,
+  localCalendarDate,
   type HealthStoreData
 } from "@vitana/shared";
 import {
@@ -545,7 +546,7 @@ describe("DuckDbRepository fidelity", () => {
     const replacement = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe1]), Buffer.alloc(64 * 1024, 2), Buffer.from([0xff, 0xd9])]);
 
     try {
-      expect(await first.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7]);
+      expect(await first.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
       const created = await first.replaceProfilePhoto("image/jpeg", original);
       expect(created.revision).toBe(createHash("sha256").update(original).digest("hex"));
       expect(await second.getProfilePhoto()).toBeUndefined();
@@ -580,6 +581,8 @@ describe("DuckDbRepository fidelity", () => {
           (0, 'event-completion', 'visit', 'completed', TIMESTAMPTZ '2026-07-20 10:00:00Z', 'manual-entry', 'Clinic', 'Completed visit', NULL);
         INSERT INTO care_items VALUES
           (0, 'care-completed', 'visit', NULL, 'Annual check-up', TIMESTAMPTZ '2026-07-20 09:00:00Z', NULL, 'normal', 'completed', NULL, NULL, 'Keep this note', 'event-completion', TIMESTAMPTZ '2026-07-20 10:00:00Z');
+        INSERT INTO medications VALUES
+          (0, 'medication-active', 'Metformin', 'Metformin hydrochloride', 500, 'mg', DATE '2026-07-01', NULL, 'With food', TIMESTAMPTZ '2026-07-01 08:00:00Z', TIMESTAMPTZ '2026-07-01 08:00:00Z');
       `);
 
       const eventColumns = await querySql(database.connection, "SELECT column_name FROM information_schema.columns WHERE table_name = 'health_events' ORDER BY column_name;");
@@ -595,6 +598,11 @@ describe("DuckDbRepository fidelity", () => {
       ]);
       expect(await querySql(database.connection, "SELECT id, occurred_at FROM v_ai_health_events;")).toHaveLength(1);
       expect(await querySql(database.connection, "SELECT id, due_start FROM v_ai_care_items;")).toHaveLength(1);
+      expect(await querySql(database.connection, "SELECT id, name, active_ingredient FROM v_ai_medications;")).toEqual([{
+        id: "medication-active",
+        name: "Metformin",
+        active_ingredient: "Metformin hydrochloride"
+      }]);
     } finally {
       await closeEncryptedDuckDbDatabase(database);
     }
@@ -2041,7 +2049,7 @@ describe("DuckDbRepository fidelity", () => {
 
     const opened = await DuckDbRepository.open(root, databasePath, key, options);
     try {
-      expect(await opened.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7]);
+      expect(await opened.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
       expect(await opened.dailyMetrics()).toEqual([]);
       expect(await opened.weeklyMetrics()).toEqual([]);
     } finally {
@@ -2062,7 +2070,7 @@ describe("DuckDbRepository fidelity", () => {
         WHERE table_catalog = current_database()
         ORDER BY table_name;`);
       expect(views.map((row) => row.table_name)).toEqual([
-        "v_ai_care_items", "v_ai_health_events", "v_daily_metrics", "v_weekly_metrics"
+        "v_ai_care_items", "v_ai_health_events", "v_ai_medications", "v_daily_metrics", "v_weekly_metrics"
       ]);
 
       const indexes = await querySql(handle.connection,
@@ -2093,9 +2101,190 @@ describe("DuckDbRepository fidelity", () => {
 
     const reopened = await DuckDbRepository.open(root, databasePath, key, options);
     try {
-      expect(await reopened.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7]);
+      expect(await reopened.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
     } finally {
       await reopened.close();
+    }
+  }, 30_000);
+
+  it.skipIf(!httpfsExtensionPath)("preserves medication data while creating the final schema 8 shape", async () => {
+    const databasePath = join(root, "databases", "health-store-medication-migration.duckdb-poc");
+    const options = { httpfsExtensionPath };
+    await createDuckDbSchema(root, databasePath, key, options, 7);
+
+    const legacyHandle = await openEncryptedDuckDbDatabase(root, databasePath, key, options);
+    try {
+      await execSql(legacyHandle.connection, `INSERT INTO medications VALUES (
+        0, 'medication-legacy', 'Metformin', 'Metformin hydrochloride', 500, 'mg',
+        'oral', 'Twice daily', DATE '2026-01-10', NULL, 'active',
+        'Dr Smith', 'Type 2 diabetes', 'With food',
+        TIMESTAMPTZ '2026-01-10T08:00:00.000Z', TIMESTAMPTZ '2026-01-10T08:00:00.000Z'
+      );`);
+    } finally {
+      await closeEncryptedDuckDbDatabase(legacyHandle);
+    }
+
+    const migrated = await DuckDbRepository.open(root, databasePath, key, options);
+    try {
+      expect(await migrated.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+      expect((await migrated.listMedications({ limit: 20 })).items).toEqual([{
+        id: "medication-legacy",
+        name: "Metformin",
+        activeIngredient: "Metformin hydrochloride",
+        dose: 500,
+        unit: "mg",
+        startDate: "2026-01-10",
+        notes: "With food",
+        createdAt: "2026-01-10T08:00:00.000Z",
+        updatedAt: "2026-01-10T08:00:00.000Z"
+      }]);
+    } finally {
+      await migrated.close();
+    }
+
+    const migratedHandle = await openEncryptedDuckDbDatabase(root, databasePath, key, options);
+    try {
+      const columns = await querySql(migratedHandle.connection, `
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name = 'medications'
+        ORDER BY ordinal_position;
+      `);
+      expect(columns.map((row) => row.column_name)).toEqual([
+        "ordinal", "id", "name", "active_ingredient", "dose", "unit",
+        "start_date", "end_date", "notes", "created_at", "updated_at"
+      ]);
+      const administrationTables = await querySql(migratedHandle.connection, `
+        SELECT COUNT(*) AS count FROM information_schema.tables
+        WHERE table_name = 'medication_administrations';
+      `);
+      expect(Number(administrationTables[0]?.count)).toBe(0);
+    } finally {
+      await closeEncryptedDuckDbDatabase(migratedHandle);
+    }
+  }, 30_000);
+
+  it.skipIf(!httpfsExtensionPath)("migrates a schema 7 profile that predates the medications table", async () => {
+    const databasePath = join(root, "databases", "health-store-pre-medications-migration.duckdb-poc");
+    const options = { httpfsExtensionPath };
+    await createDuckDbSchema(root, databasePath, key, options, 7);
+
+    const legacyHandle = await openEncryptedDuckDbDatabase(root, databasePath, key, options);
+    try {
+      await execSql(legacyHandle.connection, "DROP VIEW v_ai_medications; DROP TABLE medications;");
+    } finally {
+      await closeEncryptedDuckDbDatabase(legacyHandle);
+    }
+
+    const migrated = await DuckDbRepository.open(root, databasePath, key, options);
+    try {
+      expect(await migrated.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+      expect((await migrated.listMedications({ limit: 20 })).items).toEqual([]);
+    } finally {
+      await migrated.close();
+    }
+  }, 30_000);
+
+  it.skipIf(!httpfsExtensionPath)("persists a medication without dose, unit, or dates", async () => {
+    const databasePath = join(root, "databases", "health-store-undated-medication.duckdb-poc");
+    const options = { httpfsExtensionPath };
+    const repository = await DuckDbRepository.hydrate(
+      root,
+      databasePath,
+      key,
+      createDuckDbHealthStoreFixture(),
+      options
+    );
+    await repository.createMedication({ name: "Vitamin D" });
+    await repository.close();
+
+    const reopened = await DuckDbRepository.open(root, databasePath, key, options);
+    try {
+      const items = (await reopened.listMedications({ search: "Vitamin D", limit: 20 })).items;
+      expect(items).toEqual([expect.objectContaining({ name: "Vitamin D" })]);
+      expect(items[0]?.dose).toBeUndefined();
+      expect(items[0]?.unit).toBeUndefined();
+      expect(items[0]?.startDate).toBeUndefined();
+      expect(items[0]?.endDate).toBeUndefined();
+    } finally {
+      await reopened.close();
+    }
+  }, 30_000);
+
+  it.skipIf(!httpfsExtensionPath)("filters medications by inferred active and past status", async () => {
+    const databasePath = join(root, "databases", "health-store-medication-status.duckdb-poc");
+    const options = { httpfsExtensionPath };
+    const repository = await DuckDbRepository.hydrate(
+      root,
+      databasePath,
+      key,
+      createDuckDbHealthStoreFixture(),
+      options
+    );
+    const dateFromToday = (days: number) => {
+      const date = new Date();
+      date.setHours(12, 0, 0, 0);
+      date.setDate(date.getDate() + days);
+      return localCalendarDate(date);
+    };
+
+    try {
+      await repository.createMedication({ name: "No dates" });
+      await repository.createMedication({ name: "Current range", startDate: dateFromToday(-1), endDate: dateFromToday(1) });
+      await repository.createMedication({ name: "Expired without start", endDate: dateFromToday(-1) });
+      await repository.createMedication({ name: "Future range", startDate: dateFromToday(1), endDate: dateFromToday(2) });
+
+      const active = await repository.listMedications({ status: "active", limit: 20 });
+      const past = await repository.listMedications({ status: "past", limit: 20 });
+
+      expect(active.items.map((entry) => entry.name).sort()).toEqual(["Current range", "No dates"]);
+      expect(active.total).toBe(2);
+      expect(past.items.map((entry) => entry.name)).toEqual(["Expired without start"]);
+      expect(past.total).toBe(1);
+    } finally {
+      await repository.close();
+    }
+  }, 30_000);
+
+  it.skipIf(!httpfsExtensionPath)("updates and clears an end-date-only medication", async () => {
+    const databasePath = join(root, "databases", "health-store-end-date-only-medication.duckdb-poc");
+    const options = { httpfsExtensionPath };
+    const repository = await DuckDbRepository.hydrate(
+      root,
+      databasePath,
+      key,
+      createDuckDbHealthStoreFixture(),
+      options
+    );
+    try {
+      const created = await repository.createMedication({
+        name: "Vitamin D",
+        dose: 1000,
+        unit: "IU",
+        endDate: "2026-08-29"
+      });
+      await expect(repository.updateMedication(created.medication.id, {
+        name: "Vitamin D",
+        dose: 1000,
+        unit: "IU",
+        startDate: "2026-08-01",
+        endDate: "2026-08-29"
+      })).resolves.toMatchObject({
+        medication: {
+          startDate: "2026-08-01",
+          endDate: "2026-08-29"
+        }
+      });
+      const cleared = await repository.updateMedication(created.medication.id, {
+        name: "Vitamin D",
+        dose: 1000,
+        unit: "IU"
+      });
+      expect(cleared).toBeDefined();
+      if (!cleared) throw new Error("Expected the medication update to succeed.");
+      expect(cleared.medication.startDate).toBeUndefined();
+      expect(cleared.medication.endDate).toBeUndefined();
+    } finally {
+      await repository.close();
     }
   }, 30_000);
 
@@ -2129,7 +2318,7 @@ describe("DuckDbRepository fidelity", () => {
 
     const migrated = await DuckDbRepository.open(root, databasePath, key, options);
     try {
-      expect(await migrated.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7]);
+      expect(await migrated.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
       expect((await migrated.listHealthEvents({ limit: 100 })).items).toEqual(expect.arrayContaining([
         expect.objectContaining({ id: "legacy-medication", kind: "medication" }),
         expect.objectContaining({ id: "legacy-allergy", kind: "allergy-intolerance" })
@@ -2176,7 +2365,7 @@ describe("DuckDbRepository fidelity", () => {
 
     const migrated = await DuckDbRepository.open(root, databasePath, key, options);
     try {
-      expect(await migrated.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7]);
+      expect(await migrated.schemaVersions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
       await expect(migrated.startHealthConnectSyncSession("pairing-1", {
         sessionKey: "device-1:2026-07-01:2026-07-02",
         deviceLabel: "Test Phone",
@@ -2211,7 +2400,7 @@ describe("DuckDbRepository fidelity", () => {
     const futurePath = join(root, "databases", "health-store-schema-future.duckdb-poc");
     await createDuckDbSchema(root, futurePath, key, options, 1);
     const futureHandle = await openEncryptedDuckDbDatabase(root, futurePath, key, options);
-    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (2, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (3, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (4, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (5, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (6, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (7, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (8, CURRENT_TIMESTAMP, 'future');");
+    await execSql(futureHandle.connection, "INSERT INTO poc_metadata VALUES (2, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (3, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (4, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (5, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (6, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (7, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (8, CURRENT_TIMESTAMP, 'skipped'); INSERT INTO poc_metadata VALUES (9, CURRENT_TIMESTAMP, 'future');");
     await execSql(futureHandle.connection, "CHECKPOINT;");
     await closeEncryptedDuckDbDatabase(futureHandle);
     const futureHash = hashFile(futurePath);
