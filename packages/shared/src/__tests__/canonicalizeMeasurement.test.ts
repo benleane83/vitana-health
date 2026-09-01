@@ -19,6 +19,21 @@ describe("canonicalizeMeasurement", () => {
     });
   });
 
+  it("uses analyte-specific mg/dL to mmol/L conversion factors", () => {
+    expect(canonicalizeMeasurement("calcium", 9.5, "mg/dL")).toEqual({
+      rejected: false,
+      value: 2.375,
+      unit: "mmol/L",
+      sourceUnit: "mg/dL"
+    });
+    expect(canonicalizeMeasurement("sodium", 322, "mg/dL")).toEqual({
+      rejected: true,
+      reason: "unconvertible-unit",
+      code: "sodium",
+      unit: "mg/dL"
+    });
+  });
+
   it("passes custom entry codes through verbatim because they have no canonical unit", () => {
     expect(canonicalizeMeasurement("manual_grip_comfort", 7, "score")).toEqual({
       rejected: false,

@@ -79,6 +79,7 @@ describe("local profile repository", () => {
       value: 72.5,
       sourceKind: "manual-entry"
     });
+
     const groupId = [...state.observationGroups.values()][0]!.id;
     await expect(first.observationGroup(groupId)).resolves.toMatchObject({
       label: "Body",
@@ -100,6 +101,27 @@ describe("local profile repository", () => {
     await reopened.reset();
     const afterReset = new LocalProfileRepository(new MemoryLocalStore(state), profile("profile-a"));
     expect((await afterReset.bootstrap()).counts.observations).toBe(0);
+  });
+
+  it("uses the selected profile's subject kind for detail reference ranges", async () => {
+    const state = createMemoryLocalStoreState();
+    const repository = new LocalProfileRepository(new MemoryLocalStore(state), profile("profile-a"));
+    const childProfile: Profile = {
+      ...profile("profile-b"),
+      subjectKind: "child"
+    };
+    await repository.createFreshDataset(childProfile);
+    await repository.importManualObservations({
+      ...reading,
+      observations: [{
+        measurementCode: "glucose",
+        measurementName: "Glucose",
+        value: 5,
+        unit: "mmol/L"
+      }]
+    });
+
+    expect((await repository.healthDataDetail("glucose")).referenceRange).toEqual({ source: "none" });
   });
 
   it("does not expose a measurement group from another standalone profile", async () => {

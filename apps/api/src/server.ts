@@ -16,6 +16,7 @@ import { log } from "./logger.js";
 import type { DesktopRuntimeSettingsResponse, DesktopRuntimeSettingsUpdate, DesktopUpdateState } from "@vitana/shared";
 
 export { configureAiCredentialProtector } from "./aiSettings.js";
+export { configureOwnerTokenProtector } from "./security.js";
 
 loadEnvironmentFiles();
 

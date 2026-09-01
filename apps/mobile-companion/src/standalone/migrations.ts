@@ -322,6 +322,38 @@ export const migrations: readonly Migration[] = [
   CREATE INDEX medications_filter_idx
     ON medications(profile_id, start_date DESC, id);
   `
+  },
+  {
+  version: 11,
+  sql: `
+  ALTER TABLE profiles ADD COLUMN display_name TEXT NOT NULL DEFAULT '';
+  ALTER TABLE profiles ADD COLUMN setup_status TEXT NOT NULL DEFAULT 'complete';
+  ALTER TABLE profiles ADD COLUMN subject_kind TEXT NOT NULL DEFAULT 'adult';
+  ALTER TABLE profiles ADD COLUMN birth_date TEXT;
+  ALTER TABLE profiles ADD COLUMN sex TEXT;
+  ALTER TABLE profiles ADD COLUMN height_cm REAL;
+  ALTER TABLE profiles ADD COLUMN blood_type TEXT;
+  ALTER TABLE profiles ADD COLUMN goal_summary TEXT;
+  ALTER TABLE profiles ADD COLUMN cloud_ai_consent_json TEXT;
+  ALTER TABLE profiles ADD COLUMN pet_json TEXT;
+  ALTER TABLE profiles ADD COLUMN units TEXT NOT NULL DEFAULT 'metric';
+
+  UPDATE profiles
+  SET
+    display_name = COALESCE(json_extract(profile_json, '$.displayName'), ''),
+    setup_status = COALESCE(json_extract(profile_json, '$.setupStatus'), 'complete'),
+    subject_kind = COALESCE(json_extract(profile_json, '$.subjectKind'), 'adult'),
+    birth_date = json_extract(profile_json, '$.birthDate'),
+    sex = json_extract(profile_json, '$.sex'),
+    height_cm = json_extract(profile_json, '$.heightCm'),
+    blood_type = json_extract(profile_json, '$.bloodType'),
+    goal_summary = json_extract(profile_json, '$.goalSummary'),
+    cloud_ai_consent_json = json_extract(profile_json, '$.cloudAiConsent'),
+    pet_json = json_extract(profile_json, '$.pet'),
+    units = COALESCE(json_extract(profile_json, '$.units'), 'metric');
+
+  CREATE INDEX profiles_subject_kind_idx ON profiles(subject_kind);
+  `
   }
 ];
 

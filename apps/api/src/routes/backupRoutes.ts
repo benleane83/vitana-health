@@ -99,7 +99,7 @@ export function makeBackupRoutes(
       res.once("close", () => {
         if (!res.writableFinished) abortController.abort();
       });
-      await estimateBackupV1PlaintextSize(stores, { scope, createdAt, signal: abortController.signal });
+      await estimateBackupV1PlaintextSize(stores, { signal: abortController.signal });
       const encrypted = await createBackupV1Stream(stores, {
         passphrase,
         scope,

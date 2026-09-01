@@ -17,7 +17,7 @@ beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), "vitana-duckdb-runtime-test-"));
   duckdbRoot = join(tempDir, "duckdb-storage");
   process.env.VITANA_DATA_DIR = tempDir;
-  process.env.VITANA_SECRET = "activation-test-secret-123456789";
+  process.env.VITANA_SECRET = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_aBcDe";
 });
 
 afterEach(() => {

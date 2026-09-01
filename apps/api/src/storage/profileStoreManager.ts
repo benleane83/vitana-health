@@ -722,13 +722,20 @@ async function removeDuckDbProfileFiles(databasePath: string): Promise<void> {
 
 export function resolveStoreSecurityConfig(): StoreSecurityConfig {
   const configuredSecret = process.env.VITANA_SECRET;
-  if (configuredSecret && configuredSecret.length >= 16) {
+  if (configuredSecret && isSecureStoreSecret(configuredSecret)) {
     return { passphrase: configuredSecret, securityMode: "env-secret" };
+  }
+  if (configuredSecret) {
+    throw new Error("VITANA_SECRET must be a high-entropy 32-byte base64url value. Generate one with crypto.randomBytes(32).toString('base64url').");
   }
   if (process.env.NODE_ENV === "production") {
     throw new Error("Production health storage requires VITANA_SECRET or an OS-secure key injected by the desktop host.");
   }
   return { passphrase: getOrCreateLocalKey(), securityMode: "generated-local-key" };
+}
+
+function isSecureStoreSecret(value: string): boolean {
+  return /^[A-Za-z0-9_-]{43}$/.test(value) && new Set(value).size >= 16;
 }
 
 function getOrCreateLocalKey(): string {

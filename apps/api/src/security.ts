@@ -1,8 +1,13 @@
 import { createHash, randomBytes, X509Certificate } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import selfsigned from "selfsigned";
+
+export interface OwnerTokenProtector {
+  encryptString(value: string): Buffer;
+  decryptString(value: Buffer): string;
+}
 
 export interface RuntimeSecurity {
   ownerToken: string;
@@ -13,7 +18,15 @@ export interface RuntimeSecurity {
 }
 
 interface StoredSecurity {
-  ownerToken: string;
+  ownerToken?: string;
+  credentialStorage?: "electron-safe-storage-v1";
+  wrappedOwnerToken?: string;
+}
+
+let ownerTokenProtector: OwnerTokenProtector | undefined;
+
+export function configureOwnerTokenProtector(protector: OwnerTokenProtector | undefined): void {
+  ownerTokenProtector = protector;
 }
 
 export function getLanAddresses(): string[] {
@@ -71,26 +84,67 @@ export function certificatePublicKeyHash(certificatePem: string): string {
 function loadOrCreateOwnerToken(dataDir: string): string {
   const securityPath = path.join(dataDir, "security.json");
   try {
-    return parseOwnerToken(readFileSync(securityPath, "utf8"), securityPath);
+    const stored = parseOwnerToken(readFileSync(securityPath, "utf8"), securityPath);
+    if (stored.wasPlaintext && ownerTokenProtector) {
+      writeOwnerToken(securityPath, stored.ownerToken);
+    }
+    return stored.ownerToken;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
 
   const ownerToken = randomBytes(32).toString("base64url");
-  const content = JSON.stringify({ ownerToken } satisfies StoredSecurity, null, 2);
   try {
-    writeFileSync(securityPath, content, { encoding: "utf8", mode: 0o600, flag: "wx" });
+    writeFileSync(
+      securityPath,
+      JSON.stringify(persistedOwnerToken(ownerToken), null, 2),
+      { encoding: "utf8", mode: 0o600, flag: "wx" }
+    );
     return ownerToken;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-    return parseOwnerToken(readFileSync(securityPath, "utf8"), securityPath);
+    return parseOwnerToken(readFileSync(securityPath, "utf8"), securityPath).ownerToken;
   }
 }
 
-function parseOwnerToken(value: string, securityPath: string): string {
+function parseOwnerToken(value: string, securityPath: string): { ownerToken: string; wasPlaintext: boolean } {
   const stored = JSON.parse(value) as StoredSecurity;
-  if (typeof stored.ownerToken === "string" && stored.ownerToken.length >= 24) return stored.ownerToken;
+  if (typeof stored.ownerToken === "string" && stored.ownerToken.length >= 24) {
+    return { ownerToken: stored.ownerToken, wasPlaintext: true };
+  }
+  if (stored.credentialStorage !== "electron-safe-storage-v1" || typeof stored.wrappedOwnerToken !== "string") {
+    throw new Error(`Invalid security settings at ${securityPath}.`);
+  }
+  if (!ownerTokenProtector) {
+    throw new Error("Owner security settings contain a desktop-protected credential that cannot be opened by this standalone server.");
+  }
+  const ownerToken = ownerTokenProtector.decryptString(Buffer.from(stored.wrappedOwnerToken, "base64"));
+  if (ownerToken.length >= 24) {
+    return { ownerToken, wasPlaintext: false };
+  }
   throw new Error(`Invalid security settings at ${securityPath}.`);
+}
+
+function persistedOwnerToken(ownerToken: string): StoredSecurity {
+  if (!ownerTokenProtector) return { ownerToken };
+  return {
+    credentialStorage: "electron-safe-storage-v1",
+    wrappedOwnerToken: ownerTokenProtector.encryptString(ownerToken).toString("base64")
+  };
+}
+
+function writeOwnerToken(securityPath: string, ownerToken: string): void {
+  const temporaryPath = `${securityPath}.${randomBytes(8).toString("hex")}.tmp`;
+  try {
+    writeFileSync(temporaryPath, JSON.stringify(persistedOwnerToken(ownerToken), null, 2), {
+      encoding: "utf8",
+      mode: 0o600,
+      flag: "wx"
+    });
+    renameSync(temporaryPath, securityPath);
+  } finally {
+    rmSync(temporaryPath, { force: true });
+  }
 }
 
 /** Reads a file, treating "not there" as a value rather than an error. */

@@ -324,8 +324,21 @@ export function createApp(
 
   // Static web serving
   if (options.webRoot && existsSync(options.webRoot)) {
-    app.use(rateLimit(apiRateLimitOptions(120, 60_000)), express.static(options.webRoot));
-    app.get("*", rateLimit(apiRateLimitOptions(120, 60_000)), (_request, response) =>
+    const staticRateLimit = rateLimit(apiRateLimitOptions(120, 60_000));
+    const applyBrowserSecurityHeaders: express.RequestHandler = (_request, response, next) => {
+      response.setHeader(
+        "content-security-policy",
+        "default-src 'self'; img-src 'self' data: blob:; connect-src 'self'; " +
+          "style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'none'"
+      );
+      response.setHeader("x-content-type-options", "nosniff");
+      response.setHeader("referrer-policy", "no-referrer");
+      response.setHeader("x-frame-options", "DENY");
+      next();
+    };
+    app.use(staticRateLimit, applyBrowserSecurityHeaders);
+    app.use(express.static(options.webRoot));
+    app.get("*", (_request, response) =>
       response.sendFile(path.join(options.webRoot!, "index.html"))
     );
   }
