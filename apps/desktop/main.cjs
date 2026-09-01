@@ -213,9 +213,13 @@ async function launch() {
     : path.resolve(__dirname, "build", "duckdb-extensions", "httpfs.duckdb_extension");
 
   const serverPath = require.resolve("@vitana/api");
-  const { configureAiCredentialProtector, startServer } = await import(pathToFileURL(serverPath).href);
+  const { configureAiCredentialProtector, configureOwnerTokenProtector, startServer } = await import(pathToFileURL(serverPath).href);
   diagnostics.info("Embedded API module loaded");
   configureAiCredentialProtector({
+    encryptString: (value) => safeStorage.encryptString(value),
+    decryptString: (value) => safeStorage.decryptString(value)
+  });
+  configureOwnerTokenProtector({
     encryptString: (value) => safeStorage.encryptString(value),
     decryptString: (value) => safeStorage.decryptString(value)
   });

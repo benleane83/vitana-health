@@ -1,13 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { configureRuntimeSecurity } from "../security.js";
+import { configureOwnerTokenProtector, configureRuntimeSecurity } from "../security.js";
 
 const originalEnvironment = { ...process.env };
 const temporaryDirectories: string[] = [];
 
 afterEach(() => {
+  configureOwnerTokenProtector(undefined);
   process.env = { ...originalEnvironment };
   for (const directory of temporaryDirectories.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
@@ -48,5 +49,58 @@ describe("runtime security", () => {
     expect(readFileSync(restarted.tlsCertPath!)).toEqual(certificateBytes);
     expect(readFileSync(restarted.tlsKeyPath!)).toEqual(keyBytes);
     expect(restarted.publicKeyHash).toBe(generated.publicKeyHash);
+  });
+
+  it("wraps a generated owner token with the desktop credential protector", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "vitana-security-test-"));
+    temporaryDirectories.push(dataDir);
+    process.env.VITANA_DATA_DIR = dataDir;
+    delete process.env.VITANA_OWNER_TOKEN;
+    configureOwnerTokenProtector({
+      encryptString: (value) => Buffer.from(`wrapped:${value}`),
+      decryptString: (value) => value.toString("utf8").replace(/^wrapped:/, "")
+    });
+
+    const generated = await configureRuntimeSecurity("127.0.0.1");
+    const persisted = JSON.parse(readFileSync(join(dataDir, "security.json"), "utf8"));
+    expect(persisted).toEqual({
+      credentialStorage: "electron-safe-storage-v1",
+      wrappedOwnerToken: Buffer.from(`wrapped:${generated.ownerToken}`).toString("base64")
+    });
+
+    delete process.env.VITANA_OWNER_TOKEN;
+    expect((await configureRuntimeSecurity("127.0.0.1")).ownerToken).toBe(generated.ownerToken);
+  });
+
+  it("migrates a legacy plaintext owner token when the desktop protector is available", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "vitana-security-test-"));
+    temporaryDirectories.push(dataDir);
+    const legacyOwnerToken = "legacy-owner-token-that-is-long-enough";
+    writeFileSync(join(dataDir, "security.json"), JSON.stringify({ ownerToken: legacyOwnerToken }));
+    process.env.VITANA_DATA_DIR = dataDir;
+    delete process.env.VITANA_OWNER_TOKEN;
+    configureOwnerTokenProtector({
+      encryptString: (value) => Buffer.from(`wrapped:${value}`),
+      decryptString: (value) => value.toString("utf8").replace(/^wrapped:/, "")
+    });
+
+    expect((await configureRuntimeSecurity("127.0.0.1")).ownerToken).toBe(legacyOwnerToken);
+    const persisted = readFileSync(join(dataDir, "security.json"), "utf8");
+    expect(persisted).not.toContain(legacyOwnerToken);
+    expect(JSON.parse(persisted).wrappedOwnerToken).toBeDefined();
+  });
+
+  it("fails closed when a standalone server encounters a desktop-wrapped token", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "vitana-security-test-"));
+    temporaryDirectories.push(dataDir);
+    writeFileSync(join(dataDir, "security.json"), JSON.stringify({
+      credentialStorage: "electron-safe-storage-v1",
+      wrappedOwnerToken: Buffer.from("wrapped:desktop-owner-token-that-is-long-enough").toString("base64")
+    }));
+    process.env.VITANA_DATA_DIR = dataDir;
+    delete process.env.VITANA_OWNER_TOKEN;
+
+    await expect(configureRuntimeSecurity("127.0.0.1"))
+      .rejects.toThrow("desktop-protected credential");
   });
 });

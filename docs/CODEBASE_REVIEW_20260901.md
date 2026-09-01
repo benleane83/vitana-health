@@ -22,6 +22,7 @@ The following findings have been remediated and verified after this review:
 | # | Status | Verification |
 |---|--------|--------------|
 | 1 | **Remediated** | `mg/dL ↔ mmol/L` conversion is now allowlisted by analyte; calcium is converted correctly and unsupported sodium input is rejected. |
+| 2 | **Remediated** | Desktop owner tokens are encrypted with Electron `safeStorage`; plaintext legacy tokens migrate on the next desktop launch and standalone use fails closed against the protected format. |
 | 5 | **Remediated** | `VITANA_SECRET` documentation identifies its role as the health-store master key, and runtime accepts only a high-entropy 32-byte base64url value. |
 | 8 | **Remediated** | Static SPA responses have a CSP and related browser security headers, covered by an API test. |
 | 10 | **Remediated** | Backup preflight uses indexed storage counts rather than serializing all collections twice; the exact streaming cap remains the backstop. |
@@ -56,7 +57,7 @@ Two 2026-08-09 findings are unfixed and are restated here, briefly, rather than 
 | # | Finding | Severity |
 |---|---------|----------|
 | 1 | [Non-glucose analytes are converted with the glucose factor](#f1) | P1 — Remediated |
-| 2 | [The owner token is stored in plaintext, defeating the launch-nonce design](#f2) | P1 |
+| 2 | [The owner token is stored in plaintext, defeating the launch-nonce design](#f2) | P1 — Remediated |
 | 3 | [Windows updates are unsigned and signature verification is disabled](#f3) | P1 |
 | 4 | [`npm run test:core` is no longer green, and is 5.8× slower](#f4) | P1 |
 | 5 | [`.env.example` mislabels the database master key as a "session secret"](#f5) | P2 — Remediated |
@@ -108,7 +109,7 @@ The design mistake is the `return` on line 263. A per-analyte molar-mass table w
 **Resolution:** `mgPerDlFactor` now returns `number | undefined`, explicitly handles glucose, calcium, urea, lipids, and triglycerides, and rejects any unsupported analyte/unit pair. The regression test covers calcium `9.5 mg/dL → 2.375 mmol/L` and rejects sodium `mg/dL`.
 
 <a id="f2"></a>
-## 2. The owner token is stored in plaintext, defeating the launch-nonce design
+## 2. The owner token is stored in plaintext, defeating the launch-nonce design — remediated 2026-09-01
 
 `apps/api/src/security.ts:79-83` mints a 256-bit owner token and writes it as JSON:
 
@@ -132,6 +133,8 @@ That is right, and the launch nonce that follows from it is a good control. But 
 - Wrap the owner token with the same `AiCredentialProtector` seam that already exists. `configureAiCredentialProtector` is injected from `main.cjs:218-221` before `startServer`; give `security.ts` the same treatment and store `{ version: 1, credentialStorage: "electron-safe-storage-v1", wrappedToken }`. The standalone server keeps the plaintext branch and fails closed on a desktop-wrapped file, exactly as `readApiKey` already does.
 - Since the token is regenerated when absent, no migration is needed — delete `security.json` on upgrade and let it re-mint.
 - While there: the token has no expiry and no rotation path. A `POST /api/settings/rotate-owner-token` that re-mints and invalidates the cookie is a small addition that makes a leaked token recoverable.
+
+**Resolution:** `security.ts` now persists a desktop-owned token as `{ credentialStorage: "electron-safe-storage-v1", wrappedOwnerToken }`, encrypted through Electron `safeStorage`. The desktop configures the new protector before it starts the embedded API. Existing plaintext `security.json` files migrate in place on the next desktop launch; standalone servers retain explicit plaintext persistence only when no protector is configured, and refuse to open a desktop-wrapped token rather than silently generating a replacement. `security.test.ts` verifies wrapped generation, legacy migration, restart decryption, and standalone fail-closed behavior.
 
 <a id="f3"></a>
 ## 3. Windows updates are unsigned and signature verification is disabled
