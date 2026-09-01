@@ -49,6 +49,14 @@ function createMockStoreManager(): ProfileStoreManager {
       const items = values.slice(offset, offset + limit);
       return { items, done: items.length < limit };
     }),
+    storageCounts: vi.fn().mockResolvedValue({
+      imports: testData.sourceImports.length,
+      observations: testData.observations.length,
+      samples: testData.timeSeriesSamples.length,
+      activities: testData.activitySessions.length,
+      healthEvents: testData.healthEvents?.length ?? 0,
+      careItems: testData.careItems?.length ?? 0
+    }),
     recordExportAudit: vi.fn().mockResolvedValue(undefined),
     getProfile: vi.fn().mockResolvedValue(testData.profile),
     replaceProfile: vi.fn().mockResolvedValue(testData.profile),
