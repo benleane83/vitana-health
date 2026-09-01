@@ -41,15 +41,33 @@ function profile(id: string, updatedAt: string): Profile {
   };
 }
 
+function storedProfile(profile: Profile) {
+  return {
+    id: profile.id,
+    display_name: profile.displayName,
+    setup_status: profile.setupStatus,
+    subject_kind: profile.subjectKind ?? "adult",
+    birth_date: profile.birthDate ?? null,
+    sex: profile.sex ?? null,
+    height_cm: profile.heightCm ?? null,
+    blood_type: profile.bloodType ?? null,
+    goal_summary: profile.goalSummary ?? null,
+    cloud_ai_consent_json: profile.cloudAiConsent ? JSON.stringify(profile.cloudAiConsent) : null,
+    pet_json: profile.pet ? JSON.stringify(profile.pet) : null,
+    units: profile.units,
+    updated_at: profile.updatedAt
+  };
+}
+
 describe("SQLite local store profile selection", () => {
   it("reuses the persisted profile and its observations after repository recreation", async () => {
     const persistedProfile = profile("mobile-persisted", "2026-07-20T10:00:00.000Z");
     const runAsync = vi.fn();
     const getFirstAsync = vi.fn(async (sql: string, ...parameters: unknown[]) => {
       if (sql.startsWith("SELECT profile_id FROM datasets")) return { profile_id: persistedProfile.id };
-      if (sql.startsWith("SELECT profile_json FROM profiles")) {
+      if (sql.includes("FROM profiles WHERE id = ?")) {
         return parameters[0] === persistedProfile.id
-          ? { profile_json: JSON.stringify(persistedProfile) }
+          ? storedProfile(persistedProfile)
           : null;
       }
       if (sql.includes("SELECT COUNT(*) FROM observations")) {
@@ -78,8 +96,8 @@ describe("SQLite local store profile selection", () => {
     const database = {
       getFirstAsync: vi.fn(async (sql: string) => {
         if (sql.startsWith("SELECT profile_id FROM datasets")) return { profile_id: persistedProfile.id };
-        if (sql.startsWith("SELECT profile_json FROM profiles")) {
-          return { profile_json: JSON.stringify(persistedProfile) };
+        if (sql.includes("FROM profiles WHERE id = ?")) {
+          return storedProfile(persistedProfile);
         }
         if (sql.includes("FROM observation_groups og")) {
           return {
@@ -163,7 +181,7 @@ describe("SQLite local store profile selection", () => {
       getAllAsync: vi.fn(async () => profiles.map((entry) => ({
         dataset_id: entry.id,
         profile_id: entry.id,
-        profile_json: JSON.stringify(entry),
+        display_name: entry.displayName,
         dataset_kind: "standalone",
         lifecycle_state: "active",
         is_selected: 0

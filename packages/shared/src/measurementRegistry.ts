@@ -217,8 +217,13 @@ function conversionFactor(code: string, from: string, to: string): ((value: numb
   const microMolesPerDecilitre = microMolesPerMgDl(code);
   if (microMolesPerDecilitre && from === "µmol/l" && to === "mg/dl") return reciprocal(1 / microMolesPerDecilitre);
   if (microMolesPerDecilitre && from === "mg/dl" && to === "µmol/l") return reciprocal(microMolesPerDecilitre);
-  if (from === "mmol/l" && to === "mg/dl") return reciprocal(mgPerDlFactor(code));
-  if (from === "mg/dl" && to === "mmol/l") return reciprocal(1 / mgPerDlFactor(code));
+  const millimolesPerDecilitre = mgPerDlFactor(code);
+  if (millimolesPerDecilitre && from === "mmol/l" && to === "mg/dl") {
+    return reciprocal(millimolesPerDecilitre);
+  }
+  if (millimolesPerDecilitre && from === "mg/dl" && to === "mmol/l") {
+    return reciprocal(1 / millimolesPerDecilitre);
+  }
   if (code === "hba1c" && from === "mmol/mol" && to === "%") return (value) => value * 0.09148 + 2.152;
   if (code === "hba1c" && from === "%" && to === "mmol/mol") return (value) => (value - 2.152) / 0.09148;
   if (bodyWaterCodes.has(code) && from === "kg" && to === "l") return reciprocal(1);
@@ -257,8 +262,11 @@ function microMolesPerMgDl(code: string): number | undefined {
   return undefined;
 }
 
-function mgPerDlFactor(code: string): number {
+function mgPerDlFactor(code: string): number | undefined {
+  if (code === "glucose") return 18.0182;
+  if (code === "calcium") return 4.0;
+  if (code === "urea") return 2.8;
   if (code === "triglycerides") return 88.57;
   if (code === "total_cholesterol" || code === "non_hdl_cholesterol" || code === "hdl_cholesterol" || code === "ldl_cholesterol") return 38.67;
-  return 18.0182;
+  return undefined;
 }

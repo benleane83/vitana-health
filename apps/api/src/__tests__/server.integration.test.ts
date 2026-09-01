@@ -22,7 +22,7 @@ const httpfsExtensionPath = requirePreparedExtension();
 beforeEach(async () => {
   tempDir = mkdtempSync(join(tmpdir(), "vitana-server-test-"));
   process.env.VITANA_DATA_DIR = tempDir;
-  process.env.VITANA_SECRET = "test-secret-for-server-tests-1234";
+  process.env.VITANA_SECRET = "6L1zY-dmRsB3KgUp2Wvj8QeF0cTnX4Ha7iNoP5rC9Ds";
   process.env.VITANA_OWNER_TOKEN = ownerToken;
 
   storeManager = await ProfileStoreManager.open({

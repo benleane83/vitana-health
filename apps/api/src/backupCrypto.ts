@@ -35,6 +35,11 @@ import {
 } from "./storage/profileRepository.js";
 
 const BACKUP_EXPORT_PAGE_SIZE = 250;
+// Health records with source metadata are substantially larger than their database rows. This
+// intentionally conservative estimate rejects obviously oversized exports before response headers
+// are sent; limitPlaintextSize remains the exact streaming backstop.
+const BACKUP_ESTIMATED_BYTES_PER_RECORD = 768;
+const BACKUP_ESTIMATED_PROFILE_OVERHEAD_BYTES = 8 * 1024;
 const gunzipAsync = promisify(gunzip);
 
 export class BackupTooLargeError extends Error {
@@ -124,17 +129,23 @@ export async function createBackupV1Stream(
   })(), { objectMode: false });
 }
 
-/**
- * Counts the exact plaintext bytes without retaining them. Running this before response headers
- * are committed means a size rejection can still be communicated as a proper API response.
- */
+/** Estimates an export from indexed record counts without reading every collection twice. */
 export async function estimateBackupV1PlaintextSize(
   stores: readonly ProfileRepository[],
-  options: { scope: BackupPayload["scope"]; createdAt: string; signal?: AbortSignal }
+  options: { signal?: AbortSignal }
 ): Promise<number> {
   let total = 0;
-  for await (const chunk of serializeBackupPayload(stores, options)) {
-    total += chunk.length;
+  for (const store of stores) {
+    if (options.signal?.aborted) throw abortError();
+    const counts = await store.storageCounts();
+    const recordCount =
+      counts.imports +
+      counts.observations +
+      counts.samples +
+      counts.activities +
+      counts.healthEvents +
+      counts.careItems;
+    total += BACKUP_ESTIMATED_PROFILE_OVERHEAD_BYTES + recordCount * BACKUP_ESTIMATED_BYTES_PER_RECORD;
     if (total > BACKUP_MAX_SIZE_BYTES) throw new BackupTooLargeError();
   }
   return total;

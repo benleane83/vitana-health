@@ -27,7 +27,7 @@ import type {
   ReplicaPage,
   UpdateObservationInput
 } from "@vitana/shared";
-import { defaultHealthEventKindForCareItem } from "@vitana/shared";
+import { defaultHealthEventKindForCareItem, profileSchema } from "@vitana/shared";
 import { localCalendarDate } from "@vitana/shared";
 import {
   generateDatabaseKeyHex,
@@ -72,6 +72,64 @@ import { migrate, readSchemaVersion } from "./migrations";
 import { prepareReplicaCache } from "./replicaCache";
 
 const DATABASE_NAME = "standalone-health.db";
+const profileInsertSql = `
+  INSERT INTO profiles (
+    id, display_name, setup_status, subject_kind, birth_date, sex, height_cm, blood_type,
+    goal_summary, cloud_ai_consent_json, pet_json, units, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`;
+
+interface StoredProfileRow {
+  id: string;
+  display_name: string;
+  setup_status: string;
+  subject_kind: string;
+  birth_date: string | null;
+  sex: string | null;
+  height_cm: number | null;
+  blood_type: string | null;
+  goal_summary: string | null;
+  cloud_ai_consent_json: string | null;
+  pet_json: string | null;
+  units: string;
+  updated_at: string;
+}
+
+function profileParameters(profile: Profile): readonly (string | number | null)[] {
+  return [
+    profile.id,
+    profile.displayName,
+    profile.setupStatus,
+    profile.subjectKind ?? "adult",
+    profile.birthDate ?? null,
+    profile.sex ?? null,
+    profile.heightCm ?? null,
+    profile.bloodType ?? null,
+    profile.goalSummary ?? null,
+    profile.cloudAiConsent ? JSON.stringify(profile.cloudAiConsent) : null,
+    profile.pet ? JSON.stringify(profile.pet) : null,
+    profile.units,
+    profile.updatedAt
+  ];
+}
+
+function profileFromRow(row: StoredProfileRow): Profile {
+  return profileSchema.parse({
+    id: row.id,
+    displayName: row.display_name,
+    setupStatus: row.setup_status,
+    subjectKind: row.subject_kind,
+    ...(row.birth_date ? { birthDate: row.birth_date } : {}),
+    ...(row.sex ? { sex: row.sex } : {}),
+    ...(row.height_cm !== null ? { heightCm: row.height_cm } : {}),
+    ...(row.blood_type ? { bloodType: row.blood_type } : {}),
+    ...(row.goal_summary ? { goalSummary: row.goal_summary } : {}),
+    ...(row.cloud_ai_consent_json ? { cloudAiConsent: JSON.parse(row.cloud_ai_consent_json) } : {}),
+    ...(row.pet_json ? { pet: JSON.parse(row.pet_json) } : {}),
+    units: row.units,
+    updatedAt: row.updated_at
+  });
+}
 // A separate file on purpose. `standalone-health.db` holds records that exist nowhere else and are
 // migrated with backups and row-count assertions; `replica.db` holds copies of data the paired PC
 // still has, and is rebuilt rather than migrated. Keeping them together made every cache-shape
@@ -347,10 +405,8 @@ export class SqliteLocalStore implements LocalStore {
     }
     await this.database.withTransactionAsync(async () => {
       await this.database.runAsync(
-        "INSERT INTO profiles (id, profile_json, updated_at) VALUES (?, ?, ?)",
-        defaultProfile.id,
-        JSON.stringify(defaultProfile),
-        defaultProfile.updatedAt
+        profileInsertSql,
+        ...profileParameters(defaultProfile)
       );
       await this.database.runAsync(
         `INSERT INTO datasets
@@ -368,10 +424,8 @@ export class SqliteLocalStore implements LocalStore {
     await this.database.withTransactionAsync(async () => {
       await this.database.runAsync("UPDATE datasets SET is_selected = 0 WHERE is_selected = 1");
       await this.database.runAsync(
-        "INSERT INTO profiles (id, profile_json, updated_at) VALUES (?, ?, ?)",
-        profile.id,
-        JSON.stringify(profile),
-        profile.updatedAt
+        profileInsertSql,
+        ...profileParameters(profile)
       );
       await this.database.runAsync(
         `INSERT INTO datasets
@@ -405,12 +459,12 @@ export class SqliteLocalStore implements LocalStore {
     const rows = await this.database.getAllAsync<{
       dataset_id: string;
       profile_id: string;
-      profile_json: string;
+      display_name: string;
       dataset_kind: LocalDatasetSummary["kind"];
       lifecycle_state: LocalDatasetSummary["lifecycleState"];
       is_selected: number;
     }>(`
-      SELECT d.dataset_id, d.profile_id, p.profile_json, d.dataset_kind, d.lifecycle_state, d.is_selected
+      SELECT d.dataset_id, d.profile_id, p.display_name, d.dataset_kind, d.lifecycle_state, d.is_selected
       FROM datasets d
       JOIN profiles p ON p.id = d.profile_id
       ORDER BY p.updated_at DESC, d.dataset_id
@@ -418,7 +472,7 @@ export class SqliteLocalStore implements LocalStore {
     return rows.map((row) => ({
       datasetId: row.dataset_id,
       profileId: row.profile_id,
-      displayName: (JSON.parse(row.profile_json) as Profile).displayName,
+      displayName: row.display_name,
       kind: row.dataset_kind,
       lifecycleState: row.lifecycle_state,
       selected: row.is_selected === 1
@@ -463,12 +517,14 @@ export class SqliteLocalStore implements LocalStore {
   }
 
   async getProfile(): Promise<Profile> {
-    const row = await this.database.getFirstAsync<{ profile_json: string }>(
-      "SELECT profile_json FROM profiles WHERE id = ?",
+    const row = await this.database.getFirstAsync<StoredProfileRow>(
+      `SELECT id, display_name, setup_status, subject_kind, birth_date, sex, height_cm, blood_type,
+              goal_summary, cloud_ai_consent_json, pet_json, units, updated_at
+       FROM profiles WHERE id = ?`,
       this.requireProfileId()
     );
     if (!row) throw new Error("The local profile has not been initialized.");
-    return JSON.parse(row.profile_json) as Profile;
+    return profileFromRow(row);
   }
 
   async counts(): Promise<LocalStoreCounts> {

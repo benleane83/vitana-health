@@ -1,7 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   computeCanonicalDigest,
   createBackupV1Stream,
+  estimateBackupV1PlaintextSize,
   encryptBackup,
   decryptBackup,
   buildBackupProfileEntry,
@@ -67,6 +68,27 @@ describe("backupCrypto", () => {
       const d2 = computeCanonicalDigest(data);
       expect(d1).toBe(d2);
       expect(d1).toMatch(/^[a-f0-9]{64}$/);
+    });
+
+    describe("estimateBackupV1PlaintextSize", () => {
+      it("uses storage counts without paging through export collections", async () => {
+        const storageCounts = vi.fn(async () => ({
+          imports: 2,
+          observations: 3,
+          samples: 5,
+          activities: 7,
+          healthEvents: 11,
+          careItems: 13
+        }));
+        const profileExportPage = vi.fn();
+        const estimated = await estimateBackupV1PlaintextSize(
+          [{ storageCounts, profileExportPage } as unknown as ProfileRepository],
+          {}
+        );
+
+        expect(estimated).toBe(8 * 1024 + 41 * 768);
+        expect(profileExportPage).not.toHaveBeenCalled();
+      });
     });
 
     it("produces different digest for different data", () => {

@@ -1,9 +1,8 @@
 import {
   buildManualObservationImport,
-  classifyValue,
+  classifyValueWithRange,
   computeAnalyticsFromInput,
   defaultMeasurementTypes,
-  getReferenceRange,
   resolveReferenceRange,
   type AppBootstrap,
   type BodyTrendQuery,
@@ -156,11 +155,16 @@ export class LocalProfileRepository implements MobileProfileRepository {
     await this.ensureInitialized();
     const limit = Math.min(Math.max(Math.trunc(page.limit ?? DEFAULT_DETAIL_LIMIT), 1), MAX_DETAIL_LIMIT);
     const offset = Math.max(Math.trunc(page.offset ?? 0), 0);
-    const result = await this.store.observationsByCode(measurementCode, limit, offset);
+    const [profile, result] = await Promise.all([
+      this.store.getProfile(),
+      this.store.observationsByCode(measurementCode, limit, offset)
+    ]);
     const measurement = defaultMeasurementTypes.find((candidate) => candidate.code === measurementCode);
     const displayName = measurement?.display ?? measurementCode;
     const entries = result.records.map((record) => {
-      const referenceRange = measurement ? getReferenceRange(measurement, record.unit) : undefined;
+      const referenceRange = measurement
+        ? resolveReferenceRange(measurement, record.unit, undefined, profile.subjectKind ?? "adult").effective
+        : undefined;
       return {
         kind: "observation" as const,
         id: record.id,
@@ -181,7 +185,7 @@ export class LocalProfileRepository implements MobileProfileRepository {
           collectedAt: record.group.collectedAt
         } : undefined,
         referenceRange,
-        status: measurement ? classifyValue(record.value, measurement, record.unit) : "unknown" as const,
+        status: classifyValueWithRange(record.value, referenceRange),
         canDelete: true
       };
     });
@@ -212,7 +216,7 @@ export class LocalProfileRepository implements MobileProfileRepository {
             measurement,
             entries[0]?.unit ?? measurement.canonicalUnit,
             undefined,
-            this.defaultProfile.subjectKind ?? "adult"
+            profile.subjectKind ?? "adult"
           )
         : { source: "none" },
       counts: { observations: result.total, samples: 0, activities: 0, total: result.total },
@@ -248,16 +252,21 @@ export class LocalProfileRepository implements MobileProfileRepository {
   async healthDataChartSeries(measurementCode: string, options: HealthDataChartSeriesOptions) {
     await this.ensureInitialized();
     const measurement = defaultMeasurementTypes.find((candidate) => candidate.code === measurementCode);
-    const series = await this.store.observationChartSeries(
-      measurementCode,
-      measurement?.aggregation ?? "none",
-      options
-    );
+    const [profile, series] = await Promise.all([
+      this.store.getProfile(),
+      this.store.observationChartSeries(
+        measurementCode,
+        measurement?.aggregation ?? "none",
+        options
+      )
+    ]);
     return {
       ...series,
       points: series.points.map((point) => ({
         ...point,
-        referenceRange: measurement ? getReferenceRange(measurement, point.unit) : undefined
+        referenceRange: measurement
+          ? resolveReferenceRange(measurement, point.unit, undefined, profile.subjectKind ?? "adult").effective
+          : undefined
       }))
     };
   }

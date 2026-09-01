@@ -34,7 +34,7 @@ import type {
 } from "@vitana/shared";
 
 /** Schema version of the durable database, which holds data only this phone has. */
-export const LOCAL_SCHEMA_VERSION = 10;
+export const LOCAL_SCHEMA_VERSION = 11;
 
 /**
  * Schema version of the disposable replica cache.

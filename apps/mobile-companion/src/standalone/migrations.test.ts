@@ -87,6 +87,10 @@ describe("standalone schema migrations", () => {
     expect(medicationSimplificationSql).toContain("CREATE TABLE medications_v9");
     expect(medicationSimplificationSql).toContain("'$.status'");
     expect(medicationSimplificationSql).not.toContain("status TEXT NOT NULL");
+    const profileNormalizationSql = migrationSql(10);
+    expect(profileNormalizationSql).toContain("ADD COLUMN subject_kind");
+    expect(profileNormalizationSql).toContain("ADD COLUMN units");
+    expect(profileNormalizationSql).toContain("json_extract(profile_json, '$.birthDate')");
   });
 
   it("evicts the replica cache from the durable database and never rebuilds it there", () => {

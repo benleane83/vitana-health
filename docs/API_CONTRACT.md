@@ -749,7 +749,7 @@ All error responses follow this shape:
 | `OWNER_REQUIRED` | 403 | Backup or owner-only operation was attempted without owner access |
 | `AUTH_LOOPBACK_ONLY` | 403 | Endpoint only accessible from loopback (127.x) |
 | `PAIRING_CODE_INVALID` | 400 | Pairing code missing or expired |
-| `PAIRING_SECRET_REQUIRED` | 400 | VITANA_SECRET not configured |
+| `PAIRING_SECRET_REQUIRED` | 401 | `x-pairing-secret` request header missing |
 | `PAIRING_NOT_FOUND` | 404 | Pairing request ID not found |
 | `DEVICE_NOT_FOUND` | 404 | Device pairing not found |
 | `OBSERVATION_NOT_FOUND` | 404 | Observation ID not found |
