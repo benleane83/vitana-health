@@ -1298,9 +1298,9 @@ const measurementTypeDefinitions: MeasurementType[] = [
     description: "A blood test measuring testosterone that is not bound to proteins and is available for your body to use.",
     category: "lab",
     kind: "panel-component",
-    canonicalUnit: "pmol/L",
+    canonicalUnit: "pg/mL",
     aliases: ["free testosterone"],
-    loincCode: "2990-0",
+    loincCode: "2991-8",
     aggregation: "latest"
   },
   {

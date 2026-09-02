@@ -12,7 +12,6 @@ import {
   readNumber,
   readReportDate,
   stableId,
-  toDisplayName
 } from "./parserPrimitives.js";
 import type {
   BodyCompositionDraft,
@@ -164,16 +163,21 @@ function addBodyCompositionCandidates(
       diagnostics.push(`Skipped administrative identifier: "${candidate.label}".`);
       continue;
     }
-    const measurementType = findMeasurementType(candidate.label);
-    const measurementCode = measurementType?.code ?? fallbackBodyCompositionCode(candidate.label);
-    const displayName = measurementType?.display ?? toDisplayName(candidate.label);
-    const unit = normalizeBodyCompositionUnit(candidate.unit || measurementType?.canonicalUnit || "unknown");
+    const knownMeasurement = findMeasurementType(candidate.label);
+    const measurementType = knownMeasurement?.category === "body" ? knownMeasurement : undefined;
+    if (!measurementType) {
+      diagnostics.push(`Skipped unrecognized body-composition measurement: "${candidate.label}".`);
+      continue;
+    }
+    const measurementCode = measurementType.code;
+    const displayName = measurementType.display;
+    const unit = normalizeBodyCompositionUnit(candidate.unit || measurementType.canonicalUnit);
     const key = `${measurementCode}:${candidate.value}:${unit}`;
     if (rows.has(key)) continue;
-    const generatedCode = !measurementType;
-    if (generatedCode) diagnostics.push(`Unknown measurement found: "${candidate.label}".`);
-    const included = !generatedCode && isPlausibleBodyCompositionValue(measurementCode, candidate.value, unit);
-    if (!included && !generatedCode) diagnostics.push(`Review unusual measurement value for "${displayName}": ${candidate.value} ${unit}.`);
+    if (!isPlausibleBodyCompositionValue(measurementCode, candidate.value, unit)) {
+      diagnostics.push(`Skipped implausible body-composition measurement: "${displayName}" (${candidate.value} ${unit}).`);
+      continue;
+    }
     rows.set(key, {
       id: stableId("draft", [sourceChecksum, measurementCode, String(candidate.value), unit]),
       label: candidate.label,
@@ -184,8 +188,8 @@ function addBodyCompositionCandidates(
       observedAt: reportDate,
       confidence: candidate.confidence,
       sourceText: candidate.sourceText ?? candidate.label,
-      included,
-      generatedCode
+      included: true,
+      generatedCode: false
     });
   }
 }

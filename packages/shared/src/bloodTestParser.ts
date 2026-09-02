@@ -4,15 +4,13 @@ import { buildManualObservationImport } from "./observationImportParsers.js";
 import {
   checksum,
   escapeRegExp,
-  fallbackMeasurementCode,
   isAdministrativeMeasurementLabel,
   looksLikeDateOnly,
   normalizeStructuredDate,
   readDateFromFileName,
   readNumber,
   readReportDate,
-  stableId,
-  toDisplayName
+  stableId
 } from "./parserPrimitives.js";
 import type {
   BloodTestDraft,
@@ -67,25 +65,28 @@ export function parseBloodTestScanText(
     const label = match[1].trim();
     const value = readNumber(match[2]);
     if (value === undefined || looksLikeDateOnly(line)) continue;
-    const measurementType = findMeasurementType(label);
-    const measurementCode = measurementType?.code ?? fallbackMeasurementCode(label);
-    const unit = match[3] || measurementType?.canonicalUnit || "unknown";
+    const knownMeasurement = findMeasurementType(label);
+    const measurementType = knownMeasurement?.category === "lab" ? knownMeasurement : undefined;
+    if (!measurementType) {
+      diagnostics.push(`Skipped unrecognized lab measurement: "${label}".`);
+      continue;
+    }
+    const measurementCode = measurementType.code;
+    const unit = match[3] || measurementType.canonicalUnit;
     const key = `${measurementCode}:${value}:${unit}`;
     if (rows.has(key)) continue;
-    const generatedCode = !measurementType;
-    if (generatedCode) diagnostics.push(`Unknown measurement found: "${label}".`);
     rows.set(key, {
       id: stableId("draft", [sourceChecksum, measurementCode, String(value), unit]),
       label,
       measurementCode,
-      displayName: measurementType?.display ?? toDisplayName(label),
+      displayName: measurementType.display,
       value,
       unit,
       observedAt: reportDate,
-      confidence: measurementType ? "high" : "low",
+      confidence: "high",
       sourceText: line,
-      included: !generatedCode,
-      generatedCode
+      included: true,
+      generatedCode: false
     });
   }
   if (!normalizedText) diagnostics.push("No text was extracted from the report.");
@@ -138,7 +139,7 @@ function parseKnownBloodTestLine(line: string): {
     const marker = normalizedLine.match(new RegExp(`(^|[^a-z0-9])(${markerPattern})(?=$|[^a-z0-9])`, "i"));
     if (marker?.index === undefined) continue;
     const markerEnd = marker.index + marker[0].length;
-    const tail = normalizedLine.slice(markerEnd).replace(/^\s*(?:\([^)]*\)\s*)?[:\-=]?\s*/, "");
+    const tail = normalizedLine.slice(markerEnd).replace(/^\s*(?:\([^)]*\)\s*)?[#*†‡]*\s*[:\-=]?\s*/, "");
     const result = tail.match(/^(-?\d+(?:[.,]\d+)?)\s*([A-Za-zµμ%][A-Za-z0-9µμ%./^*-]*)?/);
     const value = readNumber(result?.[1]);
     if (value === undefined) continue;
