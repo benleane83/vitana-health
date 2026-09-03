@@ -673,6 +673,7 @@ export interface AuditEvent {
     | "export-created"
     | "observation-updated"
     | "observation-group-updated"
+    | "observation-group-deleted"
     | "observation-deleted"
     | "observation-type-deleted"
     | "daily-step-aggregates-deleted"
@@ -1052,6 +1053,13 @@ export interface ClinicianReportLatestMeasurement {
 export interface DeleteObservationResponse {
   deletedCount: number;
   deletedObservation?: Observation;
+  counts: AppBootstrap["counts"];
+}
+
+export interface DeleteObservationGroupResponse {
+  deletedCount: number;
+  deletedGroupId: string;
+  deletedObservationCount: number;
   counts: AppBootstrap["counts"];
 }
 

@@ -283,6 +283,7 @@ export const api = {
   observationGroup: sharedApi.observationGroup,
   observationGroups: sharedApi.observationGroups,
   updateObservationGroup: sharedApi.updateObservationGroup,
+  deleteObservationGroup: sharedApi.deleteObservationGroup,
   healthDataDetail: sharedApi.healthDataDetail,
   healthDataChartSeries: sharedApi.healthDataChartSeries,
   setPersonalReferenceRange: sharedApi.setPersonalReferenceRange,

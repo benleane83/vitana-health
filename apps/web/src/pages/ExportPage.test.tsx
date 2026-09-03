@@ -105,4 +105,45 @@ describe("backup restore actions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Download Excel workbook" }));
     expect(onDownloadXlsx).toHaveBeenCalledOnce();
   });
+
+  it("explains each backup passphrase field with an accessible info control", () => {
+    render(
+      <ExportPage
+        busy={false}
+        hasHealthData={false}
+        onDownload={vi.fn()}
+        xlsxStatus={{ busy: false }}
+        onDownloadXlsx={vi.fn()}
+        backupPassphrase=""
+        backupPassphraseConfirmation=""
+        backupScope="all"
+        backupStatus={{ busy: false }}
+        onBackupPassphraseChange={vi.fn()}
+        onBackupPassphraseConfirmationChange={vi.fn()}
+        onBackupScopeChange={vi.fn()}
+        onCreateBackup={vi.fn()}
+        restorePassphrase=""
+        restoreSelections={[]}
+        restoreStatus={{ busy: false }}
+        onRestoreFileChange={vi.fn()}
+        onRestorePassphraseChange={vi.fn()}
+        onInspectBackup={vi.fn()}
+        onRestoreSelectionChange={vi.fn()}
+        onReplacementAcknowledgmentChange={vi.fn()}
+        onRestoreBackup={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "Backup & restore" }));
+
+    const infoButtons = screen.getAllByRole("button", { name: "What is a backup passphrase?" });
+    expect(infoButtons).toHaveLength(3);
+    expect(document.getElementById("backup-passphrase-info")).toHaveTextContent("locks your backup");
+    expect(document.getElementById("backup-passphrase-confirmation-info")).toHaveTextContent("cannot recover it");
+    expect(document.getElementById("restore-passphrase-info")).toHaveTextContent("open or restore it later");
+    expect(screen.getByLabelText("Confirm backup passphrase")).toHaveAttribute(
+      "aria-describedby",
+      "backup-passphrase-confirmation-info"
+    );
+  });
 });

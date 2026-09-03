@@ -269,6 +269,9 @@ export function createDemoDataSource(
         counts: makeBootstrap(details, now).counts
       };
     },
+    async deleteObservationGroup() {
+      throw new Error("Measurement panels are read-only in demo mode.");
+    },
     async listHealthEvents(query = {}) {
       return paginateCollection(filterHealthEvents(healthEvents, query), query);
     },

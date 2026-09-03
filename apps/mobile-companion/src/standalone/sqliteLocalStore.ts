@@ -56,6 +56,7 @@ import {
   MEASUREMENT_SCOPED_REPLICA_TYPES,
   emptyCounts,
   entityOutcome,
+  type DeletedLocalObservationGroup,
   type LocalObservationAggregate,
   type LocalCalendarObservation,
   type LocalObservationPage,
@@ -1187,6 +1188,31 @@ export class SqliteLocalStore implements LocalStore {
       if (changed) await this.rotateMigrationFingerprint();
     });
     return changed ? existing : undefined;
+  }
+
+  async deleteObservationGroup(id: string): Promise<DeletedLocalObservationGroup | undefined> {
+    await this.assertWritable();
+    const existing = await this.observationGroup(id);
+    if (!existing) return undefined;
+    const profileId = this.requireProfileId();
+    let changed = false;
+    let deletedObservationCount = 0;
+    await this.database.withTransactionAsync(async () => {
+      const observationsResult = await this.database.runAsync(
+        "DELETE FROM observations WHERE profile_id = ? AND observation_group_id = ?",
+        profileId,
+        id
+      );
+      deletedObservationCount = observationsResult.changes;
+      const result = await this.database.runAsync(
+        "DELETE FROM observation_groups WHERE profile_id = ? AND id = ?",
+        profileId,
+        id
+      );
+      changed = result.changes === 1;
+      if (changed) await this.rotateMigrationFingerprint();
+    });
+    return changed ? { group: existing, deletedObservationCount } : undefined;
   }
 
   async listHealthEvents(query: HealthEventListQuery = {}) {

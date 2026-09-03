@@ -18,6 +18,7 @@ import {
   type CreateMedicationInput,
   type DeleteCareItemResponse,
   type DeleteHealthEventResponse,
+  type DeleteObservationGroupResponse,
   type DeleteObservationResponse,
   type DeleteMedicationResponse,
   type DeleteObservationsByTypeResponse,
@@ -94,6 +95,7 @@ import {
   deleteHealthEvent as deleteDuckDbHealthEvent,
   deleteMedication as deleteDuckDbMedication,
   deleteObservation as deleteDuckDbObservation,
+  deleteObservationGroup as deleteDuckDbObservationGroup,
   deletePersonalReferenceRange as deleteDuckDbPersonalReferenceRange,
   deleteObservationRecord as deleteDuckDbObservationRecord,
   deleteObservationRecordsByMeasurementCode as deleteDuckDbObservationRecordsByMeasurementCode,
@@ -180,6 +182,7 @@ import {
   replicaHighWaterMark
 } from "./duckdbReplicaSync.js";
 import {
+  isReplicatedMeasurementCode,
   replicaObservationTombstones,
   replicaObservationUpsert,
   replicaSourceImport,
@@ -695,6 +698,32 @@ export class DuckDbRepository implements ProfileRepository {
         : [],
       { affectsStorageCounts: true }
     );
+  }
+
+  async deleteObservationGroup(id: string): Promise<DeleteObservationGroupResponse | undefined> {
+    this.assertOpen();
+    let deletedObservations: Array<{ id: string; measurementCode: string }> = [];
+    return this.transaction(async () => {
+      const rows = await allWithParams(
+        this.connection,
+        "SELECT id, measurement_code FROM observations WHERE observation_group_id = ? ORDER BY ordinal;",
+        id
+      );
+      deletedObservations = rows.map((row) => ({
+        id: String(row.id),
+        measurementCode: String(row.measurement_code)
+      }));
+      return deleteDuckDbObservationGroup(this.connection, id);
+    }, (result) => result
+      ? [
+          replicaTombstone("observation-group", result.deletedGroupId),
+          ...deletedObservations.flatMap((observation) =>
+            !isReplicatedMeasurementCode(observation.measurementCode)
+              ? []
+              : [replicaTombstone("observation", observation.id)]
+          )
+        ]
+      : [], { affectsStorageCounts: true });
   }
 
   async updateObservation(id: string, input: UpdateObservationInput): Promise<UpdateObservationResponse | undefined> {

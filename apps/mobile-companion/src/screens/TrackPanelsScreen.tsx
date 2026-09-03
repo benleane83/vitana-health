@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FlatList, Platform, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { Alert, FlatList, Platform, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Picker } from "@react-native-picker/picker";
 import { CalendarDays, ChevronRight } from "lucide-react-native";
@@ -29,7 +29,7 @@ type Props = NativeStackScreenProps<RootStackParamList, "TrackPanels">;
 type Filters = Pick<ObservationGroupListQuery, "kinds" | "dateFrom" | "dateTo">;
 
 export function TrackPanelsScreen({ navigation }: Props) {
-  const { listObservationGroups } = useMobileApi();
+  const { connectionState, deleteObservationGroup, demoMode, listObservationGroups, standaloneMode } = useMobileApi();
   const [filters, setFilters] = useState<Filters>({});
   const [items, setItems] = useState<ObservationGroupListItem[]>([]);
   const [hasMore, setHasMore] = useState(false);
@@ -38,10 +38,12 @@ export function TrackPanelsScreen({ navigation }: Props) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string>();
   const [moreError, setMoreError] = useState<string>();
+  const [deletingId, setDeletingId] = useState<string>();
   const requestSequence = useRef(0);
   const loadingMoreRef = useRef(false);
   const hasFilters = Boolean(filters.kinds?.length || filters.dateFrom || filters.dateTo);
   const invalidRange = Boolean(filters.dateFrom && filters.dateTo && filters.dateFrom > filters.dateTo);
+  const canDeletePanels = !demoMode && (standaloneMode || connectionState === "online");
 
   const loadFirstPage = useCallback(async (refresh = false) => {
     if (invalidRange) return;
@@ -88,6 +90,37 @@ export function TrackPanelsScreen({ navigation }: Props) {
       setLoadingMore(false);
     }
   }, [filters, hasMore, invalidRange, items.length, listObservationGroups, loading, refreshing]);
+
+  function confirmDeletion(item: ObservationGroupListItem) {
+    const measurementLabel = item.measurementCount === 1 ? "measurement" : "measurements";
+    Alert.alert(
+      "Delete panel?",
+      `Delete "${item.label}" and all ${item.measurementCount} ${measurementLabel} inside it? This cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete panel",
+          style: "destructive",
+          onPress: () => { void deletePanel(item); }
+        }
+      ]
+    );
+  }
+
+  async function deletePanel(item: ObservationGroupListItem) {
+    if (deletingId) return;
+    setDeletingId(item.id);
+    setError(undefined);
+    try {
+      await deleteObservationGroup(item.id);
+      setItems((current) => current.filter((entry) => entry.id !== item.id));
+      await loadFirstPage(true);
+    } catch (caught: unknown) {
+      setError(userFacingError(caught, "Unable to delete this panel. Try again."));
+    } finally {
+      setDeletingId(undefined);
+    }
+  }
 
   return (
     <Screen>
@@ -164,27 +197,40 @@ export function TrackPanelsScreen({ navigation }: Props) {
         onEndReachedThreshold={0.35}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { void loadFirstPage(true); }} />}
         renderItem={({ item }) => (
-          <Pressable
-            accessibilityHint="Opens this measurement group"
-            accessibilityLabel={`${item.label}, ${observationGroupKindLabel(item.kind)}, ${formatPanelDate(item.date)}`}
-            accessibilityRole="button"
-            onPress={() => navigation.navigate("ObservationGroup", { groupId: item.id, label: item.label })}
-            style={({ pressed }) => pressed && styles.pressed}
-          >
-            <Card>
-              <View style={styles.panelRow}>
-                <View style={styles.panelCopy}>
-                  <Text numberOfLines={2} style={styles.panelLabel}>{item.label}</Text>
-                  <Text style={styles.panelType}>{observationGroupKindLabel(item.kind)}</Text>
-                  <View style={styles.panelMeta}>
-                    <Text style={styles.meta}>{formatPanelDate(item.date)}</Text>
-                    <Text style={styles.meta}>{item.measurementCount} {item.measurementCount === 1 ? "measurement" : "measurements"}</Text>
+          <Card>
+            <View style={styles.panelCard}>
+                <Pressable
+                  accessibilityHint="Opens this measurement group"
+                  accessibilityLabel={`${item.label}, ${observationGroupKindLabel(item.kind)}, ${formatPanelDate(item.date)}`}
+                  accessibilityRole="button"
+                  disabled={deletingId === item.id}
+                  onPress={() => navigation.navigate("ObservationGroup", { groupId: item.id, label: item.label })}
+                  style={({ pressed }) => [styles.panelOpen, pressed && styles.pressed]}
+                >
+                  <View style={styles.panelRow}>
+                    <View style={styles.panelCopy}>
+                      <Text numberOfLines={2} style={styles.panelLabel}>{item.label}</Text>
+                      <Text style={styles.panelType}>{observationGroupKindLabel(item.kind)}</Text>
+                      <View style={styles.panelMeta}>
+                        <Text style={styles.meta}>{formatPanelDate(item.date)}</Text>
+                        <Text style={styles.meta}>{item.measurementCount} {item.measurementCount === 1 ? "measurement" : "measurements"}</Text>
+                      </View>
+                    </View>
+                    <ChevronRight color={colors.primary} size={22} />
                   </View>
-                </View>
-                <ChevronRight color={colors.primary} size={22} />
-              </View>
-            </Card>
-          </Pressable>
+                </Pressable>
+                {canDeletePanels ? (
+                  <Button
+                    accessibilityLabel={`Delete ${item.label} and all contained measurements`}
+                    danger
+                    disabled={Boolean(deletingId)}
+                    onPress={() => confirmDeletion(item)}
+                  >
+                    {deletingId === item.id ? "Deleting…" : "Delete"}
+                  </Button>
+                ) : null}
+            </View>
+          </Card>
         )}
         showsVerticalScrollIndicator={false}
       />
@@ -291,6 +337,8 @@ const styles = StyleSheet.create({
   clearDate: { alignSelf: "flex-start", minHeight: 32, justifyContent: "center" },
   clearDateText: { color: colors.primary, fontSize: 12, fontWeight: "700" },
   messageStack: { gap: spacing.sm },
+  panelCard: { gap: spacing.sm },
+  panelOpen: { minHeight: 48 },
   panelRow: { alignItems: "center", flexDirection: "row", gap: spacing.md },
   panelCopy: { flex: 1, gap: spacing.xs, minWidth: 0 },
   panelLabel: { color: colors.textStrong, fontSize: type.title, fontWeight: "800" },

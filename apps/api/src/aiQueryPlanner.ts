@@ -17,6 +17,7 @@ export const TimeRangePresetSchema = z.enum([
   "last_week",
   "last_30d",
   "last_90d",
+  "last_365d",
   "all_time"
 ]);
 export type TimeRangePreset = z.infer<typeof TimeRangePresetSchema>;
@@ -188,7 +189,7 @@ export function resolveTimeRange(timeRange: TimeRange, referenceDate?: Date): Re
     return { start: timeRange.start, end: timeRange.end, label: `${timeRange.start} to ${timeRange.end}` };
   }
 
-  const preset = timeRange.preset ?? "last_30d";
+  const preset = timeRange.preset ?? "last_365d";
 
   switch (preset) {
     case "this_month": {
@@ -218,6 +219,11 @@ export function resolveTimeRange(timeRange: TimeRange, referenceDate?: Date): Re
       start.setDate(start.getDate() - 30);
       return { start: isoDate(start), end: isoDate(now), label: "last 30 days" };
     }
+    case "last_365d": {
+      const start = new Date(now);
+      start.setDate(start.getDate() - 365);
+      return { start: isoDate(start), end: isoDate(now), label: "last 365 days" };
+    }
     case "all_time": {
       return { start: "2000-01-01", end: isoDate(now), label: "all time" };
     }
@@ -245,7 +251,7 @@ Schema:
   "aggregation": one of "avg" | "max" | "min" | "sum" | "count" | "latest",
   "groupBy": one of "day" | "week" | "month" | "kind" | "status" | "source" | "priority" | "due_bucket" or null,
   "timeRange": {
-    "preset": one of "this_month" | "last_month" | "this_week" | "last_week" | "last_30d" | "last_90d" | "all_time"
+    "preset": one of "this_month" | "last_month" | "this_week" | "last_week" | "last_30d" | "last_90d" | "last_365d" | "all_time"
   },
   "sort": "asc" or "desc",
   "limit": integer 1-200,
@@ -271,7 +277,7 @@ Rules:
 - For a requested care-item due window, set filters.dueWithinRange=true and use timeRange as the due range; otherwise omit it
 - Unsupported cross-source comparisons are not allowed
 - For "this month" / "last month" use the exact preset
-- Default time range is "last_30d" unless specified
+- Default time range is "last_365d" unless specified
 - Maximum limit is 200`;
 
 function buildPlannerPrompt(question: string, timezone?: string, context?: AiQueryTurnContext): string {
@@ -357,7 +363,7 @@ function deriveConfidenceAndLimitations(
 
   // Check time range
   if (!dsl.timeRange.preset && !dsl.timeRange.start) {
-    assumptions.push("Defaulted to last 30 days time range.");
+    assumptions.push("Defaulted to last 365 days time range.");
     score -= 0.1;
   }
 

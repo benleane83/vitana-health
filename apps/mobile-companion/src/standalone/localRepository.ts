@@ -287,6 +287,19 @@ export class LocalProfileRepository implements MobileProfileRepository {
       : undefined;
   }
 
+  async deleteObservationGroup(id: string) {
+    await this.ensureInitialized();
+    const deleted = await this.store.deleteObservationGroup(id);
+    return deleted
+      ? {
+          deletedCount: 1,
+          deletedGroupId: id,
+          deletedObservationCount: deleted.deletedObservationCount,
+          counts: await this.bootstrap().then((value) => value.counts)
+        }
+      : undefined;
+  }
+
   async listHealthEvents(query = {}) {
     await this.ensureInitialized();
     return this.store.listHealthEvents(query);

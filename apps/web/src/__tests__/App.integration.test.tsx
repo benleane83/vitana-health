@@ -1292,13 +1292,13 @@ describe("App — measurement detail", () => {
     fireEvent.click(screen.getByRole("button", { name: /back to measurements/i }));
     expect(historyBack).toHaveBeenCalledOnce();
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit group" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit panel" }));
     expect(screen.getByRole("button", { name: "Remove glucose observation" })).toHaveAttribute("title", "Remove observation");
     fireEvent.change(screen.getByLabelText("Group label"), { target: { value: "Discarded label" } });
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByRole("heading", { name: "Morning vitals" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit group" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit panel" }));
   expect(screen.getByLabelText("Recorded date")).toHaveAttribute("type", "date");
     fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "5.6" } });
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
@@ -1343,7 +1343,7 @@ describe("App — measurement detail", () => {
 
     render(<App />);
     expect(await screen.findByRole("heading", { name: "Body scan" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Edit group" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit panel" }));
     fireEvent.click(screen.getByRole("button", { name: "Open measurement choices" }));
 
     expect(screen.getByRole("listbox")).toHaveClass("is-upward");
@@ -1427,6 +1427,6 @@ describe("App — measurement detail", () => {
     render(<App />);
     expect(await screen.findByRole("heading", { name: "Imported panel" })).toBeInTheDocument();
     expect(screen.getByText(/cannot be edited here/i)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Edit group" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit panel" })).not.toBeInTheDocument();
   });
 });

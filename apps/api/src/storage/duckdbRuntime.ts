@@ -22,7 +22,7 @@ const markerName = ".vitana-duckdb-poc";
  * bumps the export format and may leave this alone. Backup/restore correctness depends on the
  * distinction — a restore validates the export format and is indifferent to the engine version.
  */
-const DB_SCHEMA_VERSION = 8;
+const DB_SCHEMA_VERSION = 9;
 
 export interface DuckDbOptions {
   httpfsExtensionPath?: string;
@@ -446,7 +446,9 @@ const baselineSchemaSql = `
     ordinal BIGINT NOT NULL UNIQUE, id VARCHAR PRIMARY KEY, measurement_code VARCHAR NOT NULL,
     observed_at TIMESTAMPTZ NOT NULL, effective_start TIMESTAMPTZ, effective_end TIMESTAMPTZ,
     value DOUBLE NOT NULL, unit VARCHAR NOT NULL, source_id VARCHAR NOT NULL REFERENCES sources(id),
-    observation_group_id VARCHAR REFERENCES observation_groups(id), device_id VARCHAR REFERENCES devices(id),
+    -- DuckDB cannot delete a referenced parent in the same transaction as its children, so this
+    -- optional relationship is maintained by the transactional command layer instead of an FK.
+    observation_group_id VARCHAR, device_id VARCHAR REFERENCES devices(id),
     note VARCHAR, source_json_present BOOLEAN NOT NULL, source_json JSON, source_unit VARCHAR
   );
 
@@ -696,6 +698,32 @@ const medicationsSchemaSql = `
     (8, CURRENT_TIMESTAMP, 'Dedicated simplified medications');
 `;
 
+const observationGroupCascadeDeleteSchemaSql = `
+  DROP VIEW IF EXISTS v_daily_metrics;
+  DROP VIEW IF EXISTS v_weekly_metrics;
+  DROP VIEW IF EXISTS v_ai_health_events;
+  DROP VIEW IF EXISTS v_ai_care_items;
+  DROP VIEW IF EXISTS v_ai_medications;
+
+  CREATE TABLE observations_v9 (
+    ordinal BIGINT NOT NULL UNIQUE, id VARCHAR PRIMARY KEY, measurement_code VARCHAR NOT NULL,
+    observed_at TIMESTAMPTZ NOT NULL, effective_start TIMESTAMPTZ, effective_end TIMESTAMPTZ,
+    value DOUBLE NOT NULL, unit VARCHAR NOT NULL, source_id VARCHAR NOT NULL REFERENCES sources(id),
+    observation_group_id VARCHAR, device_id VARCHAR REFERENCES devices(id),
+    note VARCHAR, source_json_present BOOLEAN NOT NULL, source_json JSON, source_unit VARCHAR
+  );
+  INSERT INTO observations_v9
+    SELECT ordinal, id, measurement_code, observed_at, effective_start, effective_end, value, unit,
+      source_id, observation_group_id, device_id, note, source_json_present, source_json, source_unit
+    FROM observations;
+  DROP TABLE observations;
+  ALTER TABLE observations_v9 RENAME TO observations;
+  CREATE INDEX observations_code_observed_idx ON observations(measurement_code, observed_at);
+
+  INSERT OR IGNORE INTO poc_metadata VALUES
+    (9, CURRENT_TIMESTAMP, 'Observation group cascade deletion support');
+`;
+
 const schemaMigrations = [
   { version: 1, sql: baselineSchemaSql },
   { version: 2, sql: healthConnectSyncSchemaSql },
@@ -704,7 +732,8 @@ const schemaMigrations = [
   { version: 5, sql: healthEventKindConceptsSchemaSql },
   { version: 6, sql: careItemKindConsolidationSchemaSql },
   { version: 7, sql: careItemStatusConsolidationSchemaSql },
-  { version: 8, sql: medicationsSchemaSql }
+  { version: 8, sql: medicationsSchemaSql },
+  { version: 9, sql: observationGroupCascadeDeleteSchemaSql }
 ] as const;
 
 const analyticalViewStatements = [

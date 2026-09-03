@@ -227,12 +227,37 @@ describe("AI query planner reliability contract", () => {
     });
   });
 
-  it("uses the documented 30-day default time range", () => {
+  it("uses the documented 365-day default time range", () => {
     expect(resolveTimeRange({}, new Date("2026-07-22T12:00:00.000Z"))).toEqual({
-      start: "2026-06-22",
+      start: "2025-07-22",
       end: "2026-07-22",
-      label: "last 30 days"
+      label: "last 365 days"
     });
+  });
+
+  it("documents and accepts the 365-day default for unqualified questions", async () => {
+    callConfiguredModel.mockResolvedValue(modelResponse({
+      intent: "latest",
+      metric: "glucose",
+      aggregation: "latest",
+      groupBy: null,
+      timeRange: { preset: "last_365d" },
+      sort: "desc",
+      limit: 1,
+      chartType: "none"
+    }));
+
+    const result = await planAiQuery("What is my latest glucose level?");
+
+    expect(result).toMatchObject({
+      ok: true,
+      dsl: {
+        intent: "latest",
+        metric: "glucose",
+        timeRange: { preset: "last_365d" }
+      }
+    });
+    expect(callConfiguredModel.mock.calls[0][0]).toContain('Default time range is "last_365d" unless specified');
   });
 
   it("rejects unknown metrics before compilation", () => {
