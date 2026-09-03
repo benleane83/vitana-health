@@ -47,7 +47,7 @@ test("Windows smoke verifies a test owner credential is migrated to Electron sec
   assert.doesNotMatch(script, /\(Get-Content \$securityPath -Raw \| ConvertFrom-Json\)\.ownerToken/);
   assert.match(desktopMain, /const smokeUserDataPath = process\.env\.VITANA_SMOKE_USER_DATA_DIR;/);
   assert.match(desktopMain, /path\.resolve\(smokeUserDataPath\)/);
-  assert.match(desktopMain, /Boolean\(smokeUserDataPath\) \|\| app\.requestSingleInstanceLock\(\)/);
+  assert.match(desktopMain, /const hasSingleInstanceLock = app\.requestSingleInstanceLock\(\);/);
   assert.match(desktopMain, /distributionChannel === "github" && !smokeUserDataPath/);
   assert.match(script, /Authorization = "Bearer \$OwnerToken"/);
   assert.doesNotMatch(script, /\/api\/auth\/local/);

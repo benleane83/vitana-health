@@ -33,7 +33,7 @@ app.setPath("userData", brandedUserDataPath);
 // The lock has to be taken before the legacy user-data directory is moved. Two copies launching
 // together would otherwise both see the old directory and race their renames, and the loser can
 // leave the store half-moved between the two paths.
-const hasSingleInstanceLock = Boolean(smokeUserDataPath) || app.requestSingleInstanceLock();
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (hasSingleInstanceLock) {
   try {
     if (distributionChannel === "github" && !smokeUserDataPath) migrateUserDataDirectory(app.getPath("appData"));
