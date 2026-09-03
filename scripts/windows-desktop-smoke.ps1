@@ -14,6 +14,8 @@ $productName = "Vitana Health"
 $desktopPackage = Get-Content (Join-Path $PSScriptRoot "../apps/desktop/package.json") -Raw | ConvertFrom-Json
 $applicationName = "$($desktopPackage.build.executableName).exe"
 $installRoot = Join-Path $env:RUNNER_TEMP "vitana-smoke"
+$smokeAppDataRoot = Join-Path $env:RUNNER_TEMP "vitana-smoke-appdata"
+$originalSmokeUserDataDir = $env:VITANA_SMOKE_USER_DATA_DIR
 $evidenceRoot = New-Item -ItemType Directory -Force -Path $EvidenceDirectory
 $gracefulShutdownTimeoutMs = 30000
 $forcedShutdownTimeoutMs = 10000
@@ -139,9 +141,8 @@ function Save-HealthDiagnostics {
     (& netstat -ano | Select-String ":4317") | Set-Content (Join-Path $diagnosticsDirectory "port-4317.txt")
   } catch {}
   try {
-    $appDataDirectory = Join-Path $env:APPDATA $productName
-    if (Test-Path $appDataDirectory) {
-      Get-ChildItem $appDataDirectory -Filter "*.log" -Recurse -ErrorAction SilentlyContinue |
+    if (Test-Path $smokeAppDataRoot) {
+      Get-ChildItem $smokeAppDataRoot -Filter "*.log" -Recurse -ErrorAction SilentlyContinue |
         Sort-Object LastWriteTimeUtc -Descending |
         Select-Object -First 10 |
         Copy-Item -Destination $diagnosticsDirectory -Force
@@ -164,11 +165,21 @@ try {
     throw "Desktop application not found at expected installation path: $application."
   }
 
+  Remove-Item -Recurse -Force $smokeAppDataRoot -ErrorAction SilentlyContinue
+  $env:VITANA_SMOKE_USER_DATA_DIR = $smokeAppDataRoot
+  $appDataDirectory = New-Item -ItemType Directory -Force -Path $smokeAppDataRoot
+  $ownerToken = if ($Scope -eq "Full") {
+    [Convert]::ToBase64String([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).TrimEnd("=")
+  }
+  if ($ownerToken) {
+    @{ ownerToken = $ownerToken } | ConvertTo-Json -Compress | Set-Content -Path (Join-Path $appDataDirectory "security.json") -Encoding utf8
+  }
+
   $firstLaunch = Start-Process -FilePath $application -PassThru
   $firstLaunchStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
   Wait-ForHealth "initial startup"
   $firstLaunchStopwatch.Stop()
-  $manifest = Get-ChildItem $env:APPDATA -Filter "storage-backend.json" -Recurse |
+  $manifest = Get-ChildItem $smokeAppDataRoot -Filter "storage-backend.json" -Recurse |
     Sort-Object LastWriteTimeUtc -Descending |
     Select-Object -First 1
   if (-not $manifest) {
@@ -201,9 +212,14 @@ try {
   if (-not (Test-Path $securityPath)) {
     throw "The packaged runtime did not create owner security metadata."
   }
-  $ownerToken = (Get-Content $securityPath -Raw | ConvertFrom-Json).ownerToken
-  if ([string]::IsNullOrWhiteSpace($ownerToken) -or $ownerToken.Length -lt 24) {
-    throw "The packaged runtime did not create a valid owner credential."
+  $security = Get-Content $securityPath -Raw | ConvertFrom-Json
+  if (
+    $security.credentialStorage -ne "electron-safe-storage-v1" -or
+    [string]::IsNullOrWhiteSpace($security.wrappedOwnerToken) -or
+    $security.wrappedOwnerToken.Length -lt 24 -or
+    $security.PSObject.Properties.Match("ownerToken").Count -ne 0
+  ) {
+    throw "The packaged runtime did not protect the owner credential with Electron secure storage."
   }
   $enabledSettings = Invoke-DesktopApi "PUT" "/api/settings/desktop" @{ backgroundServiceEnabled = $true } $ownerToken
   if (-not $enabledSettings.backgroundServiceEnabled) {
@@ -291,4 +307,10 @@ try {
   if ($secondLaunch) {
     Stop-DesktopProcess $secondLaunch
   }
+  if ($null -eq $originalSmokeUserDataDir) {
+    Remove-Item Env:VITANA_SMOKE_USER_DATA_DIR -ErrorAction SilentlyContinue
+  } else {
+    $env:VITANA_SMOKE_USER_DATA_DIR = $originalSmokeUserDataDir
+  }
+  Remove-Item -Recurse -Force $smokeAppDataRoot -ErrorAction SilentlyContinue
 }
