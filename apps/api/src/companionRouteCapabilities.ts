@@ -36,6 +36,7 @@ export const companionRouteCapabilities: readonly CompanionRouteCapability[] = [
   { method: "GET", path: /^\/summary\/[^/]+$/, capability: "assigned-profile:read", router: "makeDataRoutes" },
   { method: "PATCH", path: /^\/observations\/[^/]+$/, capability: "observations:write", router: "makeDataRoutes" },
   { method: "DELETE", path: /^\/observations\/[^/]+$/, capability: "observations:write", router: "makeDataRoutes" },
+  { method: "DELETE", path: /^\/observation-groups\/[^/]+$/, capability: "observations:write", router: "makeDataRoutes" },
 
   // makeProfileRoutes — routes/profileRoutes.ts
   { method: "GET", path: "/profile/photo", capability: "assigned-profile:read", router: "makeProfileRoutes" },
