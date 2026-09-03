@@ -1,6 +1,6 @@
 {
   "name": "@vitana/desktop",
-  "version": "0.1.28",
+  "version": "0.1.29",
   "author": "Ben Leane",
   "description": "Packaged Vitana Health desktop application",
   "main": "main.cjs",
