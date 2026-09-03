@@ -34,11 +34,21 @@ test("Windows smoke does not require elevated firewall configuration from the pe
   assert.doesNotMatch(script, /firewallRuleRemoved/);
 });
 
-test("Windows smoke uses the installed owner credential instead of renderer-only nonce authentication", () => {
+test("Windows smoke verifies a test owner credential is migrated to Electron secure storage", () => {
   const script = readFileSync(new URL("./windows-desktop-smoke.ps1", import.meta.url), "utf8");
+  const desktopMain = readFileSync(new URL("../apps/desktop/main.cjs", import.meta.url), "utf8");
 
   assert.match(script, /Join-Path \$manifest\.DirectoryName "security\.json"/);
-  assert.match(script, /\.ownerToken/);
+  assert.match(script, /\$env:VITANA_SMOKE_USER_DATA_DIR = \$smokeAppDataRoot/);
+  assert.doesNotMatch(script, /\$env:APPDATA = \$smokeAppDataRoot/);
+  assert.match(script, /RandomNumberGenerator\]::GetBytes\(32\)/);
+  assert.match(script, /credentialStorage -ne "electron-safe-storage-v1"/);
+  assert.match(script, /\.wrappedOwnerToken/);
+  assert.doesNotMatch(script, /\(Get-Content \$securityPath -Raw \| ConvertFrom-Json\)\.ownerToken/);
+  assert.match(desktopMain, /const smokeUserDataPath = process\.env\.VITANA_SMOKE_USER_DATA_DIR;/);
+  assert.match(desktopMain, /path\.resolve\(smokeUserDataPath\)/);
+  assert.match(desktopMain, /const hasSingleInstanceLock = app\.requestSingleInstanceLock\(\);/);
+  assert.match(desktopMain, /distributionChannel === "github" && !smokeUserDataPath/);
   assert.match(script, /Authorization = "Bearer \$OwnerToken"/);
   assert.doesNotMatch(script, /\/api\/auth\/local/);
 });

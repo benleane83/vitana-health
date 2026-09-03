@@ -112,6 +112,7 @@ describe("findMeasurementType", () => {
   it("ignores decorative punctuation in measurement labels", () => {
     expect(findMeasurementType("Protein (Total)")?.code).toBe("total_protein");
     expect(findMeasurementType("Direct Bilirubin*")?.code).toBe("bilirubin_direct");
+    expect(findMeasurementType("Free Testosterone#")?.code).toBe("free_testosterone");
   });
 
   it("does not resolve retired Samsung-prefixed alias", () => {

@@ -255,6 +255,25 @@ describe("parseBloodTestScanText", () => {
     expect(result.reportDate).toBe("2026-07-08T18:49:00.000Z");
   });
 
+  it("parses a known marker with trailing lab notation", () => {
+    const result = parseBloodTestScanText(
+      "results.pdf",
+      "Free Testosterone# 0.69 pg/mL"
+    );
+
+    expect(result.rows).toEqual([
+      expect.objectContaining({
+        label: "Free testosterone",
+        measurementCode: "free_testosterone",
+        displayName: "Free testosterone",
+        value: 0.69,
+        unit: "pg/mL",
+        included: true,
+        confidence: "high"
+      })
+    ]);
+  });
+
   it("skips OCR-spaced date metadata while preserving nearby lab measurements", () => {
     const result = parseBloodTestScanText(
       "BloodTestResults_Aug2026.pdf",
@@ -285,6 +304,19 @@ describe("parseBloodTestScanText", () => {
 
     expect(result.rows).toEqual([expect.objectContaining({ measurementCode: "glucose" })]);
     expect(result.diagnostics.filter((message) => message.includes("administrative identifier"))).toHaveLength(2);
+  });
+
+  it("omits unknown and body-only measurements from a lab scan", () => {
+    const result = parseBloodTestScanText(
+      "results.pdf",
+      "Weight: 75 kg\nUnrecognized marker: 12 units"
+    );
+
+    expect(result.rows).toEqual([]);
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      'Skipped unrecognized lab measurement: "Weight".',
+      'Skipped unrecognized lab measurement: "Unrecognized marker".'
+    ]));
   });
 
   it("prioritizes report dates and excludes the active profile birth date", () => {
@@ -374,6 +406,20 @@ describe("parseBodyCompositionText", () => {
     expect(result.rows.filter((row) => row.measurementCode === "muscle_mass")).toHaveLength(1);
     expect(result.rows.filter((row) => row.measurementCode === "skeletal_muscle_mass")).toHaveLength(1);
     expect(result.diagnostics).not.toContain("Skipped measurements in a body composition history section.");
+  });
+
+  it("omits unknown, lab-only, and implausible body-composition measurements", () => {
+    const result = parseBodyCompositionText(
+      "body-report.jpg",
+      "Weight: 2 kg\nGlucose: 5.2 mmol/L\nUnrecognized metric: 12 kg"
+    );
+
+    expect(result.rows).toEqual([]);
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      'Skipped implausible body-composition measurement: "Weight" (2 kg).',
+      'Skipped unrecognized body-composition measurement: "Glucose".',
+      'Skipped unrecognized body-composition measurement: "Unrecognized metric".'
+    ]));
   });
 
   it("parses the reliable metric tiles from a Eufy body-composition image OCR layout", () => {

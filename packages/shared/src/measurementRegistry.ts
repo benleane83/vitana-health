@@ -21,7 +21,7 @@ export function findMeasurementType(input: string, registry = defaultMeasurement
 function normalizeMeasurementLookup(value: string): string {
   return value.trim().toLowerCase()
     .replaceAll("_", " ")
-    .replace(/[()[\]{}*†‡]/g, " ")
+    .replace(/[()[\]{}#*†‡]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }

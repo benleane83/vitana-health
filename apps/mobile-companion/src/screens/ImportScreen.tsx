@@ -52,8 +52,12 @@ import {
 } from "./scanReportReview";
 import { buildImportSourceOptions, type ImportSource, type ImportSourceOption } from "./importSourceOptions";
 
-const privacyUrl = "https://vitanahealth.app/privacy";
+const privacyUrl = "https://vitana-health.pages.dev/privacy";
 type ScanKind = "body-composition" | "blood-test";
+const scanKindLabel: Record<ScanKind, string> = {
+  "body-composition": "Body composition",
+  "blood-test": "Lab results"
+};
 
 export function ImportScreen() {
   const { connectionState, demoMode, standaloneMode } = useMobileApi();
@@ -347,6 +351,10 @@ function ScanImport() {
   const [statusTone, setStatusTone] = useState<"info" | "success" | "warning" | "danger">("info");
   const [busy, setBusy] = useState(false);
   useKeepAwake(busy ? "report-scan" : undefined);
+  const allowedScanMeasurements = useMemo(
+    () => measurements.filter((measurement) => measurement.category === (kind === "body-composition" ? "body" : "lab")),
+    [kind, measurements]
+  );
   const client = useMemo(
     () => connection?.token ? createCompanionApi(connection, LONG_RUNNING_PINNED_REQUEST_TIMEOUT_MS) : undefined,
     [connection]
@@ -386,14 +394,32 @@ function ScanImport() {
       // additional base64 copy while the local-network JSON request is in flight.
       const contentBase64 = await new File(resized.uri).base64();
       if (!contentBase64) throw new Error("Could not read the selected image.");
-      const next = kind === "body-composition"
-        ? await client.previewBodyCompositionReport({ fileName: asset.fileName ?? "report.jpg", mimeType: "image/jpeg", contentBase64 })
-        : await client.previewBloodTestReport({ fileName: asset.fileName ?? "report.jpg", mimeType: "image/jpeg", contentBase64 });
-      setDraft(next);
-      setRows(toEditableScanRows(next.rows));
-      setReportDate(scanReportDate(next.reportDate));
+      const payload = { fileName: asset.fileName ?? "report.jpg", mimeType: "image/jpeg" as const, contentBase64 };
+      const selectedKind = kind;
+      let reviewKind = selectedKind;
+      let reviewDraft = selectedKind === "body-composition"
+        ? await client.previewBodyCompositionReport(payload)
+        : await client.previewBloodTestReport(payload);
+
+      if (reviewDraft.rows.length === 0) {
+        const alternateKind: ScanKind = selectedKind === "body-composition" ? "blood-test" : "body-composition";
+        const alternateDraft = alternateKind === "body-composition"
+          ? await client.previewBodyCompositionReport(payload)
+          : await client.previewBloodTestReport(payload);
+        if (alternateDraft.rows.length > 0 && await confirmAlternateScan(selectedKind, alternateKind)) {
+          reviewKind = alternateKind;
+          reviewDraft = alternateDraft;
+        }
+      }
+
+      setKind(reviewKind);
+      setDraft(reviewDraft);
+      setRows(toEditableScanRows(reviewDraft.rows));
+      setReportDate(scanReportDate(reviewDraft.reportDate));
       setStatusTone("warning");
-      setStatus("Review OCR results before importing.");
+      setStatus(reviewDraft.rows.length
+        ? "Review OCR results before importing."
+        : `No recognized ${scanKindLabel[reviewKind].toLowerCase()} measurements were found.`);
     } catch (caught) {
       setStatusTone("danger");
       setStatus(userFacingError(caught, "Report preview failed. Check the connection to your paired PC and try again."));
@@ -466,30 +492,24 @@ function ScanImport() {
     return (
       <Card key={row.id}>
         <View style={styles.row}><Text style={[styles.heading, styles.flex]}>{row.label}</Text><Switch accessibilityLabel={`Include ${row.label}`} disabled={busy} value={row.included} onValueChange={(included) => setRowIncluded(row, included)} /></View>
-        {row.manuallyAdded ? (
-          <View style={styles.field}>
-            <Text style={styles.label}>Measurement</Text>
-            <View style={styles.pickerField}>
-              <Picker
-                accessibilityLabel="Measurement"
-                enabled={!busy}
-                onValueChange={(measurementCode) => selectScanMeasurement(row.id, String(measurementCode))}
-                selectedValue={row.measurementCode}
-                style={styles.picker}
-              >
-                <Picker.Item label="Choose a measurement" value="" />
-                {measurements.map((measurement) => (
-                  <Picker.Item key={measurement.code} label={measurement.display} value={measurement.code} />
-                ))}
-              </Picker>
-            </View>
+        {!row.manuallyAdded ? <Text style={styles.meta}>OCR confidence: {row.confidence}</Text> : null}
+        <View style={styles.field}>
+          <Text style={styles.label}>Measurement</Text>
+          <View style={styles.pickerField}>
+            <Picker
+              accessibilityLabel={`Measurement for ${row.label}`}
+              enabled={!busy}
+              onValueChange={(measurementCode) => selectScanMeasurement(row.id, String(measurementCode))}
+              selectedValue={row.measurementCode}
+              style={styles.picker}
+            >
+              <Picker.Item label="Choose a measurement" value="" />
+              {allowedScanMeasurements.map((measurement) => (
+                <Picker.Item key={measurement.code} label={measurement.display} value={measurement.code} />
+              ))}
+            </Picker>
           </View>
-        ) : (
-          <>
-            <Text style={styles.meta}>OCR confidence: {row.confidence}</Text>
-            <TextInput accessibilityLabel={`Measurement for ${row.label}`} editable={!busy} style={styles.input} value={row.measurementCode} onChangeText={(measurementCode) => patchRow(row.id, { measurementCode })} />
-          </>
-        )}
+        </View>
         <View style={styles.row}>
           <TextInput accessibilityLabel={`Value for ${row.label}`} editable={!busy} style={[styles.input, styles.flex]} keyboardType="decimal-pad" value={row.value} onChangeText={(value) => patchRow(row.id, { value })} />
           <TextInput accessibilityLabel={`Unit for ${row.label}`} editable={!busy} style={[styles.input, styles.flex]} value={row.unit} onChangeText={(unit) => patchRow(row.id, { unit })} />
@@ -514,8 +534,8 @@ function ScanImport() {
   return (
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <View style={styles.chips}>
+        <Chip disabled={busy} label="Lab results" selected={kind === "blood-test"} onPress={() => { setKind("blood-test"); resetReview(); }} />
         <Chip disabled={busy} label="Body composition" selected={kind === "body-composition"} onPress={() => { setKind("body-composition"); resetReview(); }} />
-        <Chip disabled={busy} label="Lab test" selected={kind === "blood-test"} onPress={() => { setKind("blood-test"); resetReview(); }} />
       </View>
       {!draft ? (
         <Card>
@@ -569,6 +589,20 @@ function ScanImport() {
       {status && statusTone === "success" ? <ViewImportedDataButton /> : null}
     </ScrollView>
   );
+}
+
+function confirmAlternateScan(selectedKind: ScanKind, alternateKind: ScanKind): Promise<boolean> {
+  return new Promise((resolve) => {
+    Alert.alert(
+      `${scanKindLabel[alternateKind]} report found`,
+      `No ${scanKindLabel[selectedKind].toLowerCase()} measurements were found. This document contains ${scanKindLabel[alternateKind].toLowerCase()} measurements. Review it as ${scanKindLabel[alternateKind].toLowerCase()}?`,
+      [
+        { text: "Keep current type", style: "cancel", onPress: () => resolve(false) },
+        { text: `Switch to ${scanKindLabel[alternateKind]}`, onPress: () => resolve(true) }
+      ],
+      { cancelable: true, onDismiss: () => resolve(false) }
+    );
+  });
 }
 
 function HealthConnectImport() {

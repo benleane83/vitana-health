@@ -21,10 +21,13 @@ const backgroundLaunch = process.argv.includes("--background");
 let startupPathError;
 const packageMetadata = require("./package.json");
 const distributionChannel = packageMetadata.vitanaDistributionChannel;
-const brandedUserDataPath = path.join(
-  app.getPath("appData"),
-  distributionChannel === "store" ? "Vitana Health Store" : "Vitana Health"
-);
+const smokeUserDataPath = process.env.VITANA_SMOKE_USER_DATA_DIR;
+const brandedUserDataPath = smokeUserDataPath
+  ? path.resolve(smokeUserDataPath)
+  : path.join(
+      app.getPath("appData"),
+      distributionChannel === "store" ? "Vitana Health Store" : "Vitana Health"
+    );
 app.setPath("userData", brandedUserDataPath);
 
 // The lock has to be taken before the legacy user-data directory is moved. Two copies launching
@@ -33,7 +36,7 @@ app.setPath("userData", brandedUserDataPath);
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (hasSingleInstanceLock) {
   try {
-    if (distributionChannel === "github") migrateUserDataDirectory(app.getPath("appData"));
+    if (distributionChannel === "github" && !smokeUserDataPath) migrateUserDataDirectory(app.getPath("appData"));
   } catch (error) {
     startupPathError = error;
   }

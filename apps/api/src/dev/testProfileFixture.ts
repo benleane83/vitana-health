@@ -91,7 +91,7 @@ const baselines: Record<string, number> = {
   magnesium: 0.86,
   testosterone_total: 18,
   sex_hormone_binding_globulin: 35,
-  free_testosterone: 360,
+  free_testosterone: 104,
   dehydroepiandrosterone_sulfate: 6.2,
   cortisol: 360,
   free_thyroxine: 16,
