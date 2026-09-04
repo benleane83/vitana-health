@@ -617,13 +617,13 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
       // Securely retain the credential for revocation when the paired PC is reachable again.
     }
     generation.current += 1;
-    await (source as Partial<ConnectedReplicaMaintenance> | undefined)?.deleteConnectedReplica?.();
     const freshLocalSource = createStandaloneDataSource();
     try {
       await (freshLocalSource as StandaloneMigrationSource).createFreshDataset();
     } finally {
       await freshLocalSource.dispose?.();
     }
+    await (source as Partial<ConnectedReplicaMaintenance> | undefined)?.deleteConnectedReplica?.();
     await saveOperatingMode("standalone");
     await Promise.all([clearConnection(), clearSelectedProfileId()]);
     setConnection(null);

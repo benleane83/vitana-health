@@ -3,6 +3,7 @@ import {
   classifyValueWithRange,
   computeAnalyticsFromInput,
   defaultMeasurementTypes,
+  isObservationSourceEditable,
   resolveReferenceRange,
   type AppBootstrap,
   type BodyTrendQuery,
@@ -186,7 +187,7 @@ export class LocalProfileRepository implements MobileProfileRepository {
         } : undefined,
         referenceRange,
         status: classifyValueWithRange(record.value, referenceRange),
-        canDelete: true
+        canDelete: isObservationSourceEditable(record.sourceKind)
       };
     });
     return {

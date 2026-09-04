@@ -10,6 +10,7 @@ import type {
 import {
   classifyValueWithRange,
   getPreferredUnit,
+  isObservationSourceEditable,
   resolveReferenceRange,
   toPreferredMeasurementValue
 } from "@vitana/shared";
@@ -168,7 +169,7 @@ export function listHealthDataDetailEntries(store: HealthStoreData, measurementC
           : undefined,
         referenceRange,
         status: classifyValueWithRange(entry.value, referenceRange),
-        canDelete: true,
+        canDelete: isObservationSourceEditable(source?.sourceKind),
         deleteLabel: "Delete"
       };
     });

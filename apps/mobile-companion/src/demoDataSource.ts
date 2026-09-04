@@ -269,8 +269,23 @@ export function createDemoDataSource(
         counts: makeBootstrap(details, now).counts
       };
     },
-    async deleteObservationGroup() {
-      throw new Error("Measurement panels are read-only in demo mode.");
+    async deleteObservationGroup(id) {
+      const group = observationGroups.get(id);
+      if (!group) throw new Error("Observation group not found.");
+      const observationIds = new Set(group.observations.map((entry) => entry.id));
+      observationGroups.delete(id);
+      for (const [measurementCode, detail] of details) {
+        details.set(measurementCode, withEntries(
+          detail,
+          detail.entries.filter((entry) => !observationIds.has(entry.id))
+        ));
+      }
+      return {
+        deletedCount: 1,
+        deletedGroupId: id,
+        deletedObservationCount: observationIds.size,
+        counts: makeBootstrap(details, now).counts
+      };
     },
     async listHealthEvents(query = {}) {
       return paginateCollection(filterHealthEvents(healthEvents, query), query);

@@ -37,6 +37,12 @@ describe("connected replica repository", () => {
         label: "Phone entry",
         createdAt: "2026-07-20T10:00:00.000Z"
       }),
+      upsert("data-source", "source-2", {
+        id: "source-2",
+        sourceKind: "health-connect",
+        label: "Health Connect",
+        createdAt: "2026-07-10T10:00:00.000Z"
+      }),
       upsert("observation-group", "group-1", {
         id: "group-1",
         kind: "manual_panel",
@@ -60,6 +66,14 @@ describe("connected replica repository", () => {
         value: 71,
         unit: "kg",
         sourceId: "source-1"
+      }),
+      upsert("observation", "observation-3", {
+        id: "observation-3",
+        measurementCode: "weight",
+        observedAt: "2026-07-10T09:00:00.000Z",
+        value: 72,
+        unit: "kg",
+        sourceId: "source-2"
       }),
       upsert("health-event", "event-1", {
         id: "event-1",
@@ -138,11 +152,15 @@ describe("connected replica repository", () => {
         canDelete: true,
         deleteLabel: "Delete reading"
       })],
-      pagination: { loaded: 1, total: 2, hasMore: true }
+      pagination: { loaded: 1, total: 3, hasMore: true }
     });
     await expect(reopened.healthDataDetail("weight", { limit: 1, offset: 1 })).resolves.toMatchObject({
       entries: [expect.objectContaining({ id: "observation-2", value: 71 })],
-      pagination: { loaded: 2, total: 2, hasMore: false }
+      pagination: { loaded: 2, total: 3, hasMore: true }
+    });
+    await expect(reopened.healthDataDetail("weight", { limit: 1, offset: 2 })).resolves.toMatchObject({
+      entries: [expect.objectContaining({ id: "observation-3", value: 72, canDelete: false })],
+      pagination: { loaded: 3, total: 3, hasMore: false }
     });
   });
 

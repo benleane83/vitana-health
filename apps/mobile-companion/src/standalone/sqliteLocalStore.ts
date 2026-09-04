@@ -75,9 +75,9 @@ import { prepareReplicaCache } from "./replicaCache";
 const DATABASE_NAME = "standalone-health.db";
 const profileInsertSql = `
   INSERT INTO profiles (
-    id, display_name, setup_status, subject_kind, birth_date, sex, height_cm, blood_type,
+    id, profile_json, display_name, setup_status, subject_kind, birth_date, sex, height_cm, blood_type,
     goal_summary, cloud_ai_consent_json, pet_json, units, updated_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `;
 
 interface StoredProfileRow {
@@ -99,6 +99,7 @@ interface StoredProfileRow {
 function profileParameters(profile: Profile): readonly (string | number | null)[] {
   return [
     profile.id,
+    JSON.stringify(profile),
     profile.displayName,
     profile.setupStatus,
     profile.subjectKind ?? "adult",

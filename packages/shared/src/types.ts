@@ -12,6 +12,10 @@ export type SourceKind =
   | "body-composition-report"
   | "derived";
 
+export function isObservationSourceEditable(sourceKind: SourceKind | undefined): boolean {
+  return sourceKind !== "health-connect" && sourceKind !== "derived";
+}
+
 export type UnitSystem = "metric" | "imperial";
 export type SubjectKind = "adult" | "child" | "pet";
 export type ProfileSetupStatus = "pending" | "dismissed" | "complete";
