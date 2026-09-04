@@ -702,6 +702,7 @@ describe("App — import tab", () => {
     expect(within(manager).getByText("Active profile")).toBeInTheDocument();
     expect(within(manager).getByRole("button", { name: /switch/i })).toBeInTheDocument();
     expect(within(manager).getAllByRole("button", { name: /^edit$/i })).toHaveLength(2);
+    expect(within(manager).getAllByRole("button", { name: /^delete profile:/i })).toHaveLength(2);
 
     const addProfile = within(manager).getByText("Add profile").closest("details");
     expect(addProfile).not.toHaveAttribute("open");
@@ -718,18 +719,25 @@ describe("App — import tab", () => {
     expect(screen.getByRole("dialog", { name: /edit profile/i })).toBeInTheDocument();
   });
 
-  it("returns to the Dashboard after switching profiles from Manage Profiles", async () => {
+  it("keeps Manage Profiles open and refreshes it after switching profiles", async () => {
     globalThis.history.replaceState({}, "", "/care/items");
     const store = makeEmptyStore();
     const profiles = [
       { id: "self", displayName: "Local user", updatedAt: "2026-01-01T00:00:00.000Z" },
       { id: "family", displayName: "Family member", updatedAt: "2026-01-02T00:00:00.000Z" }
     ];
-    global.fetch = mockFetch({
-      "/api/profiles/active": { profileId: "family" },
-      "/api/store": store,
-      "/api/analytics": makeEmptyAnalytics(),
-      "/api/profiles": { profiles, activeProfileId: "self" }
+    let activeProfileId = "self";
+    global.fetch = vi.fn(async (input: string | URL | Request) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes("/api/profiles/active")) {
+        activeProfileId = "family";
+        return response({ profileId: activeProfileId });
+      }
+      if (url.includes("/api/profiles")) return response({ profiles, activeProfileId });
+      if (url.includes("/api/bootstrap")) return response(makeBootstrap(store));
+      if (url.includes("/api/analytics")) return response(makeEmptyAnalytics());
+      if (url.includes("/api/entitlement")) return response({ tier: "free", source: null, overridden: false });
+      return response({});
     });
 
     render(<App />);
@@ -737,8 +745,11 @@ describe("App — import tab", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: /manage profiles/i }));
     fireEvent.click(within(screen.getByRole("dialog", { name: /manage profiles/i })).getByRole("button", { name: "Switch" }));
 
-    await waitFor(() => expect(window.location.pathname).toBe("/"));
-    expect(screen.getByRole("tab", { name: "Dashboard" })).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => {
+      const manager = screen.getByRole("dialog", { name: /manage profiles/i });
+      expect(within(manager).getByText("Family member").closest('[role="listitem"]')).toHaveClass("active");
+    });
+    expect(window.location.pathname).toBe("/care/items");
   });
 
   it("uses imperial units when editing a profile and changing manual measurements", async () => {

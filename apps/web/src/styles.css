@@ -4119,8 +4119,9 @@ label {
 }
 
 .profile-manager-row.active {
-  border-color: color-mix(in srgb, var(--primary) 48%, var(--line));
-  background: color-mix(in srgb, var(--primary) 7%, var(--surface));
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 16%, var(--surface));
+  box-shadow: inset 4px 0 0 var(--primary), 0 0 0 1px color-mix(in srgb, var(--primary) 28%, transparent);
 }
 
 .profile-manager-row strong {
@@ -4135,7 +4136,7 @@ label {
 
 .profile-manager-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: var(--space-2);
 }
 
@@ -4150,11 +4151,34 @@ label {
   color: var(--text-strong);
 }
 
+.profile-manager-delete {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  min-width: 40px;
+  padding: 0 !important;
+  border-color: oklch(70% 0.18 35 / 0.4);
+  background: transparent;
+  color: var(--danger);
+}
+
+.profile-manager-delete svg {
+  width: 1rem;
+  height: 1rem;
+  fill: currentColor;
+}
+
 @media (hover: hover) and (pointer: fine) {
   .profile-manager-edit:hover:not(:disabled) {
     border-color: var(--primary);
     background: var(--surface-3);
     color: var(--primary-strong);
+  }
+
+  .profile-manager-delete:hover:not(:disabled) {
+    border-color: var(--danger);
+    background: oklch(94% 0.06 35 / 0.68);
+    color: var(--danger);
   }
 }
 
@@ -5408,7 +5432,7 @@ button.stat {
     justify-content: flex-start;
   }
 
-  .profile-manager-actions button {
+  .profile-manager-actions button:not(.profile-manager-delete) {
     flex: 1 1 120px;
   }
 
