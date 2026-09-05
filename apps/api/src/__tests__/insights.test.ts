@@ -48,6 +48,7 @@ describe("generateInsight", () => {
     expect(prompt).not.toContain("no applicable reference range");
     expect(prompt).toContain("Heart rate: 72 bpm on 2026-07-22 (normal).");
     expect(prompt).not.toContain("Latest tracked metric is HbA1c");
+    expect(prompt).toContain("Do not offer follow-up summaries, additional actions, or further assistance.");
     expect(insight.evidence).toContain("HbA1c: 5.7 % on 2026-07-23.");
   });
 

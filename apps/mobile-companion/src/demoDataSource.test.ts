@@ -78,7 +78,7 @@ describe("demo data source", () => {
     });
   });
 
-  it("links grouped Track Detail readings to a read-only demo group", async () => {
+  it("links grouped Track Detail readings to a demo group that can be deleted", async () => {
     const source = createDemoDataSource(new Date("2026-07-17T12:00:00.000Z"));
     const weight = await source.healthDataDetail("weight");
     const summary = weight.entries[0]?.observationGroup;
@@ -94,6 +94,12 @@ describe("demo data source", () => {
       ])
     });
     await expect(source.observationGroup("missing")).rejects.toThrow("not available in demo mode");
+    await expect(source.deleteObservationGroup(summary!.id)).resolves.toMatchObject({
+      deletedGroupId: summary!.id,
+      deletedObservationCount: 4
+    });
+    await expect(source.observationGroup(summary!.id)).rejects.toThrow("not available in demo mode");
+    expect((await source.healthDataDetail("weight")).entries.find((entry) => entry.observationGroup?.id === summary!.id)).toBeUndefined();
   });
 
   it("classifies ranged samples without inventing a status for range-less metrics", async () => {

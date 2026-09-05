@@ -22,6 +22,7 @@ import {
   deleteCareItemResponseSchema,
   deleteHealthEventResponseSchema,
   deleteMedicationResponseSchema,
+  deleteObservationGroupResponseSchema,
   deleteObservationResponseSchema,
   deleteObservationsByTypeResponseSchema,
   healthDataChartSeriesResponseSchema,
@@ -503,6 +504,21 @@ export function makeDataRoutes(
         response.status(409).json({ error: error.message, code: error.code });
         return;
       }
+      next(error);
+    }
+  });
+
+  router.delete("/observation-groups/:id", async (request, response, next) => {
+    try {
+      const id = recordIdParamSchema.parse(request.params.id);
+      const deleted = await requestStore(response).deleteObservationGroup(id);
+      if (!deleted) {
+        response.status(404).json({ error: "Observation group not found.", code: "OBSERVATION_GROUP_NOT_FOUND" });
+        return;
+      }
+      const analyticsStorage = describeAnalyticsStorage(deleted.counts);
+      sendJson(response, deleteObservationGroupResponseSchema, { ...deleted, analyticsStorage });
+    } catch (error) {
       next(error);
     }
   });

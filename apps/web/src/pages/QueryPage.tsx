@@ -3,6 +3,7 @@ import { safetyNotice } from "@vitana/shared";
 import { RotateCcw } from "lucide-react";
 import type { AiQueryResult } from "../api.js";
 import { QueryChart } from "../components/Charts.js";
+import { formatTimestamp } from "../utils.js";
 
 export interface QueryFailure {
   message: string;
@@ -103,7 +104,7 @@ export function QueryPage({
 
       {turns.length === 0 ? <div className="query-examples" aria-label="Query examples">
         <span>Try: </span>
-        {["max daily steps this month", "average heart rate last month", "lowest weight this year"].map(
+        {["max daily steps this month", "average heart rate last month", "lowest weight this year", "latest glucose level"].map(
           (example) => (
             <button
               key={example}
@@ -163,7 +164,7 @@ export function QueryPage({
                 event.currentTarget.form?.requestSubmit();
               }
             }}
-            placeholder={atTurnLimit ? "Start a new conversation to continue" : "Ask about a metric, activity, health event, or care item"}
+            placeholder={atTurnLimit ? "Start a new conversation to continue" : "Ask about a measurement, activity or care item. Queries use your last 365 days of data by default, or your own time range if provided."}
             disabled={busy || atTurnLimit}
             aria-keyshortcuts="Enter"
             aria-describedby="ai-query-shortcut ai-query-provider"
@@ -262,7 +263,7 @@ function QueryEvidence({ result }: { result: AiQueryResult }) {
               <thead><tr>{Object.keys(result.rows[0]).map((key) => <th key={key} scope="col">{key}</th>)}</tr></thead>
               <tbody>{result.rows.slice(0, 20).map((row, rowIndex) => (
                 <tr key={rowIndex}>{Object.values(row).map((cell, cellIndex) => (
-                  <td key={cellIndex}>{cell === null || cell === undefined ? "—" : String(cell)}</td>
+                  <td key={cellIndex}>{formatQueryCell(cell)}</td>
                 ))}</tr>
               ))}</tbody>
             </table>
@@ -271,6 +272,12 @@ function QueryEvidence({ result }: { result: AiQueryResult }) {
       ) : null}
     </div>
   );
+}
+
+function formatQueryCell(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value)) return formatTimestamp(value);
+  return String(value);
 }
 
 function QueryTechnicalDetails({ result }: { result: AiQueryResult }) {

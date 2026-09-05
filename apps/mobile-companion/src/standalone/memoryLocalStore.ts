@@ -34,6 +34,7 @@ import {
   MEASUREMENT_SCOPED_REPLICA_TYPES,
   emptyCounts,
   entityOutcome,
+  type DeletedLocalObservationGroup,
   type LocalObservationAggregate,
   type LocalCalendarObservation,
   type LocalObservationPage,
@@ -409,6 +410,19 @@ export class MemoryLocalStore implements LocalStore {
     this.state.observations.delete(observationKey);
     this.rotateMigrationFingerprint();
     return structuredClone(existing);
+  }
+
+  async deleteObservationGroup(id: string): Promise<DeletedLocalObservationGroup | undefined> {
+    this.assertWritable();
+    const existing = await this.observationGroup(id);
+    if (!existing) return undefined;
+    const profileId = this.requireProfileId();
+    this.state.observationGroups.delete(key(profileId, id));
+    for (const observation of existing.observations) {
+      this.state.observations.delete(key(profileId, observation.id));
+    }
+    this.rotateMigrationFingerprint();
+    return { group: existing, deletedObservationCount: existing.observations.length };
   }
 
   async listHealthEvents(query: HealthEventListQuery = {}) {

@@ -1,6 +1,7 @@
 import type {
   AnalyticsSummary,
   AppBootstrap,
+  DeleteObservationGroupResponse,
   DeleteObservationResponse,
   HealthDataDetail,
   HealthDataSummary,
@@ -54,6 +55,7 @@ export interface MobileProfileRepository {
   deleteMedication(id: string): Promise<DeleteMedicationResponse>;
   updateObservation(id: string, input: UpdateObservationInput): Promise<UpdateObservationResponse | undefined>;
   deleteObservation(id: string): Promise<DeleteObservationResponse | undefined>;
+  deleteObservationGroup(id: string): Promise<DeleteObservationGroupResponse | undefined>;
   mergeImport(imported: ParsedImport): Promise<MobileImportResult>;
   importManualObservations(payload: ManualObservationPayload): Promise<MobileImportResult>;
   reset(): Promise<void>;

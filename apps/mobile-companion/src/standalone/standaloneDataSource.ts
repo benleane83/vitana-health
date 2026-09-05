@@ -69,6 +69,11 @@ export function createStandaloneDataSource(): CompanionDataSource & CompanionCar
       if (!deleted) throw new Error("Observation not found.");
       return deleted;
     },
+    deleteObservationGroup: async (id) => {
+      const deleted = await (await getRepository()).deleteObservationGroup(id);
+      if (!deleted) throw new Error("Observation group not found.");
+      return deleted;
+    },
     importManualObservations: async (payload: ManualObservationPayload) =>
       (await getRepository()).importManualObservations(payload),
     createFreshDataset: async () => (await repository).createFreshDataset(createStandaloneProfile()),

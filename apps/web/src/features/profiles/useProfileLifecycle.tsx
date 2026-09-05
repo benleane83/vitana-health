@@ -109,13 +109,11 @@ export function useProfileLifecycle(onNotice: (message: string) => void, confirm
 
   async function switchProfile(profileId: string) {
     if (profileId === snapshot.activeProfileId) {
-      setUi((current) => ({ ...current, managerOpen: false }));
       return false;
     }
     return run(undefined, async () => {
       await api.profiles.setActive(profileId);
       await refresh();
-      setUi((current) => ({ ...current, managerOpen: false }));
     });
   }
 
@@ -148,7 +146,7 @@ export function useProfileLifecycle(onNotice: (message: string) => void, confirm
     const target = snapshot.profiles.find((entry) => entry.id === profileId);
     const approved = await confirm(
       "Delete profile",
-      `Delete profile "${target?.displayName ?? profileId}"? This removes its local encrypted store.`,
+      `Delete profile "${target?.displayName ?? profileId}"? This removes it from your PC permanently and cannot be undone.`,
       "Delete",
       true
     );
@@ -220,12 +218,10 @@ export type ProfileLifecycle = ReturnType<typeof useProfileLifecycle>;
 
 export function ProfileLifecycleDialogs({
   lifecycle,
-  allowProfileCreation,
-  onManagerProfileSwitched
+  allowProfileCreation
 }: {
   lifecycle: ProfileLifecycle;
   allowProfileCreation: boolean;
-  onManagerProfileSwitched?: () => void;
 }) {
   return (
     <>
@@ -255,20 +251,15 @@ export function ProfileLifecycleDialogs({
         <ProfileManagerDialog
           busy={lifecycle.ui.busy}
           profiles={lifecycle.profiles}
-          activeProfile={lifecycle.activeProfile}
           activeProfileId={lifecycle.activeProfileId}
           newProfileName={lifecycle.ui.newProfileName}
           allowProfileCreation={allowProfileCreation}
           onNewProfileNameChange={lifecycle.setNewProfileName}
           onClose={lifecycle.closeManager}
-          onSwitchProfile={async (profileId) => {
-            if (await lifecycle.switchProfile(profileId)) onManagerProfileSwitched?.();
-          }}
+          onSwitchProfile={(profileId) => { void lifecycle.switchProfile(profileId); }}
           onEditProfile={(profileId) => { void lifecycle.editProfile(profileId); }}
           onCreateProfile={() => { void lifecycle.createProfile(); }}
-          onDeleteActive={() => {
-            if (lifecycle.activeProfileId) void lifecycle.deleteProfile(lifecycle.activeProfileId);
-          }}
+          onDeleteProfile={(profileId) => { void lifecycle.deleteProfile(profileId); }}
         />
       ) : null}
     </>

@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { ChevronRight } from "lucide-react-native";
 import type { ObservationGroupDetail, ReferenceRange } from "@vitana/shared";
 import { useMobileApi } from "../MobileApiProvider";
 import type { RootStackParamList } from "../navigationTypes";
-import { Card, Loading, Message, Screen } from "../ui/components";
+import { Button, Card, Loading, Message, Screen } from "../ui/components";
 import { colors, radii, spacing, type } from "../ui/theme";
 import { userFacingError } from "../userFacingError";
 
@@ -13,10 +13,12 @@ type Props = NativeStackScreenProps<RootStackParamList, "ObservationGroup">;
 type GroupObservation = ObservationGroupDetail["observations"][number];
 
 export function ObservationGroupScreen({ navigation, route }: Props) {
-  const { observationGroup } = useMobileApi();
+  const { connectionState, deleteObservationGroup, demoMode, observationGroup, standaloneMode } = useMobileApi();
   const [detail, setDetail] = useState<ObservationGroupDetail>();
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string>();
 
   useEffect(() => {
     let current = true;
@@ -45,6 +47,35 @@ export function ObservationGroupScreen({ navigation, route }: Props) {
     );
   }
 
+  const selectedGroup = detail;
+  const canDeletePanel = demoMode || standaloneMode || connectionState === "online";
+
+  function confirmDeletion() {
+    const measurementLabel = selectedGroup.observations.length === 1 ? "measurement" : "measurements";
+    Alert.alert(
+      "Delete panel?",
+      `Delete "${selectedGroup.label}" and all ${selectedGroup.observations.length} ${measurementLabel} inside it? This cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete panel", style: "destructive", onPress: () => { void deletePanel(); } }
+      ]
+    );
+  }
+
+  async function deletePanel() {
+    if (deleting) return;
+    setDeleting(true);
+    setDeleteError(undefined);
+    try {
+      await deleteObservationGroup(selectedGroup.id);
+      navigation.goBack();
+    } catch (caught: unknown) {
+      setDeleteError(userFacingError(caught, "Unable to delete this panel. Try again."));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <Screen>
       <FlatList
@@ -52,6 +83,19 @@ export function ObservationGroupScreen({ navigation, route }: Props) {
         data={detail.observations}
         keyExtractor={(entry) => entry.id}
         ListHeaderComponent={<GroupHeader detail={detail} />}
+        ListFooterComponent={canDeletePanel ? (
+          <View style={styles.footer}>
+            {deleteError ? <Message title="Could not delete panel" detail={deleteError} tone="danger" /> : null}
+            <Button
+              accessibilityLabel={`Delete ${detail.label} and all contained measurements`}
+              danger
+              disabled={deleting}
+              onPress={confirmDeletion}
+            >
+              {deleting ? "Deleting…" : "Delete panel"}
+            </Button>
+          </View>
+        ) : null}
         ListEmptyComponent={<Message title="No measurements" detail="This group does not contain any measurements." />}
         renderItem={({ item }) => (
           <ObservationRow
@@ -157,6 +201,7 @@ function formatReferenceRange(range: ReferenceRange): string {
 
 const styles = StyleSheet.create({
   content: { gap: spacing.sm, paddingBottom: spacing.xl },
+  footer: { gap: spacing.sm, marginTop: spacing.md },
   header: { gap: spacing.md, marginBottom: spacing.xs },
   intro: { gap: spacing.xs },
   title: { color: colors.textStrong, fontSize: type.display, fontWeight: "800" },

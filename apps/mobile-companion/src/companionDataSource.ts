@@ -14,6 +14,7 @@ import type {
   CreateHealthEventInput,
   DeleteCareItemResponse,
   DeleteHealthEventResponse,
+  DeleteObservationGroupResponse,
   DeleteObservationResponse,
   HealthDataChartSeries,
   HealthDataChartSeriesOptions,
@@ -66,6 +67,7 @@ export interface CompanionMutationService {
 export interface CompanionObservationMutationService {
   updateObservation(id: string, input: UpdateObservationInput): Promise<UpdateObservationResponse>;
   deleteObservation(id: string): Promise<DeleteObservationResponse>;
+  deleteObservationGroup(id: string): Promise<DeleteObservationGroupResponse>;
 }
 
 export interface CompanionReferenceRangeMutationService {

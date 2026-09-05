@@ -106,6 +106,7 @@ interface MobileApiContextValue {
   importManualObservations(payload: ManualObservationPayload): Promise<unknown>;
   updateObservation(id: string, input: UpdateObservationInput): Promise<void>;
   deleteObservation(id: string): Promise<void>;
+  deleteObservationGroup(id: string): Promise<void>;
   setPersonalReferenceRange(measurementCode: string, input: PersonalReferenceRangeInput): Promise<void>;
   removePersonalReferenceRange(measurementCode: string): Promise<void>;
   resetStandaloneData(): Promise<void>;
@@ -500,6 +501,10 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     await runMutation(() => requireObservationMutationService(source).deleteObservation(id));
   }, [runMutation, source]);
 
+  const deleteObservationGroup = useCallback(async (id: string) => {
+    await runMutation(() => requireObservationMutationService(source).deleteObservationGroup(id));
+  }, [runMutation, source]);
+
   const setPersonalReferenceRange = useCallback(async (measurementCode: string, input: PersonalReferenceRangeInput) => {
     await runMutation(() => requireReferenceRangeMutationService(source).setPersonalReferenceRange(measurementCode, input));
   }, [runMutation, source]);
@@ -612,13 +617,13 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
       // Securely retain the credential for revocation when the paired PC is reachable again.
     }
     generation.current += 1;
-    await (source as Partial<ConnectedReplicaMaintenance> | undefined)?.deleteConnectedReplica?.();
     const freshLocalSource = createStandaloneDataSource();
     try {
       await (freshLocalSource as StandaloneMigrationSource).createFreshDataset();
     } finally {
       await freshLocalSource.dispose?.();
     }
+    await (source as Partial<ConnectedReplicaMaintenance> | undefined)?.deleteConnectedReplica?.();
     await saveOperatingMode("standalone");
     await Promise.all([clearConnection(), clearSelectedProfileId()]);
     setConnection(null);
@@ -718,6 +723,7 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     importManualObservations,
     updateObservation,
     deleteObservation,
+    deleteObservationGroup,
     setPersonalReferenceRange,
     removePersonalReferenceRange,
     resetStandaloneData,
@@ -739,7 +745,7 @@ export function MobileApiProvider({ children }: { children: React.ReactNode }) {
     disconnect
   }), [
     analytics, bodyTrendTimeline, bootstrap, calendarMonth, cancelPendingConnection, clearTransientData, completeCareItem, connection, connectionState, createCareItem, createHealthEvent, createMedication,
-    dashboardLoading, deleteCareItem, deleteHealthEvent, deleteMedication, deleteObservation, demoMode, discardStandaloneDataAndConnect, disconnect, error, healthDataChartSeries, healthDataDetail, journal, observationGroup,
+    dashboardLoading, deleteCareItem, deleteHealthEvent, deleteMedication, deleteObservation, deleteObservationGroup, demoMode, discardStandaloneDataAndConnect, disconnect, error, healthDataChartSeries, healthDataDetail, journal, observationGroup,
     importManualObservations, listCareItems, listHealthEvents, listMedications, listObservationGroups, operatingMode, refreshAfterImport, refreshDashboard,
     profilePhoto, refreshTrack, reloadConnection, removePersonalReferenceRange, resetStandaloneData, setDemoMode, setOperatingMode, setPersonalReferenceRange, summary, syncing, synchronizeConnectedData, trackLoading,
     migrateStandaloneData, migrationProgress, standaloneMigrationManifest, transientRevision, updateCareItem, updateHealthEvent, updateMedication, updateObservation
@@ -770,7 +776,7 @@ function requireObservationMutationService(
   source: CompanionDataSource | undefined
 ): CompanionObservationMutationService {
   const candidate = source as Partial<CompanionObservationMutationService> | undefined;
-  if (!candidate?.updateObservation || !candidate.deleteObservation) {
+  if (!candidate?.updateObservation || !candidate.deleteObservation || !candidate.deleteObservationGroup) {
     throw new Error("Observation editing is unavailable until a writable data source is ready.");
   }
   return candidate as CompanionObservationMutationService;

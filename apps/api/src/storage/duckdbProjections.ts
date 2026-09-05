@@ -44,6 +44,7 @@ import {
   type Profile,
   type ReferenceRangeState,
   healthConnectSleepStageSchema,
+  isObservationSourceEditable,
   type SleepSession,
   type SleepSessionListQueryContract,
   type SleepSessionPage,
@@ -188,7 +189,7 @@ export async function observationGroupDetail(
   const units = String(profileRows[0]?.units ?? "metric") as Profile["units"];
   const subjectKind = String(profileRows[0]?.subject_kind ?? "adult") as NonNullable<Profile["subjectKind"]>;
   const sourceKind = String(group.source_kind ?? "derived") as ObservationGroupDetail["source"]["kind"];
-  const editable = sourceKind === "manual-entry" || sourceKind === "blood-test-report" || sourceKind === "body-composition-report";
+  const editable = isObservationSourceEditable(sourceKind);
 
   return {
     id: String(group.id),
@@ -1724,7 +1725,7 @@ function measurementDetailEntryFromRow(
         : undefined,
       referenceRange,
       status: classifyValueWithRange(base.value, referenceRange),
-      canDelete: true,
+      canDelete: isObservationSourceEditable(base.sourceKind),
       deleteLabel: "Delete"
     };
   }

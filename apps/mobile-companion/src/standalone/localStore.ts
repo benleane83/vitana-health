@@ -125,6 +125,11 @@ export interface LocalObservationGroupRecord {
   observations: Observation[];
 }
 
+export interface DeletedLocalObservationGroup {
+  group: LocalObservationGroupRecord;
+  deletedObservationCount: number;
+}
+
 export type LocalCalendarObservation = Pick<Observation, "id" | "measurementCode" | "observedAt" | "value" | "unit"> & {
   sourceLabel?: string;
 };
@@ -160,6 +165,7 @@ export interface LocalStore {
   ): Promise<HealthDataChartSeries>;
   updateObservation(id: string, input: UpdateObservationInput): Promise<Observation | undefined>;
   deleteObservation(id: string): Promise<Observation | undefined>;
+  deleteObservationGroup(id: string): Promise<DeletedLocalObservationGroup | undefined>;
   listHealthEvents(query?: HealthEventListQuery): Promise<{ items: HealthEvent[]; total: number; offset: number; limit: number; hasMore: boolean }>;
   createHealthEvent(payload: CreateHealthEventInput): Promise<HealthEvent>;
   updateHealthEvent(id: string, payload: CreateHealthEventInput): Promise<HealthEvent | undefined>;

@@ -749,6 +749,73 @@ describe("companion pairing lifecycle", () => {
 
 // ─── DELETE /api/observations/:id ─────────────────────────────────────────────
 
+describe("DELETE /api/observation-groups/:id", () => {
+  it("removes a panel and only its contained measurements", async () => {
+    const first = buildManualLabEntryImport(
+      {
+        collectedAt: "2026-01-01T00:00:00.000Z",
+        panelName: "Delete this panel",
+        markers: [
+          { markerName: "Weight", value: 82, unit: "kg" },
+          { markerName: "Glucose", value: 5.2, unit: "mmol/L" }
+        ]
+      },
+      "2026-01-01T00:00:00.000Z"
+    );
+    const second = buildManualLabEntryImport(
+      {
+        collectedAt: "2026-01-02T00:00:00.000Z",
+        panelName: "Keep this panel",
+        markers: [{ markerName: "Weight", value: 81, unit: "kg" }]
+      },
+      "2026-01-02T00:00:00.000Z"
+    );
+    const store = storeManager.getActiveStore();
+    await store.mergeImport(first);
+    await store.mergeImport(second);
+    const groupId = first.observationGroups[0]?.id;
+    expect(groupId).toBeDefined();
+
+    const response = await request(app)
+      .delete(`/api/observation-groups/${groupId}`)
+      .set("authorization", ownerAuthorization);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      deletedCount: 1,
+      deletedGroupId: groupId,
+      deletedObservationCount: 2,
+      counts: { observations: 1 }
+    });
+    expect(await store.getObservationGroup(groupId!)).toBeUndefined();
+    expect(await store.getObservationGroup(second.observationGroups[0]!.id)).toBeDefined();
+    expect((await store.storageCounts()).observations).toBe(1);
+
+    const refreshedPanels = await request(app)
+      .get("/api/observation-groups")
+      .set("authorization", ownerAuthorization);
+
+    expect(refreshedPanels.status).toBe(200);
+    expect(refreshedPanels.body.items).toEqual([
+      expect.objectContaining({
+        id: second.observationGroups[0]!.id,
+        label: "Keep this panel",
+        measurementCount: 1
+      })
+    ]);
+    expect(refreshedPanels.body.total).toBe(1);
+  });
+
+  it("returns 404 for a missing panel", async () => {
+    const response = await request(app)
+      .delete("/api/observation-groups/group_nonexistent123")
+      .set("authorization", ownerAuthorization);
+
+    expect(response.status).toBe(404);
+    expect(response.body.error).toMatch(/not found/i);
+  });
+});
+
 describe("DELETE /api/observations/:id", () => {
   it("returns 404 for a non-existent observation ID", async () => {
     const res = await request(app).delete("/api/observations/obs_nonexistent123").set("authorization", ownerAuthorization);
