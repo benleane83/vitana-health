@@ -790,6 +790,20 @@ describe("DELETE /api/observation-groups/:id", () => {
     expect(await store.getObservationGroup(groupId!)).toBeUndefined();
     expect(await store.getObservationGroup(second.observationGroups[0]!.id)).toBeDefined();
     expect((await store.storageCounts()).observations).toBe(1);
+
+    const refreshedPanels = await request(app)
+      .get("/api/observation-groups")
+      .set("authorization", ownerAuthorization);
+
+    expect(refreshedPanels.status).toBe(200);
+    expect(refreshedPanels.body.items).toEqual([
+      expect.objectContaining({
+        id: second.observationGroups[0]!.id,
+        label: "Keep this panel",
+        measurementCount: 1
+      })
+    ]);
+    expect(refreshedPanels.body.total).toBe(1);
   });
 
   it("returns 404 for a missing panel", async () => {

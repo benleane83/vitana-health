@@ -415,7 +415,14 @@ export async function deleteObservationGroup(
     id
   );
   await run(connection, "DELETE FROM observations WHERE observation_group_id = ?;", id);
-  await run(connection, "DELETE FROM observation_groups WHERE id = ?;", id);
+  const deletedGroupRows = await allWithParams(
+    connection,
+    "DELETE FROM observation_groups WHERE id = ? RETURNING id;",
+    id
+  );
+  if (deletedGroupRows.length !== 1) {
+    throw new Error(`Observation group ${id} was not deleted.`);
+  }
   await insertAudit(
     connection,
     "observation-group-deleted",
