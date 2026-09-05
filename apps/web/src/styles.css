@@ -1463,6 +1463,15 @@ h3 {
   gap: var(--space-2);
 }
 
+.summary-header-actions {
+  display: flex;
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
 .summary-controls button {
   background: transparent;
   border-color: var(--line);
@@ -1477,11 +1486,12 @@ h3 {
 }
 
 .summary-search {
-  margin-bottom: var(--space-4);
+  flex: 0 1 28rem;
+  min-width: 12rem;
 }
 
 .summary-search input {
-  width: min(100%, 28rem);
+  width: 100%;
 }
 
 .summary-totals {
@@ -5540,6 +5550,15 @@ button.stat {
   .summary-header {
     align-items: start;
     flex-direction: column;
+  }
+
+  .summary-header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .summary-search {
+    flex-basis: 100%;
   }
 
   .summary-detail-overview {

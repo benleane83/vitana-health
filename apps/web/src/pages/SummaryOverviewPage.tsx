@@ -83,35 +83,36 @@ export function SummaryPage({
             </div>
           ) : null}
         </div>
-        <div className="summary-controls" role="group" aria-label="Sort summary rows">
-          <button
-            className={sort === "recency" ? "active" : ""}
-            aria-pressed={sort === "recency"}
-            onClick={() => onSortChange("recency")}
-          >Most recent</button>
-          <button
-            className={sort === "count" ? "active" : ""}
-            aria-pressed={sort === "count"}
-            onClick={() => onSortChange("count")}
-          >Entry count</button>
-          <button
-            className={sort === "name" ? "active" : ""}
-            aria-pressed={sort === "name"}
-            onClick={() => onSortChange("name")}
-          >Name</button>
+        <div className="summary-header-actions">
+          <div className="summary-search">
+            <label className="sr-only" htmlFor="summary-search">Search measurements</label>
+            <input
+              id="summary-search"
+              type="search"
+              value={search}
+              maxLength={100}
+              placeholder="Search measurements"
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </div>
+          <div className="summary-controls" role="group" aria-label="Sort summary rows">
+            <button
+              className={sort === "recency" ? "active" : ""}
+              aria-pressed={sort === "recency"}
+              onClick={() => onSortChange("recency")}
+            >Most recent</button>
+            <button
+              className={sort === "count" ? "active" : ""}
+              aria-pressed={sort === "count"}
+              onClick={() => onSortChange("count")}
+            >Entry count</button>
+            <button
+              className={sort === "name" ? "active" : ""}
+              aria-pressed={sort === "name"}
+              onClick={() => onSortChange("name")}
+            >Name</button>
+          </div>
         </div>
-      </div>
-
-      <div className="summary-search">
-        <label className="sr-only" htmlFor="summary-search">Search measurements</label>
-        <input
-          id="summary-search"
-          type="search"
-          value={search}
-          maxLength={100}
-          placeholder="Search measurements"
-          onChange={(event) => setSearch(event.target.value)}
-        />
       </div>
 
       <div aria-live="polite" aria-atomic="true">
