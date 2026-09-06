@@ -600,6 +600,93 @@ textarea {
   gap: var(--space-4);
 }
 
+.export-field {
+  display: grid;
+  gap: var(--space-2);
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.export-field-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.export-field-label label {
+  display: block;
+}
+
+.field-info {
+  position: relative;
+  display: inline-flex;
+}
+
+.field-info-button {
+  display: inline-grid;
+  place-items: center;
+  width: 1.35rem;
+  min-height: 1.35rem;
+  height: 1.35rem;
+  padding: 0;
+  border-color: transparent;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--primary);
+  cursor: help;
+  transform: none;
+}
+
+.field-info-button svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.field-info-tooltip {
+  position: absolute;
+  z-index: 1;
+  bottom: calc(100% + var(--space-2));
+  left: 50%;
+  width: min(20rem, calc(100vw - 3rem));
+  padding: var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.4;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 0.25rem);
+  visibility: hidden;
+  transition: opacity 150ms ease, transform 150ms ease, visibility 150ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .field-info-button:hover:not(:disabled) {
+    background: var(--primary-soft);
+    color: var(--primary-strong);
+    transform: none;
+  }
+
+  .field-info:hover .field-info-tooltip {
+    opacity: 1;
+    transform: translate(-50%, 0);
+    visibility: visible;
+  }
+}
+
+.field-info:focus-within .field-info-tooltip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  visibility: visible;
+}
+
 .profile-menu {
   position: relative;
   flex: 0 0 auto;
@@ -1376,6 +1463,15 @@ h3 {
   gap: var(--space-2);
 }
 
+.summary-header-actions {
+  display: flex;
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
 .summary-controls button {
   background: transparent;
   border-color: var(--line);
@@ -1387,6 +1483,15 @@ h3 {
 .summary-controls button.active {
   background: var(--primary);
   color: var(--ink-on-accent);
+}
+
+.summary-search {
+  flex: 0 1 28rem;
+  min-width: 12rem;
+}
+
+.summary-search input {
+  width: 100%;
 }
 
 .summary-totals {
@@ -2400,6 +2505,12 @@ h3 {
 .observation-group-page {
   display: grid;
   gap: var(--space-5);
+}
+
+.observation-group-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
 }
 
 .observation-group-metadata,
@@ -4018,8 +4129,9 @@ label {
 }
 
 .profile-manager-row.active {
-  border-color: color-mix(in srgb, var(--primary) 48%, var(--line));
-  background: color-mix(in srgb, var(--primary) 7%, var(--surface));
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 16%, var(--surface));
+  box-shadow: inset 4px 0 0 var(--primary), 0 0 0 1px color-mix(in srgb, var(--primary) 28%, transparent);
 }
 
 .profile-manager-row strong {
@@ -4034,7 +4146,7 @@ label {
 
 .profile-manager-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: var(--space-2);
 }
 
@@ -4049,11 +4161,34 @@ label {
   color: var(--text-strong);
 }
 
+.profile-manager-delete {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  min-width: 40px;
+  padding: 0 !important;
+  border-color: oklch(70% 0.18 35 / 0.4);
+  background: transparent;
+  color: var(--danger);
+}
+
+.profile-manager-delete svg {
+  width: 1rem;
+  height: 1rem;
+  fill: currentColor;
+}
+
 @media (hover: hover) and (pointer: fine) {
   .profile-manager-edit:hover:not(:disabled) {
     border-color: var(--primary);
     background: var(--surface-3);
     color: var(--primary-strong);
+  }
+
+  .profile-manager-delete:hover:not(:disabled) {
+    border-color: var(--danger);
+    background: oklch(94% 0.06 35 / 0.68);
+    color: var(--danger);
   }
 }
 
@@ -5307,7 +5442,7 @@ button.stat {
     justify-content: flex-start;
   }
 
-  .profile-manager-actions button {
+  .profile-manager-actions button:not(.profile-manager-delete) {
     flex: 1 1 120px;
   }
 
@@ -5415,6 +5550,15 @@ button.stat {
   .summary-header {
     align-items: start;
     flex-direction: column;
+  }
+
+  .summary-header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .summary-search {
+    flex-basis: 100%;
   }
 
   .summary-detail-overview {
@@ -6011,7 +6155,7 @@ button.stat {
     grid-column: 1 / -1;
   }
 
-  .panel-row {
+  .panel-row-open {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
@@ -6076,20 +6220,49 @@ button.stat {
   width: 100%;
   min-height: 72px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: var(--space-4);
   padding: var(--space-4);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--surface);
+}
+
+.panel-row:hover,
+.panel-row:focus-within {
+  border-color: var(--accent);
+  background: var(--surface-2);
+}
+
+.panel-row-open {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--text);
+  font: inherit;
   text-align: left;
 }
 
-.panel-row:hover {
-  border-color: var(--accent);
-  background: var(--surface-2);
+.panel-row-open:focus-visible {
+  background: transparent;
+  color: var(--text);
+  outline: 3px solid color-mix(in srgb, var(--primary) 28%, transparent);
+  outline-offset: 3px;
+  transform: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .panel-row-open:hover:not(:disabled) {
+    background: transparent;
+    color: var(--text);
+    transform: none;
+  }
 }
 
 .panel-row-main,

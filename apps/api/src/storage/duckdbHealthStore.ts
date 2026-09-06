@@ -12,6 +12,7 @@ import type {
   CreateMedicationInput,
   DeleteCareItemResponse,
   DeleteHealthEventResponse,
+  DeleteObservationGroupResponse,
   DeleteObservationResponse,
   DeleteMedicationResponse,
   DeleteObservationsByTypeResponse,
@@ -279,6 +280,10 @@ export class DuckDbHealthStore implements ManagedProfileRepository {
     input: UpdateObservationGroupInput
   ): Promise<ObservationGroupDetail | undefined> {
     return this.enqueueMutation(() => this.repository.updateObservationGroup(id, input));
+  }
+
+  deleteObservationGroup(id: string): Promise<DeleteObservationGroupResponse | undefined> {
+    return this.enqueueMutation(() => this.repository.deleteObservationGroup(id));
   }
 
   deleteObservationsByMeasurementCode(measurementCode: string): Promise<DeleteObservationsByTypeResponse> {

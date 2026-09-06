@@ -2,6 +2,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { AiQueryResult } from "../api.js";
+import { formatTimestamp } from "../utils.js";
 import { QueryPage } from "./QueryPage.js";
 
 const result: AiQueryResult = {
@@ -72,6 +73,27 @@ describe("QueryPage", () => {
 
     expect(onQuestionChange).toHaveBeenCalledWith("What was the highest day?");
     expect(screen.getByText("Average heart rate last month: 72.")).toBeInTheDocument();
+  });
+
+  it("formats datetime evidence using the Track timestamp convention", () => {
+    const midnightUtc = "2026-07-08T00:00:00.000Z";
+    const timedUtc = "2026-07-08T14:30:00.000Z";
+    renderPage({
+      turns: [{
+        id: "turn-1",
+        question: result.question,
+        status: "answered",
+        result: {
+          ...result,
+          rows: [{ date: midnightUtc, collected_at: timedUtc, value: 72 }]
+        }
+      }]
+    });
+
+    expect(screen.getByText(formatTimestamp(midnightUtc))).toBeInTheDocument();
+    expect(screen.getByText(formatTimestamp(timedUtc))).toBeInTheDocument();
+    expect(screen.queryByText(midnightUtc)).not.toBeInTheDocument();
+    expect(screen.queryByText(timedUtc)).not.toBeInTheDocument();
   });
 
   it("disables the composer at the conversation turn limit", () => {

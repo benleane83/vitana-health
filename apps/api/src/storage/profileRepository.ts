@@ -19,6 +19,7 @@ import type {
   DataSource,
   DeleteCareItemResponse,
   DeleteHealthEventResponse,
+  DeleteObservationGroupResponse,
   DeleteObservationResponse,
   DeleteMedicationResponse,
   DeleteObservationsByTypeResponse,
@@ -278,6 +279,7 @@ export interface ProfileRepository {
   getObservationGroup(id: string): Promise<ObservationGroupDetail | undefined>;
   listObservationGroups(query: ObservationGroupListQuery): Promise<PaginatedResult<ObservationGroupListItem>>;
   updateObservationGroup(id: string, input: UpdateObservationGroupInput): Promise<ObservationGroupDetail | undefined>;
+  deleteObservationGroup(id: string): Promise<DeleteObservationGroupResponse | undefined>;
   deleteObservation(id: string): Promise<DeleteObservationResponse | undefined>;
   deleteObservationsByMeasurementCode(measurementCode: string): Promise<DeleteObservationsByTypeResponse>;
   deleteDailyAggregateStepSamples(): Promise<DeleteObservationsByTypeResponse>;

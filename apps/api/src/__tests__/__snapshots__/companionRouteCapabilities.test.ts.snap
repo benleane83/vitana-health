@@ -5,6 +5,7 @@ exports[`companion route capabilities > records a deliberate decision for every 
   "DELETE /care/health-events/sample": "care:write",
   "DELETE /care/items/sample": "care:write",
   "DELETE /care/medications/sample": "care:write",
+  "DELETE /observation-groups/sample": "observations:write",
   "DELETE /observations/by-type/sample": null,
   "DELETE /observations/sample": "observations:write",
   "DELETE /profile/photo": null,

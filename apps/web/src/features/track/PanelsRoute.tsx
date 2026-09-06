@@ -152,23 +152,24 @@ export function PanelsRoute({
       {items.length > 0 && !invalidRange ? (
         <div className="panels-results">
           {items.map((item) => (
-            <button
-              type="button"
-              className="panel-row"
-              key={item.id}
-              onClick={() => onViewObservationGroup(item.id)}
-              aria-label={`Open ${item.label}`}
-            >
-              <span className="panel-row-main">
-                <strong>{item.label}</strong>
-                <span>{observationGroupKindLabel(item.kind)}</span>
-              </span>
-              <span className="panel-row-meta">
-                <time dateTime={item.date}>{formatPanelDate(item.date)}</time>
-                <span>{item.measurementCount} {item.measurementCount === 1 ? "measurement" : "measurements"}</span>
-              </span>
-              <ChevronRight size={20} aria-hidden="true" />
-            </button>
+            <div className="panel-row" key={item.id}>
+              <button
+                type="button"
+                className="panel-row-open"
+                onClick={() => onViewObservationGroup(item.id)}
+                aria-label={`Open ${item.label}`}
+              >
+                <span className="panel-row-main">
+                  <strong>{item.label}</strong>
+                  <span>{observationGroupKindLabel(item.kind)}</span>
+                </span>
+                <span className="panel-row-meta">
+                  <time dateTime={item.date}>{formatPanelDate(item.date)}</time>
+                  <span>{item.measurementCount} {item.measurementCount === 1 ? "measurement" : "measurements"}</span>
+                </span>
+                <ChevronRight size={20} aria-hidden="true" />
+              </button>
+            </div>
           ))}
           {state.moreError ? <p className="panels-more-error" role="alert">{state.moreError}</p> : null}
           {state.data?.hasMore ? (

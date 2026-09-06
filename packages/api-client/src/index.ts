@@ -22,6 +22,7 @@ import {
   deleteHealthEventResponseSchema,
   deleteMedicationResponseSchema,
   deleteObservationResponseSchema,
+  deleteObservationGroupResponseSchema,
   desktopUpdateStateSchema,
   entitlementResponseSchema,
   healthDataChartSeriesResponseSchema,
@@ -247,6 +248,12 @@ export function createApiClient(transport: ApiTransport) {
         method: "PATCH",
         body: updateObservationGroupInputSchema.parse(input)
       }),
+    deleteObservationGroup: (id: string) =>
+      request(
+        deleteObservationGroupResponseSchema,
+        `/api/observation-groups/${encodeURIComponent(id)}`,
+        { method: "DELETE" }
+      ),
     healthDataDetail: (
       measurementCode: string,
       page?: { limit?: number; offset?: number },

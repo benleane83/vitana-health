@@ -115,7 +115,7 @@ describe("AI model compatibility validation", () => {
         metric: testCase.expected.metric ?? null,
         aggregation: "avg",
         groupBy: testCase.expected.groupBy ?? null,
-        timeRange: { preset: testCase.expected.timePreset ?? "last_30d" },
+        timeRange: { preset: testCase.expected.timePreset ?? "last_365d" },
         sort: "desc",
         limit: 20,
         chartType: "none"
@@ -174,7 +174,7 @@ describe("AI model compatibility validation", () => {
           metric: testCase.expected.metric ?? null,
           aggregation: testCase.expected.intents![0] === "count" ? "count" : null,
           groupBy: testCase.expected.groupBy ?? null,
-          timeRange: { preset: testCase.expected.timePreset ?? "last_30d" },
+          timeRange: { preset: testCase.expected.timePreset ?? "last_365d" },
           sort: "desc",
           limit: 20,
           chartType: "none"

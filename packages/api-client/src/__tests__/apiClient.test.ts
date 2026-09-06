@@ -108,6 +108,23 @@ describe("createApiClient", () => {
     }));
   });
 
+  it("deletes a panel through its dedicated endpoint", async () => {
+    const transport = vi.fn(async (_request: ApiTransportRequest) => response({
+      deletedCount: 1,
+      deletedGroupId: "group/1",
+      deletedObservationCount: 3,
+      counts: entityCounts
+    }));
+    const client = createApiClient(transport);
+
+    await client.deleteObservationGroup("group/1");
+
+    expect(transport).toHaveBeenCalledWith(expect.objectContaining({
+      method: "DELETE",
+      path: "/api/observation-groups/group%2F1"
+    }));
+  });
+
   it("encodes calendar queries deterministically and forwards abort signals", async () => {
     const transport = vi.fn(async (_request: ApiTransportRequest) => response({
       month: "2026-08",

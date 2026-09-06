@@ -80,4 +80,13 @@ describe("extractBodyCompositionText", () => {
 
     expect(mocks.createBodyCompositionDateImage).not.toHaveBeenCalledWith(Buffer.from("already-dated"), "image/jpeg");
   });
+
+  it("does not run report-header OCR for an image with no recognized measurements", async () => {
+    mocks.worker.recognize.mockImplementationOnce(async () => ({ data: { text: "A photo of a sunset", confidence: 87 } }));
+
+    const result = await extractBodyCompositionText(Buffer.from("not-a-report"), "image/jpeg");
+
+    expect(mocks.createBodyCompositionDateImage).not.toHaveBeenCalledWith(Buffer.from("not-a-report"), "image/jpeg");
+    expect(result.diagnostics).toContain("Skipped report-header OCR because the image did not contain a recognized measurement.");
+  });
 });

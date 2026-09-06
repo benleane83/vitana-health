@@ -33,7 +33,12 @@ describe("PanelsRoute", () => {
       });
     const onViewObservationGroup = vi.fn();
 
-    render(<PanelsRoute activeProfileId="profile-1" onViewObservationGroup={onViewObservationGroup} />);
+    render(
+      <PanelsRoute
+        activeProfileId="profile-1"
+        onViewObservationGroup={onViewObservationGroup}
+      />
+    );
 
     expect(await screen.findByText("Annual blood tests")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Open Annual blood tests" }));
@@ -66,7 +71,12 @@ describe("PanelsRoute", () => {
         hasMore: false
       });
 
-    render(<PanelsRoute activeProfileId="profile-1" onViewObservationGroup={vi.fn()} />);
+    render(
+      <PanelsRoute
+        activeProfileId="profile-1"
+        onViewObservationGroup={vi.fn()}
+      />
+    );
 
     expect(await screen.findByText("We couldn't load your panels. Please try again.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
@@ -78,4 +88,5 @@ describe("PanelsRoute", () => {
       expect.any(AbortSignal)
     );
   });
+
 });

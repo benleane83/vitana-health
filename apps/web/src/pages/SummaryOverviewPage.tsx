@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { compareSummaryRows } from "@vitana/shared";
+import { filterAndSortSummary } from "@vitana/shared";
 import type { HealthDataSummary } from "@vitana/shared";
 import { formatTimestamp } from "../utils.js";
 import { isProfileDataCategory, profileDataCategories, profileDataCategoryIconPaths, type ProfileDataCategory, type SummarySort } from "../types.js";
@@ -47,16 +47,12 @@ export function SummaryPage({
   onAddCategory: (category: ProfileDataCategory, mode: "manual" | "upload") => void;
 }) {
   const [openAddMenu, setOpenAddMenu] = useState<ProfileDataCategory>();
+  const [search, setSearch] = useState("");
   const addMenuRef = useRef<HTMLDivElement>(null);
   const filterLabel = profileDataCategories.find((category) => category.key === categoryFilter)?.label;
   const sortedCategories = useMemo(
-    () => (summary?.categories ?? [])
-      .filter((category) => !categoryFilter || category.key === categoryFilter)
-      .map((category) => ({
-        ...category,
-        rows: [...category.rows].sort((a, b) => compareSummaryRows(a, b, sort))
-      })),
-    [categoryFilter, summary, sort]
+    () => summary ? filterAndSortSummary(summary, search, sort, categoryFilter).categories : [],
+    [categoryFilter, search, sort, summary]
   );
 
   useEffect(() => {
@@ -87,22 +83,35 @@ export function SummaryPage({
             </div>
           ) : null}
         </div>
-        <div className="summary-controls" role="group" aria-label="Sort summary rows">
-          <button
-            className={sort === "recency" ? "active" : ""}
-            aria-pressed={sort === "recency"}
-            onClick={() => onSortChange("recency")}
-          >Most recent</button>
-          <button
-            className={sort === "count" ? "active" : ""}
-            aria-pressed={sort === "count"}
-            onClick={() => onSortChange("count")}
-          >Entry count</button>
-          <button
-            className={sort === "name" ? "active" : ""}
-            aria-pressed={sort === "name"}
-            onClick={() => onSortChange("name")}
-          >Name</button>
+        <div className="summary-header-actions">
+          <div className="summary-search">
+            <label className="sr-only" htmlFor="summary-search">Search measurements</label>
+            <input
+              id="summary-search"
+              type="search"
+              value={search}
+              maxLength={100}
+              placeholder="Search measurements"
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </div>
+          <div className="summary-controls" role="group" aria-label="Sort summary rows">
+            <button
+              className={sort === "recency" ? "active" : ""}
+              aria-pressed={sort === "recency"}
+              onClick={() => onSortChange("recency")}
+            >Most recent</button>
+            <button
+              className={sort === "count" ? "active" : ""}
+              aria-pressed={sort === "count"}
+              onClick={() => onSortChange("count")}
+            >Entry count</button>
+            <button
+              className={sort === "name" ? "active" : ""}
+              aria-pressed={sort === "name"}
+              onClick={() => onSortChange("name")}
+            >Name</button>
+          </div>
         </div>
       </div>
 
@@ -128,7 +137,11 @@ export function SummaryPage({
           <div className="summary-categories">
             {sortedCategories.length === 0 ? (
               <p className="empty" role="status">
-                {filterLabel ? `No ${filterLabel.toLowerCase()} measurements have been imported yet.` : "No measurements have been imported yet."}
+                {search.trim()
+                  ? "No matching measurements."
+                  : filterLabel
+                    ? `No ${filterLabel.toLowerCase()} measurements have been imported yet.`
+                    : "No measurements have been imported yet."}
               </p>
             ) : null}
             {sortedCategories.map((category) => {

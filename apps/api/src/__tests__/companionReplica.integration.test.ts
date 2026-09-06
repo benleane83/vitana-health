@@ -30,6 +30,11 @@ describe("encrypted DuckDB companion replica", () => {
       { httpfsExtensionPath }
     );
     try {
+      const datedMedication = await repository.createMedication({
+        name: "Vitamin D",
+        startDate: "2026-07-01",
+        endDate: "2026-07-31"
+      });
       const snapshotHighWater = await repository.getReplicaHighWaterMark();
       const snapshotId = await repository.startReplicaSnapshot("pairing-1");
       const firstPage = await repository.replicaSnapshotPage("pairing-1", snapshotId, 0, 2);
@@ -62,6 +67,17 @@ describe("encrypted DuckDB companion replica", () => {
       const snapshotObservation = snapshotChanges.find((change) =>
         change.entityType === "observation" && change.entityId === original.id);
       expect(snapshotObservation?.payload?.value).toBe(original.value);
+      expect(snapshotChanges).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          entityType: "medication",
+          entityId: datedMedication.medication.id,
+          operation: "upsert",
+          payload: expect.objectContaining({
+            startDate: "2026-07-01",
+            endDate: "2026-07-31"
+          })
+        })
+      ]));
 
       const updatePage = await repository.replicaDeltaPage(
         snapshotHighWater.sequence,

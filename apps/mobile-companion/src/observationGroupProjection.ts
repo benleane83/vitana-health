@@ -1,5 +1,6 @@
 import {
   classifyValueWithRange,
+  isObservationSourceEditable,
   resolveReferenceRange,
   toPreferredMeasurementValue,
   type DataSource,
@@ -34,9 +35,7 @@ export function projectObservationGroup({
   const types = new Map(measurementTypes.map((entry) => [entry.code, entry]));
   const ranges = new Map(personalReferenceRanges.map((entry) => [entry.measurementCode, entry]));
   const sourceKind = source?.sourceKind ?? sourceImport?.sourceKind ?? "derived";
-  const editable = sourceKind === "manual-entry"
-    || sourceKind === "blood-test-report"
-    || sourceKind === "body-composition-report";
+  const editable = isObservationSourceEditable(sourceKind);
 
   return {
     id: group.id,

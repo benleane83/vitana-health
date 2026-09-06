@@ -60,6 +60,40 @@ function storedProfile(profile: Profile) {
 }
 
 describe("SQLite local store profile selection", () => {
+  it("preserves the required legacy profile JSON when creating a typed profile row", async () => {
+    const newProfile = profile("profile-new", "2026-07-21T10:00:00.000Z");
+    const runAsync = vi.fn(async (_sql: string, ..._parameters: unknown[]) => ({ changes: 1 }));
+    const database = {
+      getFirstAsync: vi.fn(async () => null),
+      getAllAsync: vi.fn(async () => []),
+      runAsync,
+      withTransactionAsync: vi.fn(async (task: () => Promise<void>) => task())
+    };
+    const store = new SqliteLocalStore(database as never);
+
+    await store.initialize(newProfile);
+
+    const profileInsert = runAsync.mock.calls.find(([sql]) => String(sql).includes("INSERT INTO profiles"));
+    expect(profileInsert).toBeDefined();
+    expect(profileInsert?.[0]).toContain("profile_json");
+    expect(profileInsert?.slice(1)).toEqual([
+      newProfile.id,
+      JSON.stringify(newProfile),
+      newProfile.displayName,
+      newProfile.setupStatus,
+      newProfile.subjectKind,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      newProfile.units,
+      newProfile.updatedAt
+    ]);
+  });
+
   it("reuses the persisted profile and its observations after repository recreation", async () => {
     const persistedProfile = profile("mobile-persisted", "2026-07-20T10:00:00.000Z");
     const runAsync = vi.fn();

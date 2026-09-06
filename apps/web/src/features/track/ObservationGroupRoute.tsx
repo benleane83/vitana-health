@@ -1,7 +1,14 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { fallbackMeasurementCode, getPreferredUnit, type MeasurementType, type ObservationGroupDetail, type UnitSystem, type UpdateObservationGroupInput } from "@vitana/shared";
 import { api } from "../../api.js";
 import { MeasurementCombobox } from "../../components/MeasurementCombobox.js";
+
+type ConfirmAction = (
+  title: string,
+  description: string,
+  confirmLabel: string,
+  destructive: boolean
+) => Promise<boolean>;
 
 type DraftRow = {
   id?: string;
@@ -50,7 +57,8 @@ export function ObservationGroupRoute({
   onBack,
   onSelectMeasurement,
   onDataChanged,
-  onNotice
+  onNotice,
+  confirm
 }: {
   groupId: string;
   activeProfileId?: string;
@@ -61,6 +69,7 @@ export function ObservationGroupRoute({
   onSelectMeasurement: (measurementCode: string) => void;
   onDataChanged: () => Promise<void>;
   onNotice: (message: string) => void;
+  confirm: ConfirmAction;
 }) {
   const [group, setGroup] = useState<ObservationGroupDetail>();
   const [loading, setLoading] = useState(true);
@@ -72,6 +81,9 @@ export function ObservationGroupRoute({
   const [removedIds, setRemovedIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string>();
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string>();
+  const deleteInFlight = useRef(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -162,6 +174,7 @@ export function ObservationGroupRoute({
       setSaveError("An observation group must contain at least one observation.");
       return;
     }
+
     const timestamp = new Date(collectedAt);
     if (!label.trim() || !collectedAt || Number.isNaN(timestamp.getTime())) {
       setSaveError("Enter a group label and valid recorded date.");
@@ -203,6 +216,57 @@ export function ObservationGroupRoute({
     }
   }
 
+  async function deletePanel() {
+    if (!group || deleteInFlight.current) return;
+    deleteInFlight.current = true;
+    let approved: boolean;
+    try {
+      approved = await confirm(
+        "Delete panel",
+        `Permanently delete ${group.label} and all ${group.observations.length} contained measurement${group.observations.length === 1 ? "" : "s"}? This cannot be undone.`,
+        "Delete panel",
+        true
+      );
+    } catch {
+      deleteInFlight.current = false;
+      setDeleteError("We couldn't prepare the panel deletion. Please try again.");
+      return;
+    }
+    if (!approved) {
+      deleteInFlight.current = false;
+      return;
+    }
+
+    setDeleting(true);
+    setDeleteError(undefined);
+    let result;
+    try {
+      result = await api.deleteObservationGroup(group.id);
+    } catch {
+      setDeleteError("We couldn't delete this panel. Please try again.");
+      deleteInFlight.current = false;
+      setDeleting(false);
+      return;
+    }
+
+    const deletedMessage = result.deletedObservationCount === 1
+      ? "Panel and 1 measurement deleted."
+      : `Panel and ${result.deletedObservationCount} measurements deleted.`;
+    try {
+      await onDataChanged();
+    } catch {
+      deleteInFlight.current = false;
+      setDeleting(false);
+      onNotice(`${deletedMessage} Some dashboard data could not be refreshed.`);
+      onBack();
+      return;
+    }
+    deleteInFlight.current = false;
+    setDeleting(false);
+    onNotice(deletedMessage);
+    onBack();
+  }
+
   if (loading) return <section className="observation-group-page" aria-live="polite"><p>Loading observation group…</p></section>;
   if (!group) {
     return (
@@ -222,13 +286,31 @@ export function ObservationGroupRoute({
           <h2 id="observation-group-title">{group.label}</h2>
           <p>{groupKindLabel(group.kind)} · {group.observations.length} observation{group.observations.length === 1 ? "" : "s"}</p>
         </div>
-        {!editing && group.editable ? <button type="button" onClick={beginEditing}>Edit group</button> : null}
+        {!editing ? (
+          <div className="observation-group-header-actions">
+            {group.editable ? <button type="button" onClick={beginEditing} disabled={deleting}>Edit panel</button> : null}
+            <button
+              type="button"
+              className="observation-group-row-remove"
+              onClick={() => void deletePanel()}
+              disabled={deleting}
+              aria-label={`Delete ${group.label} panel`}
+              title="Delete panel"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M9 3h6l1 2h4v2H4V5h4l1-2Z" />
+                <path d="M6 9h12l-1 12H7L6 9Zm4 2v8h2v-8h-2Zm4 0v8h2v-8h2Z" />
+              </svg>
+            </button>
+          </div>
+        ) : null}
       </header>
       <dl className="observation-group-metadata">
         <div><dt>Recorded</dt><dd>{group.collectedAt ? new Date(group.collectedAt).toLocaleString() : "Not recorded"}</dd></div>
         {group.source.importedAt ? <div><dt>Imported</dt><dd>{new Date(group.source.importedAt).toLocaleString()}</dd></div> : null}
       </dl>
       {!group.editable ? <p className="summary-detail-hint" role="status">{group.readOnlyReason}</p> : null}
+      {deleteError ? <p role="alert">{deleteError}</p> : null}
 
       {editing ? (
         <form className="observation-group-editor" onSubmit={(event) => void save(event)}>

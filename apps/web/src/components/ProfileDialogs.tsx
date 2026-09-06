@@ -290,7 +290,6 @@ function inchesToCentimeters(value: number): number {
 export function ProfileManagerDialog({
   busy,
   profiles,
-  activeProfile,
   activeProfileId,
   newProfileName,
   allowProfileCreation,
@@ -299,11 +298,10 @@ export function ProfileManagerDialog({
   onSwitchProfile,
   onEditProfile,
   onCreateProfile,
-  onDeleteActive
+  onDeleteProfile
 }: {
   busy: boolean;
   profiles: ProfileListEntry[];
-  activeProfile?: ProfileListEntry | Profile;
   activeProfileId?: string;
   newProfileName: string;
   allowProfileCreation: boolean;
@@ -312,7 +310,7 @@ export function ProfileManagerDialog({
   onSwitchProfile: (profileId: string) => void;
   onEditProfile: (profileId: string) => void;
   onCreateProfile: () => void;
-  onDeleteActive: () => void;
+  onDeleteProfile: (profileId: string) => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const onCloseRef = useRef(onClose);
@@ -367,6 +365,19 @@ export function ProfileManagerDialog({
                 <button className="profile-manager-edit" type="button" disabled={busy} onClick={() => onEditProfile(entry.id)}>
                   Edit
                 </button>
+                <button
+                  className="profile-manager-delete"
+                  type="button"
+                  disabled={busy || profiles.length <= 1}
+                  onClick={() => onDeleteProfile(entry.id)}
+                  aria-label={`Delete profile: ${entry.displayName}`}
+                  title={`Delete ${entry.displayName}`}
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M9 3h6l1 2h4v2H4V5h4l1-2Z" />
+                    <path d="M6 9h12l-1 12H7L6 9Zm4 2v8h2v-8h-2Zm4 0v8h2v-8h-2Z" />
+                  </svg>
+                </button>
               </div>
             </div>
           );
@@ -396,16 +407,6 @@ export function ProfileManagerDialog({
         </form>
       </details>
 
-      <div className="profile-dialog-actions">
-        <button
-          type="button"
-          disabled={busy || profiles.length <= 1}
-          onClick={onDeleteActive}
-          aria-label={`Delete active profile: ${activeProfile?.displayName ?? "current profile"}`}
-        >
-          Delete active profile
-        </button>
-      </div>
     </dialog>
   );
 }

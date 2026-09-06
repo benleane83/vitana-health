@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { dirname, resolve } from "node:path";
 
 const pairingLifetimeMs = 5 * 60 * 1000;
-const authorizationSchemaVersion = 6;
+const authorizationSchemaVersion = 7;
 
 export type CompanionCapability =
   | "profiles:list-minimal"

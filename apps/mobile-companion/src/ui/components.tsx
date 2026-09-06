@@ -13,12 +13,14 @@ export function Card({ children }: { children: ReactNode }) {
 export function Button({
   children,
   onPress,
+  accessibilityLabel,
   disabled = false,
   secondary = false,
   danger = false
 }: {
   children: ReactNode;
   onPress: () => void;
+  accessibilityLabel?: string;
   disabled?: boolean;
   secondary?: boolean;
   danger?: boolean;
@@ -26,6 +28,7 @@ export function Button({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}

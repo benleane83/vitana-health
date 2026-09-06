@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 import { PDFParse } from "pdf-parse";
 import Tesseract from "tesseract.js";
-import { parseBodyCompositionText } from "@vitana/shared";
+import { parseBloodTestScanText, parseBodyCompositionText } from "@vitana/shared";
 import { createBodyCompositionDateImage } from "./bodyCompositionDocumentImage.js";
 
 const require = createRequire(import.meta.url);
@@ -23,6 +23,10 @@ export async function extractBodyCompositionText(buffer: Buffer, mimeType: strin
     const ocr = await runOcr(buffer);
     const diagnostics = [`Image OCR confidence: ${Math.round(ocr.confidence)}%.`];
     if (hasReportDate(ocr.text)) return { text: ocr.text, diagnostics };
+    if (!hasRecognizedMeasurement(ocr.text)) {
+      diagnostics.push("Skipped report-header OCR because the image did not contain a recognized measurement.");
+      return { text: ocr.text, diagnostics };
+    }
 
     const dateImage = await createBodyCompositionDateImage(buffer, mimeType);
     if (!dateImage) return { text: ocr.text, diagnostics };
@@ -46,6 +50,11 @@ export async function extractBodyCompositionText(buffer: Buffer, mimeType: strin
 
 function hasReportDate(text: string): boolean {
   return Boolean(parseBodyCompositionText("report.jpg", text).reportDate);
+}
+
+function hasRecognizedMeasurement(text: string): boolean {
+  return parseBodyCompositionText("report.jpg", text).rows.length > 0
+    || parseBloodTestScanText("report.jpg", text).rows.length > 0;
 }
 
 async function extractPdfText(buffer: Buffer): Promise<BodyCompositionExtractResult> {

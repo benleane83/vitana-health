@@ -5,7 +5,28 @@ import type { BackupInspectResponse, RestoreDecision } from "@vitana/shared";
 import { useResponsiveTabOrientation } from "../hooks/useResponsiveTabOrientation.js";
 
 const minBackupPassphraseLength = 12;
+const backupPassphraseInfo = "A backup passphrase is a private phrase that locks your backup. You will need the same passphrase to open or restore it later. We cannot recover it if you lose it, so keep it somewhere safe and separate from the backup.";
 type ExportView = "report" | "health-data" | "backup";
+
+function BackupPassphraseInfo({ id }: { id: string }) {
+  return (
+    <span className="field-info">
+      <button
+        type="button"
+        className="field-info-button"
+        aria-label="What is a backup passphrase?"
+        aria-describedby={id}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 11v5" />
+          <path d="M12 8h.01" />
+        </svg>
+      </button>
+      <span className="field-info-tooltip" id={id} role="tooltip">{backupPassphraseInfo}</span>
+    </span>
+  );
+}
 
 export function ExportPage({
   busy,
@@ -203,14 +224,20 @@ export function ExportPage({
                   <option value="active">Active profile only</option>
                 </select>
               </label>
-              <label>
-                Backup passphrase
-                <input type="password" autoComplete="new-password" minLength={minBackupPassphraseLength} value={backupPassphrase} onChange={(event) => onBackupPassphraseChange(event.target.value)} />
-              </label>
-              <label>
-                Confirm backup passphrase
-                <input type="password" autoComplete="new-password" minLength={minBackupPassphraseLength} value={backupPassphraseConfirmation} onChange={(event) => onBackupPassphraseConfirmationChange(event.target.value)} />
-              </label>
+              <div className="export-field">
+                <div className="export-field-label">
+                  <label htmlFor="backup-passphrase">Backup passphrase</label>
+                  <BackupPassphraseInfo id="backup-passphrase-info" />
+                </div>
+                <input id="backup-passphrase" type="password" autoComplete="new-password" minLength={minBackupPassphraseLength} value={backupPassphrase} onChange={(event) => onBackupPassphraseChange(event.target.value)} aria-describedby="backup-passphrase-info" />
+              </div>
+              <div className="export-field">
+                <div className="export-field-label">
+                  <label htmlFor="backup-passphrase-confirmation">Confirm backup passphrase</label>
+                  <BackupPassphraseInfo id="backup-passphrase-confirmation-info" />
+                </div>
+                <input id="backup-passphrase-confirmation" type="password" autoComplete="new-password" minLength={minBackupPassphraseLength} value={backupPassphraseConfirmation} onChange={(event) => onBackupPassphraseConfirmationChange(event.target.value)} aria-describedby="backup-passphrase-confirmation-info" />
+              </div>
               <div aria-live="polite" aria-atomic="true">
                 {backupPassphrase && backupPassphrase.length < minBackupPassphraseLength ? <p className="empty" role="status">Use at least 12 characters.</p> : null}
                 {backupPassphraseConfirmation && backupPassphrase !== backupPassphraseConfirmation ? <p className="empty" role="status">Passphrases do not match.</p> : null}
@@ -230,10 +257,13 @@ export function ExportPage({
                 <input type="file" accept=".vitana-backup,application/octet-stream" onChange={(event) => onRestoreFileChange(event.target.files?.[0])} />
               </label>
               {restoreFile ? <p className="summary-detail-hint">Selected: {restoreFile.name}</p> : null}
-              <label>
-                Backup passphrase
-                <input type="password" autoComplete="current-password" minLength={minBackupPassphraseLength} value={restorePassphrase} onChange={(event) => onRestorePassphraseChange(event.target.value)} />
-              </label>
+              <div className="export-field">
+                <div className="export-field-label">
+                  <label htmlFor="restore-passphrase">Backup passphrase</label>
+                  <BackupPassphraseInfo id="restore-passphrase-info" />
+                </div>
+                <input id="restore-passphrase" type="password" autoComplete="current-password" minLength={minBackupPassphraseLength} value={restorePassphrase} onChange={(event) => onRestorePassphraseChange(event.target.value)} aria-describedby="restore-passphrase-info" />
+              </div>
               <button className="export-primary-action" type="button" onClick={onInspectBackup} disabled={restoreStatus.busy || !canInspectBackup}>
                 {restoreStatus.busy && !inspection ? "Inspecting backup…" : "Inspect backup"}
               </button>

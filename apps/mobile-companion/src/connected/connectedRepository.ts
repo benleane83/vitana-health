@@ -4,6 +4,7 @@ import {
   computeAnalytics,
   analyticsCountsFromStore,
   getPreferredUnit,
+  isObservationSourceEditable,
   medicationMatchesStatus,
   resolveReferenceRange,
   toPreferredMeasurementValue,
@@ -683,7 +684,7 @@ function detailEntries(projection: ReplicaProjection, measurementCode: string): 
       ...sourceFields(entry.sourceId),
       note: entry.note,
       observationGroup: entry.observationGroupId ? groups.get(entry.observationGroupId) : undefined,
-      canDelete: true,
+      canDelete: isObservationSourceEditable(sources.get(entry.sourceId)?.sourceKind),
       deleteLabel: "Delete reading"
     } as HealthDataDetailEntry));
   const samples = data.timeSeriesSamples

@@ -5,6 +5,7 @@ import {
   groupScanRows,
   localDateOnly,
   newScanReportRow,
+  parseScanReportText,
   scanReportDate,
   shouldRemoveScanReportRowOnExclude,
   toCommittedScanRows,
@@ -66,6 +67,18 @@ describe("scan report review", () => {
     expect(scanReportDate("2026-06-15T23:00:00.000Z", fallback)).toBe("2026-06-15");
     expect(scanReportDate(undefined, fallback)).toBe("2026-07-25");
     expect(localDateOnly(dateOnlyToLocalDate("2026-06-15"))).toBe("2026-06-15");
+  });
+
+  it("reclassifies returned OCR text without another image preview request", () => {
+    const draft = parseScanReportText("blood-test", "report.jpg", "Glucose: 95 mg/dL");
+
+    expect(draft.rows).toEqual([
+      expect.objectContaining({
+        measurementCode: "glucose",
+        value: 95,
+        unit: "mg/dL"
+      })
+    ]);
   });
 });
 

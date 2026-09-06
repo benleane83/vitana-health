@@ -29,6 +29,7 @@ import {
   type CreateMedicationInput,
   type DeleteCareItemResponse,
   type DeleteHealthEventResponse,
+  type DeleteObservationGroupResponse,
   type DeleteObservationResponse,
   type DeleteMedicationResponse,
   type DeleteObservationsByTypeResponse,
@@ -392,6 +393,45 @@ export async function deleteObservation(
   return {
     deletedCount: 1,
     deletedObservation: observation,
+    counts: await storageCounts(connection)
+  };
+}
+
+export async function deleteObservationGroup(
+  connection: duckdb.Connection,
+  id: string
+): Promise<DeleteObservationGroupResponse | undefined> {
+  const groupRows = await allWithParams(
+    connection,
+    "SELECT label FROM observation_groups WHERE id = ? LIMIT 1;",
+    id
+  );
+  const group = groupRows[0];
+  if (!group) return undefined;
+
+  const observationRows = await allWithParams(
+    connection,
+    `SELECT ${observationColumns} FROM observations WHERE observation_group_id = ? ORDER BY ordinal;`,
+    id
+  );
+  await run(connection, "DELETE FROM observations WHERE observation_group_id = ?;", id);
+  const deletedGroupRows = await allWithParams(
+    connection,
+    "DELETE FROM observation_groups WHERE id = ? RETURNING id;",
+    id
+  );
+  if (deletedGroupRows.length !== 1) {
+    throw new Error(`Observation group ${id} was not deleted.`);
+  }
+  await insertAudit(
+    connection,
+    "observation-group-deleted",
+    `${String(group.label)} panel deleted with ${observationRows.length} measurement${observationRows.length === 1 ? "" : "s"}.`
+  );
+  return {
+    deletedCount: 1,
+    deletedGroupId: id,
+    deletedObservationCount: observationRows.length,
     counts: await storageCounts(connection)
   };
 }

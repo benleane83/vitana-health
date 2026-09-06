@@ -3,6 +3,7 @@ import {
   classifyValueWithRange,
   computeAnalyticsFromInput,
   defaultMeasurementTypes,
+  isObservationSourceEditable,
   resolveReferenceRange,
   type AppBootstrap,
   type BodyTrendQuery,
@@ -186,7 +187,7 @@ export class LocalProfileRepository implements MobileProfileRepository {
         } : undefined,
         referenceRange,
         status: classifyValueWithRange(record.value, referenceRange),
-        canDelete: true
+        canDelete: isObservationSourceEditable(record.sourceKind)
       };
     });
     return {
@@ -284,6 +285,19 @@ export class LocalProfileRepository implements MobileProfileRepository {
     const deletedObservation = await this.store.deleteObservation(id);
     return deletedObservation
       ? { deletedCount: 1, deletedObservation, counts: await this.bootstrap().then((value) => value.counts) }
+      : undefined;
+  }
+
+  async deleteObservationGroup(id: string) {
+    await this.ensureInitialized();
+    const deleted = await this.store.deleteObservationGroup(id);
+    return deleted
+      ? {
+          deletedCount: 1,
+          deletedGroupId: id,
+          deletedObservationCount: deleted.deletedObservationCount,
+          counts: await this.bootstrap().then((value) => value.counts)
+        }
       : undefined;
   }
 

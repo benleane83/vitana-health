@@ -161,6 +161,7 @@ export function createConnectedDataSource(
     importManualObservations: (payload) => liveMutation(() => live.importManualObservations(payload)),
     updateObservation: (id, input) => liveMutation(() => live.updateObservation(id, input)),
     deleteObservation: (id) => liveMutation(() => live.deleteObservation(id)),
+    deleteObservationGroup: (id) => liveMutation(() => live.deleteObservationGroup(id)),
     setPersonalReferenceRange: (measurementCode, input) =>
       liveMutation(() => live.setPersonalReferenceRange(measurementCode, input)),
     removePersonalReferenceRange: (measurementCode) =>

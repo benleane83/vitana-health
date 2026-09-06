@@ -24,6 +24,7 @@ import type {
   DeleteCareItemResponse,
   DeleteHealthEventResponse,
   DeleteObservationResponse,
+  DeleteObservationGroupResponse,
   DeleteObservationsByTypeResponse,
   DeleteMedicationResponse,
   HealthDataChartSeries,
@@ -1134,6 +1135,14 @@ export const updateObservationResponseSchema: z.ZodType<UpdateObservationRespons
 export const deleteObservationResponseSchema: z.ZodType<DeleteObservationResponse, z.ZodTypeDef, unknown> = z.object({
   deletedCount: nonNegativeInt,
   deletedObservation: observationSchema.optional(),
+  counts: entityCountsSchema,
+  ...analyticsStorageField
+}).strict();
+
+export const deleteObservationGroupResponseSchema: z.ZodType<DeleteObservationGroupResponse, z.ZodTypeDef, unknown> = z.object({
+  deletedCount: nonNegativeInt,
+  deletedGroupId: z.string().trim().min(1),
+  deletedObservationCount: nonNegativeInt,
   counts: entityCountsSchema,
   ...analyticsStorageField
 }).strict();

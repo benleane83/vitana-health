@@ -1,9 +1,28 @@
-import type { BodyCompositionDraftRow } from "@vitana/shared";
+import {
+  parseBloodTestScanText,
+  parseBodyCompositionText,
+  type BloodTestDraft,
+  type BodyCompositionDraft,
+  type BodyCompositionDraftRow
+} from "@vitana/shared";
 
 export type ScanReportEditableRow = Omit<BodyCompositionDraftRow, "value"> & {
   value: string;
   manuallyAdded?: boolean;
 };
+
+export type ScanReportKind = "body-composition" | "blood-test";
+
+export function parseScanReportText(
+  kind: ScanReportKind,
+  fileName: string,
+  sourceText: string,
+  excludedDates: readonly string[] = []
+): BodyCompositionDraft | BloodTestDraft {
+  return kind === "body-composition"
+    ? parseBodyCompositionText(fileName, sourceText)
+    : parseBloodTestScanText(fileName, sourceText, undefined, { excludedDates });
+}
 
 export function toEditableScanRows(rows: BodyCompositionDraftRow[]): ScanReportEditableRow[] {
   return rows.map((row) => ({ ...row, value: Number.isFinite(row.value) ? String(row.value) : "", manuallyAdded: false }));

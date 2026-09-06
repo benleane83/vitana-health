@@ -103,6 +103,33 @@ describe("local profile repository", () => {
     expect((await afterReset.bootstrap()).counts.observations).toBe(0);
   });
 
+  it("deletes a standalone panel with its measurements without touching another panel", async () => {
+    const state = createMemoryLocalStoreState();
+    const repository = new LocalProfileRepository(new MemoryLocalStore(state), profile("profile-a"));
+    await repository.importManualObservations({
+      ...reading,
+      label: "Delete this panel",
+      observations: [
+        ...reading.observations,
+        { measurementCode: "glucose", measurementName: "Glucose", value: 5.2, unit: "mmol/L" }
+      ]
+    });
+    await repository.importManualObservations({ ...reading, label: "Keep this panel" });
+    const groups = await repository.listObservationGroups();
+    const deletedId = groups.items.find((group) => group.label === "Delete this panel")!.id;
+
+    await expect(repository.deleteObservationGroup(deletedId)).resolves.toMatchObject({
+      deletedCount: 1,
+      deletedGroupId: deletedId,
+      deletedObservationCount: 2,
+      counts: { observations: 1 }
+    });
+    expect(await repository.observationGroup(deletedId)).toBeUndefined();
+    expect((await repository.listObservationGroups()).items).toEqual([
+      expect.objectContaining({ label: "Keep this panel", measurementCount: 1 })
+    ]);
+  });
+
   it("uses the selected profile's subject kind for detail reference ranges", async () => {
     const state = createMemoryLocalStoreState();
     const repository = new LocalProfileRepository(new MemoryLocalStore(state), profile("profile-a"));

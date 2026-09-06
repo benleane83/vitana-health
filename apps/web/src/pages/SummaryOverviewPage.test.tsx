@@ -60,6 +60,43 @@ function renderSummary(categoryFilter?: "activity" | "body" | "lab" | "sleep") {
 }
 
 describe("SummaryPage category navigation", () => {
+  it("searches measurement display names and codes across categories", () => {
+    renderSummary();
+
+    const search = screen.getByRole("searchbox", { name: "Search measurements" });
+    expect(search).toHaveAttribute("placeholder", "Search measurements");
+    expect(search).toHaveAttribute("maxLength", "100");
+
+    fireEvent.change(search, { target: { value: "heart_rate" } });
+
+    expect(screen.getByText("Cardio", { selector: "strong" })).toBeInTheDocument();
+    expect(screen.getByText("Heart rate")).toBeInTheDocument();
+    expect(screen.queryByText("Body", { selector: "strong" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Weight")).not.toBeInTheDocument();
+  });
+
+  it("shows a matching empty state when a search has no results", () => {
+    renderSummary();
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search measurements" }), {
+      target: { value: "unavailable measurement" }
+    });
+
+    expect(screen.getByText("No matching measurements.")).toBeInTheDocument();
+    expect(screen.queryByText("Body", { selector: "strong" })).not.toBeInTheDocument();
+  });
+
+  it("applies measurement search within the selected category", () => {
+    renderSummary("body");
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search measurements" }), {
+      target: { value: "heart" }
+    });
+
+    expect(screen.getByText("No matching measurements.")).toBeInTheDocument();
+    expect(screen.queryByText("Cardio", { selector: "strong" })).not.toBeInTheDocument();
+  });
+
   it("filters to the selected category and clears the filter", () => {
     const { onClearCategoryFilter } = renderSummary("body");
 

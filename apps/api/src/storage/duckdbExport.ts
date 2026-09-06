@@ -11,6 +11,7 @@ import {
   all,
   allWithParams,
   compact,
+  dateOnly,
   isoTimestamp,
   insertActivityRows,
   insertObservationRows,
@@ -510,7 +511,7 @@ function mapHealthEventExportRow(row: Record<string, unknown>): unknown {
   if (row.vaccine) return { ...base, kind: "immunization", immunization: compact({ vaccine: row.vaccine,
     targetDisease: row.target_disease, doseNumber: optionalNumber(row.dose_number), series: row.series,
     manufacturer: row.immunization_manufacturer, lotNumber: row.lot_number,
-    expiresAt: row.expires_at ? String(row.expires_at).slice(0, 10) : undefined,
+    expiresAt: row.expires_at ? dateOnly(row.expires_at) : undefined,
     route: row.immunization_route, site: row.site, reaction: row.reaction }) };
   const kind = String(row.kind);
   if (!isHealthEventKind(kind)) throw new Error(`Unsupported health event kind "${kind}".`);
@@ -524,8 +525,8 @@ function mapMedicationExportRow(row: Record<string, unknown>): unknown {
     activeIngredient: row.active_ingredient,
     dose: optionalNumber(row.dose),
     unit: row.unit,
-    startDate: row.start_date ? String(row.start_date).slice(0, 10) : undefined,
-    endDate: row.end_date ? String(row.end_date).slice(0, 10) : undefined,
+    startDate: row.start_date ? dateOnly(row.start_date) : undefined,
+    endDate: row.end_date ? dateOnly(row.end_date) : undefined,
     notes: row.notes,
     createdAt: isoTimestamp(row.created_at),
     updatedAt: isoTimestamp(row.updated_at)

@@ -44,16 +44,18 @@ import {
   groupScanRows,
   localDateOnly,
   newScanReportRow,
+  parseScanReportText,
   scanReportDate,
   shouldRemoveScanReportRowOnExclude,
   toCommittedScanRows,
   toEditableScanRows,
-  type ScanReportEditableRow
+  type ScanReportEditableRow,
+  type ScanReportKind
 } from "./scanReportReview";
 import { buildImportSourceOptions, type ImportSource, type ImportSourceOption } from "./importSourceOptions";
 
 const privacyUrl = "https://vitana-health.pages.dev/privacy";
-type ScanKind = "body-composition" | "blood-test";
+type ScanKind = ScanReportKind;
 const scanKindLabel: Record<ScanKind, string> = {
   "body-composition": "Body composition",
   "blood-test": "Lab results"
@@ -342,7 +344,7 @@ function ManualImport() {
 function ScanImport() {
   const { bootstrap, connection, refreshAfterImport } = useMobileApi();
   const measurements = bootstrap?.measurementTypes?.length ? bootstrap.measurementTypes : defaultMeasurementTypes;
-  const [kind, setKind] = useState<ScanKind>("body-composition");
+  const [kind, setKind] = useState<ScanKind>("blood-test");
   const [draft, setDraft] = useState<BodyCompositionDraft | BloodTestDraft>();
   const [rows, setRows] = useState<ScanReportEditableRow[]>([]);
   const [reportDate, setReportDate] = useState("");
@@ -403,9 +405,12 @@ function ScanImport() {
 
       if (reviewDraft.rows.length === 0) {
         const alternateKind: ScanKind = selectedKind === "body-composition" ? "blood-test" : "body-composition";
-        const alternateDraft = alternateKind === "body-composition"
-          ? await client.previewBodyCompositionReport(payload)
-          : await client.previewBloodTestReport(payload);
+        const alternateDraft = parseScanReportText(
+          alternateKind,
+          reviewDraft.fileName,
+          reviewDraft.sourceText,
+          bootstrap?.profile.birthDate ? [bootstrap.profile.birthDate] : []
+        );
         if (alternateDraft.rows.length > 0 && await confirmAlternateScan(selectedKind, alternateKind)) {
           reviewKind = alternateKind;
           reviewDraft = alternateDraft;

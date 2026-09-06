@@ -381,6 +381,7 @@ export function TrackRoute({
           onSelectMeasurement={onSelectDetail}
           onDataChanged={onDataChanged}
           onNotice={onNotice}
+          confirm={confirm}
         />
       ) : view === "panels" ? null : view === "body-trend" && !bodyTrendAllowed ? (
         <ProLockedView feature="Body Trend" />

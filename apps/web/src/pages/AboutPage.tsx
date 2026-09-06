@@ -117,7 +117,7 @@ export function AboutPage() {
           <h2 id="built-around-you">Built Around You</h2>
           <p>Every health journey is unique.</p>
           <p>That's why Vitana is designed to be flexible and customizable.</p>
-          <p>Beyond standard health metrics, users can record important life and health events, including:</p>
+          <p>Beyond standard health metrics, users can use Vitana's Care page to record important life and health events, including:</p>
           <ul>
             <li>Medical procedures</li>
             <li>Imaging and diagnostic tests</li>
