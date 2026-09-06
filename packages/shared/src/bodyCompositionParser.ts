@@ -5,6 +5,7 @@ import {
   escapeRegExp,
   fallbackBodyCompositionCode,
   isAdministrativeMeasurementLabel,
+  isTargetMeasurementLabel,
   looksLikeDateOnly,
   normalizeBodyCompositionUnit,
   readDate,
@@ -47,6 +48,10 @@ export function parseBodyCompositionText(fileName: string, sourceText: string, i
       skippingHistory = false;
     }
     if (isEufyTileLayout) continue;
+    if (isTargetMeasurementLabel(line)) {
+      diagnostics.push(`Skipped target measurement: "${line}".`);
+      continue;
+    }
     const parseLine = /\bbmr\b/i.test(line) && lines[index + 1] ? `${line} ${lines[index + 1]}` : line;
     const candidates = parseBodyCompositionLine(parseLine);
     addBodyCompositionCandidates(rows, candidates.map((candidate) => ({ ...candidate, sourceText: line })), sourceChecksum, reportDate, diagnostics);
