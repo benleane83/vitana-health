@@ -127,6 +127,7 @@ async function fetchAsOwner(path: string, options?: RequestInit, retry = true): 
       }
     });
     if (authenticated.ok) {
+      window.sessionStorage.removeItem(ownerTokenKey);
       return fetchAsOwner(path, options, false);
     }
     const token = await promptForOwnerToken();

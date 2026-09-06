@@ -71,6 +71,34 @@ describe("API client response handling", () => {
     await expect(api.health()).rejects.toMatchObject({ name: "ZodError" });
   });
 
+  it("clears a stale manual owner token after local cookie authentication succeeds", async () => {
+    window.sessionStorage.setItem("vitana.ownerToken", "stale-owner-token-that-no-longer-matches");
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        error: "Valid owner or companion credential required.",
+        code: "AUTH_REQUIRED"
+      }), {
+        status: 401,
+        headers: { "content-type": "application/json" }
+      }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        ok: true,
+        uptime: 10
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      })));
+
+    await expect(api.health()).resolves.toMatchObject({ ok: true });
+
+    const firstHeaders = new Headers(vi.mocked(global.fetch).mock.calls[0]?.[1]?.headers);
+    const retryHeaders = new Headers(vi.mocked(global.fetch).mock.calls[2]?.[1]?.headers);
+    expect(firstHeaders.get("authorization")).toBe("Bearer stale-owner-token-that-no-longer-matches");
+    expect(retryHeaders.has("authorization")).toBe(false);
+    expect(window.sessionStorage.getItem("vitana.ownerToken")).toBeNull();
+  });
+
   it("sends backup secrets as multipart fields rather than headers", async () => {
     const backup = new File(["encrypted"], "profile.vitana-backup", { type: "application/octet-stream" });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
