@@ -309,11 +309,11 @@ describe("parseBloodTestScanText", () => {
   it("skips target-labelled fields instead of treating them as lab results", () => {
     const result = parseBloodTestScanText(
       "results.pdf",
-      "Target [Glucose]: 95 mg/dL\nGlucose: 80 mg/dL"
+      "Target Glucose 90 mg/dL\nGlucose: 80 mg/dL"
     );
 
     expect(result.rows).toEqual([expect.objectContaining({ measurementCode: "glucose", value: 80 })]);
-    expect(result.diagnostics).toContain('Skipped target measurement: "Target [Glucose]: 95 mg/dL".');
+    expect(result.diagnostics).toContain('Skipped target measurement: "Target Glucose 90 mg/dL".');
   });
 
   it("omits unknown and body-only measurements from a lab scan", () => {
@@ -421,11 +421,11 @@ describe("parseBodyCompositionText", () => {
   it("skips target-labelled fields instead of treating them as body-composition results", () => {
     const result = parseBodyCompositionText(
       "body-report.jpg",
-      "Target [Weight]: 70 kg\nWeight: 80 kg"
+      "Target Weight 77.7kg\nWeight: 80 kg"
     );
 
     expect(result.rows).toEqual([expect.objectContaining({ measurementCode: "weight", value: 80 })]);
-    expect(result.diagnostics).toContain('Skipped target measurement: "Target [Weight]: 70 kg".');
+    expect(result.diagnostics).toContain('Skipped target measurement: "Target Weight 77.7kg".');
   });
 
   it("omits unknown, lab-only, and implausible body-composition measurements", () => {

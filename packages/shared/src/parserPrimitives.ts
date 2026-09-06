@@ -316,7 +316,7 @@ export function isAdministrativeMeasurementLabel(value: string): boolean {
 }
 
 export function isTargetMeasurementLabel(value: string): boolean {
-  return /^\s*target\s*\[[^\]]+\]/i.test(value);
+  return /^\s*target\s+[a-z][a-z0-9 /()%.-]*?\s*[:=\-]?\s*-?\d/i.test(value);
 }
 
 export function toDisplayName(value: string): string {
