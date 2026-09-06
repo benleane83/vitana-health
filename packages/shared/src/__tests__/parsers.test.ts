@@ -418,6 +418,19 @@ describe("parseBodyCompositionText", () => {
     expect(result.diagnostics).not.toContain("Skipped measurements in a body composition history section.");
   });
 
+  it("recognizes abbreviated labels with parenthesized unit suffixes", () => {
+    const result = parseBodyCompositionText(
+      "body-report.pdf",
+      "SMM (kg) 34.9\nPBF (%) 16.3\nBM (kgr) 76.7"
+    );
+
+    expect(result.rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ measurementCode: "skeletal_muscle_mass", value: 34.9, unit: "kg" }),
+      expect.objectContaining({ measurementCode: "body_fat_pct", value: 16.3, unit: "%" }),
+      expect.objectContaining({ measurementCode: "weight", value: 76.7, unit: "kg" })
+    ]));
+  });
+
   it("skips target-labelled fields instead of treating them as body-composition results", () => {
     const result = parseBodyCompositionText(
       "body-report.jpg",

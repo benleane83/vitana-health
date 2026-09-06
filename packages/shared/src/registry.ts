@@ -40,7 +40,7 @@ const measurementTypeDefinitions: MeasurementType[] = [
     category: "body",
     kind: "point",
     canonicalUnit: "kg",
-    aliases: ["weight", "body_weight", "body weight"],
+    aliases: ["weight", "body_weight", "body weight", "bm"],
     loincCode: "29463-7",
     openMHealthSchema: "body-weight",
     aggregation: "latest"

@@ -51,6 +51,24 @@ describe("parseStructuredUpload — long format", () => {
     ]);
   });
 
+  it("maps measurement aliases with parenthesized unit suffixes", () => {
+    const draft = parseStructuredUpload(
+      "body-composition.csv",
+      [
+        "observedAt,measurement,value",
+        "2026-07-01T08:00:00Z,SMM (kg),34.9",
+        "2026-07-01T08:00:00Z,PBF (%),16.3",
+        "2026-07-01T08:00:00Z,BM (kgr),76.7"
+      ].join("\n")
+    );
+
+    expect(draft.rows).toEqual([
+      expect.objectContaining({ measurementCode: "skeletal_muscle_mass", unit: "kg", included: true }),
+      expect.objectContaining({ measurementCode: "body_fat_pct", unit: "%", included: true }),
+      expect.objectContaining({ measurementCode: "weight", unit: "kg", included: true })
+    ]);
+  });
+
   it("excludes unknown/ambiguous measurements by default and flags them", () => {
     const draft = parseStructuredUpload("labs.csv", longFormatCsv);
     const unknownRow = draft.rows.find((row) => row.value === 12);

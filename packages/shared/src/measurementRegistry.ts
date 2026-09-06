@@ -10,12 +10,49 @@ import { defaultMeasurementTypes } from "./registry.js";
 
 export function findMeasurementType(input: string, registry = defaultMeasurementTypes): MeasurementType | undefined {
   const normalized = normalizeMeasurementLookup(input);
+  const directMatch = findMeasurementTypeByNormalizedLookup(normalized, registry);
+  if (directMatch) return directMatch;
+
+  const labelWithoutUnitSuffix = stripCommonUnitSuffix(input, registry);
+  return labelWithoutUnitSuffix === input
+    ? undefined
+    : findMeasurementTypeByNormalizedLookup(normalizeMeasurementLookup(labelWithoutUnitSuffix), registry);
+}
+
+function findMeasurementTypeByNormalizedLookup(
+  normalized: string,
+  registry: readonly MeasurementType[]
+): MeasurementType | undefined {
   return registry.find((type) => {
     if (normalizeMeasurementLookup(type.code) === normalized) {
       return true;
     }
     return type.aliases.some((alias) => normalizeMeasurementLookup(alias) === normalized);
   });
+}
+
+/**
+ * Removes a final parenthesized unit only when that value is a unit known to
+ * the registry. This preserves meaningful qualifiers such as "Protein (Total)".
+ */
+function stripCommonUnitSuffix(value: string, registry: readonly MeasurementType[]): string {
+  const match = /^(.*\S)\s*\(([^()]+)\)\s*$/.exec(value);
+  if (!match || !isCommonUnitSuffix(match[2], registry)) return value;
+  return match[1].trimEnd();
+}
+
+function isCommonUnitSuffix(value: string, registry: readonly MeasurementType[]): boolean {
+  const normalizedSuffix = normalizeUnitSuffix(value);
+  if (["kg", "kgs", "kgr", "kgrs", "kilogram", "kilograms"].includes(normalizedSuffix)) return true;
+
+  return registry.some((type) => [
+    type.canonicalUnit,
+    ...Object.entries(type.unitAliases ?? {}).flatMap(([unit, aliases]) => [unit, ...aliases])
+  ].some((unit) => normalizeUnitSuffix(unit) === normalizedSuffix));
+}
+
+function normalizeUnitSuffix(value: string): string {
+  return value.trim().toLowerCase().replaceAll("μ", "µ").replaceAll(" ", "").replaceAll("²", "2");
 }
 
 function normalizeMeasurementLookup(value: string): string {
