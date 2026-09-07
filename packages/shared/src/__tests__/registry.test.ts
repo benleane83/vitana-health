@@ -115,6 +115,12 @@ describe("findMeasurementType", () => {
     expect(findMeasurementType("Free Testosterone#")?.code).toBe("free_testosterone");
   });
 
+  it("removes recognized parenthesized unit suffixes before matching measurement names", () => {
+    expect(findMeasurementType("SMM (kg)")?.code).toBe("skeletal_muscle_mass");
+    expect(findMeasurementType("PBF (%)")?.code).toBe("body_fat_pct");
+    expect(findMeasurementType("BM (kgr)")?.code).toBe("weight");
+  });
+
   it("does not resolve retired Samsung-prefixed alias", () => {
     expect(findMeasurementType("com.samsung.health.step_count")).toBeUndefined();
   });

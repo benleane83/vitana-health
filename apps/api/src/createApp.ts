@@ -209,7 +209,7 @@ export function createApp(
       });
       return;
     }
-    const secure = request.protocol === "https";
+    const secure = request.protocol === "https" && process.env.NODE_ENV !== "development";
     response.setHeader(
       "set-cookie",
       `vitana_owner=${encodeURIComponent(process.env.VITANA_OWNER_TOKEN ?? "")}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400${secure ? "; Secure" : ""}`

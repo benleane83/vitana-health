@@ -315,6 +315,10 @@ export function isAdministrativeMeasurementLabel(value: string): boolean {
   return normalized.includes("lab no") || normalized.includes("license no");
 }
 
+export function isTargetMeasurementLabel(value: string): boolean {
+  return /^\s*target\s+[a-z][a-z0-9 /()%.-]*?\s*[:=\-]?\s*-?\d/i.test(value);
+}
+
 export function toDisplayName(value: string): string {
   return value.trim().replace(/[_-]+/g, " ").replace(/\s+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }

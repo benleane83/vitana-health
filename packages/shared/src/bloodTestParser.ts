@@ -5,6 +5,7 @@ import {
   checksum,
   escapeRegExp,
   isAdministrativeMeasurementLabel,
+  isTargetMeasurementLabel,
   looksLikeDateOnly,
   normalizeStructuredDate,
   readDateFromFileName,
@@ -36,6 +37,10 @@ export function parseBloodTestScanText(
   for (const line of normalizedText.split("\n").map((item) => item.trim()).filter(Boolean)) {
     if (isAdministrativeMeasurementLabel(line)) {
       diagnostics.push(`Skipped administrative identifier: "${line}".`);
+      continue;
+    }
+    if (isTargetMeasurementLabel(line)) {
+      diagnostics.push(`Skipped target measurement: "${line}".`);
       continue;
     }
     const knownCandidate = parseKnownBloodTestLine(line);

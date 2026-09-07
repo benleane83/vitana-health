@@ -306,6 +306,16 @@ describe("parseBloodTestScanText", () => {
     expect(result.diagnostics.filter((message) => message.includes("administrative identifier"))).toHaveLength(2);
   });
 
+  it("skips target-labelled fields instead of treating them as lab results", () => {
+    const result = parseBloodTestScanText(
+      "results.pdf",
+      "Target Glucose 90 mg/dL\nGlucose: 80 mg/dL"
+    );
+
+    expect(result.rows).toEqual([expect.objectContaining({ measurementCode: "glucose", value: 80 })]);
+    expect(result.diagnostics).toContain('Skipped target measurement: "Target Glucose 90 mg/dL".');
+  });
+
   it("omits unknown and body-only measurements from a lab scan", () => {
     const result = parseBloodTestScanText(
       "results.pdf",
@@ -406,6 +416,29 @@ describe("parseBodyCompositionText", () => {
     expect(result.rows.filter((row) => row.measurementCode === "muscle_mass")).toHaveLength(1);
     expect(result.rows.filter((row) => row.measurementCode === "skeletal_muscle_mass")).toHaveLength(1);
     expect(result.diagnostics).not.toContain("Skipped measurements in a body composition history section.");
+  });
+
+  it("recognizes abbreviated labels with parenthesized unit suffixes", () => {
+    const result = parseBodyCompositionText(
+      "body-report.pdf",
+      "SMM (kg) 34.9\nPBF (%) 16.3\nBM (kgr) 76.7"
+    );
+
+    expect(result.rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ measurementCode: "skeletal_muscle_mass", value: 34.9, unit: "kg" }),
+      expect.objectContaining({ measurementCode: "body_fat_pct", value: 16.3, unit: "%" }),
+      expect.objectContaining({ measurementCode: "weight", value: 76.7, unit: "kg" })
+    ]));
+  });
+
+  it("skips target-labelled fields instead of treating them as body-composition results", () => {
+    const result = parseBodyCompositionText(
+      "body-report.jpg",
+      "Target Weight 77.7kg\nWeight: 80 kg"
+    );
+
+    expect(result.rows).toEqual([expect.objectContaining({ measurementCode: "weight", value: 80 })]);
+    expect(result.diagnostics).toContain('Skipped target measurement: "Target Weight 77.7kg".');
   });
 
   it("omits unknown, lab-only, and implausible body-composition measurements", () => {
